@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Concierge.Web.Client</RootNamespace>
+    <Description>WebAssembly client bundle for the Concierge.Web host. Required so the host can opt pages into InteractiveAuto render mode (server prerender → WebAssembly take-over). Pages that depend on host-only services stay on InteractiveServer until they grow an HTTP surface.</Description>
+    <!-- WASM0001 fires because Shared.Components transitively pulls SQLite via Shared.
+         The WASM bundle never runs SQLite (chat is InteractiveServer-only) but the
+         WebAssembly SDK still scans for varargs DllImports. The pin is a known limitation,
+         not a runtime hazard for this host. -->
+    <NoWarn>$(NoWarn);WASM0001</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="10.0.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.0" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Concierge.Shared.Components\Concierge.Shared.Components.csproj" />
+  </ItemGroup>
+
+</Project>

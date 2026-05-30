@@ -1,0 +1,24 @@
+@page "/approvals"
+@inject IConciergeStateService Concierge
+
+@{
+    var approvals = Concierge.GetSnapshot().Approvals;
+}
+
+<section class="page-header">
+    <p class="eyebrow">Approvals</p>
+    <h1>Review risky work before it touches files, tools, or APIs.</h1>
+    <p class="lede">Concierge keeps approval requests visible so agent work does not quietly take over the machine.</p>
+</section>
+
+<section class="card-grid">
+    @foreach (var approval in approvals)
+    {
+        <article class="surface-card accent">
+            <strong>@approval.Title</strong>
+            <span>@approval.Risk risk</span>
+            <p>@approval.Summary</p>
+            <div class="action-row"><button>Approve</button><button class="quiet">Reject</button></div>
+        </article>
+    }
+</section>

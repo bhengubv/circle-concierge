@@ -1,0 +1,75 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommitsDisabled"
+  ],
+  "timezone": "Africa/Johannesburg",
+  "labels": [
+    "dependencies",
+    "maintenance"
+  ],
+  "rangeStrategy": "bump",
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "packageRules": [
+    {
+      "description": "Group low-risk .NET test and tooling patches.",
+      "matchManagers": [
+        "nuget"
+      ],
+      "matchUpdateTypes": [
+        "patch",
+        "minor"
+      ],
+      "matchPackageNames": [
+        "coverlet.collector",
+        "coverlet.msbuild",
+        "Microsoft.NET.Test.Sdk",
+        "xunit",
+        "xunit.runner.visualstudio",
+        "Verify.Xunit"
+      ],
+      "groupName": ".NET test tooling"
+    },
+    {
+      "description": "Keep MAUI and platform-sensitive packages separate for manual review.",
+      "matchManagers": [
+        "nuget"
+      ],
+      "matchPackageNames": [
+        "Microsoft.Maui.Controls",
+        "Microsoft.AspNetCore.Components.WebView.Maui",
+        "Microsoft.Extensions.Logging.Debug"
+      ],
+      "groupName": ".NET MAUI platform packages",
+      "automerge": false
+    },
+    {
+      "description": "Never automerge major updates.",
+      "matchUpdateTypes": [
+        "major"
+      ],
+      "automerge": false,
+      "addLabels": [
+        "major-update",
+        "needs-review"
+      ]
+    },
+    {
+      "description": "Keep GitHub Actions updates explicit once workflows are added.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "automerge": false
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": [
+      "security",
+      "dependencies"
+    ]
+  }
+}

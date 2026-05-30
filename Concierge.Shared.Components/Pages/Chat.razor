@@ -1,0 +1,214 @@
+@page "/chat"
+@page "/chat/{ConversationId:guid}"
+@using System.Text
+@using Concierge.Shared.Chat
+@inject IConversationStore Store
+@inject IChatRuntime Runtime
+@inject NavigationManager Nav
+
+<section class="chat-shell">
+    <aside class="chat-sidebar">
+        <div class="chat-sidebar-header">
+            <p class="eyebrow">Chat</p>
+            <button class="button primary" type="button" @onclick="StartNewAsync">New conversation</button>
+        </div>
+        <nav class="chat-conversation-list" aria-label="Conversations">
+            @if (_conversations.Count == 0)
+            {
+                <p class="chat-empty">No conversations yet. Start one to begin.</p>
+            }
+            else
+            {
+                @foreach (var conversation in _conversations)
+                {
+                    <a class="chat-conversation-link @(conversation.Id == ConversationId ? "active" : null)"
+                       href="@($"chat/{conversation.Id}")">
+                        <strong>@conversation.Title</strong>
+                        <span>@conversation.UpdatedAt.ToLocalTime().ToString("MMM d, HH:mm")</span>
+                    </a>
+                }
+            }
+        </nav>
+        <div class="chat-engine-pill" data-ready="@Runtime.IsReady">
+            <strong>@Runtime.EngineLabel</strong>
+            <span>@Runtime.StatusMessage</span>
+        </div>
+    </aside>
+
+    <main class="chat-thread" aria-live="polite">
+        @if (_active is null)
+        {
+            <div class="chat-empty-state">
+                <h1>Pick a conversation or start a new one.</h1>
+                <p>Concierge runs on @Runtime.EngineLabel. @Runtime.StatusMessage</p>
+            </div>
+        }
+        else
+        {
+            <header class="chat-thread-header">
+                <h1>@_active.Title</h1>
+                <span>@_active.Messages.Count messages · started @_active.CreatedAt.ToLocalTime().ToString("MMM d, yyyy HH:mm")</span>
+            </header>
+
+            <div class="chat-messages">
+                @foreach (var message in _active.Messages)
+                {
+                    <article class="chat-bubble @message.Role">
+                        <header>
+                            <strong>@FormatRole(message.Role)</strong>
+                            @if (!string.IsNullOrWhiteSpace(message.ProducedBy))
+                            {
+                                <span class="chat-bubble-engine">@message.ProducedBy</span>
+                            }
+                            <time>@message.CreatedAt.ToLocalTime().ToString("HH:mm")</time>
+                        </header>
+                        <p>@message.Content</p>
+                    </article>
+                }
+                @if (_streaming)
+                {
+                    <article class="chat-bubble assistant streaming">
+                        <header>
+                            <strong>Assistant</strong>
+                            <span class="chat-bubble-engine">@Runtime.EngineLabel</span>
+                            <time>@DateTimeOffset.Now.ToLocalTime().ToString("HH:mm")</time>
+                        </header>
+                        <p>@_streamingBuffer</p>
+                    </article>
+                }
+            </div>
+
+            <form class="chat-composer" @onsubmit="SendAsync" @onsubmit:preventDefault>
+                <textarea @bind="_composerText"
+                          @bind:event="oninput"
+                          placeholder="Ask Concierge anything…"
+                          rows="3"
+                          disabled="@(!CanSend)"></textarea>
+                <div class="chat-composer-row">
+                    <span class="chat-hint">Shift + Enter for newline · plain text only in v1</span>
+                    <button class="button primary" type="submit" disabled="@(!CanSend)">
+                        @(_streaming ? "Streaming…" : "Send")
+                    </button>
+                </div>
+            </form>
+        }
+    </main>
+</section>
+
+@code {
+    [Parameter] public Guid? ConversationId { get; set; }
+
+    private List<Conversation> _conversations = new();
+    private Conversation? _active;
+    private string _composerText = string.Empty;
+    private bool _streaming;
+    private string _streamingBuffer = string.Empty;
+    private CancellationTokenSource? _streamCts;
+
+    private const string OwnerId = "local";
+
+    private bool CanSend
+        => !_streaming
+           && !string.IsNullOrWhiteSpace(_composerText)
+           && _active is not null
+           && Runtime.IsReady;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RefreshSidebarAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ConversationId is { } id)
+        {
+            _active = await Store.GetAsync(id);
+        }
+        else
+        {
+            _active = null;
+        }
+    }
+
+    private async Task RefreshSidebarAsync()
+    {
+        _conversations = (await Store.ListAsync(OwnerId)).ToList();
+    }
+
+    private async Task StartNewAsync()
+    {
+        var conversation = await Store.StartAsync(OwnerId);
+        await RefreshSidebarAsync();
+        Nav.NavigateTo($"chat/{conversation.Id}");
+    }
+
+    private async Task SendAsync()
+    {
+        if (!CanSend || _active is null)
+        {
+            return;
+        }
+
+        var input = _composerText.Trim();
+        _composerText = string.Empty;
+
+        await Store.AppendAsync(_active.Id, role: "user", content: input);
+        _active = await Store.GetAsync(_active.Id);
+        await RefreshSidebarAsync();
+        StateHasChanged();
+
+        _streaming = true;
+        _streamingBuffer = string.Empty;
+        _streamCts?.Cancel();
+        _streamCts = new CancellationTokenSource();
+
+        var turns = (_active?.Messages ?? new List<ChatMessageRow>())
+            .Select(m => new ChatTurn(m.Role, m.Content))
+            .ToList();
+        if (_active is not null && !string.IsNullOrWhiteSpace(_active.SystemPrompt))
+        {
+            turns.Insert(0, new ChatTurn("system", _active.SystemPrompt));
+        }
+
+        var buffer = new StringBuilder();
+        try
+        {
+            await foreach (var chunk in Runtime.StreamAsync(turns, _streamCts.Token))
+            {
+                buffer.Append(chunk);
+                _streamingBuffer = buffer.ToString();
+                StateHasChanged();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // User navigated away or cancelled — persist whatever we have so it isn't lost.
+        }
+        catch (Exception ex)
+        {
+            buffer.AppendLine();
+            buffer.Append("[stream error: ").Append(ex.Message).Append(']');
+            _streamingBuffer = buffer.ToString();
+        }
+
+        var assistantText = buffer.ToString();
+        if (!string.IsNullOrWhiteSpace(assistantText) && _active is not null)
+        {
+            await Store.AppendAsync(_active.Id, role: "assistant", content: assistantText, producedBy: Runtime.EngineLabel);
+            _active = await Store.GetAsync(_active.Id);
+            await RefreshSidebarAsync();
+        }
+
+        _streaming = false;
+        _streamingBuffer = string.Empty;
+        StateHasChanged();
+    }
+
+    private static string FormatRole(string role) => role switch
+    {
+        "user" => "You",
+        "assistant" => "Assistant",
+        "system" => "System",
+        _ => role
+    };
+}

@@ -1,0 +1,416 @@
+﻿[
+  {
+    Id: business-operations,
+    Name: Business Operations,
+    Area: Business,
+    Summary: Provider-neutral business operations workflow for running a one-person startup or existing group entity across sales, marketing, support, finance, legal/admin, and operations.
+  },
+  {
+    Id: customer-research-insights,
+    Name: Customer Research and Insights,
+    Area: Business,
+    Summary: Provider-neutral customer research and insights workflow for interviews, surveys, feedback synthesis, market research, competitive intelligence, and insight repositories.
+  },
+  {
+    Id: customer-support-success,
+    Name: Customer Support and Success,
+    Area: Business,
+    Summary: Provider-neutral customer support and success workflow for tickets, knowledge bases, onboarding, escalations, SLAs, feedback, renewals, and customer health.
+  },
+  {
+    Id: data-bi-reporting,
+    Name: Data and Business Intelligence,
+    Area: Business,
+    Summary: Provider-neutral data and business intelligence workflow for KPI definitions, dashboards, reporting packs, forecasting, data quality, and decision support.
+  },
+  {
+    Id: esg-sustainability-impact,
+    Name: ESG Sustainability and Impact,
+    Area: Business,
+    Summary: Provider-neutral ESG, sustainability, and impact workflow for carbon reporting, social impact, supplier ethics, sustainability evidence, and stakeholder reporting.
+  },
+  {
+    Id: executive-strategy-board,
+    Name: Executive Strategy and Board,
+    Area: Business,
+    Summary: Provider-neutral executive strategy and board office workflow for OKRs, board packs, investor updates, fundraising, operating cadence, decisions, and strategic planning.
+  },
+  {
+    Id: facilities-assets-workplace,
+    Name: Facilities Assets and Workplace,
+    Area: Business,
+    Summary: Provider-neutral facilities, assets, and workplace workflow for offices, equipment, maintenance, insurance evidence, health and safety, and physical operations.
+  },
+  {
+    Id: finance-accounting,
+    Name: Finance and Accounting,
+    Area: Business,
+    Summary: Provider-neutral finance and accounting workflow for bookkeeping, cash flow, invoicing, tax readiness, budgets, reporting, approvals, and accounting-system integrations.
+  },
+  {
+    Id: founder-productivity-life-admin,
+    Name: Founder Productivity and Life Admin,
+    Area: Business,
+    Summary: Provider-neutral founder productivity and life-admin workflow for calendar, inbox, travel, personal/business boundaries, priorities, delegation, and assistant-style coordination.
+  },
+  {
+    Id: human-resources,
+    Name: Human Resources,
+    Area: Business,
+    Summary: Provider-neutral HR workflow for hiring, onboarding, policies, leave, performance, payroll coordination, workforce records, and people operations.
+  },
+  {
+    Id: internal-communications,
+    Name: Internal Communications,
+    Area: Business,
+    Summary: Provider-neutral internal communications workflow for announcements, change management, town halls, policy rollouts, crisis updates, and employee messaging.
+  },
+  {
+    Id: it-internal-systems,
+    Name: IT and Internal Systems,
+    Area: Business,
+    Summary: Provider-neutral IT and internal systems workflow for access, devices, SaaS administration, identity, backups, internal tooling, continuity, and support.
+  },
+  {
+    Id: learning-development,
+    Name: Learning and Development,
+    Area: Business,
+    Summary: Provider-neutral learning and development workflow for training plans, onboarding curricula, SOP training, certification tracking, enablement, and skills growth.
+  },
+  {
+    Id: legal-admin,
+    Name: Legal and Administration,
+    Area: Business,
+    Summary: Provider-neutral legal and company administration workflow for entity records, contracts, governance, filings, compliance evidence, and government/API submissions.
+  },
+  {
+    Id: marketing-growth,
+    Name: Marketing and Growth,
+    Area: Business,
+    Summary: Provider-neutral marketing and growth workflow for positioning, campaigns, content, social, analytics, SEO, paid media, and launch operations.
+  },
+  {
+    Id: operations-supply-chain,
+    Name: Operations and Supply Chain,
+    Area: Business,
+    Summary: Provider-neutral operations and supply-chain workflow for vendors, procurement, inventory, fulfillment, logistics, facilities, service delivery, and operating cadence.
+  },
+  {
+    Id: partnerships-business-development,
+    Name: Partnerships and Business Development,
+    Area: Business,
+    Summary: Provider-neutral partnerships and business development workflow for channels, affiliates, alliances, resellers, ecosystem strategy, and partnership operations.
+  },
+  {
+    Id: procurement-vendor-management,
+    Name: Procurement and Vendor Management,
+    Area: Business,
+    Summary: Provider-neutral procurement and vendor management workflow for sourcing, spend control, renewals, supplier risk, onboarding, contracts, and purchasing approvals.
+  },
+  {
+    Id: product-management,
+    Name: Product Management,
+    Area: Business,
+    Summary: Provider-neutral product management workflow for discovery, roadmap, prioritization, requirements, release scope, product strategy, and customer outcomes.
+  },
+  {
+    Id: quality-management,
+    Name: Quality Management,
+    Area: Business,
+    Summary: Provider-neutral quality management workflow for SOP control, audits, CAPA, nonconformance, ISO-style systems, inspections, and continual improvement.
+  },
+  {
+    Id: risk-compliance,
+    Name: Risk and Compliance,
+    Area: Business,
+    Summary: Provider-neutral risk and compliance workflow for policies, controls, audits, privacy, security evidence, regulatory readiness, and governance.
+  },
+  {
+    Id: sales-crm,
+    Name: Sales and CRM,
+    Area: Business,
+    Summary: Provider-neutral sales and CRM workflow for leads, accounts, pipeline, proposals, quotes, follow-ups, forecasting, and customer handoff.
+  },
+  {
+    Id: security-operations,
+    Name: Security Operations,
+    Area: Business,
+    Summary: Provider-neutral security operations workflow for alerts, incidents, access reviews, vulnerability tracking, security evidence, response coordination, and hardening.
+  },
+  {
+    Id: audio-music-sound-design,
+    Name: Audio Music and Sound Design,
+    Area: Creative Technology,
+    Summary: Provider-neutral audio and sound design workflow for UI sounds, game audio, music direction, voice, sonic branding, implementation, and licensing.
+  },
+  {
+    Id: console-game-development,
+    Name: Console Game Development,
+    Area: Creative Technology,
+    Summary: Provider-neutral console game development workflow for dev kits, certification, TRCs/XRs, controller UX, achievements/trophies, save data, store packaging, patch rules, performance, QA, and release evidence.
+  },
+  {
+    Id: creative-coding,
+    Name: Creative Coding,
+    Area: Creative Technology,
+    Summary: Provider-neutral creative coding workflow for generative art, interactive sketches, procedural visuals, data art, experiments, and playful prototypes.
+  },
+  {
+    Id: css-js-animation,
+    Name: CSS and JavaScript Animation,
+    Area: Creative Technology,
+    Summary: Provider-neutral CSS and JavaScript animation workflow for keyframes, transitions, scroll animation, SVG/canvas motion, choreography, performance, and reduced-motion accessibility.
+  },
+  {
+    Id: game-development,
+    Name: Game Development,
+    Area: Creative Technology,
+    Summary: Provider-neutral game development workflow for gameplay loops, mechanics, levels, engines, prototyping, testing, performance, and release.
+  },
+  {
+    Id: graphics-visual-effects,
+    Name: Graphics and Visual Effects,
+    Area: Creative Technology,
+    Summary: Provider-neutral graphics and visual effects workflow for shaders, particles, rendering, compositing, animation, post-processing, and visual polish.
+  },
+  {
+    Id: interactive-media-xr,
+    Name: Interactive Media and XR,
+    Area: Creative Technology,
+    Summary: Provider-neutral interactive media and XR workflow for AR, VR, spatial computing, installations, simulations, exhibits, and immersive prototypes.
+  },
+  {
+    Id: mobile-game-development,
+    Name: Mobile Game Development,
+    Area: Creative Technology,
+    Summary: Provider-neutral mobile game development workflow for touch controls, screen sizes, orientation, device fragmentation, battery, thermals, IAP, ads, offline behavior, store review, live ops, QA, and release.
+  },
+  {
+    Id: motion-interaction-design,
+    Name: Motion and Interaction Design,
+    Area: Creative Technology,
+    Summary: Provider-neutral motion and interaction design workflow for transitions, gestures, microinteractions, animation systems, tactile feedback, and product delight.
+  },
+  {
+    Id: multiplayer-live-game-operations,
+    Name: Multiplayer and Live Game Operations,
+    Area: Creative Technology,
+    Summary: Provider-neutral multiplayer and live game operations workflow for networking, matchmaking, backend services, live ops, economy, moderation, anti-cheat, events, telemetry, incidents, and community safety.
+  },
+  {
+    Id: pc-game-development,
+    Name: PC Game Development,
+    Area: Creative Technology,
+    Summary: Provider-neutral PC game development workflow for Steam/Epic/GOG-style distribution, input devices, graphics settings, modding, anti-cheat, performance, installers, QA, patches, and community operations.
+  },
+  {
+    Id: web-game-development,
+    Name: Web Game Development,
+    Area: Creative Technology,
+    Summary: Provider-neutral web game development workflow for browser performance, WebGL/WebGPU, canvas, PWA, input, asset loading, hosting, web distribution, analytics, accessibility, and release.
+  },
+  {
+    Id: accessibility-inclusive-design,
+    Name: Accessibility and Inclusive Design,
+    Area: Cross-Cutting Quality,
+    Summary: Provider-neutral accessibility and inclusive design workflow for WCAG, keyboard/screen-reader usability, reduced motion, contrast, inclusive content, assistive technology, QA, and evidence.
+  },
+  {
+    Id: analytics-telemetry-experimentation,
+    Name: Analytics Telemetry and Experimentation,
+    Area: Cross-Cutting Quality,
+    Summary: Provider-neutral analytics, telemetry, and experimentation workflow for events, funnels, dashboards, A/B tests, product metrics, privacy, instrumentation QA, and decision support.
+  },
+  {
+    Id: documentation-knowledge-management,
+    Name: Documentation and Knowledge Management,
+    Area: Cross-Cutting Quality,
+    Summary: Provider-neutral documentation and knowledge management workflow for docs, SOPs, knowledge bases, Obsidian-style notes, decision records, onboarding, searchability, and maintenance.
+  },
+  {
+    Id: localization-globalization,
+    Name: Localization and Globalization,
+    Area: Cross-Cutting Quality,
+    Summary: Provider-neutral localization and globalization workflow for translation readiness, locale support, cultural review, currencies, dates, right-to-left layouts, market adaptation, QA, and release.
+  },
+  {
+    Id: ui-ux-design,
+    Name: UI/UX Design,
+    Area: Design,
+    Summary: Product-grade UI/UX design workflow for hierarchy, visual language, accessibility, responsive layouts, and interaction polish.
+  },
+  {
+    Id: development,
+    Name: Development,
+    Area: Engineering,
+    Summary: Provider-neutral software development workflow for reading code, planning safe changes, editing files, running verification, and explaining outcomes.
+  },
+  {
+    Id: full-stack-development,
+    Name: Full Stack Development,
+    Area: Engineering,
+    Summary: Provider-neutral full-stack delivery workflow covering UX, API, domain logic, persistence, tests, deployment readiness, and observability.
+  },
+  {
+    Id: agriculture-farming,
+    Name: Agriculture and Farming,
+    Area: Industry,
+    Summary: Provider-neutral agriculture and farming workflow for crop/livestock operations, inputs, schedules, compliance records, field evidence, logistics, and market planning.
+  },
+  {
+    Id: construction-projects,
+    Name: Construction and Projects,
+    Area: Industry,
+    Summary: Provider-neutral construction and project delivery workflow for estimates, schedules, subcontractors, site evidence, permits, variations, safety, and handover.
+  },
+  {
+    Id: ecommerce-marketplace-operations,
+    Name: Ecommerce and Marketplace Operations,
+    Area: Industry,
+    Summary: Provider-neutral ecommerce and marketplace operations workflow for catalog, listings, orders, returns, payments, inventory, fulfillment, reviews, marketplace policy, analytics, and channel growth.
+  },
+  {
+    Id: education-training-operations,
+    Name: Education and Training Operations,
+    Area: Industry,
+    Summary: Provider-neutral education and training operations workflow for courses, cohorts, learners, assessments, academic admin, compliance, and learning delivery.
+  },
+  {
+    Id: energy-utilities-operations,
+    Name: Energy and Utilities Operations,
+    Area: Industry,
+    Summary: Provider-neutral energy and utilities operations workflow for assets, meters, maintenance, outages, safety, regulatory records, field work, customer service, and infrastructure evidence.
+  },
+  {
+    Id: field-service,
+    Name: Field Service,
+    Area: Industry,
+    Summary: Provider-neutral field service workflow for dispatch, work orders, technicians, routes, job evidence, customer signoff, spares, and service reporting.
+  },
+  {
+    Id: financial-services-operations,
+    Name: Financial Services Operations,
+    Area: Industry,
+    Summary: Provider-neutral financial services operations workflow for fintech, banking, insurance, lending, advisory support, KYC, compliance evidence, customer onboarding, risk controls, and regulated operations.
+  },
+  {
+    Id: healthcare-practice-operations,
+    Name: Healthcare Practice Operations,
+    Area: Industry,
+    Summary: Provider-neutral healthcare practice operations workflow for patient admin, scheduling, billing coordination, compliance evidence, clinic operations, and non-clinical workflows.
+  },
+  {
+    Id: hospitality-retail,
+    Name: Hospitality and Retail,
+    Area: Industry,
+    Summary: Provider-neutral hospitality and retail workflow for bookings, front-of-house, inventory, menus/catalogs, staff rosters, customer experience, and daily operations.
+  },
+  {
+    Id: manufacturing-production,
+    Name: Manufacturing and Production,
+    Area: Industry,
+    Summary: Provider-neutral manufacturing and production workflow for BOMs, work orders, production planning, MRP, quality inspection, plant maintenance, and traceability.
+  },
+  {
+    Id: media-publishing-content-operations,
+    Name: Media Publishing and Content Operations,
+    Area: Industry,
+    Summary: Provider-neutral media, publishing, and content operations workflow for editorial calendars, rights, production, approvals, distribution, monetization, audience analytics, and content governance.
+  },
+  {
+    Id: mining-resources-operations,
+    Name: Mining and Resources Operations,
+    Area: Industry,
+    Summary: Provider-neutral mining and resources operations workflow for permits, safety, production, maintenance, environmental evidence, logistics, contractors, incidents, and compliance records.
+  },
+  {
+    Id: nonprofit-grants-impact,
+    Name: Nonprofit Grants and Impact,
+    Area: Industry,
+    Summary: Provider-neutral nonprofit and grant operations workflow for donor management, grant applications, impact reporting, board compliance, fundraising, and program evidence.
+  },
+  {
+    Id: professional-services,
+    Name: Professional Services,
+    Area: Industry,
+    Summary: Provider-neutral professional services workflow for client intake, scopes, engagements, time tracking, deliverables, retainers, quality review, and client evidence.
+  },
+  {
+    Id: public-sector-government,
+    Name: Public Sector and Government,
+    Area: Industry,
+    Summary: Provider-neutral public sector and government workflow for grants, tenders, procurement portals, permits, public compliance, citizen services, and government relations.
+  },
+  {
+    Id: real-estate-property-operations,
+    Name: Real Estate and Property Operations,
+    Area: Industry,
+    Summary: Provider-neutral real estate and property operations workflow for listings, leasing, property management, inspections, tenants, maintenance, compliance, documents, and handoffs.
+  },
+  {
+    Id: science-rd-lab-operations,
+    Name: Science R&D and Lab Operations,
+    Area: Industry,
+    Summary: Provider-neutral science, R&D, and lab operations workflow for experiments, protocols, lab notebooks, samples, safety, equipment, data integrity, research evidence, and compliance.
+  },
+  {
+    Id: telecom-isp-operations,
+    Name: Telecom and ISP Operations,
+    Area: Industry,
+    Summary: Provider-neutral telecom and ISP operations workflow for provisioning, network operations, customer installs, billing support, field service, outages, regulatory evidence, and service assurance.
+  },
+  {
+    Id: transport-logistics-operations,
+    Name: Transport and Logistics Operations,
+    Area: Industry,
+    Summary: Provider-neutral transport and logistics operations workflow for fleet, freight, warehouse, dispatch, last-mile delivery, customs, tracking, carrier management, and logistics evidence.
+  },
+  {
+    Id: testing-qa,
+    Name: Testing,
+    Area: Quality,
+    Summary: Provider-neutral testing and QA workflow for unit tests, integration checks, browser smoke tests, accessibility checks, and release evidence.
+  },
+  {
+    Id: release-management,
+    Name: Release Management,
+    Area: Release,
+    Summary: Provider-neutral release workflow for preflight checks, compliance, signing, packaging, deployment adapters, store submissions, and evidence bundles.
+  },
+  {
+    Id: api-integration-engineering,
+    Name: API and Integration Engineering,
+    Area: Software and IT,
+    Summary: Provider-neutral API and integration engineering workflow for API design, client integrations, auth, webhooks, retries, rate limits, contracts, data mapping, testing, and operations.
+  },
+  {
+    Id: app-security-engineering,
+    Name: Application Security Engineering,
+    Area: Software and IT,
+    Summary: Provider-neutral application security engineering workflow for threat modeling, secure design, code review, dependency risk, secrets, auth, vulnerability triage, and remediation.
+  },
+  {
+    Id: data-engineering,
+    Name: Data Engineering,
+    Area: Software and IT,
+    Summary: Provider-neutral data engineering workflow for ingestion, ETL/ELT, pipelines, warehouses, lakes, data quality, lineage, orchestration, privacy, and analytics readiness.
+  },
+  {
+    Id: devops-cloud-infrastructure,
+    Name: DevOps and Cloud Infrastructure,
+    Area: Software and IT,
+    Summary: Provider-neutral DevOps and cloud infrastructure workflow for CI/CD, environments, IaC, containers, Kubernetes, cloud resources, observability, cost controls, reliability, and release operations.
+  },
+  {
+    Id: mobile-app-development,
+    Name: Mobile App Development,
+    Area: Software and IT,
+    Summary: Provider-neutral mobile app development workflow for iOS, Android, MAUI, native, cross-platform apps, offline behavior, device capabilities, app stores, QA, signing, and release.
+  },
+  {
+    Id: software-architecture,
+    Name: Software Architecture,
+    Area: Software and IT,
+    Summary: Provider-neutral software architecture workflow for system design, boundaries, tradeoffs, data flow, integration patterns, scalability, reliability, security, and decision records.
+  }
+]

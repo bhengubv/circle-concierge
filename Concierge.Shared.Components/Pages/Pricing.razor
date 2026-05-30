@@ -1,0 +1,72 @@
+@page "/pricing"
+@inject IPricingService PricingCatalog
+
+@{
+    var pricing = PricingCatalog.GetSnapshot();
+}
+
+<section class="page-header">
+    <p class="eyebrow">Pricing</p>
+    <h1>Start free. Pay when Concierge becomes part of real work.</h1>
+    <p class="lede">@pricing.Positioning</p>
+</section>
+
+<section class="metric-grid">
+    <div class="metric"><strong>@pricing.Plans.Count</strong><span>simple plans</span></div>
+    <div class="metric"><strong>@pricing.Paths.Count</strong><span>user paths</span></div>
+    <div class="metric"><strong>@pricing.UsageBands.Count</strong><span>usage bands</span></div>
+    <div class="metric"><strong>Optional</strong><span>add-ons</span></div>
+</section>
+
+<section class="card-grid">
+    @foreach (var path in pricing.Paths)
+    {
+        <article class="surface-card accent">
+            <strong>@path.Label</strong>
+            <span>@string.Join(" -> ", path.RecommendedPlanIds)</span>
+            <p>@path.Summary</p>
+        </article>
+    }
+</section>
+
+<section class="card-grid">
+    @foreach (var plan in pricing.Plans)
+    {
+        <article class="surface-card ready">
+            <strong>@plan.Name</strong>
+            <span>@plan.MonthlyPriceLabel - @plan.AudienceFit</span>
+            <p>@plan.Summary</p>
+            <p><b>Included:</b> @string.Join(", ", plan.Included)</p>
+            <p><b>Limits:</b> @string.Join(", ", plan.Limits)</p>
+            <p><b>Move up when:</b> @plan.UpgradeTrigger</p>
+        </article>
+    }
+</section>
+
+<section class="page-header">
+    <p class="eyebrow">Usage and add-ons</p>
+    <h1>Keep the base plans simple. Put complexity where it belongs.</h1>
+    <p class="lede">@pricing.CurrencyMode</p>
+</section>
+
+<section class="card-grid">
+    @foreach (var band in pricing.UsageBands)
+    {
+        <article class="surface-card">
+            <strong>@band.Name</strong>
+            <span>@(band.RequiresContact ? "Contact us" : $"{band.IncludedMonthlyRuns:N0} runs / {band.IncludedTeamSeats} seats")</span>
+            <p>@band.Summary</p>
+        </article>
+    }
+</section>
+
+<section class="card-grid">
+    @foreach (var addOn in pricing.AddOns)
+    {
+        <article class="surface-card">
+            <strong>@addOn.Name</strong>
+            <span>@addOn.BillingModel</span>
+            <p>@addOn.Summary</p>
+        </article>
+    }
+</section>

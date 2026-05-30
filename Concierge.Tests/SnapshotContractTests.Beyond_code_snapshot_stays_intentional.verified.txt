@@ -1,0 +1,286 @@
+﻿{
+  Capabilities: [
+    {
+      Id: memory-palace,
+      Name: Memory Palace,
+      PlainEnglishName: Remember useful work,
+      InspiredBy: mempalace,
+      Summary: Keep local, searchable memory rooms for decisions, evidence, notes, and reusable context.,
+      WhyItMatters: Users stop repeating themselves, and the app can explain why a decision was made.,
+      SafetyBoundary: Local first, user-owned, exportable, and never a hidden cloud dependency.
+    },
+    {
+      Id: workforce-mode,
+      Name: Workforce Mode,
+      PlainEnglishName: Bring in the right helpers,
+      InspiredBy: loki-mode and eigent,
+      Summary: Route work to small specialist teams for product, engineering, finance, growth, support, and compliance.,
+      WhyItMatters: Concierge becomes useful to a whole business, not only developers.,
+      SafetyBoundary: Every helper has scoped tools, visible work, and approval gates before risky actions.
+    },
+    {
+      Id: simulation-room,
+      Name: Simulation Room,
+      PlainEnglishName: Try the decision before spending money,
+      InspiredBy: MiroFish,
+      Summary: Compare likely outcomes before hiring, launching, pricing, buying tools, or changing a process.,
+      WhyItMatters: One-person teams can think through consequences without needing a strategy department.,
+      SafetyBoundary: Simulations are labelled as forecasts, not facts, and must show the evidence they used.
+    },
+    {
+      Id: infrastructure-room,
+      Name: Infrastructure Room,
+      PlainEnglishName: Manage servers without fear,
+      InspiredBy: LazySSH,
+      Summary: Track environments, SSH-style access, deployment steps, and operational checks in a safety-first way.,
+      WhyItMatters: Small teams get infrastructure confidence without exposing raw credentials everywhere.,
+      SafetyBoundary: No secret display, no uncontrolled shell access, and owner approval for remote changes.
+    },
+    {
+      Id: diagram-evidence,
+      Name: Diagram Evidence,
+      PlainEnglishName: Show the plan clearly,
+      InspiredBy: mermaid,
+      Summary: Generate simple diagrams for systems, business processes, release evidence, and support handovers.,
+      WhyItMatters: People understand the work faster when the app can show flows instead of only text.,
+      SafetyBoundary: Diagrams are generated from reviewable project facts and can be exported as evidence.
+    },
+    {
+      Id: safe-auto-resume,
+      Name: Safe Auto-Resume,
+      PlainEnglishName: Continue without taking over,
+      InspiredBy: claude-auto-resume,
+      Summary: Resume interrupted work while preserving approvals, sandbox boundaries, and user control.,
+      WhyItMatters: Long work should survive disconnects without holding the machine hostage.,
+      SafetyBoundary: No permission bypass, no silent destructive action, and stop if the workspace changed.
+    },
+    {
+      Id: lightweight-mode,
+      Name: Lightweight Mode,
+      PlainEnglishName: Run well on small machines,
+      InspiredBy: PicoClaw,
+      Summary: Offer small-machine profiles with lower concurrency, shorter jobs, and gentler background work.,
+      WhyItMatters: Concierge should respect laptops, phones, and older hardware.,
+      SafetyBoundary: Resource caps are visible and can be tightened by the user.
+    },
+    {
+      Id: security-lab,
+      Name: Security Lab,
+      PlainEnglishName: Check risks safely,
+      InspiredBy: Claude-BugHunter and beheader,
+      Summary: Run defensive checks, threat models, dependency reviews, and evidence capture in a scoped lab.,
+      WhyItMatters: Security becomes part of ordinary work instead of a scary final step.,
+      SafetyBoundary: Defensive-only by default, disabled for offensive actions, and always scoped to approved assets.
+    },
+    {
+      Id: media-generation,
+      Name: Media Studio,
+      PlainEnglishName: Create useful visuals,
+      InspiredBy: pollinations,
+      Summary: Connect low-friction image, audio, and creative generation providers through normal provider policy.,
+      WhyItMatters: Business users can make launch assets, mockups, and learning material without leaving the app.,
+      SafetyBoundary: Provider-neutral, opt-in, labelled AI output, and subject to content and credential policy.
+    },
+    {
+      Id: api-room,
+      Name: API Room,
+      PlainEnglishName: Understand and test APIs,
+      InspiredBy: Scalar,
+      Summary: Render OpenAPI references, test requests, validate contracts, generate examples, mock APIs, and let an agent explain API workflows.,
+      WhyItMatters: Concierge becomes stronger for business integrations because every API can be documented, tested, mocked, and explained in one safe workspace.,
+      SafetyBoundary: Scalar-style tools are optional adapters; live requests still follow endpoint allowlists, credential policy, approvals, and audit logging.
+    },
+    {
+      Id: cross-platform-release,
+      Name: Cross-Platform Release,
+      PlainEnglishName: Ship everywhere from one place,
+      InspiredBy: CrossCode,
+      Summary: Track Apple, Android, Windows, Linux, and web packaging readiness from one release cockpit.,
+      WhyItMatters: The same idea can become a web app, desktop app, and mobile app without splitting the team.,
+      SafetyBoundary: Signing credentials stay owner-controlled and platform checks remain explicit.
+    }
+  ],
+  MemoryRooms: [
+    {
+      Id: decisions,
+      Name: Decisions,
+      Purpose: Why we chose something and what alternatives we rejected.,
+      StoresRawLocalEvidence: true,
+      PortableAcrossDevices: true
+    },
+    {
+      Id: evidence,
+      Name: Evidence,
+      Purpose: Build logs, screenshots, approvals, release checks, and audit trails.,
+      StoresRawLocalEvidence: true,
+      PortableAcrossDevices: true
+    },
+    {
+      Id: customers,
+      Name: Customer signals,
+      Purpose: Interviews, support notes, complaints, requests, and repeated patterns.,
+      StoresRawLocalEvidence: true,
+      PortableAcrossDevices: true
+    },
+    {
+      Id: operations,
+      Name: Operating notes,
+      Purpose: SOPs, vendor details, handovers, and recurring business rhythms.,
+      StoresRawLocalEvidence: true,
+      PortableAcrossDevices: true
+    }
+  ],
+  WorkforceSwarms: [
+    {
+      Id: startup-core,
+      Name: Start something,
+      Purpose: Turn an idea into a small working operation.,
+      Agents: [
+        {
+          Name: Product guide,
+          Role: Clarifies the problem and first useful version.,
+          DefaultBoundary: Cannot invent customer proof.
+        },
+        {
+          Name: Build guide,
+          Role: Plans and checks the software work.,
+          DefaultBoundary: Needs approval before file or command changes.
+        },
+        {
+          Name: Money guide,
+          Role: Tracks simple costs, invoices, and cash-flow questions.,
+          DefaultBoundary: Cannot connect finance APIs without owner credentials.
+        },
+        {
+          Name: Launch guide,
+          Role: Helps with website, social, outreach, and support basics.,
+          DefaultBoundary: Cannot publish externally without review.
+        }
+      ]
+    },
+    {
+      Id: operating-company,
+      Name: Run the company,
+      Purpose: Coordinate normal business work after the first product exists.,
+      Agents: [
+        {
+          Name: Finance,
+          Role: Cash, invoices, reports, and controls.,
+          DefaultBoundary: Never exposes secrets or bank details.
+        },
+        {
+          Name: HR,
+          Role: Hiring, onboarding, policies, and people tasks.,
+          DefaultBoundary: Handles personal data with stricter review.
+        },
+        {
+          Name: Legal and admin,
+          Role: Contracts, filings, records, and compliance reminders.,
+          DefaultBoundary: Provides support, not legal advice.
+        },
+        {
+          Name: Customer care,
+          Role: Support patterns, follow-ups, and service quality.,
+          DefaultBoundary: Cannot send messages without approval.
+        }
+      ]
+    },
+    {
+      Id: safe-build-team,
+      Name: Build safely,
+      Purpose: A Claude Code style team for coding with stronger controls.,
+      Agents: [
+        {
+          Name: Reader,
+          Role: Inspects files and explains the workspace.,
+          DefaultBoundary: Read-only.
+        },
+        {
+          Name: Changer,
+          Role: Prepares diffs and patches.,
+          DefaultBoundary: Approval required before writes.
+        },
+        {
+          Name: Tester,
+          Role: Runs builds, tests, and smoke checks.,
+          DefaultBoundary: Bounded by resource caps.
+        },
+        {
+          Name: Reviewer,
+          Role: Looks for regressions and missing evidence.,
+          DefaultBoundary: Cannot auto-approve its own changes.
+        }
+      ]
+    }
+  ],
+  Simulations: [
+    {
+      Id: pricing,
+      Name: Pricing check,
+      PlainEnglishQuestion: If we charge this price, what might break?,
+      EvidenceNeeded: Costs, competitors, customer signals, and support effort.,
+      Output: Simple tradeoff table plus next experiment.
+    },
+    {
+      Id: hiring,
+      Name: Hiring check,
+      PlainEnglishQuestion: Should we hire, automate, outsource, or wait?,
+      EvidenceNeeded: Workload, cash runway, risk, and skills gap.,
+      Output: Decision options with visible assumptions.
+    },
+    {
+      Id: launch,
+      Name: Launch check,
+      PlainEnglishQuestion: Are we ready to show this to real people?,
+      EvidenceNeeded: Product proof, support plan, compliance gates, and rollback path.,
+      Output: Launch confidence score and blocker list.
+    }
+  ],
+  InfrastructureLanes: [
+    {
+      Id: local,
+      Name: This machine,
+      Purpose: Run local builds, tests, previews, and cleanup.,
+      SafetyBoundary: Respect concurrency caps and emergency stop.
+    },
+    {
+      Id: remote,
+      Name: Remote servers,
+      Purpose: Prepare SSH-style operations and deployment checks.,
+      SafetyBoundary: Credential unlock and explicit approval required.
+    },
+    {
+      Id: cloud,
+      Name: Cloud accounts,
+      Purpose: Track app services, containers, storage, and health checks.,
+      SafetyBoundary: Provider credentials stay in secure storage.
+    }
+  ],
+  DiagramTemplates: [
+    {
+      Id: system-map,
+      Name: System map,
+      UseWhen: Someone asks how the product fits together.,
+      Output: Mermaid component diagram.
+    },
+    {
+      Id: process-flow,
+      Name: Process flow,
+      UseWhen: A business process needs to be taught or audited.,
+      Output: Step-by-step flowchart.
+    },
+    {
+      Id: release-path,
+      Name: Release path,
+      UseWhen: A build is being prepared for web, desktop, or mobile.,
+      Output: Release evidence diagram.
+    }
+  ],
+  SafeResume: {
+    RequiresUserApproval: true,
+    KeepsOriginalSandbox: true,
+    BlocksPermissionBypass: true,
+    StopsWhenContextChanges: true,
+    Summary: Concierge can pick work back up, but it must keep the same safety rules and ask before doing anything risky.
+  }
+}

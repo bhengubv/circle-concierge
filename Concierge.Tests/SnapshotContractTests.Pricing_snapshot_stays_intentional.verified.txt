@@ -1,0 +1,219 @@
+﻿{
+  Positioning: Pricing follows the user's maturity: start free, grow into building, then operating, then scale when governance matters.,
+  CurrencyMode: Amounts are intentionally undecided; the structure is built so final prices can be changed without changing the product model.,
+  UsageBands: [
+    {
+      Id: light,
+      Name: Light use,
+      Summary: Personal learning, occasional tasks, and local experiments.,
+      IncludedMonthlyRuns: 100,
+      IncludedTeamSeats: 1,
+      RequiresContact: false
+    },
+    {
+      Id: active,
+      Name: Active builder,
+      Summary: Daily work for one person or a very small team.,
+      IncludedMonthlyRuns: 1000,
+      IncludedTeamSeats: 3,
+      RequiresContact: false
+    },
+    {
+      Id: operating,
+      Name: Operating company,
+      Summary: Multiple business rooms, approvals, integrations, and release evidence.,
+      IncludedMonthlyRuns: 10000,
+      IncludedTeamSeats: 15,
+      RequiresContact: false
+    },
+    {
+      Id: scale,
+      Name: Scale or regulated,
+      Summary: Large teams, strict governance, private workers, and custom compliance needs.,
+      RequiresContact: true
+    }
+  ],
+  Paths: [
+    {
+      Label: Personal,
+      Summary: Learn, experiment, build locally, and keep control of your machine.,
+      RecommendedPlanIds: [
+        free,
+        builder
+      ]
+    },
+    {
+      Audience: Startup,
+      Label: Startup,
+      Summary: Start with an idea, build the product, and grow into operations.,
+      RecommendedPlanIds: [
+        free,
+        builder,
+        operator
+      ]
+    },
+    {
+      Audience: Business,
+      Label: Business,
+      Summary: Run daily work across teams, approvals, integrations, and evidence.,
+      RecommendedPlanIds: [
+        operator,
+        scale
+      ]
+    },
+    {
+      Audience: Enterprise,
+      Label: Enterprise,
+      Summary: Private governance, policy, compliance, SSO, and deployment choices.,
+      RecommendedPlanIds: [
+        scale
+      ]
+    },
+    {
+      Audience: Education,
+      Label: Education,
+      Summary: Make business and technology learnable without gatekeeping.,
+      RecommendedPlanIds: [
+        free,
+        builder,
+        scale
+      ]
+    },
+    {
+      Audience: Nonprofit,
+      Label: Nonprofit,
+      Summary: Help mission-driven teams get operational power without enterprise friction.,
+      RecommendedPlanIds: [
+        free,
+        operator,
+        scale
+      ]
+    }
+  ],
+  Plans: [
+    {
+      Id: free,
+      Name: Free,
+      AudienceFit: Anyone learning, exploring, or running small local work.,
+      MonthlyPriceLabel: Free,
+      Summary: Start safely without needing to understand enterprise software.,
+      Included: [
+        Local agent workspace,
+        Core skills catalog,
+        API Room starter workflows,
+        Basic approvals and resource controls,
+        Personal Memory Palace
+      ],
+      Limits: [
+        Single user,
+        Local-first workloads,
+        Community support
+      ],
+      UpgradeTrigger: Upgrade when work becomes daily, recurring, or business-critical.,
+      IsContactSales: false
+    },
+    {
+      Id: builder,
+      Name: Builder,
+      Kind: Builder,
+      AudienceFit: One-person startups, freelancers, makers, and serious learners.,
+      MonthlyPriceLabel: Price not final,
+      Summary: Move from experiments to a real product or operating rhythm.,
+      Included: [
+        More monthly agent runs,
+        Persistent workspaces and evidence,
+        Release cockpit,
+        Business rooms,
+        Provider and API integration setup
+      ],
+      Limits: [
+        Small team use,
+        Standard automation limits,
+        Owner-managed credentials
+      ],
+      UpgradeTrigger: Upgrade when more people, approvals, or integrations depend on Concierge.,
+      IsContactSales: false
+    },
+    {
+      Id: operator,
+      Name: Operator,
+      Kind: Operator,
+      AudienceFit: Small businesses and teams running real operations.,
+      MonthlyPriceLabel: Price not final,
+      Summary: Coordinate work across product, finance, HR, legal, support, growth, and delivery.,
+      Included: [
+        Team seats,
+        Approval workflows,
+        Audit and evidence bundles,
+        GitHub, Xero, social, commerce, and API rooms,
+        Advanced resource control and workload recovery
+      ],
+      Limits: [
+        Team usage bands,
+        Shared policy defaults,
+        Standard support
+      ],
+      UpgradeTrigger: Move to Scale when compliance, private deployment, or custom policy packs are needed.,
+      IsContactSales: false
+    },
+    {
+      Id: scale,
+      Name: Scale,
+      Kind: Scale,
+      AudienceFit: Established companies, regulated teams, schools, nonprofits, and public-sector programs.,
+      MonthlyPriceLabel: Contact us,
+      Summary: Private, governed, and tailored Concierge for serious teams.,
+      Included: [
+        Policy packs,
+        Private or cloud workers,
+        SSO and admin controls,
+        Custom compliance evidence,
+        Priority support and onboarding
+      ],
+      Limits: [
+        Custom limits,
+        Custom deployment,
+        Commercial agreement required
+      ],
+      UpgradeTrigger: This tier starts with a conversation because deployment shape matters.,
+      IsContactSales: true
+    }
+  ],
+  AddOns: [
+    {
+      Id: cloud-workers,
+      Name: Cloud workers,
+      Summary: Run larger or longer tasks away from the user's laptop.,
+      BillingModel: Usage or capacity based,
+      Optional: true
+    },
+    {
+      Id: compliance-pack,
+      Name: Compliance packs,
+      Summary: Prebuilt evidence, policy, approval, and audit templates for regulated work.,
+      BillingModel: Per workspace or organization,
+      Optional: true
+    },
+    {
+      Id: premium-integrations,
+      Name: Premium integrations,
+      Summary: Advanced connectors for finance, commerce, social, logistics, and private APIs.,
+      BillingModel: Per connector family,
+      Optional: true
+    },
+    {
+      Id: human-support,
+      Name: Human support,
+      Summary: Setup help, migration assistance, and priority response.,
+      BillingModel: Support package,
+      Optional: true
+    },
+    {
+      Id: education-access,
+      Name: Education and nonprofit access,
+      Summary: Discounted or sponsored access for schools, learning programs, and nonprofits.,
+      BillingModel: Application based,
+      Optional: true
+    }
+  ]
+}

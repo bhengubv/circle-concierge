@@ -1,0 +1,421 @@
+{
+  "name": "Concierge Curated Skills",
+  "version": "0.1.0",
+  "description": "Provider-neutral curated skills for Concierge.",
+  "skills": [
+    {
+      "id": "development",
+      "path": "development/SKILL.md",
+      "category": "Engineering",
+      "profile": "Development"
+    },
+    {
+      "id": "full-stack-development",
+      "path": "full-stack-development/SKILL.md",
+      "category": "Engineering",
+      "profile": "Full Stack Development"
+    },
+    {
+      "id": "software-architecture",
+      "path": "software-architecture/SKILL.md",
+      "category": "Software and IT",
+      "profile": "Software Architecture"
+    },
+    {
+      "id": "devops-cloud-infrastructure",
+      "path": "devops-cloud-infrastructure/SKILL.md",
+      "category": "Software and IT",
+      "profile": "DevOps and Cloud Infrastructure"
+    },
+    {
+      "id": "mobile-app-development",
+      "path": "mobile-app-development/SKILL.md",
+      "category": "Software and IT",
+      "profile": "Mobile App Development"
+    },
+    {
+      "id": "data-engineering",
+      "path": "data-engineering/SKILL.md",
+      "category": "Software and IT",
+      "profile": "Data Engineering"
+    },
+    {
+      "id": "app-security-engineering",
+      "path": "app-security-engineering/SKILL.md",
+      "category": "Software and IT",
+      "profile": "Application Security Engineering"
+    },
+    {
+      "id": "api-integration-engineering",
+      "path": "api-integration-engineering/SKILL.md",
+      "category": "Software and IT",
+      "profile": "API and Integration Engineering"
+    },
+    {
+      "id": "accessibility-inclusive-design",
+      "path": "accessibility-inclusive-design/SKILL.md",
+      "category": "Cross-Cutting Quality",
+      "profile": "Accessibility and Inclusive Design"
+    },
+    {
+      "id": "localization-globalization",
+      "path": "localization-globalization/SKILL.md",
+      "category": "Cross-Cutting Quality",
+      "profile": "Localization and Globalization"
+    },
+    {
+      "id": "documentation-knowledge-management",
+      "path": "documentation-knowledge-management/SKILL.md",
+      "category": "Cross-Cutting Quality",
+      "profile": "Documentation and Knowledge Management"
+    },
+    {
+      "id": "analytics-telemetry-experimentation",
+      "path": "analytics-telemetry-experimentation/SKILL.md",
+      "category": "Cross-Cutting Quality",
+      "profile": "Analytics Telemetry and Experimentation"
+    },
+    {
+      "id": "ui-ux-design",
+      "path": "ui-ux-design/SKILL.md",
+      "category": "Design",
+      "profile": "UI/UX Design"
+    },
+    {
+      "id": "game-development",
+      "path": "game-development/SKILL.md",
+      "category": "Creative Technology",
+      "profile": "Game Development"
+    },
+    {
+      "id": "mobile-game-development",
+      "path": "mobile-game-development/SKILL.md",
+      "category": "Creative Technology",
+      "profile": "Mobile Game Development"
+    },
+    {
+      "id": "console-game-development",
+      "path": "console-game-development/SKILL.md",
+      "category": "Creative Technology",
+      "profile": "Console Game Development"
+    },
+    {
+      "id": "pc-game-development",
+      "path": "pc-game-development/SKILL.md",
+      "category": "Creative Technology",
+      "profile": "PC Game Development"
+    },
+    {
+      "id": "web-game-development",
+      "path": "web-game-development/SKILL.md",
+      "category": "Creative Technology",
+      "profile": "Web Game Development"
+    },
+    {
+      "id": "multiplayer-live-game-operations",
+      "path": "multiplayer-live-game-operations/SKILL.md",
+      "category": "Creative Technology",
+      "profile": "Multiplayer and Live Game Operations"
+    },
+    {
+      "id": "graphics-visual-effects",
+      "path": "graphics-visual-effects/SKILL.md",
+      "category": "Creative Technology",
+      "profile": "Graphics and Visual Effects"
+    },
+    {
+      "id": "motion-interaction-design",
+      "path": "motion-interaction-design/SKILL.md",
+      "category": "Creative Technology",
+      "profile": "Motion and Interaction Design"
+    },
+    {
+      "id": "css-js-animation",
+      "path": "css-js-animation/SKILL.md",
+      "category": "Creative Technology",
+      "profile": "CSS and JavaScript Animation"
+    },
+    {
+      "id": "creative-coding",
+      "path": "creative-coding/SKILL.md",
+      "category": "Creative Technology",
+      "profile": "Creative Coding"
+    },
+    {
+      "id": "audio-music-sound-design",
+      "path": "audio-music-sound-design/SKILL.md",
+      "category": "Creative Technology",
+      "profile": "Audio Music and Sound Design"
+    },
+    {
+      "id": "interactive-media-xr",
+      "path": "interactive-media-xr/SKILL.md",
+      "category": "Creative Technology",
+      "profile": "Interactive Media and XR"
+    },
+    {
+      "id": "product-management",
+      "path": "product-management/SKILL.md",
+      "category": "Business",
+      "profile": "Product Management"
+    },
+    {
+      "id": "testing-qa",
+      "path": "testing-qa/SKILL.md",
+      "category": "Quality",
+      "profile": "Testing"
+    },
+    {
+      "id": "business-operations",
+      "path": "business-operations/SKILL.md",
+      "category": "Business",
+      "profile": "Business Operations"
+    },
+    {
+      "id": "executive-strategy-board",
+      "path": "executive-strategy-board/SKILL.md",
+      "category": "Business",
+      "profile": "Executive Strategy and Board"
+    },
+    {
+      "id": "finance-accounting",
+      "path": "finance-accounting/SKILL.md",
+      "category": "Business",
+      "profile": "Finance and Accounting"
+    },
+    {
+      "id": "human-resources",
+      "path": "human-resources/SKILL.md",
+      "category": "Business",
+      "profile": "Human Resources"
+    },
+    {
+      "id": "legal-admin",
+      "path": "legal-admin/SKILL.md",
+      "category": "Business",
+      "profile": "Legal and Administration"
+    },
+    {
+      "id": "sales-crm",
+      "path": "sales-crm/SKILL.md",
+      "category": "Business",
+      "profile": "Sales and CRM"
+    },
+    {
+      "id": "marketing-growth",
+      "path": "marketing-growth/SKILL.md",
+      "category": "Business",
+      "profile": "Marketing and Growth"
+    },
+    {
+      "id": "customer-support-success",
+      "path": "customer-support-success/SKILL.md",
+      "category": "Business",
+      "profile": "Customer Support and Success"
+    },
+    {
+      "id": "operations-supply-chain",
+      "path": "operations-supply-chain/SKILL.md",
+      "category": "Business",
+      "profile": "Operations and Supply Chain"
+    },
+    {
+      "id": "risk-compliance",
+      "path": "risk-compliance/SKILL.md",
+      "category": "Business",
+      "profile": "Risk and Compliance"
+    },
+    {
+      "id": "quality-management",
+      "path": "quality-management/SKILL.md",
+      "category": "Business",
+      "profile": "Quality Management"
+    },
+    {
+      "id": "security-operations",
+      "path": "security-operations/SKILL.md",
+      "category": "Business",
+      "profile": "Security Operations"
+    },
+    {
+      "id": "esg-sustainability-impact",
+      "path": "esg-sustainability-impact/SKILL.md",
+      "category": "Business",
+      "profile": "ESG Sustainability and Impact"
+    },
+    {
+      "id": "data-bi-reporting",
+      "path": "data-bi-reporting/SKILL.md",
+      "category": "Business",
+      "profile": "Data and Business Intelligence"
+    },
+    {
+      "id": "it-internal-systems",
+      "path": "it-internal-systems/SKILL.md",
+      "category": "Business",
+      "profile": "IT and Internal Systems"
+    },
+    {
+      "id": "procurement-vendor-management",
+      "path": "procurement-vendor-management/SKILL.md",
+      "category": "Business",
+      "profile": "Procurement and Vendor Management"
+    },
+    {
+      "id": "partnerships-business-development",
+      "path": "partnerships-business-development/SKILL.md",
+      "category": "Business",
+      "profile": "Partnerships and Business Development"
+    },
+    {
+      "id": "facilities-assets-workplace",
+      "path": "facilities-assets-workplace/SKILL.md",
+      "category": "Business",
+      "profile": "Facilities Assets and Workplace"
+    },
+    {
+      "id": "learning-development",
+      "path": "learning-development/SKILL.md",
+      "category": "Business",
+      "profile": "Learning and Development"
+    },
+    {
+      "id": "internal-communications",
+      "path": "internal-communications/SKILL.md",
+      "category": "Business",
+      "profile": "Internal Communications"
+    },
+    {
+      "id": "customer-research-insights",
+      "path": "customer-research-insights/SKILL.md",
+      "category": "Business",
+      "profile": "Customer Research and Insights"
+    },
+    {
+      "id": "founder-productivity-life-admin",
+      "path": "founder-productivity-life-admin/SKILL.md",
+      "category": "Business",
+      "profile": "Founder Productivity and Life Admin"
+    },
+    {
+      "id": "public-sector-government",
+      "path": "public-sector-government/SKILL.md",
+      "category": "Industry",
+      "profile": "Public Sector and Government"
+    },
+    {
+      "id": "nonprofit-grants-impact",
+      "path": "nonprofit-grants-impact/SKILL.md",
+      "category": "Industry",
+      "profile": "Nonprofit Grants and Impact"
+    },
+    {
+      "id": "healthcare-practice-operations",
+      "path": "healthcare-practice-operations/SKILL.md",
+      "category": "Industry",
+      "profile": "Healthcare Practice Operations"
+    },
+    {
+      "id": "education-training-operations",
+      "path": "education-training-operations/SKILL.md",
+      "category": "Industry",
+      "profile": "Education and Training Operations"
+    },
+    {
+      "id": "construction-projects",
+      "path": "construction-projects/SKILL.md",
+      "category": "Industry",
+      "profile": "Construction and Projects"
+    },
+    {
+      "id": "manufacturing-production",
+      "path": "manufacturing-production/SKILL.md",
+      "category": "Industry",
+      "profile": "Manufacturing and Production"
+    },
+    {
+      "id": "field-service",
+      "path": "field-service/SKILL.md",
+      "category": "Industry",
+      "profile": "Field Service"
+    },
+    {
+      "id": "hospitality-retail",
+      "path": "hospitality-retail/SKILL.md",
+      "category": "Industry",
+      "profile": "Hospitality and Retail"
+    },
+    {
+      "id": "agriculture-farming",
+      "path": "agriculture-farming/SKILL.md",
+      "category": "Industry",
+      "profile": "Agriculture and Farming"
+    },
+    {
+      "id": "professional-services",
+      "path": "professional-services/SKILL.md",
+      "category": "Industry",
+      "profile": "Professional Services"
+    },
+    {
+      "id": "ecommerce-marketplace-operations",
+      "path": "ecommerce-marketplace-operations/SKILL.md",
+      "category": "Industry",
+      "profile": "Ecommerce and Marketplace Operations"
+    },
+    {
+      "id": "real-estate-property-operations",
+      "path": "real-estate-property-operations/SKILL.md",
+      "category": "Industry",
+      "profile": "Real Estate and Property Operations"
+    },
+    {
+      "id": "transport-logistics-operations",
+      "path": "transport-logistics-operations/SKILL.md",
+      "category": "Industry",
+      "profile": "Transport and Logistics Operations"
+    },
+    {
+      "id": "financial-services-operations",
+      "path": "financial-services-operations/SKILL.md",
+      "category": "Industry",
+      "profile": "Financial Services Operations"
+    },
+    {
+      "id": "media-publishing-content-operations",
+      "path": "media-publishing-content-operations/SKILL.md",
+      "category": "Industry",
+      "profile": "Media Publishing and Content Operations"
+    },
+    {
+      "id": "telecom-isp-operations",
+      "path": "telecom-isp-operations/SKILL.md",
+      "category": "Industry",
+      "profile": "Telecom and ISP Operations"
+    },
+    {
+      "id": "energy-utilities-operations",
+      "path": "energy-utilities-operations/SKILL.md",
+      "category": "Industry",
+      "profile": "Energy and Utilities Operations"
+    },
+    {
+      "id": "mining-resources-operations",
+      "path": "mining-resources-operations/SKILL.md",
+      "category": "Industry",
+      "profile": "Mining and Resources Operations"
+    },
+    {
+      "id": "science-rd-lab-operations",
+      "path": "science-rd-lab-operations/SKILL.md",
+      "category": "Industry",
+      "profile": "Science R&D and Lab Operations"
+    },
+    {
+      "id": "release-management",
+      "path": "release-management/SKILL.md",
+      "category": "Release",
+      "profile": "Release Management"
+    }
+  ]
+}

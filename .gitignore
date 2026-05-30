@@ -1,0 +1,87 @@
+# ---- .NET build output -----------------------------------------------------
+bin/
+obj/
+out/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+build/
+
+# ---- Visual Studio / Rider / VS Code workspace files -----------------------
+.vs/
+.vscode/
+.idea/
+*.user
+*.userosscache
+*.suo
+*.sln.docstates
+*.swp
+
+# ---- .NET tooling caches / coverage ----------------------------------------
+*.coverage
+*.coveragexml
+coverage.json
+coverage.cobertura.xml
+coverage.opencover.xml
+TestResults/
+.coverlet/
+*.pidb
+*.svclog
+*.scc
+*.svcsettings
+*.pdb
+
+# ---- NuGet -----------------------------------------------------------------
+*.nupkg
+*.snupkg
+packages/
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# ---- MAUI / mobile build artifacts -----------------------------------------
+*.apk
+*.aab
+*.ipa
+*.app
+*.dmg
+PublishProfiles/
+
+# ---- Concierge runtime artifacts (state, run logs, downloaded models) ------
+.concierge-artifacts/
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# ---- Dev-server stdout/stderr captures (preview_start, harness) ------------
+*.log
+.concierge-web.*.log
+
+# ---- Secrets ----------------------------------------------------------------
+secrets.json
+appsettings.Production.json
+appsettings.Staging.json
+*.pfx
+*.pem
+*.p12
+*.key
+*.keystore
+*.jks
+*.crt
+*.cer
+.env
+.env.*
+
+# ---- OS noise --------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- Local NuGet package cache exception ------------------------------------
+# local-packages/ ships Aether.* NuGet packages that the build references via
+# NuGet.Config and need to be checked in so clones are buildable. The blanket
+# *.nupkg / *.snupkg rules above would otherwise hide them, so re-include.
+!local-packages/**/*.nupkg
+!local-packages/**/*.snupkg

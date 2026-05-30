@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "concierge-web",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": ["run", "--project", "Concierge.Web", "--launch-profile", "http", "--no-restore"],
+      "port": 5199
+    }
+  ]
+}

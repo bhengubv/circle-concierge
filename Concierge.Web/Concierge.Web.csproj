@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Concierge.Shared\Concierge.Shared.csproj" />
+    <ProjectReference Include="..\Concierge.Shared.Components\Concierge.Shared.Components.csproj" />
+    <ProjectReference Include="..\Concierge.Ai\Concierge.Ai.csproj" />
+    <ProjectReference Include="..\Concierge.Mesh\Concierge.Mesh.csproj" />
+    <ProjectReference Include="..\Concierge.Media\Concierge.Media.csproj" />
+    <ProjectReference Include="..\Concierge.Web.Client\Concierge.Web.Client.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
+  </PropertyGroup>
+
+</Project>

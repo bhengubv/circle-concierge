@@ -1,0 +1,73 @@
+﻿[
+  {
+    ProviderId: openai,
+    Endpoint: https://api.openai.com,
+    RequiresUserApiKey: true,
+    SupportsHealthCheck: true,
+    SafetyBoundary: Only official provider or official partner endpoints are allowed, and user keys stay owner-controlled.
+  },
+  {
+    ProviderId: gemini,
+    Endpoint: https://generativelanguage.googleapis.com,
+    RequiresUserApiKey: true,
+    SupportsHealthCheck: true,
+    SafetyBoundary: Only official provider or official partner endpoints are allowed, and user keys stay owner-controlled.
+  },
+  {
+    ProviderId: anthropic,
+    Endpoint: https://api.anthropic.com,
+    RequiresUserApiKey: true,
+    SupportsHealthCheck: true,
+    SafetyBoundary: Only official provider or official partner endpoints are allowed, and user keys stay owner-controlled.
+  },
+  {
+    ProviderId: moonshot,
+    Endpoint: https://api.moonshot.ai,
+    RequiresUserApiKey: true,
+    SupportsHealthCheck: true,
+    SafetyBoundary: Only official provider or official partner endpoints are allowed, and user keys stay owner-controlled.
+  },
+  {
+    ProviderId: zai,
+    Endpoint: https://open.bigmodel.cn,
+    RequiresUserApiKey: true,
+    SupportsHealthCheck: true,
+    SafetyBoundary: Only official provider or official partner endpoints are allowed, and user keys stay owner-controlled.
+  },
+  {
+    ProviderId: deepseek,
+    Endpoint: https://api.deepseek.com,
+    RequiresUserApiKey: true,
+    SupportsHealthCheck: true,
+    SafetyBoundary: Only official provider or official partner endpoints are allowed, and user keys stay owner-controlled.
+  },
+  {
+    ProviderId: qwen,
+    Endpoint: https://dashscope.aliyuncs.com,
+    RequiresUserApiKey: true,
+    SupportsHealthCheck: true,
+    SafetyBoundary: Only official provider or official partner endpoints are allowed, and user keys stay owner-controlled.
+  },
+  {
+    ProviderId: xai,
+    Endpoint: https://api.x.ai,
+    RequiresUserApiKey: true,
+    SupportsHealthCheck: true,
+    SafetyBoundary: Only official provider or official partner endpoints are allowed, and user keys stay owner-controlled.
+  },
+  {
+    ProviderId: meta,
+    Endpoint: official partner APIs,
+    AccessKind: OfficialPartnerApi,
+    RequiresUserApiKey: true,
+    SupportsHealthCheck: false,
+    SafetyBoundary: Only official provider or official partner endpoints are allowed, and user keys stay owner-controlled.
+  },
+  {
+    ProviderId: mistral,
+    Endpoint: https://api.mistral.ai,
+    RequiresUserApiKey: true,
+    SupportsHealthCheck: true,
+    SafetyBoundary: Only official provider or official partner endpoints are allowed, and user keys stay owner-controlled.
+  }
+]

@@ -1,0 +1,46 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <CollectCoverage>true</CollectCoverage>
+    <CoverletOutputFormat>cobertura</CoverletOutputFormat>
+    <!-- line / branch / method floors enforced together so a regression in any of the three
+         fails the build instead of silently sitting in a dashboard. Floors sit a few points
+         below current measured coverage so routine refactors do not trip the gate, but they
+         catch genuine regressions before they ship. -->
+    <Threshold>70,50,80</Threshold>
+    <ThresholdType>line,branch,method</ThresholdType>
+    <ThresholdStat>total</ThresholdStat>
+    <!-- Scope coverage to the server-side service projects xunit can actually exercise. Excluding
+         the Razor-only RCL and the WebAssembly client avoids a known coverlet crash where it
+         tries to read instrumentation data from linked/trimmed Blazor assemblies. -->
+    <Include>[Concierge.Shared]*,[Concierge.Ai]*,[Concierge.Mesh]*,[Concierge.Media]*,[Concierge.Web]*</Include>
+    <Exclude>[Aether.*]*,[CircleAI.*]*,[Microsoft.*]*,[SQLitePCL*]*,[Concierge.Shared.Components]*,[Concierge.Web.Client]*</Exclude>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="coverlet.msbuild" Version="6.0.4" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="Verify.Xunit" Version="31.12.5" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Concierge.Shared\Concierge.Shared.csproj" />
+    <ProjectReference Include="..\Concierge.Ai\Concierge.Ai.csproj" />
+    <ProjectReference Include="..\Concierge.Mesh\Concierge.Mesh.csproj" />
+    <ProjectReference Include="..\Concierge.Media\Concierge.Media.csproj" />
+    <ProjectReference Include="..\Concierge.Web\Concierge.Web.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,86 @@
+.brand {
+    padding: 1.5rem 1.25rem 1rem 1.25rem;
+    color: #ffffff;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.brand-mark {
+    color: #ffffff;
+    font-size: 1.25rem;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.brand span {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.85rem;
+}
+
+.nav-list {
+    display: flex;
+    flex-direction: column;
+    padding: 0.5rem 0.75rem;
+    gap: 0.25rem;
+    /* No-scrollbar rule — keeps scroll functional while hiding the bar. */
+    overflow-y: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.nav-list::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+}
+
+.nav-list ::deep .nav-link {
+    color: rgba(255, 255, 255, 0.85);
+    text-decoration: none;
+    padding: 0.55rem 0.75rem;
+    border-radius: 6px;
+    display: block;
+    font-size: 0.95rem;
+}
+
+.nav-list ::deep .nav-link:hover {
+    background-color: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+}
+
+.nav-list ::deep .nav-link.active {
+    background-color: rgba(255, 255, 255, 0.22);
+    color: #ffffff;
+    font-weight: 600;
+}
+
+.sidebar-card {
+    margin: 1rem 0.75rem 1.25rem 0.75rem;
+    padding: 0.85rem 1rem;
+    background-color: rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    color: #ffffff;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.sidebar-card strong {
+    font-size: 0.95rem;
+}
+
+.sidebar-card span {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.8rem;
+}
+
+/* Web template breakpoint preserved for BrowserMobileQaContractTests. */
+@media (min-width: 641px) {
+    .nav-list {
+        /* The visible content scrolls when the menu is taller than the viewport,
+           but the scrollbar itself is suppressed by the rules above. */
+        height: calc(100vh - 7rem);
+        overflow-y: auto;
+    }
+}

@@ -1,0 +1,559 @@
+using System.Diagnostics;
+using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+
+namespace Concierge.Shared;
+
+public interface IAgentHarnessService
+{
+    string WorkspaceRoot { get; }
+
+    IReadOnlyList<ConciergeToolDefinition> GetTools();
+
+    IReadOnlyList<ConciergeRunLog> GetRunLogs();
+
+    Task<ConciergeToolResult> ReadFileAsync(string relativePath, CancellationToken cancellationToken = default);
+
+    Task<FileWritePreview> PreviewWriteFileAsync(string relativePath, string content, CancellationToken cancellationToken = default);
+
+    Task<ConciergeToolResult> WriteFileAsync(string relativePath, string content, bool approved, CancellationToken cancellationToken = default);
+
+    Task<ConciergeToolResult> RunCommandAsync(string command, bool approved, CancellationToken cancellationToken = default);
+
+    Task<ConciergeRunLog> RunGoalAsync(string goal, IReadOnlyList<string> commands, bool approved, CancellationToken cancellationToken = default);
+}
+
+public sealed class AgentHarnessService : IAgentHarnessService
+{
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
+    private static readonly string[] DestructiveMarkers = [" rm ", " del ", " rmdir ", " remove-item ", " format ", " shutdown ", " reset --hard"];
+    private static readonly string[] DeniedPathSegments = [".git", ".ssh", ".aws", ".azure", "node_modules", "bin", "obj"];
+    private static readonly HashSet<string> ProtectedExactFileNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "secrets.json",
+        "id_rsa",
+        "id_dsa",
+        "id_ecdsa",
+        "id_ed25519",
+        "id_rsa.pub",
+        "id_ed25519.pub",
+        "authorized_keys",
+        "known_hosts"
+    };
+    private static readonly string[] ProtectedFileSuffixes =
+    [
+        ".pfx",
+        ".pem",
+        ".p12",
+        ".key",
+        ".keystore",
+        ".jks",
+        ".asc",
+        ".crt",
+        ".cer"
+    ];
+    private static readonly HashSet<string> AllowedExecutables = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "dotnet",
+        "git",
+        "rg",
+        "cmd",
+        "pwsh",
+        "powershell"
+    };
+
+    private readonly object _gate = new();
+    private readonly List<ConciergeRunLog> _logs;
+    private readonly IAgentRunLogPublisher _publisher;
+
+    public AgentHarnessService()
+        : this(LocateWorkspaceRoot(), null)
+    {
+    }
+
+    public AgentHarnessService(string workspaceRoot)
+        : this(workspaceRoot, null)
+    {
+    }
+
+    public AgentHarnessService(string workspaceRoot, IAgentRunLogPublisher? publisher)
+    {
+        WorkspaceRoot = Path.GetFullPath(workspaceRoot);
+        _publisher = publisher ?? new NullAgentRunLogPublisher();
+        Directory.CreateDirectory(LogDirectory);
+        _logs = LoadLogs().ToList();
+    }
+
+    /// <summary>
+    /// Walks up from <see cref="AppContext.BaseDirectory"/> looking for the Concierge solution
+    /// marker (<c>Concierge.slnx</c>). Falls back to the current directory when not found.
+    /// Exposed so DI factories can resolve the workspace root without reflecting into private state.
+    /// </summary>
+    public static string LocateDefaultWorkspaceRoot() => LocateWorkspaceRoot();
+
+    public string WorkspaceRoot { get; }
+
+    private string LogDirectory => Path.Combine(WorkspaceRoot, ".concierge-artifacts", "agent-runs");
+
+    private string LogPath => Path.Combine(LogDirectory, "runs.json");
+
+    public IReadOnlyList<ConciergeToolDefinition> GetTools()
+    {
+        return
+        [
+            new("read_file", "Read file", "Read a file inside the trusted workspace.", true, false, true, ConciergeToolRisk.Low),
+            new("write_file", "Write file", "Create or replace a file only after an explicit approval.", false, true, false, ConciergeToolRisk.High),
+            new("shell", "Run command", "Run an allowlisted command without invoking a shell by default.", false, false, false, ConciergeToolRisk.High),
+            new("list_files", "List files", "List workspace files through the trusted root.", true, false, true, ConciergeToolRisk.Low),
+            new("grep", "Search text", "Search text with ripgrep when available.", true, false, true, ConciergeToolRisk.Low)
+        ];
+    }
+
+    public IReadOnlyList<ConciergeRunLog> GetRunLogs()
+    {
+        lock (_gate)
+        {
+            return _logs.OrderByDescending(log => log.CreatedAt).ToList();
+        }
+    }
+
+    public async Task<ConciergeToolResult> ReadFileAsync(string relativePath, CancellationToken cancellationToken = default)
+    {
+        var started = DateTimeOffset.UtcNow;
+        var fullPath = ResolveTrustedPath(relativePath);
+        if (!File.Exists(fullPath))
+        {
+            return Result("read_file", ConciergeToolOutcome.Failed, $"File not found: {relativePath}", string.Empty, started);
+        }
+
+        var content = await File.ReadAllTextAsync(fullPath, cancellationToken);
+        return Result("read_file", ConciergeToolOutcome.Succeeded, $"Read {relativePath}.", content, started);
+    }
+
+    public async Task<FileWritePreview> PreviewWriteFileAsync(string relativePath, string content, CancellationToken cancellationToken = default)
+    {
+        var fullPath = ResolveTrustedPath(relativePath);
+        var existing = File.Exists(fullPath) ? await File.ReadAllTextAsync(fullPath, cancellationToken) : string.Empty;
+        return new FileWritePreview(relativePath, content, BuildDiffPreview(existing, content), RequiresApproval: true);
+    }
+
+    public async Task<ConciergeToolResult> WriteFileAsync(string relativePath, string content, bool approved, CancellationToken cancellationToken = default)
+    {
+        var started = DateTimeOffset.UtcNow;
+        if (!approved)
+        {
+            return Result("write_file", ConciergeToolOutcome.ApprovalRequired, "File write requires approval.", string.Empty, started);
+        }
+
+        var fullPath = ResolveTrustedPath(relativePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+        await File.WriteAllTextAsync(fullPath, content, cancellationToken);
+        return Result("write_file", ConciergeToolOutcome.Succeeded, $"Wrote {relativePath}.", string.Empty, started);
+    }
+
+    public async Task<ConciergeToolResult> RunCommandAsync(string command, bool approved, CancellationToken cancellationToken = default)
+    {
+        var started = DateTimeOffset.UtcNow;
+        var validation = ValidateCommand(command, approved);
+        if (validation.Outcome != ConciergeToolOutcome.Succeeded)
+        {
+            return Result("shell", validation.Outcome, validation.Message, string.Empty, started);
+        }
+
+        var tokens = TokenizeCommand(command);
+        var executable = tokens[0];
+        var arguments = tokens.Skip(1).ToList();
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromMinutes(5));
+
+        using var process = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = executable,
+                WorkingDirectory = WorkspaceRoot,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false
+            }
+        };
+
+        foreach (var argument in arguments)
+        {
+            process.StartInfo.ArgumentList.Add(argument);
+        }
+
+        try
+        {
+            process.Start();
+            var outputTask = process.StandardOutput.ReadToEndAsync(timeout.Token);
+            var errorTask = process.StandardError.ReadToEndAsync(timeout.Token);
+            await process.WaitForExitAsync(timeout.Token);
+            var output = RedactSecrets($"{await outputTask}{await errorTask}");
+            var outcome = process.ExitCode == 0 ? ConciergeToolOutcome.Succeeded : ConciergeToolOutcome.Failed;
+            return Result("shell", outcome, $"Command exited with {process.ExitCode}.", output, started, process.ExitCode);
+        }
+        catch (OperationCanceledException)
+        {
+            TryKill(process);
+            return Result("shell", ConciergeToolOutcome.Failed, "Command timed out or was cancelled.", string.Empty, started);
+        }
+    }
+
+    private static void TryKill(Process process)
+    {
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+        }
+        catch
+        {
+            // Process may have already exited between the check and the kill.
+        }
+    }
+
+    public async Task<ConciergeRunLog> RunGoalAsync(string goal, IReadOnlyList<string> commands, bool approved, CancellationToken cancellationToken = default)
+    {
+        var results = new List<ConciergeToolResult>();
+        foreach (var command in commands)
+        {
+            results.Add(await RunCommandAsync(command, approved, cancellationToken));
+            if (results[^1].Outcome is ConciergeToolOutcome.Denied or ConciergeToolOutcome.ApprovalRequired)
+            {
+                break;
+            }
+        }
+
+        var log = new ConciergeRunLog($"run-{Guid.NewGuid():N}", goal, results, DateTimeOffset.UtcNow);
+        AddLog(log);
+        try
+        {
+            await _publisher.PublishAsync(log, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Publish failures must not break local run accounting. The local log is the source of truth.
+        }
+
+        return log;
+    }
+
+    private (ConciergeToolOutcome Outcome, string Message) ValidateCommand(string command, bool approved)
+    {
+        if (string.IsNullOrWhiteSpace(command))
+        {
+            return (ConciergeToolOutcome.Denied, "Command is empty.");
+        }
+
+        if (HasUnbalancedQuotes(command) || Regex.IsMatch(command.TrimStart(), "^[A-Za-z_][A-Za-z0-9_]*="))
+        {
+            return (ConciergeToolOutcome.Denied, "Command syntax is not safe for shell-free execution.");
+        }
+
+        if (command.Contains('|') || command.Contains("&&", StringComparison.Ordinal) || command.Contains("||", StringComparison.Ordinal) || command.Contains(';'))
+        {
+            return (ConciergeToolOutcome.Denied, "Shell chaining is blocked.");
+        }
+
+        if (DestructiveMarkers.Any(marker => $" {command} ".Contains(marker, StringComparison.OrdinalIgnoreCase)))
+        {
+            return approved
+                ? (ConciergeToolOutcome.Succeeded, "Approved destructive command.")
+                : (ConciergeToolOutcome.ApprovalRequired, "Destructive command requires approval.");
+        }
+
+        var executable = TokenizeCommand(command).FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(executable) || Path.IsPathFullyQualified(executable) || !AllowedExecutables.Contains(executable))
+        {
+            return (ConciergeToolOutcome.Denied, $"Executable is not allowlisted: {executable}");
+        }
+
+        return approved || IsReadOnlyCommand(command)
+            ? (ConciergeToolOutcome.Succeeded, "Allowed.")
+            : (ConciergeToolOutcome.ApprovalRequired, "Command execution requires approval.");
+    }
+
+    private string ResolveTrustedPath(string relativePath)
+    {
+        if (Path.IsPathFullyQualified(relativePath))
+        {
+            throw new InvalidOperationException("Use a workspace-relative path.");
+        }
+
+        var fullPath = Path.GetFullPath(Path.Combine(WorkspaceRoot, relativePath));
+        var root = Path.GetFullPath(WorkspaceRoot);
+        var rootWithSeparator = root.EndsWith(Path.DirectorySeparatorChar) || root.EndsWith(Path.AltDirectorySeparatorChar)
+            ? root
+            : root + Path.DirectorySeparatorChar;
+        if (!fullPath.Equals(root, StringComparison.OrdinalIgnoreCase)
+            && !fullPath.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Path escapes the trusted workspace.");
+        }
+
+        RejectProtectedPath(root, fullPath);
+        return fullPath;
+    }
+
+    private static void RejectProtectedPath(string root, string fullPath)
+    {
+        var relative = Path.GetRelativePath(root, fullPath);
+        var segments = relative.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        if (segments.Any(segment => DeniedPathSegments.Contains(segment, StringComparer.OrdinalIgnoreCase)))
+        {
+            throw new InvalidOperationException("Path targets a protected workspace area.");
+        }
+
+        if (IsProtectedFileName(Path.GetFileName(fullPath)))
+        {
+            throw new InvalidOperationException("Path targets a protected secret or configuration file.");
+        }
+
+        var current = new DirectoryInfo(root);
+        foreach (var segment in segments.Where(segment => !string.IsNullOrWhiteSpace(segment)))
+        {
+            current = new DirectoryInfo(Path.Combine(current.FullName, segment));
+            if ((Directory.Exists(current.FullName) || File.Exists(current.FullName))
+                && (File.GetAttributes(current.FullName) & FileAttributes.ReparsePoint) == FileAttributes.ReparsePoint)
+            {
+                throw new InvalidOperationException("Path crosses a symlink or reparse point.");
+            }
+        }
+    }
+
+    private static bool IsProtectedFileName(string fileName)
+    {
+        if (string.IsNullOrEmpty(fileName))
+        {
+            return false;
+        }
+
+        if (ProtectedExactFileNames.Contains(fileName))
+        {
+            return true;
+        }
+
+        foreach (var suffix in ProtectedFileSuffixes)
+        {
+            if (fileName.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        // .env, .env.local, .env.production, …
+        if (fileName.StartsWith(".env", StringComparison.OrdinalIgnoreCase)
+            && (fileName.Length == 4 || fileName[4] == '.'))
+        {
+            return true;
+        }
+
+        // appsettings.json, appsettings.Development.json, appsettings.Production.json, …
+        if (fileName.StartsWith("appsettings", StringComparison.OrdinalIgnoreCase)
+            && fileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        // secrets.json, secrets.production.json, …
+        if (fileName.StartsWith("secrets.", StringComparison.OrdinalIgnoreCase)
+            && fileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsReadOnlyCommand(string command)
+    {
+        var tokens = TokenizeCommand(command);
+        if (tokens.Count == 0)
+        {
+            return false;
+        }
+
+        var head = tokens[0];
+        if (head.Equals("rg", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        if (head.Equals("git", StringComparison.OrdinalIgnoreCase) && tokens.Count >= 2)
+        {
+            var sub = tokens[1];
+            return sub.Equals("status", StringComparison.OrdinalIgnoreCase)
+                || sub.Equals("diff", StringComparison.OrdinalIgnoreCase)
+                || sub.Equals("log", StringComparison.OrdinalIgnoreCase);
+        }
+
+        if (head.Equals("dotnet", StringComparison.OrdinalIgnoreCase) && tokens.Count == 2)
+        {
+            return tokens[1].Equals("--info", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return false;
+    }
+
+    private static IReadOnlyList<string> TokenizeCommand(string command)
+    {
+        var matches = Regex.Matches(command, "\"([^\"]*)\"|'([^']*)'|\\S+");
+        return matches.Select(match => match.Value.Trim('"', '\'')).ToList();
+    }
+
+    private static bool HasUnbalancedQuotes(string value)
+    {
+        return value.Count(character => character == '"') % 2 != 0 || value.Count(character => character == '\'') % 2 != 0;
+    }
+
+    private static string BuildDiffPreview(string before, string after)
+    {
+        var beforeLines = string.IsNullOrEmpty(before)
+            ? Array.Empty<string>()
+            : before.ReplaceLineEndings("\n").Split('\n');
+        var afterLines = string.IsNullOrEmpty(after)
+            ? Array.Empty<string>()
+            : after.ReplaceLineEndings("\n").Split('\n');
+
+        var builder = new StringBuilder();
+        builder.AppendLine("--- before");
+        builder.AppendLine("+++ after");
+
+        const int maxEmitted = 40;
+        var m = beforeLines.Length;
+        var n = afterLines.Length;
+
+        // Suffix-LCS table: lcs[i,j] is the LCS length of beforeLines[i..] and afterLines[j..].
+        var lcs = new int[m + 1, n + 1];
+        for (var i = m - 1; i >= 0; i--)
+        {
+            for (var j = n - 1; j >= 0; j--)
+            {
+                lcs[i, j] = string.Equals(beforeLines[i], afterLines[j], StringComparison.Ordinal)
+                    ? lcs[i + 1, j + 1] + 1
+                    : Math.Max(lcs[i + 1, j], lcs[i, j + 1]);
+            }
+        }
+
+        var emitted = 0;
+        var x = 0;
+        var y = 0;
+        while (x < m && y < n && emitted < maxEmitted)
+        {
+            if (string.Equals(beforeLines[x], afterLines[y], StringComparison.Ordinal))
+            {
+                x++;
+                y++;
+                continue;
+            }
+
+            if (lcs[x + 1, y] >= lcs[x, y + 1])
+            {
+                builder.Append("- ").AppendLine(beforeLines[x]);
+                x++;
+            }
+            else
+            {
+                builder.Append("+ ").AppendLine(afterLines[y]);
+                y++;
+            }
+
+            emitted++;
+        }
+
+        while (x < m && emitted < maxEmitted)
+        {
+            builder.Append("- ").AppendLine(beforeLines[x++]);
+            emitted++;
+        }
+
+        while (y < n && emitted < maxEmitted)
+        {
+            builder.Append("+ ").AppendLine(afterLines[y++]);
+            emitted++;
+        }
+
+        return builder.ToString();
+    }
+
+    // Both expressions use the non-backtracking engine and a hard timeout so untrusted command
+    // output (e.g. a long stream of "sk-ant-" repeats) cannot trigger catastrophic backtracking
+    // and stall the agent loop.
+    private static readonly TimeSpan RedactionTimeout = TimeSpan.FromSeconds(2);
+
+    private static readonly Regex SecretTokenRegex = new(
+        @"(sk-ant-|sk-|pk_live_|sk_live_|rk_live_|pk_test_|sk_test_|whsec_|github_pat_|ghp_|gho_|ghu_|ghs_|ghr_|xoxb-|xoxa-|xoxp-|xoxr-|xapp-|AKIA|ASIA|AIza)[A-Za-z0-9_\-]{8,}",
+        RegexOptions.Compiled | RegexOptions.NonBacktracking,
+        RedactionTimeout);
+
+    private static readonly Regex PemBlockRegex = new(
+        @"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----",
+        RegexOptions.Compiled | RegexOptions.NonBacktracking,
+        RedactionTimeout);
+
+    private static string RedactSecrets(string value)
+    {
+        try
+        {
+            var redacted = SecretTokenRegex.Replace(value, "$1[REDACTED]");
+            return PemBlockRegex.Replace(redacted, "-----BEGIN PRIVATE KEY-----[REDACTED]-----END PRIVATE KEY-----");
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            // Pathological input took too long to scan — drop the body rather than leak whatever
+            // partial match we have or stall the harness.
+            return "[REDACTED: secret-scan timeout]";
+        }
+    }
+
+    private ConciergeToolResult Result(string tool, ConciergeToolOutcome outcome, string summary, string output, DateTimeOffset started, int? exitCode = null)
+    {
+        return new ConciergeToolResult(tool, outcome, summary, output, started, DateTimeOffset.UtcNow, exitCode);
+    }
+
+    private void AddLog(ConciergeRunLog log)
+    {
+        lock (_gate)
+        {
+            _logs.Add(log);
+            File.WriteAllText(LogPath, JsonSerializer.Serialize(_logs, JsonOptions));
+        }
+    }
+
+    private IReadOnlyList<ConciergeRunLog> LoadLogs()
+    {
+        if (!File.Exists(LogPath))
+        {
+            return [];
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<ConciergeRunLog>>(File.ReadAllText(LogPath), JsonOptions) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    private static string LocateWorkspaceRoot()
+    {
+        var current = new DirectoryInfo(AppContext.BaseDirectory);
+        while (current is not null)
+        {
+            if (File.Exists(Path.Combine(current.FullName, "Concierge.slnx")))
+            {
+                return current.FullName;
+            }
+
+            current = current.Parent;
+        }
+
+        return Directory.GetCurrentDirectory();
+    }
+}

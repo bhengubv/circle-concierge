@@ -1,0 +1,53 @@
+@page "/settings"
+@inject IConciergeStateService Concierge
+@inject ILlmRuntimeService LlmRuntime
+
+@{
+    var snapshot = Concierge.GetSnapshot();
+    var runtime = LlmRuntime.GetSnapshot();
+}
+
+<section class="page-header">
+    <p class="eyebrow">Settings</p>
+    <h1>Make Concierge safe for your machine and your way of working.</h1>
+    <p class="lede">Simple controls for models, skills, resources, secrets, approvals, MCP, notifications, and portability.</p>
+</section>
+
+<section class="two-column">
+    <div class="panel">
+        <div class="section-heading"><p class="eyebrow">Resources</p><h2>Local limits</h2></div>
+        <div class="setting-row"><span>Concurrent runs</span><strong>@snapshot.ResourceControl.MaxConcurrentRuns</strong></div>
+        <div class="setting-row"><span>Background runs</span><strong>@snapshot.ResourceControl.MaxBackgroundRuns</strong></div>
+        <div class="setting-row"><span>Timeout</span><strong>@snapshot.ResourceControl.RunTimeoutMinutes min</strong></div>
+        <div class="setting-row"><span>Cleanup owned processes</span><strong>@(snapshot.ResourceControl.CleanupOwnedProcesses ? "On" : "Off")</strong></div>
+    </div>
+    <div class="panel">
+        <div class="section-heading"><p class="eyebrow">Providers</p><h2>Official APIs</h2></div>
+        <div class="card-list">
+            @foreach (var provider in snapshot.Providers)
+            {
+                <article class="surface-card">
+                    <strong>@provider.Name</strong>
+                    <span>@provider.OfficialApi</span>
+                </article>
+            }
+        </div>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="section-heading"><p class="eyebrow">On-device runtime</p><h2>@runtime.Engine v@(runtime.EngineVersion)</h2></div>
+    <div class="setting-row"><span>Device summary</span><strong>@runtime.DeviceSummary</strong></div>
+    <div class="setting-row"><span>Model registry</span><strong>@(runtime.RegistryAvailable ? "available" : "unavailable")</strong></div>
+    <div class="card-grid compact">
+        @foreach (var model in runtime.ProbedModels)
+        {
+            <article class="surface-card @(model.Available ? "ready" : "")">
+                <strong>@model.Name</strong>
+                <span>@model.Version - @model.Quantization</span>
+                <p>@(model.Available ? "Available in the CircleAI registry." : "Not present in the embedded registry.")</p>
+            </article>
+        }
+    </div>
+    <p class="lede">@runtime.Summary</p>
+</section>

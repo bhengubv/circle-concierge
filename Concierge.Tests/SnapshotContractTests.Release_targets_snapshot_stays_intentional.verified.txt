@@ -1,0 +1,44 @@
+﻿[
+  {
+    Id: web,
+    Name: Web,
+    TargetFramework: net10.0,
+    RequiresOwnerCredential: false,
+    EvidenceNeeded: Published web artifact, checksum, smoke test, and deployment target.
+  },
+  {
+    Id: windows,
+    Name: Windows,
+    TargetFramework: net10.0-windows10.0.19041.0,
+    RequiresOwnerCredential: true,
+    EvidenceNeeded: MSIX or installer artifact, certificate status, checksum, and smoke test.
+  },
+  {
+    Id: android,
+    Name: Android,
+    TargetFramework: net10.0-android,
+    RequiresOwnerCredential: true,
+    EvidenceNeeded: APK/AAB artifact, keystore status, store checks, and device smoke test.
+  },
+  {
+    Id: ios,
+    Name: iOS,
+    TargetFramework: net10.0-ios,
+    RequiresOwnerCredential: true,
+    EvidenceNeeded: Archive artifact, Apple signing profile, store checks, and simulator/device evidence.
+  },
+  {
+    Id: macos,
+    Name: macOS,
+    TargetFramework: net10.0-maccatalyst,
+    RequiresOwnerCredential: true,
+    EvidenceNeeded: App bundle, certificate, notarization evidence, and smoke test.
+  },
+  {
+    Id: linux,
+    Name: Linux,
+    TargetFramework: net10.0,
+    RequiresOwnerCredential: true,
+    EvidenceNeeded: Package artifact, repo credential state, checksum, and install test.
+  }
+]

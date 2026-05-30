@@ -1,0 +1,64 @@
+@page "/"
+@inject IConciergeStateService Concierge
+
+@{
+    var snapshot = Concierge.GetSnapshot();
+}
+
+<section class="hero">
+    <div>
+        <p class="eyebrow">Concierge</p>
+        <h1>Start with a familiar agent workspace. Grow into the whole business.</h1>
+        <p class="lede">Ask for help, choose skills when you need specialists, and keep approvals, workloads, resources, and evidence visible instead of buried in one chat session.</p>
+        <div class="action-row">
+            <a class="button primary" href="skills">Choose skills</a>
+            <a class="button" href="settings">Open settings</a>
+        </div>
+    </div>
+    <div class="prompt-card">
+        <span class="prompt-label">What do you want to do?</span>
+        <p>Build an app, run a business task, check a release, review files, or connect a provider.</p>
+        <div class="composer">Ask Concierge...</div>
+    </div>
+</section>
+
+<section class="metric-grid" aria-label="Concierge status">
+    <div class="metric"><strong>@snapshot.Providers.Count</strong><span>LLM families</span></div>
+    <div class="metric"><strong>@snapshot.Skills.Count</strong><span>bundled skills</span></div>
+    <div class="metric"><strong>@snapshot.ProductionTasks.Count</strong><span>coding hardening tasks</span></div>
+    <div class="metric"><strong>@snapshot.ResourceControl.MaxConcurrentRuns</strong><span>safe concurrent runs</span></div>
+</section>
+
+<section class="two-column">
+    <div class="panel">
+        <div class="section-heading">
+            <p class="eyebrow">Today</p>
+            <h2>Agent harness rebuilt</h2>
+        </div>
+        <div class="card-list">
+            @foreach (var workload in snapshot.Workloads)
+            {
+                <article class="surface-card">
+                    <strong>@workload.Title</strong>
+                    <span>@workload.State - cleanup @workload.CleanupState</span>
+                </article>
+            }
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="section-heading">
+            <p class="eyebrow">Safety</p>
+            <h2>Control stays visible</h2>
+        </div>
+        <div class="card-list">
+            @foreach (var approval in snapshot.Approvals)
+            {
+                <article class="surface-card">
+                    <strong>@approval.Title</strong>
+                    <span>@approval.Risk risk - @approval.Summary</span>
+                </article>
+            }
+        </div>
+    </div>
+</section>
