@@ -4,7 +4,9 @@ using Concierge.Chat.Cloud;
 using Concierge.Diagrams.Design;
 using Concierge.Hosting;
 using Concierge.Media;
+using Concierge.Media.Cloud;
 using Concierge.Mesh;
+using Concierge.Shared.Media;
 using Concierge.Shared;
 using Concierge.Shared.Chat;
 using Concierge.Shared.Diagrams;
@@ -47,6 +49,10 @@ public static class MauiProgram
 		builder.Services.AddGeminiChat(sp => sp.GetService<IConfiguration>()?.GetSection("Gemini").Get<GeminiChatOptions>() ?? new GeminiChatOptions());
 		builder.Services.AddConciergePenPotDiagrams(sp => sp.GetService<IConfiguration>()?.GetSection("PenPot").Get<PenPotApiOptions>() ?? new PenPotApiOptions());
 		builder.Services.AddConciergeFigmaDiagrams(sp => sp.GetService<IConfiguration>()?.GetSection("Figma").Get<FigmaApiOptions>() ?? new FigmaApiOptions());
+		builder.Services.AddOpenAiImages(sp => sp.GetService<IConfiguration>()?.GetSection("OpenAIImages").Get<OpenAiImageOptions>() ?? new OpenAiImageOptions());
+		builder.Services.AddStabilityImages(sp => sp.GetService<IConfiguration>()?.GetSection("Stability").Get<StabilityImageOptions>() ?? new StabilityImageOptions());
+		builder.Services.AddOpenAiVoice(sp => sp.GetService<IConfiguration>()?.GetSection("OpenAIVoice").Get<OpenAiVoiceOptions>() ?? new OpenAiVoiceOptions());
+		builder.Services.AddConciergeMediaCloudDefaults();
 
 		// Replace the NullDeviceContext registered by AddConciergeAi with the MAUI-aware one.
 		builder.Services.RemoveAll<IDeviceContext>();

@@ -80,6 +80,7 @@
       <ProjectReference Include="..\Concierge.Diagrams.Design\Concierge.Diagrams.Design.csproj" />
       <ProjectReference Include="..\Concierge.Mesh\Concierge.Mesh.csproj" />
       <ProjectReference Include="..\Concierge.Media\Concierge.Media.csproj" />
+      <ProjectReference Include="..\Concierge.Media.Cloud\Concierge.Media.Cloud.csproj" />
     </ItemGroup>
 
 </Project>

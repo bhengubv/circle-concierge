@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -17,7 +17,7 @@
     <!-- Scope coverage to the server-side service projects xunit can actually exercise. Excluding
          the Razor-only RCL and the WebAssembly client avoids a known coverlet crash where it
          tries to read instrumentation data from linked/trimmed Blazor assemblies. -->
-    <Include>[Concierge.Shared]*,[Concierge.Ai]*,[Concierge.Mesh]*,[Concierge.Media]*,[Concierge.Diagrams.Design]*,[Concierge.Web]*</Include>
+    <Include>[Concierge.Shared]*,[Concierge.Ai]*,[Concierge.Mesh]*,[Concierge.Media]*,[Concierge.Media.Cloud]*,[Concierge.Diagrams.Design]*,[Concierge.Chat.Cloud]*,[Concierge.Web]*</Include>
     <Exclude>[Aether.*]*,[CircleAI.*]*,[Microsoft.*]*,[SQLitePCL*]*,[Concierge.Shared.Components]*,[Concierge.Web.Client]*</Exclude>
   </PropertyGroup>
 
@@ -38,8 +38,10 @@
   <ItemGroup>
     <ProjectReference Include="..\Concierge.Shared\Concierge.Shared.csproj" />
     <ProjectReference Include="..\Concierge.Ai\Concierge.Ai.csproj" />
+    <ProjectReference Include="..\Concierge.Chat.Cloud\Concierge.Chat.Cloud.csproj" />
     <ProjectReference Include="..\Concierge.Mesh\Concierge.Mesh.csproj" />
     <ProjectReference Include="..\Concierge.Media\Concierge.Media.csproj" />
+    <ProjectReference Include="..\Concierge.Media.Cloud\Concierge.Media.Cloud.csproj" />
     <ProjectReference Include="..\Concierge.Diagrams.Design\Concierge.Diagrams.Design.csproj" />
     <ProjectReference Include="..\Concierge.Web\Concierge.Web.csproj" />
   </ItemGroup>
