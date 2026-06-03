@@ -9,11 +9,17 @@
 </section>
 
 <section class="diagram-runtimes" aria-label="Registered diagram runtimes">
-    @foreach (var runtime in Runtimes.OrderBy(r => r.DisplayName))
+    @foreach (var runtime in Runtimes
+        .GroupBy(r => r.Id, StringComparer.OrdinalIgnoreCase)
+        .Select(g => g.First())
+        .OrderByDescending(r => r.IsReady)
+        .ThenBy(r => r.DisplayName, StringComparer.OrdinalIgnoreCase))
     {
-        <article class="surface-card ready">
+        <article class="surface-card @(runtime.IsReady ? "ready" : "needs-attention")">
             <strong>@runtime.DisplayName</strong>
-            <span>Id: <code>@runtime.Id</code></span>
+            <span class="diagram-runtime-status" data-ready="@runtime.IsReady">
+                @(runtime.IsReady ? "Ready" : "Needs token")
+            </span>
             <p>
                 @if (runtime.SupportedExtensions.Count == 0)
                 {
@@ -24,6 +30,7 @@
                     <text>Imports: @string.Join(", ", runtime.SupportedExtensions.Select(e => "." + e))</text>
                 }
             </p>
+            <small>@runtime.StatusMessage</small>
         </article>
     }
 </section>

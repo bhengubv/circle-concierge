@@ -76,6 +76,8 @@
       <ProjectReference Include="..\Concierge.Shared\Concierge.Shared.csproj" />
       <ProjectReference Include="..\Concierge.Shared.Components\Concierge.Shared.Components.csproj" />
       <ProjectReference Include="..\Concierge.Ai\Concierge.Ai.csproj" />
+      <ProjectReference Include="..\Concierge.Chat.Cloud\Concierge.Chat.Cloud.csproj" />
+      <ProjectReference Include="..\Concierge.Diagrams.Design\Concierge.Diagrams.Design.csproj" />
       <ProjectReference Include="..\Concierge.Mesh\Concierge.Mesh.csproj" />
       <ProjectReference Include="..\Concierge.Media\Concierge.Media.csproj" />
     </ItemGroup>

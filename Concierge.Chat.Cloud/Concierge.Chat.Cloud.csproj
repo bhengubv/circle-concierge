@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Concierge.Chat.Cloud</RootNamespace>
+    <Description>BYO-API-key chat runtimes for Concierge — OpenAI Chat Completions, Anthropic Messages, Google Gemini. Each implements IChatRuntime and streams via Server-Sent Events. Tokens come from IConfiguration so the host never embeds them in source.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Concierge.Shared\Concierge.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

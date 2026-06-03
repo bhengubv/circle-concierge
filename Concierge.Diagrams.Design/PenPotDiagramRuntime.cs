@@ -17,11 +17,33 @@ public sealed class PenPotDiagramRuntime : IDiagramRuntime
         WriteIndented = true,
     };
 
+    private readonly PenPotApiOptions _options;
+
+    /// <summary>
+    /// Parameterless constructor for hosts that only need the file-source codepath — token
+    /// status reports as "not configured" until <see cref="AddConciergePenPotDiagrams"/> wires
+    /// it with real options.
+    /// </summary>
+    public PenPotDiagramRuntime() : this(new PenPotApiOptions())
+    {
+    }
+
+    public PenPotDiagramRuntime(PenPotApiOptions options)
+    {
+        _options = options ?? throw new ArgumentNullException(nameof(options));
+    }
+
     public string Id => "penpot";
 
     public string DisplayName => "PenPot";
 
     public IReadOnlyList<string> SupportedExtensions { get; } = ["penpot.json", "json"];
+
+    public bool IsReady => !string.IsNullOrWhiteSpace(_options.AccessToken);
+
+    public string StatusMessage => IsReady
+        ? $"Ready · {_options.BaseAddress}"
+        : "PenPot access token not configured — set PenPot:AccessToken in IConfiguration to enable.";
 
     public async Task<DiagramArtifact> ImportAsync(string fileName, Stream content, CancellationToken cancellationToken = default)
     {

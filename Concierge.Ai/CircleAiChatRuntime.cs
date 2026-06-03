@@ -37,6 +37,7 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IAsyncDisposable
         _options = options;
     }
 
+    public string Id => "circleai";
     public string EngineLabel => _engineLabel;
     public bool IsReady => _isReady;
     public string StatusMessage => _statusMessage;

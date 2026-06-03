@@ -36,6 +36,10 @@ public sealed class MermaidDiagramRuntime : IDiagramRuntime
 
     public IReadOnlyList<string> SupportedExtensions { get; } = ["mmd", "mermaid"];
 
+    public bool IsReady => true;
+
+    public string StatusMessage => "Text-DSL — paste source to render.";
+
     public Task<DiagramArtifact> ImportAsync(string fileName, Stream content, CancellationToken cancellationToken = default)
     {
         using var reader = new StreamReader(content, leaveOpen: true);

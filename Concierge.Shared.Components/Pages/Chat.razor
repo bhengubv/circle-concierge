@@ -3,7 +3,7 @@
 @using System.Text
 @using Concierge.Shared.Chat
 @inject IConversationStore Store
-@inject IChatRuntime Runtime
+@inject IEnumerable<IChatRuntime> Runtimes
 @inject NavigationManager Nav
 
 <section class="chat-shell">
@@ -29,9 +29,25 @@
                 }
             }
         </nav>
-        <div class="chat-engine-pill" data-ready="@Runtime.IsReady">
-            <strong>@Runtime.EngineLabel</strong>
-            <span>@Runtime.StatusMessage</span>
+
+        <div class="chat-provider-picker">
+            <label for="chat-provider-select">Provider</label>
+            <select id="chat-provider-select"
+                    class="chat-provider-select"
+                    value="@_activeRuntime?.Id"
+                    @onchange="OnProviderChanged">
+                @foreach (var runtime in _orderedRuntimes)
+                {
+                    <option value="@runtime.Id">
+                        @runtime.EngineLabel @(runtime.IsReady ? "" : "— needs key")
+                    </option>
+                }
+            </select>
+        </div>
+
+        <div class="chat-engine-pill" data-ready="@(_activeRuntime?.IsReady ?? false)">
+            <strong>@(_activeRuntime?.EngineLabel ?? "No runtime")</strong>
+            <span>@(_activeRuntime?.StatusMessage ?? "No chat runtime registered.")</span>
         </div>
     </aside>
 
@@ -40,7 +56,12 @@
         {
             <div class="chat-empty-state">
                 <h1>Pick a conversation or start a new one.</h1>
-                <p>Concierge runs on @Runtime.EngineLabel. @Runtime.StatusMessage</p>
+                <p>
+                    @if (_activeRuntime is not null)
+                    {
+                        <text>Concierge runs on @_activeRuntime.EngineLabel. @_activeRuntime.StatusMessage</text>
+                    }
+                </p>
             </div>
         }
         else
@@ -77,7 +98,7 @@
                     <article class="chat-bubble assistant streaming">
                         <header>
                             <strong>Assistant</strong>
-                            <span class="chat-bubble-engine">@Runtime.EngineLabel</span>
+                            <span class="chat-bubble-engine">@(_activeRuntime?.EngineLabel ?? "")</span>
                             <time>@DateTimeOffset.Now.ToLocalTime().ToString("HH:mm")</time>
                         </header>
                         <AssistantContent Content="@_streamingBuffer" />
@@ -112,16 +133,31 @@
     private string _streamingBuffer = string.Empty;
     private CancellationTokenSource? _streamCts;
 
+    private List<IChatRuntime> _orderedRuntimes = new();
+    private IChatRuntime? _activeRuntime;
+
     private const string OwnerId = "local";
 
     private bool CanSend
         => !_streaming
            && !string.IsNullOrWhiteSpace(_composerText)
            && _active is not null
-           && Runtime.IsReady;
+           && (_activeRuntime?.IsReady ?? false);
 
     protected override async Task OnInitializedAsync()
     {
+        // Distinct by Id so the same runtime registered twice (singleton + keyed) doesn't
+        // produce duplicate dropdown rows. Ready-first, then alphabetical.
+        _orderedRuntimes = Runtimes
+            .GroupBy(r => r.Id, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
+            .OrderByDescending(r => r.IsReady)
+            .ThenBy(r => r.EngineLabel, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        _activeRuntime = _orderedRuntimes.FirstOrDefault(r => r.IsReady)
+            ?? _orderedRuntimes.FirstOrDefault();
+
         await RefreshSidebarAsync();
     }
 
@@ -135,6 +171,16 @@
         {
             _active = null;
         }
+    }
+
+    private void OnProviderChanged(ChangeEventArgs args)
+    {
+        var id = args.Value?.ToString();
+        if (string.IsNullOrEmpty(id))
+        {
+            return;
+        }
+        _activeRuntime = _orderedRuntimes.FirstOrDefault(r => r.Id == id) ?? _activeRuntime;
     }
 
     private async Task RefreshSidebarAsync()
@@ -151,7 +197,7 @@
 
     private async Task SendAsync()
     {
-        if (!CanSend || _active is null)
+        if (!CanSend || _active is null || _activeRuntime is null)
         {
             return;
         }
@@ -178,9 +224,10 @@
         }
 
         var buffer = new StringBuilder();
+        var persistedPartial = false;
         try
         {
-            await foreach (var chunk in Runtime.StreamAsync(turns, _streamCts.Token))
+            await foreach (var chunk in _activeRuntime.StreamAsync(turns, _streamCts.Token))
             {
                 buffer.Append(chunk);
                 _streamingBuffer = buffer.ToString();
@@ -189,7 +236,12 @@
         }
         catch (OperationCanceledException)
         {
-            // User navigated away or cancelled — persist whatever we have so it isn't lost.
+            // Persist the partial message so a circuit disconnect / page nav doesn't lose work.
+            if (buffer.Length > 0 && _active is not null)
+            {
+                await Store.AppendAsync(_active.Id, role: "assistant", content: buffer.ToString() + "\n[stream cancelled before completion]", producedBy: _activeRuntime.EngineLabel);
+                persistedPartial = true;
+            }
         }
         catch (Exception ex)
         {
@@ -198,10 +250,17 @@
             _streamingBuffer = buffer.ToString();
         }
 
-        var assistantText = buffer.ToString();
-        if (!string.IsNullOrWhiteSpace(assistantText) && _active is not null)
+        if (!persistedPartial)
         {
-            await Store.AppendAsync(_active.Id, role: "assistant", content: assistantText, producedBy: Runtime.EngineLabel);
+            var assistantText = buffer.ToString();
+            if (!string.IsNullOrWhiteSpace(assistantText) && _active is not null)
+            {
+                await Store.AppendAsync(_active.Id, role: "assistant", content: assistantText, producedBy: _activeRuntime.EngineLabel);
+            }
+        }
+
+        if (_active is not null)
+        {
             _active = await Store.GetAsync(_active.Id);
             await RefreshSidebarAsync();
         }

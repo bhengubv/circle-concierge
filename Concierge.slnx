@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="Concierge.Ai/Concierge.Ai.csproj" />
+  <Project Path="Concierge.Chat.Cloud/Concierge.Chat.Cloud.csproj" />
   <Project Path="Concierge.Cli/Concierge.Cli.csproj" />
   <Project Path="Concierge.Diagrams.Design/Concierge.Diagrams.Design.csproj" />
   <Project Path="Concierge.Media/Concierge.Media.csproj" />

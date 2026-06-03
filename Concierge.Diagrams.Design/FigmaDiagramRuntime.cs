@@ -16,11 +16,33 @@ public sealed class FigmaDiagramRuntime : IDiagramRuntime
         WriteIndented = true,
     };
 
+    private readonly FigmaApiOptions _options;
+
+    /// <summary>
+    /// Parameterless constructor for hosts that only need the file-source codepath — token
+    /// status reports as "not configured" until <c>AddConciergeFigmaDiagrams</c> wires
+    /// it with real options.
+    /// </summary>
+    public FigmaDiagramRuntime() : this(new FigmaApiOptions())
+    {
+    }
+
+    public FigmaDiagramRuntime(FigmaApiOptions options)
+    {
+        _options = options ?? throw new ArgumentNullException(nameof(options));
+    }
+
     public string Id => "figma";
 
     public string DisplayName => "Figma";
 
     public IReadOnlyList<string> SupportedExtensions { get; } = ["figma.json", "json"];
+
+    public bool IsReady => !string.IsNullOrWhiteSpace(_options.AccessToken);
+
+    public string StatusMessage => IsReady
+        ? $"Ready · {_options.BaseAddress}"
+        : "Figma personal access token not configured — set Figma:AccessToken in IConfiguration to enable.";
 
     public async Task<DiagramArtifact> ImportAsync(string fileName, Stream content, CancellationToken cancellationToken = default)
     {

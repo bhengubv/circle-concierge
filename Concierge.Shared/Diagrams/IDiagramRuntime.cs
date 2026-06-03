@@ -28,6 +28,19 @@ public interface IDiagramRuntime
     IReadOnlyList<string> SupportedExtensions { get; }
 
     /// <summary>
+    /// <c>true</c> when the runtime is callable now (no missing tokens / credentials).
+    /// Text-only runtimes like Mermaid are always ready; cloud adapters (PenPot, Figma)
+    /// only become ready once the host supplies an access token.
+    /// </summary>
+    bool IsReady { get; }
+
+    /// <summary>
+    /// Plain-language status — "Ready", "Needs API token", etc. Shown verbatim in the
+    /// runtime card on the diagrams page.
+    /// </summary>
+    string StatusMessage { get; }
+
+    /// <summary>
     /// Imports a diagram file from a stream. Implementations decide how much structure
     /// to surface; at minimum the returned artifact carries a parsed summary so the
     /// LLM has something to reason about.

@@ -4,6 +4,8 @@ using Concierge.Shared;
 using Concierge.Shared.Chat;
 using Concierge.Shared.Diagrams;
 using Concierge.Ai;
+using Concierge.Chat.Cloud;
+using Concierge.Diagrams.Design;
 using Concierge.Mesh;
 using Concierge.Media;
 using CircleAI.Core;
@@ -23,6 +25,20 @@ builder.Services
     .AddConciergeAi()
     .AddConciergeMesh()
     .AddConciergeMedia();
+
+// BYO API key cloud chat runtimes. Each is wired regardless of whether a key is present —
+// the runtime's IsReady property gates actual calls and the chat UI shows a "needs key"
+// status pill for ones without configuration. This way the dropdown lists every provider
+// so the user can see what is wireable, not just what is wired.
+builder.Services.AddOpenAiChat(sp => sp.GetRequiredService<IConfiguration>().GetSection("OpenAI").Get<OpenAiChatOptions>() ?? new OpenAiChatOptions());
+builder.Services.AddAnthropicChat(sp => sp.GetRequiredService<IConfiguration>().GetSection("Anthropic").Get<AnthropicChatOptions>() ?? new AnthropicChatOptions());
+builder.Services.AddGeminiChat(sp => sp.GetRequiredService<IConfiguration>().GetSection("Gemini").Get<GeminiChatOptions>() ?? new GeminiChatOptions());
+
+// Same pattern for the design-tool adapters — they only become useful once the user has
+// configured an access token, but registering them up-front makes them discoverable.
+builder.Services.AddConciergePenPotDiagrams(sp => sp.GetRequiredService<IConfiguration>().GetSection("PenPot").Get<PenPotApiOptions>() ?? new PenPotApiOptions());
+builder.Services.AddConciergeFigmaDiagrams(sp => sp.GetRequiredService<IConfiguration>().GetSection("Figma").Get<FigmaApiOptions>() ?? new FigmaApiOptions());
+
 // Replace the NullDeviceContext registered by AddConciergeAi with the request-aware one.
 builder.Services.RemoveAll<IDeviceContext>();
 builder.Services.AddSingleton<IDeviceContext, HttpContextDeviceContext>();

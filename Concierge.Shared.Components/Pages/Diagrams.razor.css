@@ -5,6 +5,27 @@
     margin-bottom: 1rem;
 }
 
+.diagram-runtime-status {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-top: 0.35rem;
+}
+
+.diagram-runtime-status[data-ready="True"] {
+    background: rgba(33, 150, 243, 0.15);
+    color: #2196F3;
+}
+
+.diagram-runtime-status[data-ready="False"] {
+    background: rgba(44, 62, 80, 0.12);
+    color: #2c3e50;
+}
+
 .diagram-composer-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;

@@ -9,6 +9,14 @@ namespace Concierge.Shared.Chat;
 public interface IChatRuntime
 {
     /// <summary>
+    /// Short stable identifier used by the UI for the provider-selector dropdown and
+    /// by callers that want to route to a specific runtime (e.g. <c>"circleai"</c>,
+    /// <c>"openai"</c>, <c>"anthropic"</c>, <c>"gemini"</c>). Must be unique across
+    /// every registered runtime in a host.
+    /// </summary>
+    string Id { get; }
+
+    /// <summary>
     /// Display label for the active engine (e.g. <c>"Qwen3-30B-A3B-Q4 (CircleAI)"</c>).
     /// Reflects the model the runtime resolved at startup. Persisted alongside assistant
     /// messages so the UI can label past turns even after the runtime swaps out.
@@ -51,6 +59,8 @@ public sealed record ChatTurn(string Role, string Content);
 /// </summary>
 public sealed class NullChatRuntime : IChatRuntime
 {
+    public string Id => "null";
+
     public string EngineLabel => "No engine wired";
 
     public bool IsReady => false;
