@@ -1,0 +1,87 @@
+@page "/diagrams"
+@using Concierge.Shared.Diagrams
+@inject IEnumerable<IDiagramRuntime> Runtimes
+
+<section class="page-header">
+    <p class="eyebrow">Diagrams</p>
+    <h1>Mermaid now. PenPot and Figma when you wire a token.</h1>
+    <p class="lede">Mermaid is text-DSL — paste a diagram and it renders in the browser. PenPot and Figma adapters live alongside; once their access tokens are configured the agent can read your design files and reason about frames, components, and pages.</p>
+</section>
+
+<section class="diagram-runtimes" aria-label="Registered diagram runtimes">
+    @foreach (var runtime in Runtimes.OrderBy(r => r.DisplayName))
+    {
+        <article class="surface-card ready">
+            <strong>@runtime.DisplayName</strong>
+            <span>Id: <code>@runtime.Id</code></span>
+            <p>
+                @if (runtime.SupportedExtensions.Count == 0)
+                {
+                    <text>Text-DSL only — paste source to render.</text>
+                }
+                else
+                {
+                    <text>Imports: @string.Join(", ", runtime.SupportedExtensions.Select(e => "." + e))</text>
+                }
+            </p>
+        </article>
+    }
+</section>
+
+<section class="diagram-composer panel">
+    <div class="section-heading">
+        <p class="eyebrow">Mermaid composer</p>
+        <h2>Paste a diagram and see it render.</h2>
+    </div>
+
+    <div class="diagram-composer-grid">
+        <textarea class="diagram-composer-input"
+                  rows="14"
+                  spellcheck="false"
+                  @bind="_source"
+                  @bind:event="oninput"></textarea>
+
+        <div class="diagram-composer-output">
+            @if (_artifact is null)
+            {
+                <p class="diagram-empty">Composer is empty or the source isn't valid Mermaid. Start with <code>flowchart TD</code> or <code>sequenceDiagram</code>.</p>
+            }
+            else
+            {
+                <header class="diagram-artifact-header">
+                    <strong>@_artifact.Title</strong>
+                    <span>@_artifact.Kind · @_artifact.RuntimeId</span>
+                </header>
+                <MermaidBlock Source="@_artifact.Source" />
+                <p class="diagram-artifact-summary">@_artifact.Summary</p>
+            }
+        </div>
+    </div>
+</section>
+
+@code {
+    private MermaidDiagramRuntime _mermaid = default!;
+    private string _source = """
+flowchart TD
+    A[User asks Concierge] --> B{Mermaid block in reply?}
+    B -- yes --> C[Render diagram inline]
+    B -- no  --> D[Render plain text]
+    C --> E[Persist to SQLite]
+    D --> E
+""";
+    private DiagramArtifact? _artifact;
+
+    protected override void OnInitialized()
+    {
+        _mermaid = Runtimes.OfType<MermaidDiagramRuntime>().FirstOrDefault()
+            ?? new MermaidDiagramRuntime();
+        Recompute();
+    }
+
+    protected override void OnParametersSet() => Recompute();
+
+    private void Recompute()
+    {
+        _artifact = string.IsNullOrWhiteSpace(_source) ? null : _mermaid.FromSource(_source);
+    }
+}

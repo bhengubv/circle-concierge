@@ -62,7 +62,14 @@
                             }
                             <time>@message.CreatedAt.ToLocalTime().ToString("HH:mm")</time>
                         </header>
-                        <p>@message.Content</p>
+                        @if (message.Role == "assistant")
+                        {
+                            <AssistantContent Content="@message.Content" />
+                        }
+                        else
+                        {
+                            <p>@message.Content</p>
+                        }
                     </article>
                 }
                 @if (_streaming)
@@ -73,7 +80,7 @@
                             <span class="chat-bubble-engine">@Runtime.EngineLabel</span>
                             <time>@DateTimeOffset.Now.ToLocalTime().ToString("HH:mm")</time>
                         </header>
-                        <p>@_streamingBuffer</p>
+                        <AssistantContent Content="@_streamingBuffer" />
                     </article>
                 }
             </div>

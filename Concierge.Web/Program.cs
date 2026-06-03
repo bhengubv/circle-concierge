@@ -2,6 +2,7 @@ using Concierge.Web.Components;
 using Concierge.Web.Hosting;
 using Concierge.Shared;
 using Concierge.Shared.Chat;
+using Concierge.Shared.Diagrams;
 using Concierge.Ai;
 using Concierge.Mesh;
 using Concierge.Media;
@@ -18,6 +19,7 @@ builder.Services.AddHttpContextAccessor();
 builder.Services
     .AddConciergeCore()
     .AddConciergeChat()
+    .AddConciergeDiagrams()
     .AddConciergeAi()
     .AddConciergeMesh()
     .AddConciergeMedia();

@@ -1,0 +1,49 @@
+.mermaid-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin: 0.5rem 0;
+}
+
+.mermaid-host {
+    background: #ffffff;
+    border: 1px solid #e3e6ea;
+    border-radius: 8px;
+    padding: 0.75rem;
+    overflow-x: auto;
+    /* No-scrollbar rule — diagrams can be wide; scrolling stays, bars stay hidden. */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.mermaid-host::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+}
+
+.mermaid-host ::deep svg {
+    max-width: 100%;
+    height: auto;
+}
+
+.mermaid-source {
+    color: #6b7785;
+    font-size: 0.75rem;
+}
+
+.mermaid-source summary {
+    cursor: pointer;
+    color: #2196F3;
+}
+
+.mermaid-source pre {
+    margin: 0.5rem 0 0 0;
+    padding: 0.75rem;
+    background: #f7f9fc;
+    border: 1px solid #e3e6ea;
+    border-radius: 6px;
+    overflow-x: auto;
+    color: #2c3e50;
+    font-size: 0.8rem;
+}

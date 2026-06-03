@@ -5,6 +5,7 @@ using Concierge.Media;
 using Concierge.Mesh;
 using Concierge.Shared;
 using Concierge.Shared.Chat;
+using Concierge.Shared.Diagrams;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
 
@@ -26,6 +27,7 @@ public static class MauiProgram
 		builder.Services
 			.AddConciergeCore()
 			.AddConciergeChat()
+			.AddConciergeDiagrams()
 			.AddConciergeAi()
 			.AddConciergeMesh()
 			.AddConciergeMedia();

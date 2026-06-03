@@ -1,0 +1,67 @@
+@using Concierge.Shared.Diagrams
+
+@if (_segments.Count == 0)
+{
+    <p>@Content</p>
+}
+else
+{
+    foreach (var segment in _segments)
+    {
+        if (segment.IsMermaid)
+        {
+            <MermaidBlock Source="@segment.Text" />
+        }
+        else if (!string.IsNullOrWhiteSpace(segment.Text))
+        {
+            <p>@segment.Text</p>
+        }
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public string Content { get; set; } = string.Empty;
+
+    private readonly List<Segment> _segments = new();
+
+    protected override void OnParametersSet()
+    {
+        _segments.Clear();
+        if (string.IsNullOrEmpty(Content))
+        {
+            return;
+        }
+
+        var blocks = MermaidDiagramRuntime.ExtractFencedBlocks(Content);
+        if (blocks.Count == 0)
+        {
+            return;
+        }
+
+        var cursor = 0;
+        foreach (var block in blocks)
+        {
+            if (block.Start > cursor)
+            {
+                var prefix = Content[cursor..block.Start].TrimEnd();
+                if (prefix.Length > 0)
+                {
+                    _segments.Add(new Segment(prefix, IsMermaid: false));
+                }
+            }
+            _segments.Add(new Segment(block.Source.Trim(), IsMermaid: true));
+            cursor = block.Start + block.Length;
+        }
+
+        if (cursor < Content.Length)
+        {
+            var tail = Content[cursor..].TrimStart();
+            if (tail.Length > 0)
+            {
+                _segments.Add(new Segment(tail, IsMermaid: false));
+            }
+        }
+    }
+
+    private sealed record Segment(string Text, bool IsMermaid);
+}
