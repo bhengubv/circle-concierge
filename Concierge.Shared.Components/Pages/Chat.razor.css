@@ -320,6 +320,81 @@
     gap: 0.75rem;
 }
 
+.chat-composer-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.chat-mic-button {
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 50%;
+    border: 1px solid #d6d5d5;
+    background: #ffffff;
+    color: #2c3e50;
+    cursor: pointer;
+    font-size: 1rem;
+}
+
+.chat-mic-button.active {
+    background: #2196F3;
+    color: #ffffff;
+    border-color: #2196F3;
+}
+
+.chat-mic-button:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.2);
+}
+
+.chat-file-input::-webkit-file-upload-button,
+.chat-file-input::file-selector-button {
+    background: #ffffff;
+    color: #2c3e50;
+    border: 1px solid #d6d5d5;
+    border-radius: 6px;
+    padding: 0.35rem 0.65rem;
+    font: inherit;
+    cursor: pointer;
+}
+
+.chat-attachments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-bottom: 0.5rem;
+}
+
+.chat-attachment-chip {
+    background: rgba(33, 150, 243, 0.12);
+    color: #2c3e50;
+    border-radius: 999px;
+    padding: 0.25rem 0.6rem;
+    font-size: 0.75rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.chat-attachment-chip button {
+    border: 0;
+    background: transparent;
+    color: #2c3e50;
+    cursor: pointer;
+    font-size: 1rem;
+    line-height: 1;
+}
+
+.chat-speak-button {
+    border: 0;
+    background: transparent;
+    color: #2196F3;
+    cursor: pointer;
+    font-size: 0.9rem;
+    margin-left: auto;
+}
+
 .chat-hint {
     color: #6b7785;
     font-size: 0.75rem;

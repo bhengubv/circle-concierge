@@ -95,6 +95,101 @@
     font-size: 0.85rem;
 }
 
+.diagram-fetch {
+    margin-top: 1.25rem;
+}
+
+.diagram-fetch-form {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    align-items: center;
+    gap: 0.5rem 0.75rem;
+}
+
+.diagram-fetch-form label {
+    color: #6b7785;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.diagram-fetch-form select,
+.diagram-fetch-form input {
+    border: 1px solid #d6d5d5;
+    border-radius: 6px;
+    padding: 0.45rem 0.55rem;
+    color: #2c3e50;
+    background: #ffffff;
+    font: inherit;
+}
+
+.diagram-fetch-form select:focus,
+.diagram-fetch-form input:focus {
+    outline: none;
+    border-color: #2196F3;
+    box-shadow: 0 0 0 3px rgba(33, 150, 243, 0.2);
+}
+
+.diagram-fetch-form .button {
+    grid-column: 2;
+    width: max-content;
+}
+
+.diagram-fetch-status {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: #6b7785;
+    font-size: 0.8rem;
+}
+
+.diagram-fetched {
+    margin-top: 1rem;
+    background: #f7f9fc;
+    border: 1px solid #e3e6ea;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+}
+
+.diagram-fetched header {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    margin-bottom: 0.5rem;
+}
+
+.diagram-fetched header strong {
+    color: #2c3e50;
+}
+
+.diagram-fetched header span {
+    color: #6b7785;
+    font-size: 0.75rem;
+}
+
+.diagram-fetched-elements {
+    margin: 0.5rem 0 0;
+    padding-left: 1.25rem;
+    color: #2c3e50;
+    font-size: 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.diagram-fetched-elements li {
+    display: flex;
+    gap: 0.4rem;
+    align-items: baseline;
+}
+
+.diagram-fetched-elements code {
+    color: #2196F3;
+    background: rgba(33, 150, 243, 0.08);
+    border-radius: 4px;
+    padding: 0 0.35rem;
+    font-size: 0.75rem;
+}
+
 @media (max-width: 640.98px) {
     .diagram-composer-grid {
         grid-template-columns: 1fr;

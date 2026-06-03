@@ -10,6 +10,7 @@ using Concierge.Shared.Media;
 using Concierge.Shared;
 using Concierge.Shared.Chat;
 using Concierge.Shared.Diagrams;
+using Concierge.Shared.Settings;
 using Concierge.Shared.Telemetry;
 using Concierge.Shared.Tools;
 using Microsoft.Extensions.Configuration;
@@ -31,6 +32,7 @@ public static class MauiProgram
 			});
 
 		builder.Services.AddMauiBlazorWebView();
+		builder.Services.AddSingleton<IConciergeSecretStore>(_ => new LocalSecretStore());
 		builder.Services
 			.AddConciergeCore()
 			.AddConciergeChat()

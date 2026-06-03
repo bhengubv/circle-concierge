@@ -5,6 +5,7 @@ using Concierge.Shared;
 using Concierge.Shared.Chat;
 using Concierge.Shared.Diagrams;
 using Concierge.Shared.Media;
+using Concierge.Shared.Settings;
 using Concierge.Shared.Telemetry;
 using Concierge.Shared.Tools;
 using Concierge.Ai;
@@ -18,6 +19,17 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Layer locally-saved secrets onto configuration BEFORE building the service provider.
+// Values entered via the Settings → API keys UI land in %LocalAppData%/Concierge/secrets.json
+// and override appsettings.json (env vars still win — standard ASP.NET Core ordering).
+var secretStore = new LocalSecretStore();
+var savedSecrets = await secretStore.LoadAsync();
+if (savedSecrets.Count > 0)
+{
+    builder.Configuration.AddInMemoryCollection(savedSecrets!);
+}
+builder.Services.AddSingleton<IConciergeSecretStore>(secretStore);
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
@@ -121,6 +133,7 @@ var apiKeyOptions = new ApiKeyAuthOptions
 app.UseConciergeApiKeyAuth(apiKeyOptions);
 
 app.MapConciergeHealth();
+app.MapConciergeVoice();
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode()

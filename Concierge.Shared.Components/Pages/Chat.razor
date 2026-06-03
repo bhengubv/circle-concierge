@@ -1,12 +1,14 @@
 @page "/chat"
 @page "/chat/{ConversationId:guid}"
 @using System.Text
+@using System.Text.Json.Nodes
 @using Concierge.Shared.Chat
 @using Concierge.Shared.Tools
 @inject IConversationStore Store
 @inject IEnumerable<IChatRuntime> Runtimes
 @inject IAgentToolRegistry Tools
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <section class="chat-shell">
     <aside class="chat-sidebar">
@@ -83,6 +85,10 @@
                             <input type="checkbox" @bind="_includeToolCatalog" />
                             Append tool catalog (@Tools.Tools.Count tools)
                         </label>
+                        <label>
+                            <input type="checkbox" @bind="_executeToolCalls" />
+                            Auto-execute tool calls
+                        </label>
                         <button class="button" type="button" @onclick="SaveSystemPromptAsync" disabled="@_streaming">Save</button>
                     </div>
                 </details>
@@ -99,6 +105,13 @@
                                 <span class="chat-bubble-engine">@message.ProducedBy</span>
                             }
                             <time>@message.CreatedAt.ToLocalTime().ToString("HH:mm")</time>
+                            @if (message.Role == "assistant")
+                            {
+                                <button type="button"
+                                        class="chat-speak-button"
+                                        title="Read this turn aloud"
+                                        @onclick="@(() => SpeakAsync(message.Content))">🔊</button>
+                            }
                         </header>
                         @if (message.Role == "assistant")
                         {
@@ -117,6 +130,10 @@
                             <strong>Assistant</strong>
                             <span class="chat-bubble-engine">@(_activeRuntime?.EngineLabel ?? "")</span>
                             <time>@DateTimeOffset.Now.ToLocalTime().ToString("HH:mm")</time>
+                            @if (_toolLoopIteration > 0)
+                            {
+                                <span class="chat-bubble-engine">tool loop · iter @_toolLoopIteration / @MaxToolIterations</span>
+                            }
                         </header>
                         <AssistantContent Content="@_streamingBuffer" />
                     </article>
@@ -124,13 +141,36 @@
             </div>
 
             <form class="chat-composer" @onsubmit="SendAsync" @onsubmit:preventDefault>
+                @if (_pendingAttachments.Count > 0)
+                {
+                    <div class="chat-attachments">
+                        @foreach (var attachment in _pendingAttachments)
+                        {
+                            <span class="chat-attachment-chip">
+                                @attachment.FileName · @attachment.Bytes.Length bytes
+                                <button type="button" @onclick="@(() => RemoveAttachment(attachment))">×</button>
+                            </span>
+                        }
+                    </div>
+                }
                 <textarea @bind="_composerText"
                           @bind:event="oninput"
                           placeholder="Ask Concierge anything…"
                           rows="3"
-                          disabled="@(!CanSend)"></textarea>
+                          disabled="@(!CanSend && !_streaming)"></textarea>
                 <div class="chat-composer-row">
-                    <span class="chat-hint">Shift + Enter for newline · plain text only in v1</span>
+                    <div class="chat-composer-actions">
+                        <InputFile OnChange="OnAttachmentSelected"
+                                   class="chat-file-input"
+                                   accept=".txt,.md,.markdown,.json,.cs,.razor,.xml,.yaml,.yml,.toml,.csv,.log" />
+                        <button type="button"
+                                class="chat-mic-button @(_recording ? "active" : "")"
+                                @onclick="ToggleMicAsync"
+                                title="@(_recording ? "Stop recording" : "Speak — Whisper transcribes")">
+                            @(_recording ? "■" : "🎙")
+                        </button>
+                    </div>
+                    <span class="chat-hint">@_composerHint</span>
                     <button class="button primary" type="submit" disabled="@(!CanSend)">
                         @(_streaming ? "Streaming…" : "Send")
                     </button>
@@ -143,30 +183,37 @@
 @code {
     [Parameter] public Guid? ConversationId { get; set; }
 
+    private const int MaxToolIterations = 5;
+    private const long MaxAttachmentBytes = 256 * 1024; // 256 KB — text-only attachments in v1
+    private const string OwnerId = "local";
+
     private List<Conversation> _conversations = new();
     private Conversation? _active;
     private string _composerText = string.Empty;
     private bool _streaming;
     private string _streamingBuffer = string.Empty;
     private CancellationTokenSource? _streamCts;
+    private int _toolLoopIteration;
 
     private List<IChatRuntime> _orderedRuntimes = new();
     private IChatRuntime? _activeRuntime;
     private string _systemPromptDraft = string.Empty;
     private bool _includeToolCatalog = true;
+    private bool _executeToolCalls = true;
 
-    private const string OwnerId = "local";
+    private readonly List<TextAttachment> _pendingAttachments = new();
+    private bool _recording;
+
+    private string _composerHint = "Shift + Enter for newline · drag a text file or use 🎙 for voice.";
 
     private bool CanSend
         => !_streaming
-           && !string.IsNullOrWhiteSpace(_composerText)
+           && (!string.IsNullOrWhiteSpace(_composerText) || _pendingAttachments.Count > 0)
            && _active is not null
            && (_activeRuntime?.IsReady ?? false);
 
     protected override async Task OnInitializedAsync()
     {
-        // Distinct by Id so the same runtime registered twice (singleton + keyed) doesn't
-        // produce duplicate dropdown rows. Ready-first, then alphabetical.
         _orderedRuntimes = Runtimes
             .GroupBy(r => r.Id, StringComparer.OrdinalIgnoreCase)
             .Select(g => g.First())
@@ -200,13 +247,6 @@
         {
             return;
         }
-
-        // Re-using AppendAsync would create a phantom system message; we want the column on
-        // the conversation row updated directly. The store does not expose an UpdateSystemPrompt
-        // helper today — fall back to deleting + re-starting would lose history. For now we
-        // mutate the in-memory copy and persist on the next send via the system turn injection
-        // path. Persisting cleanly requires a small store extension which will land alongside
-        // the Settings UI work.
         _active.SystemPrompt = _systemPromptDraft;
         await Task.CompletedTask;
     }
@@ -233,6 +273,118 @@
         Nav.NavigateTo($"chat/{conversation.Id}");
     }
 
+    private async Task OnAttachmentSelected(InputFileChangeEventArgs args)
+    {
+        foreach (var file in args.GetMultipleFiles(8))
+        {
+            if (file.Size > MaxAttachmentBytes)
+            {
+                _composerHint = $"{file.Name} skipped — over {MaxAttachmentBytes / 1024} KB. Text attachments only in v1.";
+                continue;
+            }
+
+            using var stream = file.OpenReadStream(MaxAttachmentBytes);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            _pendingAttachments.Add(new TextAttachment(file.Name, ms.ToArray()));
+            _composerHint = "Attachment ready. Text contents will quote into the next message.";
+        }
+    }
+
+    private void RemoveAttachment(TextAttachment attachment)
+    {
+        _pendingAttachments.Remove(attachment);
+        _composerHint = _pendingAttachments.Count == 0
+            ? "Shift + Enter for newline · drag a text file or use 🎙 for voice."
+            : $"{_pendingAttachments.Count} attachment(s) ready.";
+    }
+
+    /// <summary>
+    /// Toggles mic capture via the JS interop module that wraps MediaRecorder. The module
+    /// returns a base64 webm blob which we POST to <c>/api/voice/transcribe</c>; the
+    /// resulting text is appended to the composer so the user can edit before send.
+    /// </summary>
+    private async Task ToggleMicAsync()
+    {
+        try
+        {
+            if (!_recording)
+            {
+                await JS.InvokeVoidAsync("conciergeVoice.start");
+                _recording = true;
+                _composerHint = "Recording… tap the mic again to stop.";
+            }
+            else
+            {
+                var base64 = await JS.InvokeAsync<string?>("conciergeVoice.stop");
+                _recording = false;
+                if (string.IsNullOrEmpty(base64))
+                {
+                    _composerHint = "No audio captured.";
+                    return;
+                }
+
+                _composerHint = "Transcribing…";
+                using var http = new HttpClient { BaseAddress = new Uri(Nav.BaseUri) };
+                using var response = await http.PostAsJsonAsync("api/voice/transcribe", new { audioBase64 = base64, fileName = "capture.webm" });
+                if (!response.IsSuccessStatusCode)
+                {
+                    _composerHint = $"Transcription failed ({(int)response.StatusCode}).";
+                    return;
+                }
+                var transcript = await response.Content.ReadFromJsonAsync<TranscriptResponse>();
+                if (!string.IsNullOrWhiteSpace(transcript?.Text))
+                {
+                    _composerText = string.IsNullOrWhiteSpace(_composerText)
+                        ? transcript.Text
+                        : _composerText.TrimEnd() + "\n" + transcript.Text;
+                    _composerHint = "Transcribed — edit and send when ready.";
+                }
+                else
+                {
+                    _composerHint = "Whisper returned empty text.";
+                }
+            }
+        }
+        catch (JSException ex)
+        {
+            _composerHint = $"Mic error: {ex.Message}";
+            _recording = false;
+        }
+    }
+
+    /// <summary>
+    /// Synthesises an assistant turn back to MP3 via the OpenAI voice endpoint (or whichever
+    /// IVoiceRuntime is wired) and plays it through the page's hidden audio element.
+    /// </summary>
+    private async Task SpeakAsync(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        try
+        {
+            using var http = new HttpClient { BaseAddress = new Uri(Nav.BaseUri) };
+            using var response = await http.PostAsJsonAsync("api/voice/speak", new { text });
+            if (!response.IsSuccessStatusCode)
+            {
+                return;
+            }
+            var bytes = await response.Content.ReadAsByteArrayAsync();
+            if (bytes.Length == 0)
+            {
+                return;
+            }
+            await JS.InvokeVoidAsync("conciergeVoice.play", Convert.ToBase64String(bytes), "audio/mpeg");
+        }
+        catch (JSException)
+        {
+            // Audio element missing or autoplay blocked — non-fatal.
+        }
+    }
+
     private async Task SendAsync()
     {
         if (!CanSend || _active is null || _activeRuntime is null)
@@ -243,26 +395,122 @@
         var input = _composerText.Trim();
         _composerText = string.Empty;
 
-        await Store.AppendAsync(_active.Id, role: "user", content: input);
+        // Attachments are inlined as fenced code blocks ahead of the prompt so the LLM sees
+        // them in context. Binary / image attachments are a v2 feature — text-only here.
+        var attachmentBlocks = _pendingAttachments
+            .Select(a => $"```file name=\"{a.FileName}\"\n{Encoding.UTF8.GetString(a.Bytes).TrimEnd()}\n```")
+            .ToList();
+        _pendingAttachments.Clear();
+
+        var fullPrompt = string.Join("\n\n", attachmentBlocks.Append(input).Where(s => !string.IsNullOrEmpty(s)));
+
+        await Store.AppendAsync(_active.Id, role: "user", content: fullPrompt);
         _active = await Store.GetAsync(_active.Id);
         await RefreshSidebarAsync();
         StateHasChanged();
 
         _streaming = true;
         _streamingBuffer = string.Empty;
+        _toolLoopIteration = 0;
         _streamCts?.Cancel();
         _streamCts = new CancellationTokenSource();
 
-        var turns = (_active?.Messages ?? new List<ChatMessageRow>())
+        try
+        {
+            // Outer loop drives the tool-call cycle: stream → persist → if the assistant
+            // emitted ```tool-call``` blocks AND the user opted in, execute them, append the
+            // synthetic user turn with the results, and stream again. Cap at MaxToolIterations
+            // so a buggy reply can't pin the chat in a tight loop.
+            for (var iteration = 0; iteration <= MaxToolIterations; iteration++)
+            {
+                _toolLoopIteration = iteration;
+                StateHasChanged();
+
+                var assistantText = await StreamOnceAsync(_streamCts.Token);
+                if (assistantText is null)
+                {
+                    // Cancelled or empty — caller has already persisted whatever it could.
+                    break;
+                }
+
+                if (!_executeToolCalls || Tools.Tools.Count == 0)
+                {
+                    break;
+                }
+
+                var calls = ToolCallProtocol.Extract(assistantText);
+                if (calls.Count == 0)
+                {
+                    break;
+                }
+
+                if (iteration == MaxToolIterations)
+                {
+                    await Store.AppendAsync(_active!.Id, role: "user",
+                        content: $"```tool-result\n{{\"name\":\"<host>\",\"success\":false,\"output\":\"\",\"failure\":\"Tool-call iteration cap ({MaxToolIterations}) reached. Stopping the loop.\"}}\n```");
+                    break;
+                }
+
+                var results = new List<(string ToolName, AgentToolResult Result)>();
+                foreach (var call in calls)
+                {
+                    var tool = Tools.Tools.FirstOrDefault(t => string.Equals(t.Name, call.Name, StringComparison.OrdinalIgnoreCase));
+                    if (tool is null)
+                    {
+                        results.Add((call.Name, new AgentToolResult(false, string.Empty, $"Unknown tool '{call.Name}'.")));
+                        continue;
+                    }
+
+                    AgentToolResult result;
+                    try
+                    {
+                        result = await tool.InvokeAsync(call.Arguments, _streamCts.Token);
+                    }
+                    catch (Exception ex)
+                    {
+                        result = new AgentToolResult(false, string.Empty, $"Tool '{tool.Name}' threw: {ex.Message}");
+                    }
+                    results.Add((call.Name, result));
+                }
+
+                var resultMessage = ToolCallProtocol.FormatToolResultMessage(results);
+                await Store.AppendAsync(_active!.Id, role: "user", content: resultMessage);
+                _active = await Store.GetAsync(_active.Id);
+                StateHasChanged();
+            }
+        }
+        finally
+        {
+            if (_active is not null)
+            {
+                _active = await Store.GetAsync(_active.Id);
+                await RefreshSidebarAsync();
+            }
+            _streaming = false;
+            _streamingBuffer = string.Empty;
+            _toolLoopIteration = 0;
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>
+    /// Streams one assistant turn over the active conversation history. Returns the
+    /// assembled assistant text (also persisted to the store) or <c>null</c> if the
+    /// stream was cancelled or the runtime emitted nothing.
+    /// </summary>
+    private async Task<string?> StreamOnceAsync(CancellationToken cancellationToken)
+    {
+        if (_active is null || _activeRuntime is null)
+        {
+            return null;
+        }
+
+        var turns = _active.Messages
             .Select(m => new ChatTurn(m.Role, m.Content))
             .ToList();
 
-        // Compose the system message from: (1) the conversation's persisted prompt, falling
-        // back to the in-page draft so users don't have to hit Save first; (2) the tool
-        // catalogue if the checkbox is set — this is what gives the LLM a way to call the
-        // harness without provider-specific function-calling wiring.
         var systemParts = new List<string>();
-        var persisted = _active?.SystemPrompt;
+        var persisted = _active.SystemPrompt;
         var systemText = !string.IsNullOrWhiteSpace(persisted) ? persisted : _systemPromptDraft;
         if (!string.IsNullOrWhiteSpace(systemText))
         {
@@ -278,10 +526,11 @@
         }
 
         var buffer = new StringBuilder();
-        var persistedPartial = false;
+        _streamingBuffer = string.Empty;
+        var cancelled = false;
         try
         {
-            await foreach (var chunk in _activeRuntime.StreamAsync(turns, _streamCts.Token))
+            await foreach (var chunk in _activeRuntime.StreamAsync(turns, cancellationToken))
             {
                 buffer.Append(chunk);
                 _streamingBuffer = buffer.ToString();
@@ -290,12 +539,7 @@
         }
         catch (OperationCanceledException)
         {
-            // Persist the partial message so a circuit disconnect / page nav doesn't lose work.
-            if (buffer.Length > 0 && _active is not null)
-            {
-                await Store.AppendAsync(_active.Id, role: "assistant", content: buffer.ToString() + "\n[stream cancelled before completion]", producedBy: _activeRuntime.EngineLabel);
-                persistedPartial = true;
-            }
+            cancelled = true;
         }
         catch (Exception ex)
         {
@@ -304,24 +548,26 @@
             _streamingBuffer = buffer.ToString();
         }
 
-        if (!persistedPartial)
+        var assistantText = buffer.ToString();
+        if (cancelled)
         {
-            var assistantText = buffer.ToString();
-            if (!string.IsNullOrWhiteSpace(assistantText) && _active is not null)
+            if (assistantText.Length > 0)
             {
-                await Store.AppendAsync(_active.Id, role: "assistant", content: assistantText, producedBy: _activeRuntime.EngineLabel);
+                await Store.AppendAsync(_active.Id, role: "assistant",
+                    content: assistantText + "\n[stream cancelled before completion]",
+                    producedBy: _activeRuntime.EngineLabel);
             }
+            return null;
         }
 
-        if (_active is not null)
+        if (!string.IsNullOrWhiteSpace(assistantText))
         {
+            await Store.AppendAsync(_active.Id, role: "assistant", content: assistantText, producedBy: _activeRuntime.EngineLabel);
             _active = await Store.GetAsync(_active.Id);
-            await RefreshSidebarAsync();
+            return assistantText;
         }
 
-        _streaming = false;
-        _streamingBuffer = string.Empty;
-        StateHasChanged();
+        return null;
     }
 
     private static string FormatRole(string role) => role switch
@@ -331,4 +577,8 @@
         "system" => "System",
         _ => role
     };
+
+    private sealed record TextAttachment(string FileName, byte[] Bytes);
+
+    private sealed record TranscriptResponse(string? Text, string? Language);
 }

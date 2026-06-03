@@ -18,6 +18,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Concierge.Shared\Concierge.Shared.csproj" />
+    <!-- Diagrams.razor injects PenPotApiClient + FigmaApiClient for the fetch composer.
+         The Design adapter project depends on Concierge.Shared but not on this RCL, so
+         taking the dependency the other way is safe. -->
+    <ProjectReference Include="..\Concierge.Diagrams.Design\Concierge.Diagrams.Design.csproj" />
   </ItemGroup>
 
 </Project>

@@ -1,19 +1,17 @@
 @page "/diagrams"
+@using Concierge.Diagrams.Design
 @using Concierge.Shared.Diagrams
 @inject IEnumerable<IDiagramRuntime> Runtimes
+@inject IServiceProvider Services
 
 <section class="page-header">
     <p class="eyebrow">Diagrams</p>
-    <h1>Mermaid now. PenPot and Figma when you wire a token.</h1>
-    <p class="lede">Mermaid is text-DSL — paste a diagram and it renders in the browser. PenPot and Figma adapters live alongside; once their access tokens are configured the agent can read your design files and reason about frames, components, and pages.</p>
+    <h1>Mermaid now. PenPot and Figma once a token is wired.</h1>
+    <p class="lede">Mermaid renders text-DSL diagrams in the browser. PenPot and Figma fetch real design files over their REST APIs — once their access tokens are configured the agent can read frames, components, and pages and reason about them in chat.</p>
 </section>
 
 <section class="diagram-runtimes" aria-label="Registered diagram runtimes">
-    @foreach (var runtime in Runtimes
-        .GroupBy(r => r.Id, StringComparer.OrdinalIgnoreCase)
-        .Select(g => g.First())
-        .OrderByDescending(r => r.IsReady)
-        .ThenBy(r => r.DisplayName, StringComparer.OrdinalIgnoreCase))
+    @foreach (var runtime in _orderedRuntimes)
     {
         <article class="surface-card @(runtime.IsReady ? "ready" : "needs-attention")">
             <strong>@runtime.DisplayName</strong>
@@ -49,24 +47,84 @@
                   @bind:event="oninput"></textarea>
 
         <div class="diagram-composer-output">
-            @if (_artifact is null)
+            @if (_mermaidArtifact is null)
             {
                 <p class="diagram-empty">Composer is empty or the source isn't valid Mermaid. Start with <code>flowchart TD</code> or <code>sequenceDiagram</code>.</p>
             }
             else
             {
                 <header class="diagram-artifact-header">
-                    <strong>@_artifact.Title</strong>
-                    <span>@_artifact.Kind · @_artifact.RuntimeId</span>
+                    <strong>@_mermaidArtifact.Title</strong>
+                    <span>@_mermaidArtifact.Kind · @_mermaidArtifact.RuntimeId</span>
                 </header>
-                <MermaidBlock Source="@_artifact.Source" />
-                <p class="diagram-artifact-summary">@_artifact.Summary</p>
+                <MermaidBlock Source="@_mermaidArtifact.Source" />
+                <p class="diagram-artifact-summary">@_mermaidArtifact.Summary</p>
             }
         </div>
     </div>
 </section>
 
+<section class="diagram-fetch panel">
+    <div class="section-heading">
+        <p class="eyebrow">Fetch a design file</p>
+        <h2>Pull a PenPot or Figma file by id.</h2>
+    </div>
+
+    <form class="diagram-fetch-form" @onsubmit="FetchAsync" @onsubmit:preventDefault>
+        <label for="diagram-fetch-source">Source</label>
+        <select id="diagram-fetch-source" @bind="_fetchSource">
+            <option value="penpot">PenPot — file UUID</option>
+            <option value="figma">Figma — file key (segment after /file/)</option>
+        </select>
+
+        <label for="diagram-fetch-id">File id</label>
+        <input id="diagram-fetch-id"
+               type="text"
+               placeholder="@(_fetchSource == "penpot" ? "00000000-0000-0000-0000-000000000000" : "abcDEFghi123")"
+               @bind="_fetchId"
+               @bind:event="oninput" />
+
+        <button class="button primary" type="submit" disabled="@(!CanFetch)">
+            @(_fetching ? "Fetching…" : "Fetch")
+        </button>
+
+        <p class="diagram-fetch-status">@_fetchStatus</p>
+    </form>
+
+    @if (_fetchedArtifact is not null)
+    {
+        <article class="diagram-fetched">
+            <header>
+                <strong>@_fetchedArtifact.Title</strong>
+                <span>@_fetchedArtifact.RuntimeId · @_fetchedArtifact.Kind</span>
+            </header>
+            <p>@_fetchedArtifact.Summary</p>
+            <details>
+                <summary>Elements (@_fetchedArtifact.Elements.Count)</summary>
+                <ul class="diagram-fetched-elements">
+                    @foreach (var element in _fetchedArtifact.Elements.Take(40))
+                    {
+                        <li>
+                            <code>@element.ElementType</code>
+                            <strong>@element.Name</strong>
+                            @if (!string.IsNullOrEmpty(element.ParentId))
+                            {
+                                <span>parent=@element.ParentId</span>
+                            }
+                        </li>
+                    }
+                    @if (_fetchedArtifact.Elements.Count > 40)
+                    {
+                        <li>…and @(_fetchedArtifact.Elements.Count - 40) more.</li>
+                    }
+                </ul>
+            </details>
+        </article>
+    }
+</section>
+
 @code {
+    private List<IDiagramRuntime> _orderedRuntimes = new();
     private MermaidDiagramRuntime _mermaid = default!;
     private string _source = """
 flowchart TD
@@ -76,11 +134,28 @@ flowchart TD
     C --> E[Persist to SQLite]
     D --> E
 """;
-    private DiagramArtifact? _artifact;
+    private DiagramArtifact? _mermaidArtifact;
+
+    private string _fetchSource = "penpot";
+    private string _fetchId = string.Empty;
+    private bool _fetching;
+    private string _fetchStatus = "Pick a source + paste a file id.";
+    private DiagramArtifact? _fetchedArtifact;
+
+    private bool CanFetch => !_fetching
+        && !string.IsNullOrWhiteSpace(_fetchId)
+        && _orderedRuntimes.FirstOrDefault(r => r.Id == _fetchSource)?.IsReady == true;
 
     protected override void OnInitialized()
     {
-        _mermaid = Runtimes.OfType<MermaidDiagramRuntime>().FirstOrDefault()
+        _orderedRuntimes = Runtimes
+            .GroupBy(r => r.Id, StringComparer.OrdinalIgnoreCase)
+            .Select(g => g.First())
+            .OrderByDescending(r => r.IsReady)
+            .ThenBy(r => r.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        _mermaid = _orderedRuntimes.OfType<MermaidDiagramRuntime>().FirstOrDefault()
             ?? new MermaidDiagramRuntime();
         Recompute();
     }
@@ -89,6 +164,59 @@ flowchart TD
 
     private void Recompute()
     {
-        _artifact = string.IsNullOrWhiteSpace(_source) ? null : _mermaid.FromSource(_source);
+        _mermaidArtifact = string.IsNullOrWhiteSpace(_source) ? null : _mermaid.FromSource(_source);
+    }
+
+    private async Task FetchAsync()
+    {
+        if (!CanFetch)
+        {
+            return;
+        }
+
+        _fetching = true;
+        _fetchStatus = $"Fetching from {_fetchSource}…";
+        try
+        {
+            if (_fetchSource == "penpot")
+            {
+                if (!Guid.TryParse(_fetchId.Trim(), out var fileId))
+                {
+                    _fetchStatus = "PenPot expects a UUID file id.";
+                    return;
+                }
+                var client = Services.GetService(typeof(PenPotApiClient)) as PenPotApiClient;
+                var runtime = Services.GetService(typeof(PenPotDiagramRuntime)) as PenPotDiagramRuntime;
+                if (client is null || runtime is null)
+                {
+                    _fetchStatus = "PenPot adapter is not registered in this host.";
+                    return;
+                }
+                var file = await client.GetFileAsync(fileId);
+                _fetchedArtifact = runtime.Translate(file);
+                _fetchStatus = $"Fetched '{file.Name ?? "(untitled)"}'.";
+            }
+            else
+            {
+                var client = Services.GetService(typeof(FigmaApiClient)) as FigmaApiClient;
+                var runtime = Services.GetService(typeof(FigmaDiagramRuntime)) as FigmaDiagramRuntime;
+                if (client is null || runtime is null)
+                {
+                    _fetchStatus = "Figma adapter is not registered in this host.";
+                    return;
+                }
+                var file = await client.GetFileAsync(_fetchId.Trim());
+                _fetchedArtifact = runtime.Translate(file);
+                _fetchStatus = $"Fetched '{file.Name ?? "(untitled)"}'.";
+            }
+        }
+        catch (Exception ex)
+        {
+            _fetchStatus = $"Fetch failed: {ex.Message}";
+        }
+        finally
+        {
+            _fetching = false;
+        }
     }
 }

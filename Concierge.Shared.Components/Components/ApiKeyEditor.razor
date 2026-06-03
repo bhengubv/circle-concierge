@@ -1,0 +1,80 @@
+@using Concierge.Shared.Settings
+@inject IConciergeSecretStore SecretStore
+
+<section class="api-key-editor panel">
+    <div class="section-heading">
+        <p class="eyebrow">API keys</p>
+        <h2>Save once. Restart Concierge to pick up the change.</h2>
+        <p class="lede">Keys are written to <code>@SecretStore.Path</code>. The file is per-machine, gitignored by default, and never echoed back to the UI after save.</p>
+    </div>
+
+    <form class="api-key-form" @onsubmit="SaveAsync" @onsubmit:preventDefault>
+        @foreach (var (key, label, hint) in ConciergeSecretKeys.Catalog)
+        {
+            <div class="api-key-row">
+                <label>
+                    <span class="api-key-label">@label</span>
+                    <input type="password"
+                           placeholder="@(IsConfigured(key) ? "(saved — leave blank to keep)" : "(not set)")"
+                           value="@_drafts.GetValueOrDefault(key, string.Empty)"
+                           @oninput="@(e => OnFieldChanged(key, e.Value?.ToString() ?? string.Empty))" />
+                </label>
+                <p class="api-key-hint">@hint</p>
+            </div>
+        }
+
+        <div class="api-key-actions">
+            <button class="button primary" type="submit" disabled="@(_saving || _drafts.Count == 0)">
+                @(_saving ? "Saving…" : "Save")
+            </button>
+            <span class="api-key-status">@_statusMessage</span>
+        </div>
+    </form>
+</section>
+
+@code {
+    private readonly Dictionary<string, string> _drafts = new(StringComparer.Ordinal);
+    private IReadOnlyDictionary<string, string> _saved = new Dictionary<string, string>(StringComparer.Ordinal);
+    private bool _saving;
+    private string _statusMessage = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _saved = await SecretStore.LoadAsync();
+        _statusMessage = _saved.Count == 0
+            ? "No keys saved yet."
+            : $"{_saved.Count} key(s) saved. Values are hidden — re-enter to overwrite.";
+    }
+
+    private bool IsConfigured(string key) => _saved.ContainsKey(key) && !string.IsNullOrEmpty(_saved[key]);
+
+    private void OnFieldChanged(string key, string value)
+    {
+        _drafts[key] = value;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_drafts.Count == 0)
+        {
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            await SecretStore.SaveAsync(_drafts);
+            _saved = await SecretStore.LoadAsync();
+            _drafts.Clear();
+            _statusMessage = "Saved. Restart Concierge to apply the new keys.";
+        }
+        catch (Exception ex)
+        {
+            _statusMessage = $"Save failed: {ex.Message}";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}
