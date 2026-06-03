@@ -59,6 +59,10 @@ PublishProfiles/
 *.log
 .concierge-web.*.log
 
+# ---- Deployment artefacts + signing secrets --------------------------------
+Deployment/artifacts/
+Deployment/secrets/
+
 # ---- Secrets ----------------------------------------------------------------
 secrets.json
 appsettings.Production.json

@@ -4,6 +4,7 @@ using Concierge.Web.Hosting;
 using Concierge.Shared;
 using Concierge.Shared.Chat;
 using Concierge.Shared.Diagrams;
+using Concierge.Shared.Media;
 using Concierge.Shared.Telemetry;
 using Concierge.Shared.Tools;
 using Concierge.Ai;
@@ -11,6 +12,7 @@ using Concierge.Chat.Cloud;
 using Concierge.Diagrams.Design;
 using Concierge.Mesh;
 using Concierge.Media;
+using Concierge.Media.Cloud;
 using CircleAI.Core;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -80,6 +82,14 @@ builder.Services.AddGeminiChat(sp => sp.GetRequiredService<IConfiguration>().Get
 builder.Services.AddConciergePenPotDiagrams(sp => sp.GetRequiredService<IConfiguration>().GetSection("PenPot").Get<PenPotApiOptions>() ?? new PenPotApiOptions());
 builder.Services.AddConciergeFigmaDiagrams(sp => sp.GetRequiredService<IConfiguration>().GetSection("Figma").Get<FigmaApiOptions>() ?? new FigmaApiOptions());
 
+// Image + voice. The OpenAI key is shared across chat / images / voice — the options
+// classes are separate so each provider can be turned on / off independently if a user
+// only wants TTS but not DALL-E (or vice versa).
+builder.Services.AddOpenAiImages(sp => sp.GetRequiredService<IConfiguration>().GetSection("OpenAIImages").Get<OpenAiImageOptions>() ?? new OpenAiImageOptions());
+builder.Services.AddStabilityImages(sp => sp.GetRequiredService<IConfiguration>().GetSection("Stability").Get<StabilityImageOptions>() ?? new StabilityImageOptions());
+builder.Services.AddOpenAiVoice(sp => sp.GetRequiredService<IConfiguration>().GetSection("OpenAIVoice").Get<OpenAiVoiceOptions>() ?? new OpenAiVoiceOptions());
+builder.Services.AddConciergeMediaCloudDefaults();
+
 // Replace the NullDeviceContext registered by AddConciergeAi with the request-aware one.
 builder.Services.RemoveAll<IDeviceContext>();
 builder.Services.AddSingleton<IDeviceContext, HttpContextDeviceContext>();
@@ -99,6 +109,16 @@ app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages:
 // because it breaks health checks and forwarded-proto handling behind the proxy.
 app.UseAntiforgery();
 app.UseRateLimiter();
+
+// Optional API-key gate. Reads CONCIERGE_API_KEY env var first (so production deploys
+// can flip auth on without touching appsettings), then Auth:ApiKey from configuration.
+// Empty / unset means the middleware is a passthrough (current dev behaviour preserved).
+var apiKeyOptions = new ApiKeyAuthOptions
+{
+    ConfiguredKey = Environment.GetEnvironmentVariable("CONCIERGE_API_KEY")
+        ?? app.Configuration["Auth:ApiKey"],
+};
+app.UseConciergeApiKeyAuth(apiKeyOptions);
 
 app.MapConciergeHealth();
 app.MapStaticAssets();

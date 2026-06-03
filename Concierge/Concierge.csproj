@@ -48,6 +48,20 @@
         <TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
     </PropertyGroup>
 
+    <!-- Android Release signing — keystore path + passwords come from environment variables
+         so the keystore itself can live in secrets/ (gitignored) and the credentials never
+         appear in source. Generate the keystore with Deployment/generate-android-keystore.ps1.
+         If the env vars are unset the build falls back to the debug signing identity, which
+         is what `dotnet build` uses for everyday development. -->
+    <PropertyGroup Condition="'$(Configuration)' == 'Release' AND '$(TargetFramework)' == 'net10.0-android' AND '$(CONCIERGE_ANDROID_KEYSTORE)' != ''">
+        <AndroidKeyStore>true</AndroidKeyStore>
+        <AndroidSigningKeyStore>$(CONCIERGE_ANDROID_KEYSTORE)</AndroidSigningKeyStore>
+        <AndroidSigningStorePass>$(CONCIERGE_ANDROID_KEYSTORE_PASS)</AndroidSigningStorePass>
+        <AndroidSigningKeyAlias>$(CONCIERGE_ANDROID_KEY_ALIAS)</AndroidSigningKeyAlias>
+        <AndroidSigningKeyPass>$(CONCIERGE_ANDROID_KEY_PASS)</AndroidSigningKeyPass>
+        <AndroidPackageFormat>aab</AndroidPackageFormat>
+    </PropertyGroup>
+
     <ItemGroup>
         <!-- App Icon -->
         <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#2196F3" />
