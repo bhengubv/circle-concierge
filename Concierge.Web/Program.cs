@@ -1,14 +1,18 @@
+using System.Threading.RateLimiting;
 using Concierge.Web.Components;
 using Concierge.Web.Hosting;
 using Concierge.Shared;
 using Concierge.Shared.Chat;
 using Concierge.Shared.Diagrams;
+using Concierge.Shared.Telemetry;
+using Concierge.Shared.Tools;
 using Concierge.Ai;
 using Concierge.Chat.Cloud;
 using Concierge.Diagrams.Design;
 using Concierge.Mesh;
 using Concierge.Media;
 using CircleAI.Core;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -22,9 +26,46 @@ builder.Services
     .AddConciergeCore()
     .AddConciergeChat()
     .AddConciergeDiagrams()
+    .AddConciergeMetrics()
+    .AddConciergeTools()
     .AddConciergeAi()
     .AddConciergeMesh()
     .AddConciergeMedia();
+builder.Services.AddSingleton<PrometheusMetricSnapshot>();
+
+// Rate limiting protects every endpoint from runaway clients (and from a misbehaving
+// streaming-chat reconnect loop). The chat-stream policy is deliberately conservative —
+// 60 starts per minute per client IP — because each call holds an open SSE socket for
+// the lifetime of a response. The global policy is looser for plain page loads.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(httpContext =>
+    {
+        var key = httpContext.Connection.RemoteIpAddress?.ToString() ?? "anon";
+        return RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: key,
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 240,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            });
+    });
+
+    options.AddPolicy("chat-stream", httpContext =>
+    {
+        var key = httpContext.Connection.RemoteIpAddress?.ToString() ?? "anon";
+        return RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: key,
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 60,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            });
+    });
+});
 
 // BYO API key cloud chat runtimes. Each is wired regardless of whether a key is present —
 // the runtime's IsReady property gates actual calls and the chat UI shows a "needs key"
@@ -57,7 +98,9 @@ app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages:
 // HTTPS termination happens at the reverse proxy (ARR / ingress). Do not redirect here
 // because it breaks health checks and forwarded-proto handling behind the proxy.
 app.UseAntiforgery();
+app.UseRateLimiter();
 
+app.MapConciergeHealth();
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode()

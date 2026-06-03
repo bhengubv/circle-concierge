@@ -8,6 +8,8 @@ using Concierge.Mesh;
 using Concierge.Shared;
 using Concierge.Shared.Chat;
 using Concierge.Shared.Diagrams;
+using Concierge.Shared.Telemetry;
+using Concierge.Shared.Tools;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
@@ -31,6 +33,8 @@ public static class MauiProgram
 			.AddConciergeCore()
 			.AddConciergeChat()
 			.AddConciergeDiagrams()
+			.AddConciergeMetrics()
+			.AddConciergeTools()
 			.AddConciergeAi()
 			.AddConciergeMesh()
 			.AddConciergeMedia();

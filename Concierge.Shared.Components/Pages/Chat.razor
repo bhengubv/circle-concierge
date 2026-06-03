@@ -2,8 +2,10 @@
 @page "/chat/{ConversationId:guid}"
 @using System.Text
 @using Concierge.Shared.Chat
+@using Concierge.Shared.Tools
 @inject IConversationStore Store
 @inject IEnumerable<IChatRuntime> Runtimes
+@inject IAgentToolRegistry Tools
 @inject NavigationManager Nav
 
 <section class="chat-shell">
@@ -69,6 +71,21 @@
             <header class="chat-thread-header">
                 <h1>@_active.Title</h1>
                 <span>@_active.Messages.Count messages · started @_active.CreatedAt.ToLocalTime().ToString("MMM d, yyyy HH:mm")</span>
+                <details class="chat-system-prompt">
+                    <summary>System prompt @(string.IsNullOrWhiteSpace(_systemPromptDraft) ? "(empty)" : "(" + _systemPromptDraft.Length + " chars)")</summary>
+                    <textarea rows="4"
+                              spellcheck="false"
+                              placeholder="Optional. Shapes how the assistant responds for this conversation."
+                              @bind="_systemPromptDraft"
+                              @bind:event="oninput"></textarea>
+                    <div class="chat-system-prompt-row">
+                        <label>
+                            <input type="checkbox" @bind="_includeToolCatalog" />
+                            Append tool catalog (@Tools.Tools.Count tools)
+                        </label>
+                        <button class="button" type="button" @onclick="SaveSystemPromptAsync" disabled="@_streaming">Save</button>
+                    </div>
+                </details>
             </header>
 
             <div class="chat-messages">
@@ -135,6 +152,8 @@
 
     private List<IChatRuntime> _orderedRuntimes = new();
     private IChatRuntime? _activeRuntime;
+    private string _systemPromptDraft = string.Empty;
+    private bool _includeToolCatalog = true;
 
     private const string OwnerId = "local";
 
@@ -166,11 +185,30 @@
         if (ConversationId is { } id)
         {
             _active = await Store.GetAsync(id);
+            _systemPromptDraft = _active?.SystemPrompt ?? string.Empty;
         }
         else
         {
             _active = null;
+            _systemPromptDraft = string.Empty;
         }
+    }
+
+    private async Task SaveSystemPromptAsync()
+    {
+        if (_active is null)
+        {
+            return;
+        }
+
+        // Re-using AppendAsync would create a phantom system message; we want the column on
+        // the conversation row updated directly. The store does not expose an UpdateSystemPrompt
+        // helper today — fall back to deleting + re-starting would lose history. For now we
+        // mutate the in-memory copy and persist on the next send via the system turn injection
+        // path. Persisting cleanly requires a small store extension which will land alongside
+        // the Settings UI work.
+        _active.SystemPrompt = _systemPromptDraft;
+        await Task.CompletedTask;
     }
 
     private void OnProviderChanged(ChangeEventArgs args)
@@ -218,9 +256,25 @@
         var turns = (_active?.Messages ?? new List<ChatMessageRow>())
             .Select(m => new ChatTurn(m.Role, m.Content))
             .ToList();
-        if (_active is not null && !string.IsNullOrWhiteSpace(_active.SystemPrompt))
+
+        // Compose the system message from: (1) the conversation's persisted prompt, falling
+        // back to the in-page draft so users don't have to hit Save first; (2) the tool
+        // catalogue if the checkbox is set — this is what gives the LLM a way to call the
+        // harness without provider-specific function-calling wiring.
+        var systemParts = new List<string>();
+        var persisted = _active?.SystemPrompt;
+        var systemText = !string.IsNullOrWhiteSpace(persisted) ? persisted : _systemPromptDraft;
+        if (!string.IsNullOrWhiteSpace(systemText))
         {
-            turns.Insert(0, new ChatTurn("system", _active.SystemPrompt));
+            systemParts.Add(systemText);
+        }
+        if (_includeToolCatalog && Tools.Tools.Count > 0)
+        {
+            systemParts.Add(Tools.BuildSystemPromptAddendum());
+        }
+        if (systemParts.Count > 0)
+        {
+            turns.Insert(0, new ChatTurn("system", string.Join("\n\n", systemParts)));
         }
 
         var buffer = new StringBuilder();
