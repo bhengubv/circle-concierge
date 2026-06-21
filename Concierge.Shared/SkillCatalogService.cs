@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Text.RegularExpressions;
+using Concierge.Shared.Skills;
 using YamlDotNet.Core;
 using YamlDotNet.RepresentationModel;
 
@@ -10,14 +11,67 @@ public interface ISkillCatalogService
     IReadOnlyList<SkillInfo> GetSkills();
 }
 
+/// <summary>
+/// Aggregated catalog backed by any number of <see cref="ISkillSource"/>s plus
+/// the legacy embedded-manifest-resource bundle.
+///
+/// The MAUI host ships the embedded bundle (so the app always has SOME skills
+/// even without internet/filesystem access). The desktop / dev host adds a
+/// <see cref="FileSystemSkillSource"/> pointing at
+/// <c>C:\Dev\Solutions\com.bhengubv\Skills\</c> so the full library lights up
+/// at dev time — including the 51 skills from <c>Claude-BugHunter</c>, the
+/// loki-mode SKILL.md, anthropic-skills, vercel-agent-skills, etc.
+///
+/// All sources are queried at construction time; results are merged + deduped
+/// by id (first source wins) and cached for the process lifetime.
+/// </summary>
 public sealed class SkillCatalogService : ISkillCatalogService
 {
-    private readonly Lazy<IReadOnlyList<SkillInfo>> _skills = new(LoadBundledSkills);
+    private readonly Lazy<IReadOnlyList<SkillInfo>> _skills;
 
-    public IReadOnlyList<SkillInfo> GetSkills()
+    /// <summary>Default constructor — embedded bundle only. Used when no
+    /// <see cref="ISkillSource"/>s are registered in DI (e.g. minimal MAUI
+    /// runtime without filesystem access).</summary>
+    public SkillCatalogService() : this(Enumerable.Empty<ISkillSource>()) { }
+
+    public SkillCatalogService(IEnumerable<ISkillSource> sources)
     {
-        return _skills.Value;
+        var src = sources?.ToList() ?? new List<ISkillSource>();
+        _skills = new Lazy<IReadOnlyList<SkillInfo>>(() => Compose(src));
     }
+
+    public IReadOnlyList<SkillInfo> GetSkills() => _skills.Value;
+
+    private static IReadOnlyList<SkillInfo> Compose(IReadOnlyList<ISkillSource> sources)
+    {
+        // Embedded bundle first — these are the curated bundled skills that
+        // SHIP inside the assembly. They're already namespaced + deterministic.
+        var collected = new Dictionary<string, SkillInfo>(StringComparer.OrdinalIgnoreCase);
+        foreach (var s in LoadBundledSkills())
+        {
+            collected[s.Id] = s;
+        }
+
+        // Filesystem / downloaded sources next. Later sources can ADD new ids
+        // but never override a bundled one (defensive — bundled is the contract).
+        foreach (var source in sources)
+        {
+            foreach (var descriptor in source.Discover())
+            {
+                if (!collected.ContainsKey(descriptor.Id))
+                {
+                    collected[descriptor.Id] = descriptor.ToInfo();
+                }
+            }
+        }
+
+        return collected.Values
+            .OrderBy(s => s.Area, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    // ── Embedded bundle (legacy path) ──────────────────────────────────────
 
     private static IReadOnlyList<SkillInfo> LoadBundledSkills()
     {
@@ -32,16 +86,11 @@ public sealed class SkillCatalogService : ISkillCatalogService
         foreach (var resourceName in resourceNames)
         {
             using var stream = assembly.GetManifestResourceStream(resourceName);
-            if (stream is null)
-            {
-                continue;
-            }
-
+            if (stream is null) continue;
             using var reader = new StreamReader(stream);
             var content = reader.ReadToEnd();
             skills.Add(ParseSkill(resourceName, content));
         }
-
         return skills
             .OrderBy(skill => skill.Area, StringComparer.OrdinalIgnoreCase)
             .ThenBy(skill => skill.Name, StringComparer.OrdinalIgnoreCase)
@@ -58,41 +107,22 @@ public sealed class SkillCatalogService : ISkillCatalogService
         var description = metadata.GetValueOrDefault("description")
             ?? ExtractFirstParagraph(content)
             ?? "Curated Concierge skill.";
-
         return new SkillInfo(id, name, category, description);
     }
 
-    /// <summary>
-    /// Parses the YAML front-matter block out of a SKILL.md file. Replaces an earlier hand-rolled
-    /// "split on first colon" loop that truncated values containing colons (e.g.
-    /// <c>description: "Foo: bar"</c>) and silently ignored multi-line scalars.
-    /// </summary>
     private static Dictionary<string, string> ParseFrontMatter(string content)
     {
         var metadata = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        if (!content.StartsWith("---", StringComparison.Ordinal))
-        {
-            return metadata;
-        }
-
+        if (!content.StartsWith("---", StringComparison.Ordinal)) return metadata;
         var end = content.IndexOf("\n---", 3, StringComparison.Ordinal);
-        if (end < 0)
-        {
-            return metadata;
-        }
-
+        if (end < 0) return metadata;
         var frontMatter = content[3..end];
-
         try
         {
             using var reader = new StringReader(frontMatter);
             var yaml = new YamlStream();
             yaml.Load(reader);
-            if (yaml.Documents.Count == 0 || yaml.Documents[0].RootNode is not YamlMappingNode mapping)
-            {
-                return metadata;
-            }
-
+            if (yaml.Documents.Count == 0 || yaml.Documents[0].RootNode is not YamlMappingNode mapping) return metadata;
             foreach (var (rawKey, rawValue) in mapping.Children)
             {
                 if (rawKey is YamlScalarNode keyNode && rawValue is YamlScalarNode valueNode
@@ -102,12 +132,7 @@ public sealed class SkillCatalogService : ISkillCatalogService
                 }
             }
         }
-        catch (YamlException)
-        {
-            // Malformed front-matter falls back to whatever resource-name + first-paragraph heuristics
-            // can recover; better than blowing up catalog loading for one bad file.
-        }
-
+        catch (YamlException) { /* malformed — fall through */ }
         return metadata;
     }
 

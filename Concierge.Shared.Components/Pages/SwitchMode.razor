@@ -1,0 +1,114 @@
+@page "/switch-mode"
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+@*
+    Switch mode — pick who's using the app. Persists the choice in
+    localStorage via sense.js so the chat layer can pull it and shape
+    the system prompt (kid mode adds a content filter pre-prompt;
+    grown-up keeps Bell's voice neutral; "both" picks per-session).
+*@
+
+<div class="page mode-page">
+    <header class="page-head">
+        <h1 class="page-title">Who's using Concierge?</h1>
+        <p class="page-sub">Bell adjusts his tone and what he's willing to talk about. You can change this any time.</p>
+    </header>
+
+    <div class="mode-grid">
+        @foreach (var opt in _options)
+        {
+            var o = opt;
+            var active = _current == o.Value;
+            <button class="mode-card @(active ? "is-active" : null)"
+                    type="button"
+                    aria-pressed="@active"
+                    @onclick="@(() => Pick(o.Value))">
+                <span class="mode-art">@((MarkupString)o.IconSvg)</span>
+                <strong>@o.Title</strong>
+                <span class="mode-blurb">@o.Description</span>
+            </button>
+        }
+    </div>
+
+    @if (_savedAt is not null)
+    {
+        <p class="mode-confirm" role="status">Saved · Bell will be in <strong>@DescribeMode(_current)</strong> mode from now on.</p>
+    }
+
+    <section class="mode-detail">
+        <h2>What changes when you switch?</h2>
+        <ul>
+            <li><strong>Grown-up.</strong> Bell talks like a friendly colleague. Nothing's filtered beyond your provider's defaults.</li>
+            <li><strong>Kid.</strong> Bell uses simpler words, avoids anything not age-appropriate, and refuses topics in the safety list (violence detail, adult content, self-harm). The mic stays on a leash — recordings aren't kept.</li>
+            <li><strong>Both.</strong> Bell asks "Who's chatting?" once per session and picks the right mode for that conversation.</li>
+        </ul>
+    </section>
+</div>
+
+@code {
+    private string _current = "grownup";
+    private DateTime? _savedAt;
+
+    private sealed record Option(string Value, string Title, string Description, string IconSvg);
+
+    private readonly Option[] _options =
+    {
+        new("grownup", "A grown-up",
+            "I want Bell to talk like a friendly colleague.",
+            """<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="16" r="7"/><path d="M10 40c0-7 6-12 14-12s14 5 14 12"/></svg>"""),
+        new("kid", "A kid",
+            "Friendlier words, safer topics, kinder Bell.",
+            """<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="24" cy="18" r="9"/><path d="M14 40c0-5 5-9 10-9s10 4 10 9"/><circle cx="20" cy="17" r="1.2" fill="currentColor"/><circle cx="28" cy="17" r="1.2" fill="currentColor"/><path d="M20 22c1 1 2 1.5 4 1.5s3-.5 4-1.5"/></svg>"""),
+        new("both", "Both of us",
+            "Bell asks who's chatting at the start of each chat.",
+            """<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="17" cy="20" r="5"/><circle cx="31" cy="20" r="5"/><path d="M8 38c0-4 4-8 9-8s9 4 9 8"/><path d="M22 38c0-4 4-8 9-8s9 4 9 8"/></svg>"""),
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var saved = await JS.InvokeAsync<string?>("localStorage.getItem", "concierge-mode");
+            if (!string.IsNullOrEmpty(saved)) _current = saved;
+        }
+        catch
+        {
+            // PrerenderingContext / SSR — localStorage isn't available yet.
+            // The OnAfterRenderAsync below picks it up once we're interactive.
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var saved = await JS.InvokeAsync<string?>("localStorage.getItem", "concierge-mode");
+                if (!string.IsNullOrEmpty(saved) && saved != _current)
+                {
+                    _current = saved;
+                    StateHasChanged();
+                }
+            }
+            catch { }
+        }
+    }
+
+    private async Task Pick(string value)
+    {
+        _current = value;
+        _savedAt = DateTime.UtcNow;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "concierge-mode", value); } catch { }
+        try { await JS.InvokeVoidAsync("conciergeSense.hapticSuccess"); } catch { }
+        try { await JS.InvokeVoidAsync("conciergeSense.playPop"); } catch { }
+    }
+
+    private static string DescribeMode(string v) => v switch
+    {
+        "kid" => "Kid",
+        "both" => "Both",
+        _ => "Grown-up",
+    };
+}

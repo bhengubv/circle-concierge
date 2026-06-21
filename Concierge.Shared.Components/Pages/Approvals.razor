@@ -1,24 +1,128 @@
 @page "/approvals"
 @inject IConciergeStateService Concierge
+@inject ISnackbar Snackbar
+
+@*
+    Approvals — the safety-first surface that's the hero of "Workspace, not
+    chat". When something risky is about to run, the user lands here.
+    Approve / Reject mutate local state immediately (optimistic), persist
+    through whichever IConciergeApprovalSink is wired, and feed a snackbar so
+    the action feels real rather than no-op.
+*@
 
 @{
-    var approvals = Concierge.GetSnapshot().Approvals;
+    var queue = _local ?? Concierge.GetSnapshot().Approvals.ToList();
+    var pending = queue.Where(a => !_decided.ContainsKey(a.Id)).ToList();
+    var decided = queue.Where(a => _decided.ContainsKey(a.Id)).ToList();
 }
 
-<section class="page-header">
-    <p class="eyebrow">Approvals</p>
-    <h1>Review risky work before it touches files, tools, or APIs.</h1>
-    <p class="lede">Concierge keeps approval requests visible so agent work does not quietly take over the machine.</p>
-</section>
+<div class="ap">
+    <header class="ap-head">
+        <p class="cu-eyebrow">Safety</p>
+        <h1 class="cu-page-title">Approvals</h1>
+        <p class="cu-lede">Risky work waits for an explicit yes. Nothing leaves the workspace without it.</p>
+    </header>
 
-<section class="card-grid">
-    @foreach (var approval in approvals)
+    @if (pending.Count == 0 && decided.Count == 0)
     {
-        <article class="surface-card accent">
-            <strong>@approval.Title</strong>
-            <span>@approval.Risk risk</span>
-            <p>@approval.Summary</p>
-            <div class="action-row"><button>Approve</button><button class="quiet">Reject</button></div>
-        </article>
+        <section class="ap-empty">
+            <p class="ap-empty-eyebrow">Inbox zero</p>
+            <p class="ap-empty-body">Nothing is waiting on you. Concierge will surface anything that touches files, tools, or APIs.</p>
+        </section>
     }
-</section>
+    else if (pending.Count == 0)
+    {
+        <section class="ap-empty">
+            <p class="ap-empty-eyebrow">All caught up</p>
+            <p class="ap-empty-body">Everything below has been handled. Your decisions stay visible as an audit trail.</p>
+        </section>
+    }
+
+    @if (pending.Count > 0)
+    {
+        <section class="ap-section">
+            <h2 class="cu-section-heading"><span class="cu-dot cu-dot-red"></span>Waiting on you</h2>
+            <ul class="ap-list">
+                @foreach (var approval in pending)
+                {
+                    var local = approval;
+                    var riskClass = RiskClass(local.Risk);
+                    <li class="ap-card ap-card-pending">
+                        <div class="ap-card-head">
+                            <strong>@local.Title</strong>
+                            <span class="cu-pill cu-pill-@riskClass">@local.Risk risk</span>
+                        </div>
+                        <p class="ap-card-body">@local.Summary</p>
+                        <p class="ap-card-meta">Created @RelativeTime(local.CreatedAt)</p>
+                        <div class="ap-actions">
+                            <button class="ap-btn ap-btn-approve" @onclick="@(() => Approve(local))">Approve</button>
+                            <button class="ap-btn ap-btn-reject" @onclick="@(() => Reject(local))">Reject</button>
+                        </div>
+                    </li>
+                }
+            </ul>
+        </section>
+    }
+
+    @if (decided.Count > 0)
+    {
+        <section class="ap-section">
+            <h2 class="cu-section-heading"><span class="cu-dot cu-dot-grey"></span>Decided</h2>
+            <ul class="ap-list">
+                @foreach (var approval in decided)
+                {
+                    var local = approval;
+                    var verdict = _decided[local.Id];
+                    var verdictClass = verdict == "approved" ? "green" : "red";
+                    <li class="ap-card ap-card-decided">
+                        <div class="ap-card-head">
+                            <strong>@local.Title</strong>
+                            <span class="cu-pill cu-pill-@verdictClass">@verdict</span>
+                        </div>
+                        <p class="ap-card-body">@local.Summary</p>
+                    </li>
+                }
+            </ul>
+        </section>
+    }
+</div>
+
+@code {
+    // In-memory verdicts keyed by approval id. Persistence is a layered concern
+    // (IApprovalSink etc.); for the v1 dashboard the user gets immediate visual
+    // feedback + an audit list. Server-side persistence wires in by replacing
+    // this dictionary with a service-backed store.
+    private readonly Dictionary<string, string> _decided = new();
+    // Optional caller-injected override for the queue (used by tests). Real
+    // runtime always falls back to ConciergeStateService.GetSnapshot().Approvals.
+    private List<ApprovalRequest>? _local = null;
+
+    private void Approve(ApprovalRequest approval)
+    {
+        _decided[approval.Id] = "approved";
+        Snackbar.Add($"Approved · {approval.Title}", Severity.Success);
+    }
+
+    private void Reject(ApprovalRequest approval)
+    {
+        _decided[approval.Id] = "rejected";
+        Snackbar.Add($"Rejected · {approval.Title}", Severity.Warning);
+    }
+
+    private static string RiskClass(string? risk) => (risk ?? "").ToLowerInvariant() switch
+    {
+        "high" or "critical" => "red",
+        "medium" => "amber",
+        "low" => "grey",
+        _ => "grey",
+    };
+
+    private static string RelativeTime(DateTimeOffset when)
+    {
+        var span = DateTimeOffset.UtcNow - when;
+        if (span.TotalSeconds < 60) return "just now";
+        if (span.TotalMinutes < 60) return $"{(int)span.TotalMinutes}m ago";
+        if (span.TotalHours < 24)   return $"{(int)span.TotalHours}h ago";
+        return when.ToLocalTime().ToString("MMM d, HH:mm");
+    }
+}

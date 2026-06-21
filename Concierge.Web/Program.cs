@@ -6,6 +6,7 @@ using Concierge.Shared.Chat;
 using Concierge.Shared.Diagrams;
 using Concierge.Shared.Media;
 using Concierge.Shared.Settings;
+using Concierge.Shared.Skills;
 using Concierge.Shared.Telemetry;
 using Concierge.Shared.Tools;
 using Concierge.Ai;
@@ -16,6 +17,7 @@ using Concierge.Media;
 using Concierge.Media.Cloud;
 using CircleAI.Core;
 using Microsoft.AspNetCore.RateLimiting;
+using MudBlazor.Services;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -35,9 +37,13 @@ builder.Services.AddSingleton<IConciergeSecretStore>(secretStore);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents()
     .AddInteractiveWebAssemblyComponents();
+// MudBlazor — same registration as the MAUI host. Web + MAUI share the
+// Razor component library, so MudServices must be wired in both hosts.
+builder.Services.AddMudServices();
 builder.Services.AddHttpContextAccessor();
 builder.Services
     .AddConciergeCore()
+    .AddLocalSkillSources()
     .AddConciergeChat()
     .AddConciergeDiagrams()
     .AddConciergeMetrics()

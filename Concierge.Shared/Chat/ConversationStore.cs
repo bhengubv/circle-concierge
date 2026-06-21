@@ -10,14 +10,29 @@ namespace Concierge.Shared.Chat;
 public sealed class ConversationStore : IConversationStore
 {
     private readonly IDbContextFactory<ConciergeChatDbContext> _factory;
+    // Lazy schema bootstrap. The hosted-service initializer (ConciergeChatSchemaInitializer)
+    // is the primary path, but on MAUI BlazorWebView the hosted-service lifecycle is fragile
+    // — a single dropped StartAsync leaves the SQLite file empty and every call here throws
+    // "no such table: Conversations". The Lazy<Task> wraps EnsureCreated so the first public
+    // method awaits it once and every subsequent call sees a completed Task. EnsureCreated
+    // itself is idempotent: if the schema already exists it returns immediately.
+    private readonly Lazy<Task> _schemaReady;
 
     public ConversationStore(IDbContextFactory<ConciergeChatDbContext> factory)
     {
         _factory = factory ?? throw new ArgumentNullException(nameof(factory));
+        _schemaReady = new Lazy<Task>(EnsureSchemaAsync);
+    }
+
+    private async Task EnsureSchemaAsync()
+    {
+        await using var db = await _factory.CreateDbContextAsync().ConfigureAwait(false);
+        await db.Database.EnsureCreatedAsync().ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<Conversation>> ListAsync(string ownerId, CancellationToken cancellationToken = default)
     {
+        await _schemaReady.Value.ConfigureAwait(false);
         await using var db = await _factory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         return await db.Conversations
             .AsNoTracking()
@@ -29,6 +44,7 @@ public sealed class ConversationStore : IConversationStore
 
     public async Task<Conversation?> GetAsync(Guid conversationId, CancellationToken cancellationToken = default)
     {
+        await _schemaReady.Value.ConfigureAwait(false);
         await using var db = await _factory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         var conversation = await db.Conversations
             .AsNoTracking()
@@ -53,6 +69,7 @@ public sealed class ConversationStore : IConversationStore
 
     public async Task<Conversation> StartAsync(string ownerId, string? title = null, string? systemPrompt = null, CancellationToken cancellationToken = default)
     {
+        await _schemaReady.Value.ConfigureAwait(false);
         await using var db = await _factory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         var conversation = new Conversation
         {
@@ -67,6 +84,7 @@ public sealed class ConversationStore : IConversationStore
 
     public async Task<ChatMessageRow> AppendAsync(Guid conversationId, string role, string content, string? producedBy = null, CancellationToken cancellationToken = default)
     {
+        await _schemaReady.Value.ConfigureAwait(false);
         await using var db = await _factory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         var conversation = await db.Conversations
             .FirstOrDefaultAsync(c => c.Id == conversationId, cancellationToken)
@@ -96,6 +114,7 @@ public sealed class ConversationStore : IConversationStore
 
     public async Task DeleteAsync(Guid conversationId, CancellationToken cancellationToken = default)
     {
+        await _schemaReady.Value.ConfigureAwait(false);
         await using var db = await _factory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         var conversation = await db.Conversations
             .FirstOrDefaultAsync(c => c.Id == conversationId, cancellationToken)

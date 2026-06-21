@@ -1,8 +1,16 @@
-<Router AppAssembly="typeof(MauiProgram).Assembly"
-        AdditionalAssemblies="new[] { typeof(Concierge.Shared.Components.ComponentAssemblyMarker).Assembly }"
-        NotFoundPage="typeof(Concierge.Shared.Components.Pages.NotFound)">
+@*
+    Router boot for the MAUI host. The @ prefix on AppAssembly +
+    AdditionalAssemblies is load-bearing — without it the strings are
+    treated as literal text and the Router silently fails to discover any
+    @page routes outside this assembly. The visible symptom was: every nav
+    link rendered "Home" because no other route matched.
+*@
+<Router AppAssembly="@typeof(MauiProgram).Assembly"
+        AdditionalAssemblies="@(new[] { typeof(Concierge.Shared.Components.ComponentAssemblyMarker).Assembly })"
+        NotFoundPage="@typeof(Concierge.Shared.Components.Pages.NotFound)">
     <Found Context="routeData">
-        <RouteView RouteData="routeData" DefaultLayout="typeof(Concierge.Shared.Components.Layout.MainLayout)" />
-        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+        <RouteView RouteData="@routeData"
+                   DefaultLayout="@typeof(Concierge.Shared.Components.Layout.ShellLayout)" />
+        <FocusOnNavigate RouteData="@routeData" Selector="h1" />
     </Found>
 </Router>

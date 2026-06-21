@@ -1,0 +1,710 @@
+/* ============================================================
+   Concierge flight-deck CSS.
+
+   Sits on top of MudBlazor's theme. Three jobs:
+     1. Lock the deep-canvas backdrop + safe-area insets so the app feels
+        edge-to-edge on phones with notches / gesture bars.
+     2. Define the status palette (green / amber / red / grey) used as tiny
+        dots + pills — never as a wash.
+     3. Style the bottom-tab shell + dashboard sections + approvals cards.
+
+   Visual language we're chasing: Linear mobile, Vercel mobile, Raycast.
+   Dark canvas. Hairline borders, no soft shadows. Monospace numerics.
+   Generous 24px rhythm.
+   ============================================================ */
+
+:root {
+    --cu-bg:        #0b0d12;     /* deep canvas */
+    --cu-panel:     #141821;     /* default surface */
+    --cu-elev:      #1d2230;     /* elevated surface */
+    --cu-line:      #262b39;     /* hairline borders */
+    --cu-text:      #f3f4f7;     /* primary text */
+    --cu-muted:     #9aa3b6;     /* secondary text */
+    --cu-dim:       #5a637a;     /* tertiary / disabled */
+
+    --cu-brand:     #2196F3;     /* brand blue */
+    --cu-ink:       #2c3e50;     /* brand ink */
+
+    --cu-green:     #26b050;
+    --cu-amber:     #f5a623;
+    --cu-red:       #e50000;
+    --cu-grey:      #687288;
+
+    --cu-radius:    10px;
+    --cu-radius-sm: 6px;
+    --cu-pad:       20px;
+    --cu-pad-sm:    12px;
+    --cu-tabbar-h:  64px;
+    --cu-topbar-h:  56px;
+
+    --cu-mono: 'SF Mono', ui-monospace, 'JetBrains Mono', Menlo, Consolas, monospace;
+}
+
+/* Hide every scrollbar app-wide. No-scrollbars rule. */
+*, *::before, *::after {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    box-sizing: border-box;
+}
+*::-webkit-scrollbar { display: none; width: 0; height: 0; }
+
+html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--cu-bg);
+    color: var(--cu-text);
+    font-family: -apple-system, BlinkMacSystemFont, Inter, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    letter-spacing: -0.005em;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overscroll-behavior: none;
+}
+
+/* ── Shell layout ──────────────────────────────────────────────────────── */
+/* Three-zone layout: absolutely-positioned top bar + tab bar with the
+   content area HARD-CLIPPED between them via top/bottom positioning. This
+   guarantees scrolled cards inside .cu-content can never physically reach
+   the tab bar's pixel zone — fixes the WebView hit-test overlap bug where
+   content cards stole taps from the tab bar even when the tab bar painted
+   on top via z-index. */
+.cu-shell {
+    position: fixed;
+    inset: 0;
+    background: var(--cu-bg);
+    isolation: isolate;
+}
+
+.cu-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: calc(var(--cu-topbar-h) + env(safe-area-inset-top, 0px));
+    padding: env(safe-area-inset-top, 0px) var(--cu-pad) 0 var(--cu-pad);
+    background: var(--cu-bg);
+    border-bottom: 1px solid var(--cu-line);
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+}
+
+.cu-topbar-title {
+    font-size: 1.05rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    margin: 0;
+    color: var(--cu-text);
+}
+
+.cu-topbar-profile {
+    background: transparent;
+    border: 1px solid var(--cu-line);
+    color: var(--cu-muted);
+    width: 36px;
+    height: 36px;
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    transition: color 120ms, border-color 120ms;
+}
+.cu-topbar-profile:hover { color: var(--cu-text); border-color: var(--cu-muted); }
+
+.cu-content {
+    /* OUTER layer — hard layout boundary. Children never extend their
+       hit-test bounds past this rectangle thanks to contain:strict + the
+       inner .cu-scroll handling the actual overflow. */
+    position: absolute;
+    top: calc(var(--cu-topbar-h) + env(safe-area-inset-top, 0px));
+    bottom: calc(var(--cu-tabbar-h) + env(safe-area-inset-bottom, 0px));
+    left: 0;
+    right: 0;
+    overflow: hidden;
+    contain: strict;
+    box-sizing: border-box;
+}
+
+.cu-scroll {
+    /* INNER scroller. The page content (@Body) lives here and scrolls. */
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    padding: var(--cu-pad);
+    box-sizing: border-box;
+}
+
+.cu-scroll-end {
+    /* Extra bottom spacer so the last card sits comfortably above where
+       the tab bar's translucent edge meets the content scroll boundary. */
+    height: 16px;
+}
+
+/* ── Bottom tab bar ────────────────────────────────────────────────────── */
+.cu-tabbar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: calc(var(--cu-tabbar-h) + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    /* Solid background instead of blur — the absolute layout means content
+       never paints behind, and Android WebView's blur+touch combo has been
+       flaky enough that going solid removes another variable. */
+    background: var(--cu-bg);
+    border-top: 1px solid var(--cu-line);
+    z-index: 200;
+}
+
+.cu-tab {
+    /* Anchor-as-tab — text-decoration:none + button-like flex layout so the
+       <a> visually matches the old <button>. */
+    position: relative;
+    background: transparent;
+    border: 0;
+    color: var(--cu-muted);
+    text-decoration: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 8px 4px 6px;
+    cursor: pointer;
+    transition: color 120ms;
+    -webkit-tap-highlight-color: transparent;
+}
+.cu-tab:hover { color: var(--cu-text); }
+.cu-tab.is-active { color: var(--cu-text); }
+.cu-tab.is-active::before {
+    /* Slim accent indicator at the top of the active tab — Linear-style. */
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 24px;
+    height: 2px;
+    border-radius: 0 0 2px 2px;
+    background: var(--cu-brand);
+}
+
+.cu-tab-icon {
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+}
+.cu-tab-icon svg { width: 100%; height: 100%; }
+
+.cu-tab-label {
+    font-size: 0.7rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+}
+
+.cu-tab-badge {
+    position: absolute;
+    top: 6px;
+    right: calc(50% - 22px);
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 999px;
+    background: var(--cu-red);
+    color: white;
+    font-size: 0.65rem;
+    font-weight: 700;
+    font-family: var(--cu-mono);
+    display: grid;
+    place-items: center;
+    line-height: 1;
+}
+
+/* ── Shared atoms ──────────────────────────────────────────────────────── */
+.cu-eyebrow {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--cu-muted);
+    margin: 0;
+}
+
+.cu-page-title {
+    font-size: 1.75rem;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    color: var(--cu-text);
+    margin: 6px 0 4px;
+}
+
+.cu-lede {
+    font-size: 0.95rem;
+    line-height: 1.5;
+    color: var(--cu-muted);
+    margin: 0;
+    max-width: 60ch;
+}
+
+.cu-section-heading {
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--cu-muted);
+    margin: 0 0 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.cu-section-link {
+    font-size: 0.85rem;
+    color: var(--cu-brand);
+    text-decoration: none;
+}
+.cu-section-link:hover { text-decoration: underline; }
+
+.cu-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    display: inline-block;
+}
+.cu-dot-green { background: var(--cu-green); box-shadow: 0 0 8px rgba(38, 176, 80, 0.4); }
+.cu-dot-amber { background: var(--cu-amber); box-shadow: 0 0 8px rgba(245, 166, 35, 0.4); }
+.cu-dot-red   { background: var(--cu-red);   box-shadow: 0 0 10px rgba(229, 0, 0, 0.5); }
+.cu-dot-grey  { background: var(--cu-grey); }
+
+.cu-pill {
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--cu-muted);
+    border: 1px solid var(--cu-line);
+    white-space: nowrap;
+}
+.cu-pill-green { color: var(--cu-green); border-color: rgba(38, 176, 80, 0.3); background: rgba(38, 176, 80, 0.08); }
+.cu-pill-amber { color: var(--cu-amber); border-color: rgba(245, 166, 35, 0.3); background: rgba(245, 166, 35, 0.08); }
+.cu-pill-red   { color: var(--cu-red);   border-color: rgba(229, 0, 0, 0.35);   background: rgba(229, 0, 0, 0.08); }
+.cu-pill-grey  { color: var(--cu-grey); }
+
+/* ── Dashboard ────────────────────────────────────────────────────────── */
+.dash {
+    display: flex;
+    flex-direction: column;
+    gap: 32px;
+}
+
+.dash-greeting { display: flex; flex-direction: column; gap: 8px; }
+
+.dash-status {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 8px 0 0;
+    font-size: 0.95rem;
+    color: var(--cu-muted);
+}
+.dash-status .dash-stat strong {
+    font-family: var(--cu-mono);
+    font-weight: 600;
+    color: var(--cu-text);
+    margin-right: 4px;
+}
+.dash-divider { color: var(--cu-dim); }
+
+.dash-section { display: flex; flex-direction: column; gap: 12px; }
+.dash-section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+.dash-section-head h2 {
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--cu-muted);
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.dash-card-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.dash-card {
+    background: var(--cu-panel);
+    border: 1px solid var(--cu-line);
+    border-radius: var(--cu-radius);
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    cursor: pointer;
+    transition: border-color 120ms, background 120ms;
+    -webkit-tap-highlight-color: transparent;
+}
+.dash-card:hover { border-color: var(--cu-muted); background: var(--cu-elev); }
+.dash-card-elevated {
+    background: linear-gradient(180deg, rgba(229, 0, 0, 0.06), transparent 60%), var(--cu-panel);
+    border-color: rgba(229, 0, 0, 0.25);
+}
+
+.dash-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.dash-card-head strong { color: var(--cu-text); font-weight: 600; font-size: 0.95rem; }
+.dash-card-body { color: var(--cu-muted); font-size: 0.85rem; margin: 0; line-height: 1.4; }
+
+.dash-quickstart-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+.dash-quick {
+    background: var(--cu-panel);
+    border: 1px solid var(--cu-line);
+    border-radius: var(--cu-radius);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    align-items: flex-start;
+    text-align: left;
+    cursor: pointer;
+    color: var(--cu-text);
+    transition: border-color 120ms, background 120ms, transform 80ms;
+    -webkit-tap-highlight-color: transparent;
+    min-height: 110px;
+}
+.dash-quick:hover { border-color: var(--cu-brand); background: var(--cu-elev); }
+.dash-quick:active { transform: scale(0.98); }
+.dash-quick-icon {
+    width: 28px;
+    height: 28px;
+    color: var(--cu-brand);
+    display: inline-flex;
+    margin-bottom: 6px;
+}
+.dash-quick-icon svg { width: 100%; height: 100%; }
+.dash-quick-title { font-weight: 600; font-size: 0.95rem; }
+.dash-quick-sub   { font-size: 0.75rem; color: var(--cu-muted); }
+
+.dash-quiet-card {
+    background: var(--cu-panel);
+    border: 1px solid var(--cu-line);
+    border-radius: var(--cu-radius);
+    padding: 24px;
+    text-align: center;
+}
+.dash-quiet-eyebrow {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--cu-green);
+    margin: 0 0 8px;
+}
+.dash-quiet-body { color: var(--cu-muted); font-size: 0.9rem; margin: 0; line-height: 1.5; }
+.dash-quiet-body strong { font-family: var(--cu-mono); color: var(--cu-text); }
+
+/* ── Approvals ─────────────────────────────────────────────────────────── */
+.ap { display: flex; flex-direction: column; gap: 28px; }
+.ap-head { display: flex; flex-direction: column; gap: 6px; }
+.ap-section { display: flex; flex-direction: column; gap: 12px; }
+.ap-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+
+.ap-card {
+    background: var(--cu-panel);
+    border: 1px solid var(--cu-line);
+    border-radius: var(--cu-radius);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.ap-card-pending {
+    background: linear-gradient(180deg, rgba(229, 0, 0, 0.05), transparent 70%), var(--cu-panel);
+    border-color: rgba(229, 0, 0, 0.22);
+}
+.ap-card-decided { opacity: 0.7; }
+
+.ap-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ap-card-head strong { font-weight: 600; font-size: 0.95rem; }
+.ap-card-body { color: var(--cu-muted); font-size: 0.875rem; line-height: 1.45; margin: 0; }
+.ap-card-meta { color: var(--cu-dim); font-size: 0.75rem; margin: 0; font-family: var(--cu-mono); }
+
+.ap-actions { display: flex; gap: 8px; margin-top: 4px; }
+.ap-btn {
+    flex: 1;
+    padding: 12px 14px;
+    border-radius: var(--cu-radius-sm);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid var(--cu-line);
+    background: transparent;
+    color: var(--cu-text);
+    transition: background 120ms, border-color 120ms, transform 80ms;
+    -webkit-tap-highlight-color: transparent;
+}
+.ap-btn:active { transform: scale(0.98); }
+.ap-btn-approve {
+    border-color: rgba(38, 176, 80, 0.4);
+    color: var(--cu-green);
+    background: rgba(38, 176, 80, 0.08);
+}
+.ap-btn-approve:hover { background: rgba(38, 176, 80, 0.15); border-color: var(--cu-green); }
+.ap-btn-reject {
+    border-color: rgba(154, 163, 182, 0.25);
+    color: var(--cu-muted);
+}
+.ap-btn-reject:hover { color: var(--cu-text); border-color: var(--cu-muted); }
+
+.ap-empty {
+    background: var(--cu-panel);
+    border: 1px solid var(--cu-line);
+    border-radius: var(--cu-radius);
+    padding: 32px 20px;
+    text-align: center;
+}
+.ap-empty-eyebrow {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--cu-green);
+    margin: 0 0 8px;
+}
+.ap-empty-body { color: var(--cu-muted); font-size: 0.9rem; margin: 0; line-height: 1.5; }
+
+/* ── MudBlazor overrides ───────────────────────────────────────────────── */
+/* Snackbar — match the flight-deck vibe instead of Material's soft chip. */
+.mud-snackbar {
+    background: var(--cu-elev) !important;
+    border: 1px solid var(--cu-line) !important;
+    border-radius: var(--cu-radius) !important;
+    color: var(--cu-text) !important;
+    font-family: inherit !important;
+}
+.mud-snackbar.mud-alert-text-success { border-left: 3px solid var(--cu-green) !important; }
+.mud-snackbar.mud-alert-text-warning { border-left: 3px solid var(--cu-amber) !important; }
+.mud-snackbar.mud-alert-text-error   { border-left: 3px solid var(--cu-red) !important; }
+.mud-snackbar.mud-alert-text-info    { border-left: 3px solid var(--cu-brand) !important; }
+
+/* ── Legacy page classes ───────────────────────────────────────────────── */
+/* Skills / Settings / Release / Roadmap / Engineering / Diagrams / Images
+   all use these older class names that previously had no style definitions
+   (the old MainLayout's gradient blue handled them by accident). Adding
+   them here so every page reads as part of the same flight-deck. */
+.page-header { display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px; }
+.page-header .eyebrow {
+    font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.1em; color: var(--cu-muted); margin: 0;
+}
+.page-header h1 {
+    font-size: 1.75rem; font-weight: 600; letter-spacing: -0.02em;
+    line-height: 1.15; margin: 0; color: var(--cu-text);
+}
+.page-header .lede {
+    font-size: 0.95rem; line-height: 1.5; color: var(--cu-muted);
+    margin: 0; max-width: 60ch;
+}
+
+.eyebrow {
+    font-size: 0.7rem; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.1em; color: var(--cu-muted); margin: 0;
+}
+.lede {
+    font-size: 0.95rem; line-height: 1.5; color: var(--cu-muted);
+    margin: 0; max-width: 60ch;
+}
+
+.tabs {
+    display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 20px;
+}
+.tabs a {
+    font-size: 0.8rem; padding: 6px 10px; border-radius: 999px;
+    background: var(--cu-panel); border: 1px solid var(--cu-line);
+    color: var(--cu-muted); text-decoration: none;
+}
+.tabs a:hover { color: var(--cu-text); border-color: var(--cu-muted); }
+
+.panel {
+    background: var(--cu-panel); border: 1px solid var(--cu-line);
+    border-radius: var(--cu-radius); padding: 16px;
+    display: flex; flex-direction: column; gap: 12px;
+    margin-bottom: 16px;
+}
+
+.section-heading {
+    display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px;
+}
+.section-heading .eyebrow { margin: 0; }
+.section-heading h2 {
+    font-size: 1.15rem; font-weight: 600; letter-spacing: -0.01em;
+    margin: 0; color: var(--cu-text);
+}
+
+.card-grid {
+    display: grid; grid-template-columns: 1fr; gap: 10px;
+}
+@media (min-width: 481px) {
+    .card-grid.compact { grid-template-columns: 1fr 1fr; }
+}
+
+.surface-card {
+    background: var(--cu-panel); border: 1px solid var(--cu-line);
+    border-radius: var(--cu-radius); padding: 14px 16px;
+    display: flex; flex-direction: column; gap: 6px;
+    color: var(--cu-text);
+}
+.surface-card strong { font-weight: 600; font-size: 0.95rem; }
+.surface-card span { color: var(--cu-muted); font-size: 0.8rem; }
+.surface-card p { color: var(--cu-muted); font-size: 0.85rem; margin: 0; line-height: 1.45; }
+.surface-card.ready { border-color: rgba(38, 176, 80, 0.25); }
+.surface-card.blocked { border-color: rgba(229, 0, 0, 0.25); }
+.surface-card.needsowner { border-color: rgba(245, 166, 35, 0.25); }
+.surface-card.accent { background: linear-gradient(180deg, rgba(33, 150, 243, 0.06), transparent 60%), var(--cu-panel); }
+
+.surface-card .action-row {
+    display: flex; gap: 8px; margin-top: 6px;
+}
+.surface-card button {
+    flex: 1; padding: 10px 12px; border-radius: var(--cu-radius-sm);
+    font-size: 0.85rem; font-weight: 600;
+    background: var(--cu-elev); color: var(--cu-text);
+    border: 1px solid var(--cu-line); cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+.surface-card button.quiet { background: transparent; color: var(--cu-muted); }
+.surface-card button:hover { border-color: var(--cu-muted); }
+
+.action-row { display: flex; gap: 10px; margin-top: 8px; }
+
+.button, button.button {
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 10px 16px; border-radius: var(--cu-radius-sm);
+    font-size: 0.9rem; font-weight: 600; cursor: pointer;
+    background: var(--cu-panel); color: var(--cu-text);
+    border: 1px solid var(--cu-line);
+    text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 120ms, border-color 120ms;
+}
+.button:hover { border-color: var(--cu-muted); }
+.button.primary {
+    background: var(--cu-brand); color: var(--cu-paper, #fff);
+    border-color: var(--cu-brand);
+}
+.button.primary:hover { filter: brightness(1.1); }
+
+.metric-grid {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;
+    margin: 16px 0 24px;
+}
+@media (max-width: 480px) {
+    .metric-grid { grid-template-columns: 1fr 1fr; }
+}
+.metric {
+    background: var(--cu-panel); border: 1px solid var(--cu-line);
+    border-radius: var(--cu-radius); padding: 12px;
+    display: flex; flex-direction: column; gap: 4px;
+}
+.metric strong {
+    font-family: var(--cu-mono); font-size: 1.5rem; font-weight: 600;
+    color: var(--cu-text); line-height: 1;
+}
+.metric span {
+    font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--cu-muted);
+}
+
+.two-column {
+    display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 16px;
+}
+@media (min-width: 641px) {
+    .two-column { grid-template-columns: 1fr 1fr; }
+}
+
+.setting-row {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 8px 0; border-bottom: 1px solid var(--cu-line);
+    font-size: 0.9rem;
+}
+.setting-row:last-child { border-bottom: 0; }
+.setting-row span { color: var(--cu-muted); }
+.setting-row strong { color: var(--cu-text); font-family: var(--cu-mono); }
+
+.card-list { display: flex; flex-direction: column; gap: 8px; }
+
+/* Chat page minimal — full polish later. Strip the Material defaults. */
+.chat-shell { display: flex; flex-direction: column; gap: 16px; }
+
+/* Skill picker inside chat sidebar. */
+.chat-skills-panel {
+    display: flex; flex-direction: column; gap: 8px;
+    padding: 12px; background: var(--cu-panel);
+    border: 1px solid var(--cu-line); border-radius: var(--cu-radius);
+}
+.chat-skills-head { display: flex; justify-content: space-between; align-items: center; }
+.chat-skills-head .eyebrow { margin: 0; }
+.chat-skills-empty { font-size: 0.85rem; color: var(--cu-muted); margin: 0; }
+.chat-skills-active { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.chat-skill-chip {
+    display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 8px;
+    padding: 8px 10px; background: var(--cu-elev); border-radius: var(--cu-radius-sm);
+    border: 1px solid var(--cu-line); font-size: 0.85rem;
+}
+.chat-skill-chip strong { color: var(--cu-text); }
+.chat-skill-chip span { color: var(--cu-muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.06em; }
+.chat-skill-remove {
+    background: none; border: 0; color: var(--cu-muted); font-size: 1.1rem;
+    cursor: pointer; line-height: 1; padding: 0 4px;
+}
+.chat-skill-remove:hover { color: var(--cu-red); }
+
+.chat-skill-picker { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+.chat-skill-filter {
+    background: var(--cu-elev); border: 1px solid var(--cu-line); border-radius: var(--cu-radius-sm);
+    padding: 8px 10px; color: var(--cu-text); font-size: 0.85rem; outline: none;
+}
+.chat-skill-filter:focus { border-color: var(--cu-brand); }
+.chat-skill-options { list-style: none; margin: 0; padding: 0; max-height: 280px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.chat-skill-option {
+    background: var(--cu-elev); border: 1px solid transparent; border-radius: var(--cu-radius-sm);
+    padding: 8px 10px; cursor: pointer; -webkit-tap-highlight-color: transparent;
+    display: flex; flex-direction: column; gap: 2px;
+}
+.chat-skill-option:hover { border-color: var(--cu-muted); }
+.chat-skill-option.is-on { border-color: var(--cu-brand); background: rgba(33, 150, 243, 0.08); }
+.chat-skill-option strong { font-size: 0.85rem; font-weight: 600; }
+.chat-skill-area { font-size: 0.65rem; color: var(--cu-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.chat-skill-option p { margin: 2px 0 0; font-size: 0.75rem; color: var(--cu-muted); line-height: 1.4; }
+
+/* ── Tall-screen comfort ───────────────────────────────────────────────── */
+@media (min-width: 641px) {
+    .cu-content { padding: var(--cu-pad) calc(var(--cu-pad) * 1.5); }
+    .dash-quickstart-grid { grid-template-columns: 1fr 1fr 1fr; }
+    .card-grid { grid-template-columns: 1fr 1fr; }
+    .card-grid.compact { grid-template-columns: 1fr 1fr 1fr; }
+}

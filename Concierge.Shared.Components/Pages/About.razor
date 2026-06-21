@@ -1,0 +1,79 @@
+@page "/about"
+@using System.Reflection
+@inject NavigationManager Nav
+
+@*
+    About — the product story, written for a curious kid AND a curious exec.
+    Reads from the running assembly so version + build info stays honest.
+*@
+
+<div class="page about-page">
+    <header class="page-head">
+        <div class="about-bell">
+            <Bell State="idle" />
+        </div>
+        <p class="page-eyebrow">About</p>
+        <h1 class="page-title">I'm Bell.</h1>
+        <p class="page-sub">I'm the concierge for whatever you'd like AI to help you do.</p>
+    </header>
+
+    <section class="about-block">
+        <h2>What Concierge is for</h2>
+        <p>Most AI apps are built for engineers, marketers, or both. Concierge is built for everyone who isn't one of those — your nan, your kid, your manager, your barista, you. The idea is plain: AI shouldn't feel like a tool you need an instruction manual for. It should feel like a friendly bell on a hotel desk. You ring, someone helpful answers.</p>
+    </section>
+
+    <section class="about-block">
+        <h2>Why I look like a bell</h2>
+        <p>The brass concierge bell at the front desk of a hotel: ring it once, and the person on the other side is there to help. Universal — the same symbol works for an 8-year-old and an 80-year-old. That's the standard the rest of the app is held to.</p>
+    </section>
+
+    <section class="about-block">
+        <h2>Your data, your device</h2>
+        <p>Concierge is local-first. Your conversations live on your phone or laptop, not on a server we own. When you ask me to think, your message gets sent to whichever AI provider you've connected (OpenAI, Anthropic, Google, others) — and the answer comes back. Your API keys never leave your device.</p>
+    </section>
+
+    <section class="about-block">
+        <h2>Made by</h2>
+        <p>Concierge is built by <strong>The Other Bhengu (Pty) Ltd t/a The Geek</strong>, a small team in Johannesburg + Seoul that thinks AI should be useful to your family, not just to a Silicon Valley engineering org.</p>
+    </section>
+
+    <section class="about-meta">
+        <dl>
+            <dt>Version</dt><dd>@_version</dd>
+            <dt>Build</dt><dd>@_build</dd>
+            <dt>Branding</dt><dd>Imagine · Innovate · Inspire</dd>
+            <dt>License</dt><dd>Proprietary. Open-sourcing the inference layer separately as Aether (MIT).</dd>
+        </dl>
+    </section>
+
+    <section class="about-block">
+        <h2>Thanks</h2>
+        <p>Bell wouldn't be here without the open communities around <strong>.NET MAUI · Blazor · MudBlazor · Lucide · Microsoft AI · Anthropic Claude · OpenAI · Google Gemini</strong> and the Aether mesh. The doorman tradition is older.</p>
+    </section>
+
+    <p class="about-foot">© 2026 The Other Bhengu (Pty) Ltd t/a The Geek. All rights reserved.</p>
+</div>
+
+@code {
+    private string _version = "1.0";
+    private string _build = "dev";
+
+    protected override void OnInitialized()
+    {
+        // Pull the running assembly's version + build commit if encoded
+        // (Concierge.csproj stamps AssemblyInformationalVersion when set).
+        try
+        {
+            var asm = typeof(About).Assembly;
+            var info = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
+                       ?? asm.GetName().Version?.ToString();
+            if (!string.IsNullOrWhiteSpace(info))
+            {
+                var parts = info.Split('+', 2);
+                _version = parts[0];
+                _build = parts.Length > 1 ? parts[1].Substring(0, Math.Min(7, parts[1].Length)) : "dev";
+            }
+        }
+        catch { /* surfaces "1.0" / "dev" — never blocks the page */ }
+    }
+}

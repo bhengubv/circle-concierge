@@ -1,5 +1,6 @@
 using CircleAI.Core;
 using Concierge.Ai;
+using MudBlazor.Services;
 using Concierge.Chat.Cloud;
 using Concierge.Diagrams.Design;
 using Concierge.Hosting;
@@ -11,6 +12,7 @@ using Concierge.Shared;
 using Concierge.Shared.Chat;
 using Concierge.Shared.Diagrams;
 using Concierge.Shared.Settings;
+using Concierge.Shared.Skills;
 using Concierge.Shared.Telemetry;
 using Concierge.Shared.Tools;
 using Microsoft.Extensions.Configuration;
@@ -23,6 +25,29 @@ public static class MauiProgram
 {
 	public static MauiApp CreateMauiApp()
 	{
+		// Several Concierge.Shared services fall back to
+		// Directory.GetCurrentDirectory() + ".concierge-artifacts" when
+		// Environment.SpecialFolder.LocalApplicationData resolves to empty.
+		// On Android, the current dir is "/" — read-only — and the fallback
+		// blows up with "Read-only file system : '/.concierge-artifacts'".
+		// Pin the working dir to a writable path BEFORE any DI builds, so
+		// every fallback hits the per-app data sandbox instead.
+		try
+		{
+			var appData = Microsoft.Maui.Storage.FileSystem.AppDataDirectory;
+			if (!string.IsNullOrEmpty(appData) && Directory.Exists(appData))
+			{
+				Directory.SetCurrentDirectory(appData);
+			}
+		}
+		catch
+		{
+			// Best-effort. If the platform doesn't expose AppDataDirectory
+			// or rejects SetCurrentDirectory, downstream services still
+			// have Environment.SpecialFolder.LocalApplicationData as a
+			// first-choice path.
+		}
+
 		var builder = MauiApp.CreateBuilder();
 		builder
 			.UseMauiApp<App>()
@@ -32,9 +57,13 @@ public static class MauiProgram
 			});
 
 		builder.Services.AddMauiBlazorWebView();
+		// MudBlazor — registers IDialogService, ISnackbar, IScrollManager, etc.
+		// Needed by the flight-deck Dashboard's snackbar feedback + dialogs.
+		builder.Services.AddMudServices();
 		builder.Services.AddSingleton<IConciergeSecretStore>(_ => new LocalSecretStore());
 		builder.Services
 			.AddConciergeCore()
+			.AddLocalSkillSources()
 			.AddConciergeChat()
 			.AddConciergeDiagrams()
 			.AddConciergeMetrics()

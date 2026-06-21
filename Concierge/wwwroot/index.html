@@ -3,19 +3,27 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0d12" />
     <title>Concierge</title>
     <base href="/" />
-    <link rel="stylesheet" href="lib/bootstrap/dist/css/bootstrap.min.css" />
+    <!-- Pre-paint the dark canvas BEFORE Blazor mounts so first paint isn't
+         the white flash-of-unrendered that we caught on the Redmi. -->
+    <style>html, body { background: #0b0d12; color: #f3f4f7; margin: 0; }
+           #app:empty::before { content: "" }
+           .cu-splash { display:flex; align-items:center; justify-content:center;
+                        position:fixed; inset:0; background:#0b0d12; color:#f3f4f7;
+                        font-family:-apple-system,BlinkMacSystemFont,Inter,Segoe UI,Roboto,sans-serif;
+                        letter-spacing:-0.02em; font-weight:600; font-size:1.25rem; }</style>
+    <link rel="stylesheet" href="_content/MudBlazor/MudBlazor.min.css" />
     <link rel="stylesheet" href="app.css" />
+    <link rel="stylesheet" href="shell.css" />
     <link rel="stylesheet" href="Concierge.styles.css" />
     <link rel="icon" href="data:,">
 </head>
 
 <body>
 
-    <div class="status-bar-safe-area"></div>
-
-    <div id="app">Loading...</div>
+    <div id="app"><div class="cu-splash">Concierge</div></div>
 
     <div id="blazor-error-ui" data-nosnippet>
         An unhandled error has occurred.
@@ -24,6 +32,9 @@
     </div>
 
     <script src="_framework/blazor.webview.js" autostart="false"></script>
+    <script src="_content/MudBlazor/MudBlazor.min.js"></script>
+    <script src="sense.js"></script>
+    <script src="camera.js"></script>
 
 </body>
 

@@ -121,7 +121,15 @@ public static class ConciergeServiceCollectionExtensions
 {
     public static IServiceCollection AddConciergeCore(this IServiceCollection services)
     {
-        services.AddSingleton<ISkillCatalogService, SkillCatalogService>();
+        // Skill catalog: composes the embedded bundle (always present) with
+        // whatever ISkillSources have been registered (filesystem at dev time,
+        // bundled-asset readers on mobile, remote indices later).
+        services.AddSingleton<ISkillCatalogService>(sp =>
+            new SkillCatalogService(sp.GetServices<Concierge.Shared.Skills.ISkillSource>()));
+        // Activation runtime: returns the loaded SKILL.md body for any id, plus
+        // composes multi-skill system-prompt addenda for stacked activations.
+        services.AddSingleton<Concierge.Shared.Skills.ISkillRuntime, Concierge.Shared.Skills.SkillRuntime>();
+
         services.AddSingleton<IConciergeStateService, ConciergeStateService>();
         services.AddConciergeIntegrationDefaults();
         services.AddSingleton<IAgentHarnessService>(sp =>

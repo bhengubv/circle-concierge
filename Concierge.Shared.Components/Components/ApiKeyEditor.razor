@@ -24,7 +24,12 @@
         }
 
         <div class="api-key-actions">
-            <button class="button primary" type="submit" disabled="@(_saving || _drafts.Count == 0)">
+            @* type=button + dual @onclick/@onpointerup — MAUI WebView touch-submit drop fix. *@
+            <button class="button primary"
+                    type="button"
+                    disabled="@(_saving || _drafts.Count == 0)"
+                    @onclick="SaveAsync"
+                    @onpointerup="SaveAsync">
                 @(_saving ? "Saving…" : "Save")
             </button>
             <span class="api-key-status">@_statusMessage</span>

@@ -1,0 +1,187 @@
+@*
+    The mobile-first shell — replaces the sidebar+menu MainLayout that crammed
+    14 nav rows into the first viewport. Four fixed bottom tabs, a thin top
+    bar with the current page title + a single profile entry point, and an
+    edge-to-edge content surface in between.
+
+    Layout vocabulary:
+      • Top bar       — 56px, status-bar safe-area padding, page title left, profile right
+      • Content       — fills the rest of the viewport; routes render here
+      • Tab bar       — 64px, sticks to the bottom, gesture-bar safe-area padding
+
+    Why a Layout component (not a MAUI Shell): so the same shell renders in the
+    BlazorWebView (MAUI), in Concierge.Web (server), and in Concierge.Web.Client
+    (WASM) without per-host shims. One component, three hosts.
+*@
+@inherits LayoutComponentBase
+@inject NavigationManager Nav
+@inject IConciergeStateService State
+@implements IDisposable
+
+@*
+    State is the injected name (not "Concierge") because Concierge is also the
+    root namespace — the Razor expression below resolves the local identifier
+    first and would shadow the type lookup if we kept the obvious name.
+*@
+<MudThemeProvider Theme="@Theme.ConciergeTheme.Dark" IsDarkMode="true" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<div class="cu-shell">
+    <header class="cu-topbar">
+        <h1 class="cu-topbar-title">@TopTitleForPath(_currentPath)</h1>
+        <button class="cu-topbar-profile" @onclick="GoSettings" aria-label="Settings">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="8" r="4" />
+                <path d="M4 21c0-4 4-7 8-7s8 3 8 7" />
+            </svg>
+        </button>
+    </header>
+
+    @*
+        Two-layer scroll container — fixes the Android WebView quirk where
+        overflow-clipped cards still intercept touch events at their natural
+        (pre-clip) coordinates. The OUTER .cu-content is a hard-clipping
+        layout box (overflow: hidden + contain: strict). The INNER .cu-scroll
+        is the actual scroller. Touch hit-test now resolves at the outer
+        layer, which has no children past its bottom edge.
+    *@
+    <main class="cu-content" role="main">
+        <div class="cu-scroll">
+            @Body
+            <div class="cu-scroll-end" aria-hidden="true"></div>
+        </div>
+    </main>
+
+    @*
+        Tabs use <NavLink>, NOT raw <a href> and NOT <button @onclick>.
+        Reasoning, verified via headless-Playwright diagnostics:
+
+        • <button @onclick> in a layout component: Blazor's event-delegation
+          marshalling drops touch-originated clicks intermittently in
+          Android MAUI BlazorWebView. Locator.click() works, mouse.click()
+          fails. Verified on /c/tmp/nav-test/.
+        • Plain <a href> + Android WebView: anchor click can trigger a hard
+          WebView navigation that escapes BlazorWebView's router.
+        • <NavLink>: Blazor-framework-aware anchor that ALWAYS routes via
+          NavigationManager. Works on Server, WASM, and MAUI BlazorWebView.
+          This is the supported framework pattern.
+    *@
+    <nav class="cu-tabbar" role="navigation" aria-label="Primary">
+        @foreach (var tab in _tabs)
+        {
+            var isActive = IsTabActive(tab);
+            <NavLink class="cu-tab"
+                     ActiveClass="is-active"
+                     Match="@(tab.Href == "/" ? NavLinkMatch.All : NavLinkMatch.Prefix)"
+                     href="@tab.Href"
+                     aria-label="@tab.Label">
+                <span class="cu-tab-icon">
+                    @((MarkupString)tab.IconSvg)
+                </span>
+                <span class="cu-tab-label">@tab.Label</span>
+                @if (tab.BadgeCount > 0)
+                {
+                    <span class="cu-tab-badge" aria-label="@tab.BadgeCount items">
+                        @(tab.BadgeCount > 9 ? "9+" : tab.BadgeCount.ToString())
+                    </span>
+                }
+            </NavLink>
+        }
+    </nav>
+</div>
+
+@code {
+    private string _currentPath = "/";
+    private List<Tab> _tabs = new();
+
+    protected override void OnInitialized()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+        RefreshState();
+    }
+
+    protected override void OnParametersSet() => RefreshState();
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        RefreshState();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void RefreshState()
+    {
+        _currentPath = "/" + Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/');
+        if (_currentPath == "/") { /* normalise */ }
+
+        var pendingApprovals = 0;
+        try
+        {
+            // Approvals count drives the badge on the Approvals tab. Falling
+            // back to 0 on any service failure so the shell never crashes the
+            // app over a stat lookup. ApprovalRequest is the public record.
+            pendingApprovals = State.GetSnapshot()?.Approvals.Count ?? 0;
+        }
+        catch { /* shell never throws over a stat lookup */ }
+
+        _tabs = new List<Tab>
+        {
+            new("/",          "Today",     IconHome,      0),
+            new("/chat",      "Chat",      IconChat,      0),
+            new("/skills",    "Skills",    IconSkills,    0),
+            new("/approvals", "Approvals", IconApprovals, pendingApprovals),
+        };
+    }
+
+    private bool IsTabActive(Tab t)
+    {
+        if (t.Href == "/")
+        {
+            return _currentPath == "/" || _currentPath == string.Empty;
+        }
+        return _currentPath.StartsWith(t.Href, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void GoSettings() => Nav.NavigateTo("/settings");
+
+    private static string TopTitleForPath(string path) => path.TrimStart('/').ToLowerInvariant() switch
+    {
+        ""           => "Today",
+        "chat"       => "Chat",
+        var p when p.StartsWith("chat/") => "Chat",
+        "skills"     => "Skills",
+        "approvals"  => "Approvals",
+        "settings"   => "Settings",
+        "images"     => "Images",
+        "diagrams"   => "Diagrams",
+        "release"    => "Release",
+        "roadmap"    => "Roadmap",
+        "engineering"=> "Build Room",
+        "product"    => "Product Room",
+        "beyond"     => "Beyond Code",
+        "business-apis" => "Business APIs",
+        "pricing"    => "Pricing",
+        _            => "Concierge",
+    };
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
+
+    private sealed record Tab(string Href, string Label, string IconSvg, int BadgeCount);
+
+    // ── Custom SVG icons. Inline so no extra package, no font fallback risk,
+    //    no FOUC. Lucide-style stroke (1.75px, round caps) — thin and geometric
+    //    instead of Material's chunky fills. ──────────────────────────────────
+
+    private const string IconHome =
+        """<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l9-8 9 8" /><path d="M5 10v10h14V10" /><path d="M9 20v-6h6v6" /></svg>""";
+
+    private const string IconChat =
+        """<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H8l-4 4z" /></svg>""";
+
+    private const string IconSkills =
+        """<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="9" r="3" /><path d="M5 21c0-4 3-7 7-7s7 3 7 7" /><path d="M15.5 5.5l1.5-1.5M8.5 5.5L7 4M18 9h2M4 9h2" /></svg>""";
+
+    private const string IconApprovals =
+        """<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h11l4 4v12H5z" /><path d="M9 12l2 2 4-4" /></svg>""";
+}

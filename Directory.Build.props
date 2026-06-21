@@ -1,0 +1,68 @@
+<Project>
+  <!--
+    Concierge build configuration.
+
+    Mirrors thegeeknetwork/code/Directory.Build.props so Concierge ships
+    Release builds signed with the same TheGeekAlias keystore the rest of
+    the Geek ecosystem uses (one keystore = one legal entity = one Play
+    Store identity).
+
+    Concierge.csproj previously carried its own Android signing block keyed
+    off CONCIERGE_ANDROID_KEYSTORE / CONCIERGE_ANDROID_KEYSTORE_PASS env
+    vars. That worked but diverged from every other Geek app — meaning a
+    contributor needed two separate keystore setups. This centralisation
+    aligns on a single ANDROID_KEYSTORE_PASS, same as SDPKT.
+
+    Configurations:
+      Debug         — Android only, default for daily dev
+      Release       — Android only, quick release smoke test
+      Debug-Full    — All platforms, pre-commit verification
+      Release-Full  — All platforms, production builds
+  -->
+
+  <!--
+    Restrict everyday builds to Android. Devs on Windows would otherwise
+    fail trying to build the iOS target locally (no Xcode), and full
+    multi-target builds add ~15 min per `dotnet build`.
+  -->
+  <PropertyGroup Condition="'$(UseMaui)' == 'true' AND !$(Configuration.Contains('-Full'))">
+    <TargetFrameworks>net10.0-android</TargetFrameworks>
+  </PropertyGroup>
+
+  <!--
+    Centralised Android Release signing.
+
+    Operator setup (one-time per machine):
+      1. Copy TheGeekAlias.keystore to %USERPROFILE%\keystore\
+      2. setx ANDROID_KEYSTORE_PASS "<password>" — then OPEN A NEW SHELL
+      3. Verify: pwsh -c "[Environment]::GetEnvironmentVariable('ANDROID_KEYSTORE_PASS','User')"
+  -->
+  <PropertyGroup Condition="'$(UseMaui)' == 'true' AND $(TargetFramework.Contains('-android')) AND '$(Configuration)' == 'Release'">
+    <AndroidPackageFormat>aab</AndroidPackageFormat>
+    <AndroidKeyStore>true</AndroidKeyStore>
+    <AndroidSigningKeyStore>$(USERPROFILE)\keystore\TheGeekAlias.keystore</AndroidSigningKeyStore>
+    <AndroidSigningKeyAlias>TheGeekAlias</AndroidSigningKeyAlias>
+    <AndroidSigningKeyPass>$(ANDROID_KEYSTORE_PASS)</AndroidSigningKeyPass>
+    <AndroidSigningStorePass>$(ANDROID_KEYSTORE_PASS)</AndroidSigningStorePass>
+  </PropertyGroup>
+
+  <!--
+    iOS Release: ArchiveOnBuild so `dotnet publish` produces an .ipa.
+    Code-signing identity + provisioning profile are passed per-build via
+    Deployment/Build-Maui.ps1 (-p:CodesignKey / -p:CodesignProvision).
+  -->
+  <PropertyGroup Condition="'$(UseMaui)' == 'true' AND $(TargetFramework.Contains('-ios')) AND '$(Configuration)' == 'Release'">
+    <ArchiveOnBuild Condition="'$(ArchiveOnBuild)' == ''">true</ArchiveOnBuild>
+  </PropertyGroup>
+
+  <!--
+    AndroidX Compose Runtime Annotation duplicate-class fix.
+    Both .Annotation.Android (needed) and .Annotation.JVM (NOT needed for
+    MAUI Android) ship Immutable.class — R8 rejects the duplicate with
+    JAVA0000. Excluding the JVM variant.
+  -->
+  <ItemGroup Condition="'$(UseMaui)' == 'true' AND $(TargetFramework.Contains('-android'))">
+    <PackageReference Include="Xamarin.AndroidX.Compose.Runtime.Annotation.JVM" Version="1.10.0.1" ExcludeAssets="all" PrivateAssets="all" />
+  </ItemGroup>
+
+</Project>

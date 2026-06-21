@@ -14,6 +14,11 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Components.Web" Version="10.0.0" />
+    <!-- MudBlazor — Material-Design Blazor component library. Cross-host: works in
+         BlazorWebView (MAUI), Blazor Server (Web), and WASM (Web.Client) without
+         per-host shims. We theme it down to the brand palette in ConciergeTheme.cs
+         so it does NOT read as "another Material app". -->
+    <PackageReference Include="MudBlazor" Version="7.15.0" />
   </ItemGroup>
 
   <ItemGroup>

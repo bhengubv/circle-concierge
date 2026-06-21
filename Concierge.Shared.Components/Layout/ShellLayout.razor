@@ -1,0 +1,25 @@
+@*
+    ShellLayout — minimal warm shell.
+
+    Brand on the left, single ⋯ menu trigger on the right (one tap reveals
+    every destination: New chat, History, Skills, Settings, Switch mode,
+    Help, About). The page is still the product — but every destination is
+    now one tap away instead of zero, which was the right answer to "where
+    are the menu options?"
+*@
+@inherits LayoutComponentBase
+@inject NavigationManager Nav
+
+<div class="app-shell">
+    <header class="app-topbar">
+        <a class="app-brand" href="/" aria-label="Concierge home">
+            <span class="app-brand-dot" aria-hidden="true"></span>
+            <span class="app-brand-name">Concierge</span>
+        </a>
+        <AppMenu />
+    </header>
+
+    <main class="app-content" role="main">
+        @Body
+    </main>
+</div>

@@ -1,16 +1,69 @@
 @page "/settings"
 @inject IConciergeStateService Concierge
 @inject ILlmRuntimeService LlmRuntime
+@inject IEnumerable<IChatRuntime> ChatRuntimes
+@inject IJSRuntime JS
 
 @{
     var snapshot = Concierge.GetSnapshot();
     var runtime = LlmRuntime.GetSnapshot();
+    var chatRuntimes = ChatRuntimes
+        .GroupBy(r => r.Id, StringComparer.OrdinalIgnoreCase)
+        .Select(g => g.First())
+        .OrderByDescending(r => string.Equals(r.Id, "circleai", StringComparison.OrdinalIgnoreCase))
+        .ThenBy(r => r.EngineLabel, StringComparer.OrdinalIgnoreCase)
+        .ToList();
 }
 
 <section class="page-header">
     <p class="eyebrow">Settings</p>
     <h1>Make Concierge safe for your machine and your way of working.</h1>
     <p class="lede">Simple controls for models, skills, resources, secrets, approvals, MCP, notifications, and portability.</p>
+</section>
+
+@*
+    Default chat provider — the philosophical anchor of the product.
+    CircleAI is the local-first default; cloud providers are escape hatches
+    for when the user has an API key and wants a hosted model. The
+    dropdown writes localStorage["concierge-provider-id"] which Chat.razor
+    reads at OnInitializedAsync to pick the active runtime.
+*@
+<section class="panel">
+    <div class="section-heading">
+        <p class="eyebrow">Default AI</p>
+        <h2>Who answers when you ask</h2>
+    </div>
+    <p class="lede">
+        Concierge runs on <strong>CircleAI</strong> by default — your phone
+        does the thinking, nothing leaves the device. If you have an API key
+        for a cloud model, you can switch here. Either way, the conversation
+        always uses the engine picked below.
+    </p>
+    <div class="card-list">
+        @foreach (var rt in chatRuntimes)
+        {
+            var isSelected = (_selectedProviderId is null && string.Equals(rt.Id, "circleai", StringComparison.OrdinalIgnoreCase))
+                          || string.Equals(rt.Id, _selectedProviderId, StringComparison.OrdinalIgnoreCase);
+            var statusBadge = rt.IsReady ? "ready" : "loading";
+            <article class="surface-card @(isSelected ? "ready" : "")"
+                     @onclick="@(() => SelectProviderAsync(rt.Id))"
+                     style="cursor:pointer">
+                <strong>@rt.EngineLabel</strong>
+                <span>@rt.StatusMessage</span>
+                <p>
+                    @if (isSelected) { <text>✓ Selected — </text> }
+                    @if (string.Equals(rt.Id, "circleai", StringComparison.OrdinalIgnoreCase))
+                    {
+                        <text>Local model, runs on this device. No API key, no network.</text>
+                    }
+                    else
+                    {
+                        <text>@statusBadge · cloud API. Add your key below to enable.</text>
+                    }
+                </p>
+            </article>
+        }
+    </div>
 </section>
 
 <section class="two-column">
@@ -53,4 +106,31 @@
 </section>
 
 <ApiKeyEditor />
+
+@code {
+    private const string ProviderPreferenceStorageKey = "concierge-provider-id";
+    private string? _selectedProviderId;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            _selectedProviderId = await JS.InvokeAsync<string?>("localStorage.getItem", ProviderPreferenceStorageKey);
+            StateHasChanged();
+        }
+        catch { /* localStorage unavailable during prerender or on platforms that block it. */ }
+    }
+
+    private async Task SelectProviderAsync(string providerId)
+    {
+        _selectedProviderId = providerId;
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", ProviderPreferenceStorageKey, providerId);
+        }
+        catch { /* best-effort */ }
+        StateHasChanged();
+    }
+}
 

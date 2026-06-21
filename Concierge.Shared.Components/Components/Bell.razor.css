@@ -1,0 +1,87 @@
+/* Bell mascot animation. Scoped so it doesn't bleed into other SVGs. */
+
+.bell-stage {
+    display: inline-block;
+    line-height: 0;
+    aspect-ratio: 1 / 1;
+}
+
+.bell-svg {
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+
+/* Gentle idle breathing — the bell bobs slightly so it feels alive. */
+.bell-figure {
+    transform-origin: 100px 170px;
+    animation: bell-breathe 4s ease-in-out infinite;
+}
+
+@keyframes bell-breathe {
+    0%, 100% { transform: translateY(0) scale(1); }
+    50%      { transform: translateY(-3px) scale(1.015); }
+}
+
+/* Slow blink every 5s. */
+.bell-lid {
+    animation: bell-blink 5s ease-in-out infinite;
+}
+
+@keyframes bell-blink {
+    0%, 92%, 100% { opacity: 0; }
+    94%, 96%      { opacity: 1; }
+}
+
+/* Listening — Bell leans forward, halo pulses, mic vibe. */
+.bell-listening .bell-figure {
+    animation: bell-listen 1.6s ease-in-out infinite;
+}
+.bell-listening .bell-radar {
+    opacity: 1;
+    animation: bell-radar 1.6s ease-out infinite;
+}
+@keyframes bell-listen {
+    0%, 100% { transform: rotate(-2deg) translateY(0); }
+    50%      { transform: rotate(2deg) translateY(-4px); }
+}
+@keyframes bell-radar {
+    0%   { opacity: 0.0; transform: scale(0.6); }
+    50%  { opacity: 0.5; }
+    100% { opacity: 0.0; transform: scale(1.1); }
+}
+
+/* Thinking — handle wobble, radar arcs slow, eyes look up-and-around. */
+.bell-thinking .bell-handle,
+.bell-thinking .bell-cap {
+    transform-origin: 100px 72px;
+    animation: bell-handle-wobble 1.2s ease-in-out infinite;
+}
+.bell-thinking .bell-radar {
+    opacity: 0.4;
+    animation: bell-radar 2.4s ease-out infinite;
+}
+@keyframes bell-handle-wobble {
+    0%, 100% { transform: rotate(-6deg); }
+    50%      { transform: rotate(6deg); }
+}
+
+/* Cheering — bell bounces, sparkles appear. */
+.bell-cheering .bell-figure {
+    animation: bell-bounce 0.6s cubic-bezier(.34, 1.6, .64, 1) 2;
+}
+.bell-cheering .bell-sparks {
+    opacity: 1;
+    animation: bell-sparkle 1.2s ease-out 2;
+}
+@keyframes bell-bounce {
+    0%   { transform: translateY(0)   scale(1); }
+    40%  { transform: translateY(-18px) scale(1.05); }
+    70%  { transform: translateY(4px)  scale(0.96); }
+    100% { transform: translateY(0)   scale(1); }
+}
+@keyframes bell-sparkle {
+    0%   { opacity: 0; transform: scale(0.5); }
+    50%  { opacity: 1; transform: scale(1.1); }
+    100% { opacity: 0; transform: scale(1.4); }
+}

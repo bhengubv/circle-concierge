@@ -84,7 +84,12 @@
                @bind="_fetchId"
                @bind:event="oninput" />
 
-        <button class="button primary" type="submit" disabled="@(!CanFetch)">
+        @* type=button + dual @onclick/@onpointerup — MAUI WebView touch-submit drop fix. *@
+        <button class="button primary"
+                type="button"
+                disabled="@(!CanFetch)"
+                @onclick="FetchAsync"
+                @onpointerup="FetchAsync">
             @(_fetching ? "Fetching…" : "Fetch")
         </button>
 

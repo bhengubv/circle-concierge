@@ -6,7 +6,10 @@
 @using Concierge.Shared.Tools
 @inject IConversationStore Store
 @inject IEnumerable<IChatRuntime> Runtimes
+@inject IEnumerable<Concierge.Shared.Media.IImageRuntime> ImageRuntimes
 @inject IAgentToolRegistry Tools
+@inject Concierge.Shared.Skills.ISkillRuntime SkillRuntime
+@inject ISkillCatalogService SkillCatalog
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -42,8 +45,14 @@
                     @onchange="OnProviderChanged">
                 @foreach (var runtime in _orderedRuntimes)
                 {
+                    @* CircleAI doesn't need a key — it's the on-device model.
+                       "— loading…" is the honest status while the model
+                       resolves. Cloud providers without a key still say
+                       "— needs key" so the user knows what's missing. *@
+                    var isCircleAi = string.Equals(runtime.Id, DefaultProviderId, StringComparison.OrdinalIgnoreCase);
+                    var suffix = runtime.IsReady ? "" : (isCircleAi ? "— loading…" : "— needs key");
                     <option value="@runtime.Id">
-                        @runtime.EngineLabel @(runtime.IsReady ? "" : "— needs key")
+                        @runtime.EngineLabel @suffix
                     </option>
                 }
             </select>
@@ -52,6 +61,69 @@
         <div class="chat-engine-pill" data-ready="@(_activeRuntime?.IsReady ?? false)">
             <strong>@(_activeRuntime?.EngineLabel ?? "No runtime")</strong>
             <span>@(_activeRuntime?.StatusMessage ?? "No chat runtime registered.")</span>
+        </div>
+
+        @* ── Active skills + picker ─────────────────────────────────────── *@
+        <div class="chat-skills-panel">
+            <div class="chat-skills-head">
+                <p class="eyebrow">Active skills</p>
+                <button class="button quiet" type="button" @onclick="ToggleSkillPicker">
+                    @(_showSkillPicker ? "Close" : "+ Add skill")
+                </button>
+            </div>
+            @if (_activeSkillIds.Count == 0)
+            {
+                <p class="chat-skills-empty">No specialists active. The assistant uses its base profile only.</p>
+            }
+            else
+            {
+                <ul class="chat-skills-active">
+                    @foreach (var id in _activeSkillIds.ToList())
+                    {
+                        var info = SkillCatalog.GetSkills().FirstOrDefault(s => string.Equals(s.Id, id, StringComparison.OrdinalIgnoreCase));
+                        var label = info?.Name ?? id;
+                        var area = info?.Area ?? "Skill";
+                        var localId = id;
+                        <li class="chat-skill-chip">
+                            <strong>@label</strong>
+                            <span>@area</span>
+                            <button type="button" class="chat-skill-remove" @onclick="@(() => DeactivateSkill(localId))" title="Deactivate">×</button>
+                        </li>
+                    }
+                </ul>
+            }
+            @if (_showSkillPicker)
+            {
+                <div class="chat-skill-picker">
+                    <input class="chat-skill-filter" type="search"
+                           placeholder="Filter skills…"
+                           @bind="_skillFilter" @bind:event="oninput" />
+                    <ul class="chat-skill-options">
+                        @{
+                            var all = SkillCatalog.GetSkills();
+                            var filtered = string.IsNullOrWhiteSpace(_skillFilter)
+                                ? all
+                                : all.Where(s =>
+                                    s.Name.Contains(_skillFilter, StringComparison.OrdinalIgnoreCase) ||
+                                    s.Area.Contains(_skillFilter, StringComparison.OrdinalIgnoreCase) ||
+                                    s.Summary.Contains(_skillFilter, StringComparison.OrdinalIgnoreCase));
+                            // Cap to 40 to keep the menu snappy — filter narrows further.
+                            filtered = filtered.Take(40);
+                        }
+                        @foreach (var skill in filtered)
+                        {
+                            var localId = skill.Id;
+                            var isOn = _activeSkillIds.Contains(localId);
+                            <li class="chat-skill-option @(isOn ? "is-on" : "")"
+                                @onclick="@(() => ToggleSkill(localId))">
+                                <strong>@skill.Name</strong>
+                                <span class="chat-skill-area">@skill.Area</span>
+                                <p>@skill.Summary</p>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            }
         </div>
     </aside>
 
@@ -171,7 +243,18 @@
                         </button>
                     </div>
                     <span class="chat-hint">@_composerHint</span>
-                    <button class="button primary" type="submit" disabled="@(!CanSend)">
+                    @*
+                        type=button + dual @onclick/@onpointerup. Android
+                        MAUI BlazorWebView drops touch-originated form-submit
+                        events intermittently; we cannot rely on the form
+                        @onsubmit propagating. The form keeps @onsubmit so
+                        keyboard Enter still works on desktop.
+                    *@
+                    <button class="button primary"
+                            type="button"
+                            disabled="@(!CanSend)"
+                            @onclick="SendAsync"
+                            @onpointerup="SendAsync">
                         @(_streaming ? "Streaming…" : "Send")
                     </button>
                 </div>
@@ -204,6 +287,15 @@
     private readonly List<TextAttachment> _pendingAttachments = new();
     private bool _recording;
 
+    /// <summary>
+    /// Currently-activated skill ids for this conversation. Their SKILL.md
+    /// bodies get prepended to the system prompt on every send. Stack any
+    /// number — Concierge composes them in <c>ISkillRuntime.ComposeSystemPrompt</c>.
+    /// </summary>
+    private readonly HashSet<string> _activeSkillIds = new(StringComparer.OrdinalIgnoreCase);
+    private bool _showSkillPicker;
+    private string _skillFilter = string.Empty;
+
     private string _composerHint = "Shift + Enter for newline · drag a text file or use 🎙 for voice.";
 
     private bool CanSend
@@ -217,14 +309,95 @@
         _orderedRuntimes = Runtimes
             .GroupBy(r => r.Id, StringComparer.OrdinalIgnoreCase)
             .Select(g => g.First())
-            .OrderByDescending(r => r.IsReady)
+            // CircleAI first by construction — it's the philosophy of the
+            // product (local-first, private, no API key needed). Ready ones
+            // next, then alphabetical for stable order.
+            .OrderByDescending(r => string.Equals(r.Id, DefaultProviderId, StringComparison.OrdinalIgnoreCase))
+            .ThenByDescending(r => r.IsReady)
             .ThenBy(r => r.EngineLabel, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        _activeRuntime = _orderedRuntimes.FirstOrDefault(r => r.IsReady)
-            ?? _orderedRuntimes.FirstOrDefault();
+        _activeRuntime = await ChooseActiveRuntimeAsync();
 
         await RefreshSidebarAsync();
+
+        // Home → Chat handoff:
+        //   ?q=...     — prefill the composer with the typed prompt and send.
+        //   ?image=1   — pull the captured base64 JPEG from sessionStorage,
+        //                wrap as an attachment, send "What is this?" + image.
+        //   ?voice=1   — voice was captured on Home; transcript will be in
+        //                sessionStorage already (the Home mic flow stores it).
+        //   ?demo=1    — script a single "show me what you can do" turn.
+        await ConsumeHomeHandoffAsync();
+    }
+
+    private async Task ConsumeHomeHandoffAsync()
+    {
+        try
+        {
+            var uri = new Uri(Nav.Uri);
+            var q = System.Web.HttpUtility.ParseQueryString(uri.Query);
+
+            var prefill = q["q"];
+            if (!string.IsNullOrWhiteSpace(prefill))
+            {
+                _active ??= await Store.StartAsync(OwnerId);
+                _composerText = prefill;
+                StateHasChanged();
+                if (_activeRuntime?.IsReady == true)
+                {
+                    // Runtime is ready — send immediately, normal flow.
+                    await SendAsync();
+                }
+                else
+                {
+                    // Runtime is still warming up (CircleAI loading the
+                    // local model on first launch). Save the user's prompt
+                    // to the conversation NOW so it doesn't disappear, and
+                    // let the user see it. When they hit Send again — or as
+                    // soon as the runtime becomes ready — the response flow
+                    // takes over. Without this guard the entire prompt is
+                    // silently dropped because CanSend gates on IsReady.
+                    await Store.AppendAsync(_active.Id, role: "user", content: prefill);
+                    _active = await Store.GetAsync(_active.Id);
+                    _composerText = string.Empty;
+                    await RefreshSidebarAsync();
+                    StateHasChanged();
+                }
+                return;
+            }
+
+            if (q["image"] == "1")
+            {
+                var b64 = await JS.InvokeAsync<string?>("sessionStorage.getItem", "concierge-pending-image");
+                await JS.InvokeVoidAsync("sessionStorage.removeItem", "concierge-pending-image");
+                if (!string.IsNullOrEmpty(b64))
+                {
+                    _active ??= await Store.StartAsync(OwnerId, title: "Picture chat");
+                    var bytes = Convert.FromBase64String(b64);
+                    _pendingAttachments.Add(new TextAttachment(
+                        $"picture-{DateTime.UtcNow:yyyyMMdd-HHmmss}.jpg",
+                        bytes));
+                    _composerText = "What's in this picture?";
+                    StateHasChanged();
+                    await SendAsync();
+                }
+                return;
+            }
+
+            if (q["demo"] == "1")
+            {
+                _active ??= await Store.StartAsync(OwnerId, title: "A quick demo");
+                _composerText = "Tell me a tiny 3-line haiku about a friendly bellhop helping a guest in a hotel lobby.";
+                StateHasChanged();
+                await SendAsync();
+                return;
+            }
+        }
+        catch
+        {
+            // Handoff is best-effort — never block the chat from rendering.
+        }
     }
 
     protected override async Task OnParametersSetAsync()
@@ -251,7 +424,56 @@
         await Task.CompletedTask;
     }
 
-    private void OnProviderChanged(ChangeEventArgs args)
+    private void ToggleSkillPicker() => _showSkillPicker = !_showSkillPicker;
+
+    private void ToggleSkill(string id)
+    {
+        if (!_activeSkillIds.Add(id))
+        {
+            _activeSkillIds.Remove(id);
+        }
+    }
+
+    private void DeactivateSkill(string id) => _activeSkillIds.Remove(id);
+
+    // The product's local-first identity: CircleAI is the default LLM.
+    // Cloud providers exist as escape hatches when the user explicitly
+    // picks one in Settings or here. Saved choice lives in localStorage
+    // under this key so the page remembers across launches.
+    private const string DefaultProviderId = "circleai";
+    private const string ProviderPreferenceStorageKey = "concierge-provider-id";
+
+    private async Task<IChatRuntime?> ChooseActiveRuntimeAsync()
+    {
+        // 1. User's saved preference (set in Settings or via the picker
+        //    on this page). Only honor it if the runtime is actually
+        //    registered — otherwise the dropdown shows a phantom option.
+        string? savedId = null;
+        try
+        {
+            savedId = await JS.InvokeAsync<string?>("localStorage.getItem", ProviderPreferenceStorageKey);
+        }
+        catch { /* localStorage may not be available during prerender. */ }
+
+        if (!string.IsNullOrWhiteSpace(savedId))
+        {
+            var saved = _orderedRuntimes.FirstOrDefault(r => string.Equals(r.Id, savedId, StringComparison.OrdinalIgnoreCase));
+            if (saved is not null) return saved;
+        }
+
+        // 2. CircleAI — the philosophical default. We don't gate on IsReady
+        //    here because CircleAI loads asynchronously in the background;
+        //    showing it as the picked engine (with its own "loading…" status)
+        //    is more honest than silently demoting to a cloud provider.
+        var circleai = _orderedRuntimes.FirstOrDefault(r => string.Equals(r.Id, DefaultProviderId, StringComparison.OrdinalIgnoreCase));
+        if (circleai is not null) return circleai;
+
+        // 3. Whatever is actually ready.
+        return _orderedRuntimes.FirstOrDefault(r => r.IsReady)
+            ?? _orderedRuntimes.FirstOrDefault();
+    }
+
+    private async Task OnProviderChanged(ChangeEventArgs args)
     {
         var id = args.Value?.ToString();
         if (string.IsNullOrEmpty(id))
@@ -259,6 +481,13 @@
             return;
         }
         _activeRuntime = _orderedRuntimes.FirstOrDefault(r => r.Id == id) ?? _activeRuntime;
+        // Persist so the next launch lands on the same provider. Settings
+        // page reads/writes the same key.
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", ProviderPreferenceStorageKey, id);
+        }
+        catch { /* best-effort */ }
     }
 
     private async Task RefreshSidebarAsync()
@@ -395,6 +624,55 @@
         var input = _composerText.Trim();
         _composerText = string.Empty;
 
+        // Inline image generation — if the prompt clearly asks for an image
+        // ("draw / make a picture / generate an image / paint / illustrate"),
+        // and an IImageRuntime is wired, route to it and append the result
+        // as an assistant message. Falls through to chat if no runtime is
+        // ready (so the user gets a normal text answer instead of silence).
+        if (LooksLikeImagePrompt(input))
+        {
+            var imageRuntime = ImageRuntimes
+                .FirstOrDefault(r => r.IsReady && r.Id != "null");
+            if (imageRuntime is not null)
+            {
+                await Store.AppendAsync(_active.Id, role: "user", content: input);
+                _active = await Store.GetAsync(_active.Id);
+                StateHasChanged();
+                try
+                {
+                    var artifacts = await imageRuntime.GenerateAsync(
+                        new Concierge.Shared.Media.ImageGenerationRequest(input));
+                    var first = artifacts.FirstOrDefault();
+                    if (first is not null)
+                    {
+                        var img = !string.IsNullOrEmpty(first.Url)
+                            ? $"![generated]({first.Url})"
+                            : first.Bytes is { Length: > 0 }
+                                ? $"![generated](data:{first.MimeType};base64,{Convert.ToBase64String(first.Bytes)})"
+                                : "[empty image artifact]";
+                        await Store.AppendAsync(_active.Id, role: "assistant",
+                            content: $"Here's what I came up with:\n\n{img}",
+                            producedBy: imageRuntime.EngineLabel);
+                        _active = await Store.GetAsync(_active.Id);
+                        await RefreshSidebarAsync();
+                        StateHasChanged();
+                        return;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    await Store.AppendAsync(_active.Id, role: "assistant",
+                        content: $"I tried to draw that, but the image runtime returned an error: {ex.Message}",
+                        producedBy: imageRuntime.EngineLabel);
+                    _active = await Store.GetAsync(_active.Id);
+                    StateHasChanged();
+                    return;
+                }
+                // No artifact returned — fall through to chat so the user
+                // gets a description even if generation failed silently.
+            }
+        }
+
         // Attachments are inlined as fenced code blocks ahead of the prompt so the LLM sees
         // them in context. Binary / image attachments are a v2 feature — text-only here.
         var attachmentBlocks = _pendingAttachments
@@ -510,6 +788,20 @@
             .ToList();
 
         var systemParts = new List<string>();
+
+        // ── Active skills first ────────────────────────────────────────────
+        // Skills come BEFORE custom system prompt + tool catalog so the
+        // assistant reads the specialist guidance as its primary identity for
+        // the turn, then layers user-specific overrides on top.
+        if (_activeSkillIds.Count > 0)
+        {
+            var skillPrompt = SkillRuntime.ComposeSystemPrompt(_activeSkillIds);
+            if (!string.IsNullOrWhiteSpace(skillPrompt))
+            {
+                systemParts.Add(skillPrompt);
+            }
+        }
+
         var persisted = _active.SystemPrompt;
         var systemText = !string.IsNullOrWhiteSpace(persisted) ? persisted : _systemPromptDraft;
         if (!string.IsNullOrWhiteSpace(systemText))
@@ -577,6 +869,27 @@
         "system" => "System",
         _ => role
     };
+
+    private static bool LooksLikeImagePrompt(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return false;
+        var t = text.ToLowerInvariant();
+        ReadOnlySpan<string> triggers =
+        [
+            "draw me", "draw a", "draw an", "draw the",
+            "make a picture", "make me a picture", "make a drawing",
+            "paint", "illustrate",
+            "generate an image", "generate a picture",
+            "create an image", "create a picture",
+            "show me a picture of", "show me an image of",
+            "render a", "render an",
+        ];
+        foreach (var trig in triggers)
+        {
+            if (t.Contains(trig, StringComparison.Ordinal)) return true;
+        }
+        return false;
+    }
 
     private sealed record TextAttachment(string FileName, byte[] Bytes);
 
