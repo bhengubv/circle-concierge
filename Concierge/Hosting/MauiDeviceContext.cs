@@ -36,7 +36,7 @@ public sealed class MauiDeviceContext : CircleAI.Core.IDeviceContext
 
     public bool? IsCharging => TrySafe(() => Battery.Default.State == BatteryState.Charging);
 
-    public string? NetworkType => TrySafe(() => Connectivity.Current.NetworkAccess switch
+    public string? NetworkType => TrySafe(() => Microsoft.Maui.Networking.Connectivity.Current.NetworkAccess switch
     {
         NetworkAccess.Internet => "internet",
         NetworkAccess.Local => "local",
