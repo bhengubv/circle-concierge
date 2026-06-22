@@ -10,6 +10,7 @@ using Concierge.Mesh;
 using Concierge.Shared.Media;
 using Concierge.Shared;
 using Concierge.Shared.Chat;
+using Concierge.Shared.Safety;
 using Concierge.Shared.Diagrams;
 using Concierge.Shared.Settings;
 using Concierge.Shared.Skills;
@@ -70,7 +71,10 @@ public static class MauiProgram
 			.AddConciergeTools()
 			.AddConciergeAi()
 			.AddConciergeMesh()
-			.AddConciergeMedia();
+			.AddConciergeMedia()
+			// Parental controls / content-filter pipeline. Wraps IChatRuntime
+			// registered above; pass-through when Strictness = Off.
+			.AddConciergeSafety();
 
 		// BYO API-key cloud runtimes + cloud design adapters. The factories read from MAUI's
 		// IConfiguration when present (env vars / appsettings.json bundled as MauiAsset);

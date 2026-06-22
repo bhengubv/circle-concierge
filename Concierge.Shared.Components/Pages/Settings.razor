@@ -1,7 +1,11 @@
 @page "/settings"
+@using CircleAI.ContentPolicy
+@using Concierge.Shared.Safety
 @inject IConciergeStateService Concierge
 @inject ILlmRuntimeService LlmRuntime
 @inject IEnumerable<IChatRuntime> ChatRuntimes
+@inject ConciergeSafetySettings SafetySettings
+@inject ISafetyAuditLog SafetyAudit
 @inject IJSRuntime JS
 
 @{
@@ -107,9 +111,130 @@
 
 <ApiKeyEditor />
 
+@*
+    Family Mode — parental controls dashboard. The toggle + strictness
+    dropdown mutate the singleton ConciergeSafetySettings; the decorator
+    in Concierge.Shared.Safety re-reads them on every chat call so the
+    change takes effect on the very next turn (no restart). The audit
+    panel below shows the last 20 entries the filter wrote.
+*@
+<section class="panel">
+    <div class="section-heading">
+        <p class="eyebrow">Family Mode</p>
+        <h2>Filter what's seen, log what's flagged</h2>
+    </div>
+    <p class="setting-desc">
+        Concierge can run any conversation through an on-device content filter
+        before the model sees the prompt and again before the reply streams to
+        the user. Off by default — opt in when handing the device to a child,
+        or switch to Balanced for an older kid you trust. The audit log below
+        records every flag so you can review what happened while you were out
+        of the room.
+    </p>
+
+    <div class="setting-row">
+        <label class="setting-toggle">
+            <input type="checkbox"
+                   checked="@SafetySettings.KidMode"
+                   @onchange="OnKidModeChanged" />
+            <span>Kid mode</span>
+        </label>
+        <p class="setting-hint">
+            When on, the kid-friendly system prompt is injected and Strictness
+            jumps to Strict unless you've explicitly set it lower.
+        </p>
+    </div>
+
+    <div class="setting-row">
+        <label for="safety-strictness">Strictness</label>
+        <select id="safety-strictness"
+                value="@SafetySettings.Strictness"
+                @onchange="OnStrictnessChanged">
+            <option value="@SafetyStrictness.Off">Off — no filtering</option>
+            <option value="@SafetyStrictness.Balanced">Balanced — flag risky, refuse worst</option>
+            <option value="@SafetyStrictness.Strict">Strict — refuse anything risky</option>
+        </select>
+    </div>
+
+    @if (SafetySettings.KidMode || SafetySettings.Strictness != SafetyStrictness.Off)
+    {
+        <div class="setting-row">
+            <label for="safety-profile">Profile label (optional)</label>
+            <input id="safety-profile"
+                   type="text"
+                   placeholder="e.g. Lebo's account"
+                   value="@SafetySettings.ProfileLabel"
+                   @onchange="OnProfileLabelChanged" />
+        </div>
+    }
+
+    <div class="section-heading">
+        <p class="eyebrow">Recent flags</p>
+        <h3>What the filter caught</h3>
+    </div>
+    @if (_auditEntries.Count == 0)
+    {
+        <p class="setting-hint">Nothing flagged yet. With Family Mode off, the audit log is empty by design.</p>
+    }
+    else
+    {
+        <ul class="audit-list">
+            @foreach (var entry in _auditEntries)
+            {
+                <li>
+                    <span class="audit-time">@entry.AtUtc.ToLocalTime():g</span>
+                    <span class="audit-verdict audit-@(entry.Verdict.ToString().ToLowerInvariant())">@entry.Verdict</span>
+                    <span class="audit-action">@entry.Action</span>
+                    <span class="audit-reason">@entry.Reason</span>
+                </li>
+            }
+        </ul>
+    }
+</section>
+
 @code {
     private const string ProviderPreferenceStorageKey = "concierge-provider-id";
     private string? _selectedProviderId;
+    private IReadOnlyList<SafetyAuditEntry> _auditEntries = Array.Empty<SafetyAuditEntry>();
+
+    private async Task OnKidModeChanged(ChangeEventArgs args)
+    {
+        SafetySettings.KidMode = args.Value is bool b && b;
+        // Kid mode bumps Strictness to Strict unless the parent has already
+        // moved it to Balanced (older child).
+        if (SafetySettings.KidMode && SafetySettings.Strictness == SafetyStrictness.Off)
+        {
+            SafetySettings.Strictness = SafetyStrictness.Strict;
+        }
+        await RefreshAuditAsync();
+    }
+
+    private async Task OnStrictnessChanged(ChangeEventArgs args)
+    {
+        if (Enum.TryParse<SafetyStrictness>(args.Value?.ToString(), out var s))
+        {
+            SafetySettings.Strictness = s;
+        }
+        await RefreshAuditAsync();
+    }
+
+    private void OnProfileLabelChanged(ChangeEventArgs args)
+    {
+        SafetySettings.ProfileLabel = args.Value?.ToString();
+    }
+
+    private async Task RefreshAuditAsync()
+    {
+        try
+        {
+            _auditEntries = await SafetyAudit.ReadAsync(null, limit: 20);
+        }
+        catch
+        {
+            _auditEntries = Array.Empty<SafetyAuditEntry>();
+        }
+        StateHasChanged();
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -117,9 +242,9 @@
         try
         {
             _selectedProviderId = await JS.InvokeAsync<string?>("localStorage.getItem", ProviderPreferenceStorageKey);
-            StateHasChanged();
         }
         catch { /* localStorage unavailable during prerender or on platforms that block it. */ }
+        await RefreshAuditAsync();
     }
 
     private async Task SelectProviderAsync(string providerId)

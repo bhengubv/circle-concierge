@@ -3,6 +3,7 @@ using Concierge.Web.Components;
 using Concierge.Web.Hosting;
 using Concierge.Shared;
 using Concierge.Shared.Chat;
+using Concierge.Shared.Safety;
 using Concierge.Shared.Diagrams;
 using Concierge.Shared.Media;
 using Concierge.Shared.Settings;
@@ -50,7 +51,11 @@ builder.Services
     .AddConciergeTools()
     .AddConciergeAi()
     .AddConciergeMesh()
-    .AddConciergeMedia();
+    .AddConciergeMedia()
+    // Parental controls / content-filter pipeline. Wraps the IChatRuntime
+    // registered above so every chat call routes through the filter when
+    // Family Mode is on. Off-mode is a zero-cost pass-through.
+    .AddConciergeSafety();
 builder.Services.AddSingleton<PrometheusMetricSnapshot>();
 
 // Rate limiting protects every endpoint from runaway clients (and from a misbehaving
