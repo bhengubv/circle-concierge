@@ -11,13 +11,17 @@ namespace Concierge.Ai;
 /// </summary>
 public sealed class CircleAiLlmRuntimeService : ILlmRuntimeService, IDisposable
 {
+    // Refreshed against CircleAI 3.x's embedded registry (Models array in
+    // CircleAI.Core/Models/embedded_registry.json). 3.x switched the model
+    // family from llama.cpp GGUF (-Q4 suffix) to MNN (-MNN suffix) and the
+    // probe must match the new naming or RegistryAvailable is always false.
     private static readonly IReadOnlyList<string> KnownModelNames =
     [
-        "Qwen3-0.6B-Q4",
-        "Qwen3-4B-Q4",
-        "Qwen3.5-9B-Q4",
-        "Kimi-VL-A3B-Thinking-2506-Q4",
-        "SenseVoice-Small"
+        "Qwen3-0.6B-MNN",
+        "Qwen3-1.7B-MNN",
+        "Qwen3-4B-MNN",
+        "Qwen3-8B-MNN",
+        "Qwen3-14B-MNN",
     ];
 
     private readonly IDeviceContext _device;

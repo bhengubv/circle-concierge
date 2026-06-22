@@ -83,6 +83,9 @@ public sealed class AdvancedIntegrationTests
         var snapshot = provider.GetRequiredService<ILlmRuntimeService>().GetSnapshot();
 
         Assert.True(snapshot.RegistryAvailable, "Embedded registry should resolve known model names now that the JSON schema and resource path are fixed.");
+        // 3.x registry ships the Qwen family with an "-MNN" suffix (was "-Q4"
+        // on the 1.x line). Assert on the Qwen prefix only so a future 4.x
+        // rename doesn't flap this test if the family stays.
         Assert.Contains(snapshot.ProbedModels, model => model.Available && model.Name.StartsWith("Qwen", StringComparison.OrdinalIgnoreCase));
     }
 
