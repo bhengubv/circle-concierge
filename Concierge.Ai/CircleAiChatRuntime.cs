@@ -9,8 +9,8 @@ namespace Concierge.Ai;
 /// <summary>
 /// <see cref="IChatRuntime"/> backed by CircleAI's on-device chat generator (MNN-LLM
 /// running a Qwen / Kimi family model). Model selection is device-driven via
-/// <see cref="ModelSelector.SelectForCurrentDevice"/> — neither the host nor the UI
-/// picks; whatever tier fits the device's RAM is what loads.
+/// <see cref="DeviceAwareModelSelector"/> reading CircleAI's model registry — neither the
+/// host nor the UI picks; whatever tier fits the device's RAM and storage is what loads.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -46,11 +46,15 @@ namespace Concierge.Ai;
 /// </list>
 /// </para>
 /// </remarks>
-public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime, IAsyncDisposable
+public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime, IModelDownloadRequired, IAsyncDisposable
 {
     private readonly ILogger<CircleAiChatRuntime> _logger;
     private readonly CircleAiChatOptions _options;
-    private readonly TaskCompletionSource<IChatGenerator?> _generatorReady =
+    private ModelSelection? _selected;
+
+    // Not readonly: completing it with null is how "no model" is reported to waiters, and
+    // accepting a download afterwards has to give later callers something to wait on again.
+    private TaskCompletionSource<IChatGenerator?> _generatorReady =
         new(TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly object _statusGate = new();
     // Single in-flight generation at a time — MNN model handles are not
@@ -69,6 +73,22 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
         _options = options;
     }
 
+    /// <summary>
+    /// What selection picked, once <see cref="LoadAsync"/> has run. Null before that.
+    /// Non-null with <c>RequiresDownload</c> means the engine is waiting on a decision.
+    /// </summary>
+    public ModelSelection? Selected => _selected;
+
+    /// <inheritdoc/>
+    public PendingModelDownload? PendingDownload => _selected is { } selection
+        ? new PendingModelDownload(
+            selection.ModelId,
+            selection.EstimatedBytes,
+            // NothingFits means the catalogue had nothing this device can run and the smallest
+            // entry was handed back anyway. Worth saying before somebody spends an hour on it.
+            FitsThisDevice: selection.Quality != SelectionQuality.NothingFits)
+        : null;
+
     public string Id => "circleai";
     public string EngineLabel => _engineLabel;
     public bool IsReady => _isReady;
@@ -80,16 +100,45 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
         try
         {
             SetStatus("Picking model for this device…", ready: false);
-            var tier = ModelSelector.SelectForCurrentDevice();
-            _engineLabel = $"{tier.ModelId} (CircleAI)";
 
-            SetStatus($"Resolving model path for {tier.ModelId}…", ready: false);
+            // Catalog-driven selection. The old static ModelSelector was removed upstream as
+            // an architecture violation: it hardcoded the tiers rather than reading them from
+            // the registry, so a new model could not be offered without a code change.
             var modelsDirectory = _options.ModelsDirectory;
             Directory.CreateDirectory(modelsDirectory);
-            using var manager = _options.RepositoryUrl is null
-                ? new LocalModelManager(modelRepositoryUrl: null, modelsDirectory)
-                : new LocalModelManager(_options.RepositoryUrl, modelsDirectory);
-            var modelPath = await manager.GetModelPathAsync(tier.ModelId, ct: cancellationToken).ConfigureAwait(false);
+
+            using var selector = new DeviceAwareModelSelector();
+            var probe = DeviceProbe.Snapshot(modelsDirectory);
+
+            // Tools, because Concierge's whole tool loop depends on the model emitting call
+            // blocks. Asking for it here means an unsuitable model is refused at selection
+            // rather than discovered when the first tool call comes back as prose.
+            var tier = selector.BestFit(probe, ChatCapability.Default | ChatCapability.Tools);
+            _engineLabel = $"{tier.ModelId} (CircleAI)";
+
+            // A model that is not on disk is not fetched here. RequiresDownload plus the
+            // measured byte count is what the person needs in order to decide, and starting a
+            // multi-gigabyte transfer on their connection without asking is not ours to do.
+            if (tier.RequiresDownload && !_options.AllowAutomaticDownload)
+            {
+                _selected = tier;
+                var gigabytes = tier.EstimatedBytes / 1024d / 1024d / 1024d;
+                SetStatus(
+                    $"{tier.ModelId} needs a {gigabytes:0.#} GB download before it can run.",
+                    ready: false);
+                _generatorReady.TrySetResult(null);
+                return;
+            }
+
+            SetStatus($"Resolving model path for {tier.ModelId}…", ready: false);
+
+            // BundleModelLoader, not LocalModelManager. Every entry in the registry is
+            // bundle-shaped, and the legacy manager throws on all of them — which is why the
+            // engine never came up on any machine. It also returns the weight blob rather than
+            // config.json, which is what MNN's Llm::create() actually loads, so even a
+            // downloaded bundle would have failed at the next step.
+            using var loader = new BundleModelLoader(modelsDirectory);
+            var modelPath = await loader.DownloadModelAsync(tier.ModelId).ConfigureAwait(false);
 
             SetStatus($"Loading {tier.ModelId} into memory (one-time)…", ready: false);
             var generator = new QwenTextGenerator(modelPath, _options.ContextSize);
@@ -107,6 +156,56 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
             _logger.LogError(ex, "CircleAI chat runtime failed to load.");
             SetStatus($"Engine offline: {ex.Message}", ready: false);
             _generatorReady.TrySetResult(null);
+        }
+    }
+
+    /// <inheritdoc/>
+    public async Task<bool> AcceptDownloadAsync(
+        IProgress<float>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (_selected is not { } selection)
+        {
+            SetStatus("No model has been selected yet.", ready: false);
+            return false;
+        }
+
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var gigabytes = selection.EstimatedBytes / 1024d / 1024d / 1024d;
+            SetStatus($"Downloading {selection.ModelId} ({gigabytes:0.#} GB)…", ready: false);
+
+            Directory.CreateDirectory(_options.ModelsDirectory);
+            using var loader = new BundleModelLoader(_options.ModelsDirectory);
+            var modelPath = await loader.DownloadModelAsync(selection.ModelId, progress).ConfigureAwait(false);
+
+            cancellationToken.ThrowIfCancellationRequested();
+
+            SetStatus($"Loading {selection.ModelId} into memory (one-time)…", ready: false);
+            var generator = new QwenTextGenerator(modelPath, _options.ContextSize);
+
+            // The original source already handed out null to whoever asked while the model was
+            // missing. Those callers have their answer; a fresh one is what the next caller waits on.
+            var ready = new TaskCompletionSource<IChatGenerator?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            ready.TrySetResult(generator);
+            _generatorReady = ready;
+
+            _selected = null;
+            SetStatus($"Ready · {selection.ModelId}", ready: true);
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            SetStatus("Download cancelled.", ready: false);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "CircleAI model download failed.");
+            SetStatus($"Engine offline: {ex.Message}", ready: false);
+            return false;
         }
     }
 
@@ -282,6 +381,19 @@ public sealed class CircleAiChatOptions
     /// low-battery devices but never widens it past this value.
     /// </summary>
     public uint MaxOutputTokens { get; init; } = 512;
+
+    /// <summary>
+    /// Whether the engine may fetch a model it does not have, without being asked.
+    /// </summary>
+    /// <remarks>
+    /// False on purpose. The registry's desktop-tier bundle is 22.8 GB — measured, not
+    /// estimated — and on a P30 Lite over wifi that is the better part of an hour. On mobile
+    /// data it is somebody's month. A download that size is a decision the person paying for
+    /// the connection makes, so <see cref="CircleAiChatRuntime.LoadAsync"/> reports what is
+    /// needed and stops, and a host calls
+    /// <see cref="CircleAiChatRuntime.EnsureModelAsync"/> once somebody has said yes.
+    /// </remarks>
+    public bool AllowAutomaticDownload { get; init; }
 
     /// <summary>
     /// Per-(installation, conversation) path the MAUI host uses to snapshot the

@@ -116,3 +116,55 @@ public sealed class NullChatRuntime : IChatRuntime
         yield return StatusMessage;
     }
 }
+
+/// <summary>
+/// Optional capability for chat runtimes that pick their own model and may find it is not
+/// on the device yet. Lets a surface offer the download instead of showing a dead status line.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Concierge selects a model from the device, not from a config file, because it has to run on
+/// whatever handset or server somebody already owns. The consequence is that the runtime, not
+/// the person, is the first to know a multi-gigabyte file is missing — and it must not act on
+/// that alone. The desktop-tier bundle is 21 GB; on a mid-range phone over mobile data that is
+/// somebody's month.
+/// </para>
+/// <para>
+/// A runtime that ships with its model, or reaches one over the network, has nothing to
+/// implement here. The UI pattern-matches and shows nothing when the match fails.
+/// </para>
+/// </remarks>
+public interface IModelDownloadRequired
+{
+    /// <summary>
+    /// The download standing between the runtime and being ready, or <c>null</c> when there
+    /// isn't one — either because the model is already present or because loading has not run.
+    /// </summary>
+    PendingModelDownload? PendingDownload { get; }
+
+    /// <summary>
+    /// Fetch <see cref="PendingDownload"/> and finish loading. Call only once somebody has
+    /// agreed to it. Returns <c>false</c> rather than throwing when it does not work out;
+    /// <see cref="IChatRuntime.StatusMessage"/> carries the reason.
+    /// </summary>
+    /// <param name="progress">Fraction complete, 0 to 1. A bare ratio is thin comfort on a slow
+    /// link, but it beats a screen that looks hung.</param>
+    Task<bool> AcceptDownloadAsync(
+        IProgress<float>? progress = null,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// A model the runtime wants but does not have.
+/// </summary>
+/// <param name="ModelId">What was selected, e.g. <c>"Qwen3.6-35B-A3B-MNN"</c>.</param>
+/// <param name="Bytes">How big it is. The whole decision, so it is not optional.</param>
+/// <param name="FitsThisDevice">
+/// <c>false</c> when nothing in the catalogue fits and this is the least-bad option — worth
+/// saying out loud before somebody spends an hour downloading something that will run badly.
+/// </param>
+public sealed record PendingModelDownload(string ModelId, long Bytes, bool FitsThisDevice)
+{
+    /// <summary>Size in GB, for showing to a person.</summary>
+    public double Gigabytes => Bytes / 1024d / 1024d / 1024d;
+}

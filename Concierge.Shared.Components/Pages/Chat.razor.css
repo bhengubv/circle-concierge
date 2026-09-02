@@ -479,3 +479,18 @@
         max-height: none;
     }
 }
+
+/* The model-download offer, inside the engine pill. Only present while the engine is
+   waiting on an answer, so it is laid out to sit under the status line without
+   changing the pill when it is absent. */
+.chat-engine-download {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.chat-engine-warning {
+    color: #b26a00;
+}

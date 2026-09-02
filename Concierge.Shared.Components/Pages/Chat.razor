@@ -66,6 +66,33 @@
         <div class="chat-engine-pill" data-ready="@(_activeRuntime?.IsReady ?? false)">
             <strong>@(_activeRuntime?.EngineLabel ?? "No runtime")</strong>
             <span>@(_activeRuntime?.StatusMessage ?? "No chat runtime registered.")</span>
+
+            @* The engine picks its own model from the device, so it is the first to know one is
+               missing — but a 21 GB download is not its decision to make. This is where it asks. *@
+            @if (PendingModel is { } pending)
+            {
+                <div class="chat-engine-download">
+                    @if (!pending.FitsThisDevice)
+                    {
+                        <span class="chat-engine-warning">
+                            Nothing in the catalogue fits this device. @pending.ModelId is the
+                            smallest available and may run slowly.
+                        </span>
+                    }
+                    @if (_downloading)
+                    {
+                        <span>Downloading @pending.ModelId — @(_downloadProgress.ToString("P0")) done. You can keep using the app.</span>
+                        <button class="button quiet" type="button" @onclick="CancelDownload">Stop</button>
+                    }
+                    else
+                    {
+                        <button class="button" type="button" @onclick="AcceptDownload">
+                            Download @pending.ModelId (@pending.Gigabytes.ToString("0.#") GB)
+                        </button>
+                        <span>One time. Uses your connection — best on wifi.</span>
+                    }
+                </div>
+            }
         </div>
 
         @* ── Active skills + picker ─────────────────────────────────────── *@
@@ -301,6 +328,52 @@
     /// number — Concierge composes them in <c>ISkillRuntime.ComposeSystemPrompt</c>.
     /// </summary>
     private readonly HashSet<string> _activeSkillIds = new(StringComparer.OrdinalIgnoreCase);
+    // ── Model download ─────────────────────────────────────────────────
+    // The on-device engine reports a missing model rather than fetching it; these carry the
+    // person's answer back. Runtimes that ship with their model implement none of this and
+    // PendingModel stays null.
+
+    private bool _downloading;
+    private double _downloadProgress;
+    private CancellationTokenSource? _downloadCancellation;
+
+    private PendingModelDownload? PendingModel
+        => (_activeRuntime as IModelDownloadRequired)?.PendingDownload;
+
+    private async Task AcceptDownload()
+    {
+        if (_activeRuntime is not IModelDownloadRequired runtime || _downloading)
+        {
+            return;
+        }
+
+        _downloading = true;
+        _downloadProgress = 0;
+        _downloadCancellation = new CancellationTokenSource();
+
+        // Rendering from the reporting thread, not on it — the download does not run on the
+        // renderer and Blazor will not accept a state change from anywhere else.
+        var progress = new Progress<float>(fraction =>
+        {
+            _downloadProgress = fraction;
+            InvokeAsync(StateHasChanged);
+        });
+
+        try
+        {
+            await runtime.AcceptDownloadAsync(progress, _downloadCancellation.Token);
+        }
+        finally
+        {
+            _downloading = false;
+            _downloadCancellation.Dispose();
+            _downloadCancellation = null;
+            StateHasChanged();
+        }
+    }
+
+    private void CancelDownload() => _downloadCancellation?.Cancel();
+
     private bool _showSkillPicker;
     private string _skillFilter = string.Empty;
 

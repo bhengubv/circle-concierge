@@ -117,8 +117,17 @@ public sealed class ChatStackTests
         }
     }
 
+    /// <summary>
+    /// A missing model is not the same thing as a broken engine, and saying "offline" for both
+    /// hides the one of the two somebody can act on.
+    /// </summary>
+    /// <remarks>
+    /// This test used to assert "offline" here, which was true when loading downloaded whatever
+    /// selection picked and only reported failure. It now reports the download instead — see
+    /// <see cref="ModelDownloadConsentTests"/> for why that download does not start on its own.
+    /// </remarks>
     [Fact]
-    public async Task Circleai_chat_runtime_surfaces_engine_offline_when_model_cannot_be_resolved()
+    public async Task Circleai_chat_runtime_names_the_missing_model_rather_than_calling_itself_offline()
     {
         var options = new CircleAiChatOptions
         {
@@ -131,7 +140,9 @@ public sealed class ChatStackTests
         await runtime.LoadAsync(CancellationToken.None);
 
         Assert.False(runtime.IsReady);
-        Assert.Contains("offline", runtime.StatusMessage, StringComparison.OrdinalIgnoreCase);
+        Assert.NotNull(runtime.Selected);
+        Assert.Contains(runtime.Selected!.ModelId, runtime.StatusMessage, StringComparison.Ordinal);
+        Assert.DoesNotContain("offline", runtime.StatusMessage, StringComparison.OrdinalIgnoreCase);
 
         var chunks = new List<string>();
         await foreach (var chunk in runtime.StreamAsync([new ChatTurn("user", "ping")]))
@@ -139,7 +150,7 @@ public sealed class ChatStackTests
             chunks.Add(chunk);
         }
         Assert.Single(chunks);
-        Assert.Contains("offline", chunks[0], StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("download", chunks[0], StringComparison.OrdinalIgnoreCase);
 
         await runtime.DisposeAsync();
     }
