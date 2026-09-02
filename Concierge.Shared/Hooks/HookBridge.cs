@@ -133,7 +133,17 @@ public sealed class ProcessHookBridge : IHookBridge
 
             process.Start();
 
-            await process.StandardInput.WriteAsync(payload.ToJsonString().AsMemory(), timeout.Token).ConfigureAwait(false);
+            try
+            {
+                await process.StandardInput.WriteAsync(payload.ToJsonString().AsMemory(), timeout.Token).ConfigureAwait(false);
+            }
+            catch (IOException)
+            {
+                // The hook exited without reading its input, which most hooks do — they decide
+                // from their arguments. A broken pipe here says nothing about their answer, and
+                // treating it as a broken hook turned a refusal into permission.
+            }
+
             process.StandardInput.Close();
 
             var output = await process.StandardOutput.ReadToEndAsync(timeout.Token).ConfigureAwait(false);

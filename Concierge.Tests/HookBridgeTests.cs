@@ -127,6 +127,21 @@ public sealed class ProcessHookBridgeTests
         Assert.False((await bridge.RunAsync(HookEvent.PreToolUse, new JsonObject())).Allowed);
     }
 
+    [Fact]
+    public async Task A_hook_that_never_reads_its_input_is_still_obeyed()
+    {
+        // Most hooks decide from their arguments and never touch stdin. Writing the payload to
+        // a program that has already exited breaks the pipe, and treating that as "the hook is
+        // broken" silently turned a refusal into permission. It surfaced as a test that passed
+        // alone and failed under load — the child usually exits after the write, not before.
+        var payload = new JsonObject { ["blob"] = new string('x', 256 * 1024) };
+
+        var decision = await new ProcessHookBridge([Refusing(HookEvent.PreToolUse)])
+            .RunAsync(HookEvent.PreToolUse, payload);
+
+        Assert.False(decision.Allowed);
+    }
+
     private static HookRegistration Refusing(HookEvent hookEvent)
         => OperatingSystem.IsWindows()
             ? new HookRegistration(hookEvent, "cmd.exe", ["/c", "exit 1"])
