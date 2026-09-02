@@ -76,6 +76,11 @@ public static class MauiProgram
 			// registered above; pass-through when Strictness = Off.
 			.AddConciergeSafety();
 
+		builder.Services.AddSingleton<InteractiveToolApprovalService>();
+		builder.Services.AddSingleton<IToolApprovalService>(sp =>
+			new AuditingToolApprovalService(
+				sp.GetRequiredService<InteractiveToolApprovalService>(),
+				sp.GetRequiredService<IToolApprovalAuditLog>()));
 		builder.Services.AddConciergeRuntime();
 		builder.Services.AddConciergeState(Path.Combine(FileSystem.AppDataDirectory, "state"));
 

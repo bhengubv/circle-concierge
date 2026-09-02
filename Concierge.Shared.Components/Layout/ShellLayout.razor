@@ -10,6 +10,10 @@
 @inherits LayoutComponentBase
 @inject NavigationManager Nav
 
+@* Asking permission is not page content: it belongs above whatever is on
+   screen, in every shell, so a tool call can never act unasked. *@
+<ApprovalPrompt />
+
 <div class="app-shell">
     <header class="app-topbar">
         <a class="app-brand" href="/" aria-label="Concierge home">

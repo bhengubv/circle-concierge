@@ -272,3 +272,102 @@ public sealed class ContainerResolutionTests : IDisposable
             .AddConciergeCodeMode(AppContext.BaseDirectory)
             .BuildServiceProvider();
 }
+
+/// <summary>
+/// That a host which registers an interactive approver actually gets one, in front of the
+/// audit log.
+/// </summary>
+/// <remarks>
+/// Until this was wired, every host used the fail-closed default and so every write and every
+/// command was refused. The model was offered three tools, two of which could only say no.
+/// </remarks>
+public sealed class ApproverWiringTests : IDisposable
+{
+    private readonly string _dataRoot =
+        Path.Combine(Path.GetTempPath(), $"concierge-approver-{Guid.NewGuid():N}");
+
+    public void Dispose()
+    {
+        try
+        {
+            Directory.Delete(_dataRoot, recursive: true);
+        }
+        catch (IOException)
+        {
+            // Disposable temp directory, and it may never have been created.
+        }
+    }
+
+    [Fact]
+    public void A_host_that_registers_an_interactive_approver_does_not_get_the_fail_closed_one()
+    {
+        using var provider = HostWithApprover();
+
+        Assert.IsNotType<UnavailableToolApprovalService>(provider.GetRequiredService<IToolApprovalService>());
+    }
+
+    [Fact]
+    public async Task An_interactive_host_can_actually_grant_a_write()
+    {
+        // The whole point. Before this, the answer was always no.
+        using var provider = HostWithApprover();
+        var approver = provider.GetRequiredService<InteractiveToolApprovalService>();
+        var approval = provider.GetRequiredService<IToolApprovalService>();
+
+        var asking = approval.RequestAsync(
+            new ToolApprovalRequest("write_file", "Write notes.txt", ConciergeToolRisk.High)).AsTask();
+
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(5);
+        while (approver.Pending.Count == 0 && DateTimeOffset.UtcNow < deadline)
+        {
+            await Task.Delay(10);
+        }
+
+        approver.Answer(approver.Pending[0].Id, ToolApprovalDecision.Allowed);
+
+        Assert.Equal(ToolApprovalDecision.Allowed, await asking);
+    }
+
+    [Fact]
+    public async Task Every_decision_reaches_the_audit_log()
+    {
+        // A parent reviewing what was allowed depends on the decorator being in the chain,
+        // not on each tool remembering to record.
+        using var provider = HostWithApprover();
+        var approver = provider.GetRequiredService<InteractiveToolApprovalService>();
+        var audit = provider.GetRequiredService<IToolApprovalAuditLog>();
+
+        var asking = provider.GetRequiredService<IToolApprovalService>()
+            .RequestAsync(new ToolApprovalRequest("run_command", "Run dotnet build", ConciergeToolRisk.High)).AsTask();
+
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(5);
+        while (approver.Pending.Count == 0 && DateTimeOffset.UtcNow < deadline)
+        {
+            await Task.Delay(10);
+        }
+
+        approver.Answer(approver.Pending[0].Id, ToolApprovalDecision.Denied);
+        await asking;
+
+        var entry = Assert.Single(audit.Entries);
+        Assert.Equal("run_command", entry.ToolName);
+        Assert.Equal(ToolApprovalDecision.Denied, entry.Decision);
+    }
+
+    private ServiceProvider HostWithApprover()
+    {
+        var services = new ServiceCollection()
+            .AddConciergeCore()
+            .AddConciergeChat(Path.Combine(_dataRoot, "chat.db"))
+            .AddConciergeState(_dataRoot);
+
+        // The order a host uses: the interactive approver before AddConciergeTools, whose
+        // TryAdd would otherwise install the fail-closed default first and win.
+        services.AddSingleton<InteractiveToolApprovalService>();
+        services.AddSingleton<IToolApprovalService>(sp => new AuditingToolApprovalService(
+            sp.GetRequiredService<InteractiveToolApprovalService>(),
+            sp.GetRequiredService<IToolApprovalAuditLog>()));
+
+        return services.AddConciergeTools().AddConciergeRuntime().BuildServiceProvider();
+    }
+}

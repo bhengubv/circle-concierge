@@ -1,0 +1,60 @@
+/* The prompt sits above everything: it is the one moment the assistant is asking permission,
+   and a question the user can scroll past is not a question. */
+.approval-overlay {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background: rgba(44, 62, 80, 0.55);
+    z-index: 1000;
+    padding: 1.5rem;
+}
+
+.approval-card {
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 1.75rem;
+    max-width: 34rem;
+    width: 100%;
+    box-shadow: 0 18px 48px rgba(44, 62, 80, 0.28);
+}
+
+.approval-card h2 {
+    margin: 0 0 0.5rem;
+    font-size: 1.35rem;
+    color: #2c3e50;
+}
+
+.approval-summary {
+    margin: 0 0 1rem;
+    font-size: 1.05rem;
+    color: #2c3e50;
+}
+
+/* The diff or command line. Scrolls rather than growing, so a large change cannot push the
+   buttons off the screen — a question with no reachable answer is worse than no question. */
+.approval-detail {
+    margin: 0 0 1.25rem;
+    padding: 0.85rem 1rem;
+    background: #f5f7fa;
+    border-radius: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.85rem;
+    line-height: 1.45;
+    max-height: 40vh;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.approval-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.approval-queue {
+    margin: 1rem 0 0;
+    font-size: 0.85rem;
+    color: #6b7c8c;
+}

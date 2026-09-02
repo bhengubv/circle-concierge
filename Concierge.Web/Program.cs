@@ -57,6 +57,11 @@ builder.Services
     // registered above so every chat call routes through the filter when
     // Family Mode is on. Off-mode is a zero-cost pass-through.
     .AddConciergeSafety();
+builder.Services.AddSingleton<InteractiveToolApprovalService>();
+builder.Services.AddSingleton<IToolApprovalService>(sp =>
+    new AuditingToolApprovalService(
+        sp.GetRequiredService<InteractiveToolApprovalService>(),
+        sp.GetRequiredService<IToolApprovalAuditLog>()));
 builder.Services.AddConciergeRuntime();
 builder.Services.AddConciergeState(
     Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Concierge", "web"));
