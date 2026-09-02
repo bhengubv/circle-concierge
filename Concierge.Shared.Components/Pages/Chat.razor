@@ -8,6 +8,11 @@
 @inject IEnumerable<IChatRuntime> Runtimes
 @inject IEnumerable<Concierge.Shared.Media.IImageRuntime> ImageRuntimes
 @inject IAgentToolRegistry Tools
+@inject Concierge.Shared.Tools.IToolCallScheduler ToolScheduler
+@inject Concierge.Shared.Tools.IRepeatToolReminder RepeatReminder
+@inject Concierge.Shared.Context.IToolResultPruner ResultPruner
+@inject Concierge.Shared.Context.ICompactionEngine Compaction
+@inject Concierge.Shared.ConciergeToolLoopOptions LoopOptions
 @inject Concierge.Shared.Skills.ISkillRuntime SkillRuntime
 @inject ISkillCatalogService SkillCatalog
 @inject NavigationManager Nav
@@ -266,7 +271,10 @@
 @code {
     [Parameter] public Guid? ConversationId { get; set; }
 
-    private const int MaxToolIterations = 5;
+    // Was a constant. The right ceiling differs between a phone on battery and a desktop,
+    // and Concierge already varies the model by device state, so this belongs with the
+    // other budgets rather than nailed to the page.
+    private int MaxToolIterations => LoopOptions.MaxToolIterations;
     private const long MaxAttachmentBytes = 256 * 1024; // 256 KB — text-only attachments in v1
     private const string OwnerId = "local";
 
@@ -358,7 +366,7 @@
                     // soon as the runtime becomes ready — the response flow
                     // takes over. Without this guard the entire prompt is
                     // silently dropped because CanSend gates on IsReady.
-                    await Store.AppendAsync(_active.Id, role: "user", content: prefill);
+                    await Store.AppendEventAsync(_active.Id, ConversationEventType.UserMessage, prefill);
                     _active = await Store.GetAsync(_active.Id);
                     _composerText = string.Empty;
                     await RefreshSidebarAsync();
@@ -635,7 +643,7 @@
                 .FirstOrDefault(r => r.IsReady && r.Id != "null");
             if (imageRuntime is not null)
             {
-                await Store.AppendAsync(_active.Id, role: "user", content: input);
+                await Store.AppendEventAsync(_active.Id, ConversationEventType.UserMessage, input);
                 _active = await Store.GetAsync(_active.Id);
                 StateHasChanged();
                 try
@@ -650,9 +658,9 @@
                             : first.Bytes is { Length: > 0 }
                                 ? $"![generated](data:{first.MimeType};base64,{Convert.ToBase64String(first.Bytes)})"
                                 : "[empty image artifact]";
-                        await Store.AppendAsync(_active.Id, role: "assistant",
-                            content: $"Here's what I came up with:\n\n{img}",
-                            producedBy: imageRuntime.EngineLabel);
+                        await Store.AppendEventAsync(_active.Id, ConversationEventType.AssistantMessage,
+                            $"Here's what I came up with:\n\n{img}",
+                            imageRuntime.EngineLabel);
                         _active = await Store.GetAsync(_active.Id);
                         await RefreshSidebarAsync();
                         StateHasChanged();
@@ -661,9 +669,9 @@
                 }
                 catch (Exception ex)
                 {
-                    await Store.AppendAsync(_active.Id, role: "assistant",
-                        content: $"I tried to draw that, but the image runtime returned an error: {ex.Message}",
-                        producedBy: imageRuntime.EngineLabel);
+                    await Store.AppendEventAsync(_active.Id, ConversationEventType.AssistantMessage,
+                        $"I tried to draw that, but the image runtime returned an error: {ex.Message}",
+                        imageRuntime.EngineLabel);
                     _active = await Store.GetAsync(_active.Id);
                     StateHasChanged();
                     return;
@@ -682,7 +690,7 @@
 
         var fullPrompt = string.Join("\n\n", attachmentBlocks.Append(input).Where(s => !string.IsNullOrEmpty(s)));
 
-        await Store.AppendAsync(_active.Id, role: "user", content: fullPrompt);
+        await Store.AppendEventAsync(_active.Id, ConversationEventType.UserMessage, fullPrompt);
         _active = await Store.GetAsync(_active.Id);
         await RefreshSidebarAsync();
         StateHasChanged();
@@ -724,36 +732,56 @@
 
                 if (iteration == MaxToolIterations)
                 {
-                    await Store.AppendAsync(_active!.Id, role: "user",
-                        content: $"```tool-result\n{{\"name\":\"<host>\",\"success\":false,\"output\":\"\",\"failure\":\"Tool-call iteration cap ({MaxToolIterations}) reached. Stopping the loop.\"}}\n```");
+                    await Store.AppendEventAsync(_active!.Id, ConversationEventType.ToolResult,
+                        $"The tool loop stopped after {MaxToolIterations} rounds without finishing.");
                     break;
                 }
 
-                var results = new List<(string ToolName, AgentToolResult Result)>();
+                // Each call is recorded before it runs, so a turn abandoned half way still
+                // leaves a log that says what was asked for.
                 foreach (var call in calls)
                 {
-                    var tool = Tools.Tools.FirstOrDefault(t => string.Equals(t.Name, call.Name, StringComparison.OrdinalIgnoreCase));
-                    if (tool is null)
-                    {
-                        results.Add((call.Name, new AgentToolResult(false, string.Empty, $"Unknown tool '{call.Name}'.")));
-                        continue;
-                    }
-
-                    AgentToolResult result;
-                    try
-                    {
-                        result = await tool.InvokeAsync(call.Arguments, _streamCts.Token);
-                    }
-                    catch (Exception ex)
-                    {
-                        result = new AgentToolResult(false, string.Empty, $"Tool '{tool.Name}' threw: {ex.Message}");
-                    }
-                    results.Add((call.Name, result));
+                    await Store.AppendEventAsync(
+                        _active!.Id,
+                        ConversationEventType.ToolCall,
+                        call.Name + " " + (call.Arguments?.ToJsonString() ?? "{}"));
                 }
 
-                var resultMessage = ToolCallProtocol.FormatToolResultMessage(results);
-                await Store.AppendAsync(_active!.Id, role: "user", content: resultMessage);
-                _active = await Store.GetAsync(_active.Id);
+                // The scheduler overlaps read-only calls, runs the rest alone, and returns a
+                // result for every call — including ones a cancellation stopped.
+                var planned = calls
+                    .Select(call => new PlannedToolCall(call.Name, call.Arguments))
+                    .ToList();
+
+                var outcomes = await ToolScheduler.ExecuteAsync(planned, _streamCts.Token);
+
+                var results = new List<(string ToolName, AgentToolResult Result)>();
+                foreach (var outcome in outcomes)
+                {
+                    // Oversized output is trimmed once here, rather than paid for on every
+                    // later request in this conversation.
+                    var pruned = ResultPruner.Prune(outcome.Result.Output);
+                    var result = pruned.WasPruned
+                        ? new AgentToolResult(outcome.Result.Success, pruned.Text, outcome.Result.FailureMessage)
+                        : outcome.Result;
+
+                    results.Add((outcome.ToolName, result));
+
+                    await Store.AppendEventAsync(
+                        _active!.Id,
+                        ConversationEventType.ToolResult,
+                        ToolCallProtocol.FormatResult(outcome.ToolName, result));
+
+                    // A model going round in circles is told so, rather than left to spend
+                    // the whole iteration budget discovering it.
+                    var reminder = RepeatReminder.Observe(outcome.ToolName, outcome.Result.Output);
+                    if (reminder is not null)
+                    {
+                        await Store.AppendEventAsync(_active.Id, ConversationEventType.UserMessage, reminder);
+                    }
+                }
+
+                _active = await Store.GetAsync(_active!.Id);
                 StateHasChanged();
             }
         }
@@ -783,9 +811,25 @@
             return null;
         }
 
-        var turns = _active.Messages
-            .Select(m => new ChatTurn(m.Role, m.Content))
-            .ToList();
+        // Derived from the log rather than read off the message rows: the log is what is
+        // true, and it is the only place a tool result is distinguishable from something a
+        // person typed.
+        var turns = (await Store.DeriveMessagesAsync(_active.Id, cancellationToken)).ToList();
+
+        // Compact before spending a request, not after one is refused for length. On the
+        // smallest on-device model this is the difference between a conversation that keeps
+        // going and one that stops after a handful of turns.
+        var compacted = await Compaction.CompactIfNeededAsync(
+            turns, LoopOptions.ContextBudgetTokens, cancellationToken);
+
+        if (compacted.WasCompacted)
+        {
+            turns = compacted.Turns.ToList();
+            await Store.AppendEventAsync(
+                _active.Id,
+                ConversationEventType.CompactionReplace,
+                $"Summarised the earlier part of this conversation, reclaiming about {compacted.TokensReclaimed} tokens.");
+        }
 
         var systemParts = new List<string>();
 
@@ -845,16 +889,16 @@
         {
             if (assistantText.Length > 0)
             {
-                await Store.AppendAsync(_active.Id, role: "assistant",
-                    content: assistantText + "\n[stream cancelled before completion]",
-                    producedBy: _activeRuntime.EngineLabel);
+                await Store.AppendEventAsync(_active.Id, ConversationEventType.AssistantMessage,
+                    assistantText + "\n[stream cancelled before completion]",
+                    _activeRuntime.EngineLabel);
             }
             return null;
         }
 
         if (!string.IsNullOrWhiteSpace(assistantText))
         {
-            await Store.AppendAsync(_active.Id, role: "assistant", content: assistantText, producedBy: _activeRuntime.EngineLabel);
+            await Store.AppendEventAsync(_active.Id, ConversationEventType.AssistantMessage, assistantText, _activeRuntime.EngineLabel);
             _active = await Store.GetAsync(_active.Id);
             return assistantText;
         }

@@ -53,6 +53,8 @@
     <ProjectReference Include="..\Concierge.Media.Cloud\Concierge.Media.Cloud.csproj" />
     <ProjectReference Include="..\Concierge.Diagrams.Design\Concierge.Diagrams.Design.csproj" />
     <ProjectReference Include="..\Concierge.Web\Concierge.Web.csproj" />
+    <ProjectReference Include="..\Concierge.CodeMode\Concierge.CodeMode.csproj" />
+    <ProjectReference Include="..\Concierge.CodeMode.Host\Concierge.CodeMode.Host.csproj" />
   </ItemGroup>
 
 </Project>

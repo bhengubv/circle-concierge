@@ -29,6 +29,12 @@ public sealed class ConciergeChatDbContext : DbContext
     public DbSet<Conversation> Conversations => Set<Conversation>();
     public DbSet<ChatMessageRow> Messages => Set<ChatMessageRow>();
 
+    /// <summary>
+    /// The append-only log. Conversations and messages are projections of this; if the two
+    /// ever disagree, the log is what is true.
+    /// </summary>
+    public DbSet<ConversationEvent> Events => Set<ConversationEvent>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Conversation>(entity =>
@@ -46,6 +52,15 @@ public sealed class ConciergeChatDbContext : DbContext
         {
             entity.Property(m => m.CreatedAt).HasConversion(UnixMillisecondsConverter);
             entity.HasIndex(m => new { m.ConversationId, m.CreatedAt });
+        });
+
+        modelBuilder.Entity<ConversationEvent>(entity =>
+        {
+            entity.Property(e => e.CreatedAt).HasConversion(UnixMillisecondsConverter);
+
+            // Unique, not merely indexed: a duplicate sequence number is a corrupt log, and
+            // the database is the only place that can refuse it under concurrent writers.
+            entity.HasIndex(e => new { e.ConversationId, e.Seq }).IsUnique();
         });
     }
 }

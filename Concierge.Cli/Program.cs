@@ -1,7 +1,10 @@
+using Concierge.CodeMode;
 using Concierge.Ai;
 using Concierge.Media;
 using Concierge.Mesh;
 using Concierge.Shared;
+using Concierge.Shared.Safety;
+using Concierge.Shared.Tools;
 using Microsoft.Extensions.DependencyInjection;
 
 var services = new ServiceCollection()
@@ -9,6 +12,17 @@ var services = new ServiceCollection()
     .AddConciergeAi()
     .AddConciergeMesh()
     .AddConciergeMedia()
+    .AddConciergeTools()
+    .AddConciergeRuntime()
+    .AddConciergeState(Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Concierge", "cli"))
+    // The CLI had no safety stack at all: content filtering and parental controls were wired
+    // in the MAUI and Web hosts and silently absent here.
+    .AddConciergeSafety()
+    // Code mode only where a child process can be started and confined. The MAUI host does
+    // not call this: on Android a child runs under the app's own user id, so there is no
+    // boundary to put a model-written program behind.
+    .AddConciergeCodeMode(AppContext.BaseDirectory)
     .BuildServiceProvider();
 
 var harness = services.GetRequiredService<IAgentHarnessService>();

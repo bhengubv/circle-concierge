@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <Description>
+      Code Mode: runs a model-written program against Concierge's tools.
+
+      This half owns the boundary — starting the child, confining it, answering its tool
+      calls and killing it on timeout. The compiler lives in Concierge.CodeMode.Host, which
+      runs as a separate process, because an in-process script cannot be stopped.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Concierge.Shared\Concierge.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

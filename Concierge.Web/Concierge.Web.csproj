@@ -23,4 +23,9 @@
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\Concierge.CodeMode\Concierge.CodeMode.csproj" />
+    <ProjectReference Include="..\Concierge.CodeMode.Host\Concierge.CodeMode.Host.csproj" />
+  </ItemGroup>
+
 </Project>

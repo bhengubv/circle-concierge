@@ -76,6 +76,9 @@ public static class MauiProgram
 			// registered above; pass-through when Strictness = Off.
 			.AddConciergeSafety();
 
+		builder.Services.AddConciergeRuntime();
+		builder.Services.AddConciergeState(Path.Combine(FileSystem.AppDataDirectory, "state"));
+
 		// BYO API-key cloud runtimes + cloud design adapters. The factories read from MAUI's
 		// IConfiguration when present (env vars / appsettings.json bundled as MauiAsset);
 		// missing keys leave the runtime in the "needs key" state without breaking startup.

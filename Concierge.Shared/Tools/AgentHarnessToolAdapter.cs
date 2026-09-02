@@ -43,13 +43,24 @@ public sealed class AgentHarnessReadTool : IAgentTool
             : new AgentToolResult(false, result.Output, result.Summary);
 }
 
+/// <summary>
+/// Writes a file, but only after a person has approved this specific write. The approval
+/// request carries the diff produced by <see cref="IAgentHarnessService.PreviewWriteFileAsync"/>
+/// so the decision is made against the actual change, not the model's description of it.
+/// </summary>
 public sealed class AgentHarnessWriteTool : IAgentTool
 {
     private readonly IAgentHarnessService _harness;
-    public AgentHarnessWriteTool(IAgentHarnessService harness) => _harness = harness;
+    private readonly IToolApprovalService _approval;
+
+    public AgentHarnessWriteTool(IAgentHarnessService harness, IToolApprovalService approval)
+    {
+        _harness = harness ?? throw new ArgumentNullException(nameof(harness));
+        _approval = approval ?? throw new ArgumentNullException(nameof(approval));
+    }
 
     public string Name => "write_file";
-    public string Description => "Create or replace a UTF-8 text file. Requires approval before execution.";
+    public string Description => "Create or replace a UTF-8 text file. The user is asked before it is written.";
     public bool IsReadOnly => false;
 
     public JsonNode? ArgumentsSchema => JsonNode.Parse("""
@@ -70,18 +81,43 @@ public sealed class AgentHarnessWriteTool : IAgentTool
             return new AgentToolResult(false, string.Empty, "Arguments 'path' and 'content' are required.");
         }
 
-        var result = await _harness.WriteFileAsync(path, content, approved: false, cancellationToken).ConfigureAwait(false);
+        // Preview first: the diff is what the person is actually approving, and building it
+        // also surfaces a rejected path before anyone is interrupted.
+        var preview = await _harness.PreviewWriteFileAsync(path, content, cancellationToken).ConfigureAwait(false);
+
+        var decision = await _approval.RequestAsync(
+            new ToolApprovalRequest(
+                Name,
+                $"Write {path}",
+                ConciergeToolRisk.High,
+                preview.DiffPreview),
+            cancellationToken).ConfigureAwait(false);
+
+        var result = await _harness
+            .WriteFileAsync(path, content, approved: decision == ToolApprovalDecision.Allowed, cancellationToken)
+            .ConfigureAwait(false);
+
         return AgentHarnessReadTool.ToAgentResult(result);
     }
 }
 
+/// <summary>
+/// Runs an allowlisted command, asking a person first unless the command only reads state.
+/// A command the harness would refuse outright is refused without interrupting anyone.
+/// </summary>
 public sealed class AgentHarnessRunTool : IAgentTool
 {
     private readonly IAgentHarnessService _harness;
-    public AgentHarnessRunTool(IAgentHarnessService harness) => _harness = harness;
+    private readonly IToolApprovalService _approval;
+
+    public AgentHarnessRunTool(IAgentHarnessService harness, IToolApprovalService approval)
+    {
+        _harness = harness ?? throw new ArgumentNullException(nameof(harness));
+        _approval = approval ?? throw new ArgumentNullException(nameof(approval));
+    }
 
     public string Name => "run_command";
-    public string Description => "Run an allowlisted shell command (no shell features). Requires approval for destructive commands.";
+    public string Description => "Run an allowlisted command (no shell features). The user is asked before anything that changes state.";
     public bool IsReadOnly => false;
 
     public JsonNode? ArgumentsSchema => JsonNode.Parse("""
@@ -100,7 +136,30 @@ public sealed class AgentHarnessRunTool : IAgentTool
             return new AgentToolResult(false, string.Empty, "Argument 'command' is required.");
         }
 
-        var result = await _harness.RunCommandAsync(command, approved: false, cancellationToken).ConfigureAwait(false);
-        return AgentHarnessReadTool.ToAgentResult(result);
+        // Try unattended first. The harness runs read-only commands without approval and
+        // returns ApprovalRequired for everything else, so this both executes the safe case
+        // and tells us whether asking is worthwhile — a command that is denied outright
+        // (not allowlisted, chained, malformed) never reaches a person.
+        var unattended = await _harness.RunCommandAsync(command, approved: false, cancellationToken).ConfigureAwait(false);
+        if (unattended.Outcome != ConciergeToolOutcome.ApprovalRequired)
+        {
+            return AgentHarnessReadTool.ToAgentResult(unattended);
+        }
+
+        var decision = await _approval.RequestAsync(
+            new ToolApprovalRequest(
+                Name,
+                "Run a command",
+                ConciergeToolRisk.High,
+                command),
+            cancellationToken).ConfigureAwait(false);
+
+        if (decision != ToolApprovalDecision.Allowed)
+        {
+            return AgentHarnessReadTool.ToAgentResult(unattended);
+        }
+
+        var approved = await _harness.RunCommandAsync(command, approved: true, cancellationToken).ConfigureAwait(false);
+        return AgentHarnessReadTool.ToAgentResult(approved);
     }
 }

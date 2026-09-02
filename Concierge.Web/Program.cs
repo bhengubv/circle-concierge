@@ -1,3 +1,4 @@
+using Concierge.CodeMode;
 using System.Threading.RateLimiting;
 using Concierge.Web.Components;
 using Concierge.Web.Hosting;
@@ -56,6 +57,10 @@ builder.Services
     // registered above so every chat call routes through the filter when
     // Family Mode is on. Off-mode is a zero-cost pass-through.
     .AddConciergeSafety();
+builder.Services.AddConciergeRuntime();
+builder.Services.AddConciergeState(
+    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Concierge", "web"));
+builder.Services.AddConciergeCodeMode(AppContext.BaseDirectory);
 builder.Services.AddSingleton<PrometheusMetricSnapshot>();
 
 // Rate limiting protects every endpoint from runaway clients (and from a misbehaving

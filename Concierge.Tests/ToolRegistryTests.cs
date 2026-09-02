@@ -34,8 +34,8 @@ public sealed class ToolRegistryTests
         var registry = new AgentToolRegistry(new IAgentTool[]
         {
             new AgentHarnessReadTool(harness),
-            new AgentHarnessWriteTool(harness),
-            new AgentHarnessRunTool(harness),
+            new AgentHarnessWriteTool(harness, UnavailableToolApprovalService.Instance),
+            new AgentHarnessRunTool(harness, UnavailableToolApprovalService.Instance),
         });
 
         var addendum = registry.BuildSystemPromptAddendum();
@@ -81,7 +81,7 @@ public sealed class ToolRegistryTests
     {
         var workspace = CreateWorkspaceRoot();
         var harness = new AgentHarnessService(workspace);
-        var tool = new AgentHarnessWriteTool(harness);
+        var tool = new AgentHarnessWriteTool(harness, UnavailableToolApprovalService.Instance);
 
         var arguments = JsonNode.Parse("{ \"path\": \"out.txt\", \"content\": \"sample\" }");
         var result = await tool.InvokeAsync(arguments);

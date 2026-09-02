@@ -2,6 +2,8 @@
   <Project Path="Concierge.Ai/Concierge.Ai.csproj" />
   <Project Path="Concierge.Chat.Cloud/Concierge.Chat.Cloud.csproj" />
   <Project Path="Concierge.Cli/Concierge.Cli.csproj" />
+  <Project Path="Concierge.CodeMode/Concierge.CodeMode.csproj" />
+  <Project Path="Concierge.CodeMode.Host/Concierge.CodeMode.Host.csproj" />
   <Project Path="Concierge.Diagrams.Design/Concierge.Diagrams.Design.csproj" />
   <Project Path="Concierge.Media/Concierge.Media.csproj" />
   <Project Path="Concierge.Media.Cloud/Concierge.Media.Cloud.csproj" />

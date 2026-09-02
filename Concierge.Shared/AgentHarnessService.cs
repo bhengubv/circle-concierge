@@ -15,7 +15,13 @@ public interface IAgentHarnessService
 
     Task<ConciergeToolResult> ReadFileAsync(string relativePath, CancellationToken cancellationToken = default);
 
+    Task<ConciergeToolResult> ReadFileWindowAsync(string relativePath, int offsetLines, int maxLines, CancellationToken cancellationToken = default);
+
     Task<FileWritePreview> PreviewWriteFileAsync(string relativePath, string content, CancellationToken cancellationToken = default);
+
+    Task<FileWritePreview> PreviewEditFileAsync(string relativePath, string find, string replace, CancellationToken cancellationToken = default);
+
+    Task<ConciergeToolResult> EditFileAsync(string relativePath, string find, string replace, bool approved, CancellationToken cancellationToken = default);
 
     Task<ConciergeToolResult> WriteFileAsync(string relativePath, string content, bool approved, CancellationToken cancellationToken = default);
 
@@ -66,6 +72,7 @@ public sealed class AgentHarnessService : IAgentHarnessService
     private readonly object _gate = new();
     private readonly List<ConciergeRunLog> _logs;
     private readonly IAgentRunLogPublisher _publisher;
+    private readonly IToolTimeoutPolicy _timeouts;
 
     public AgentHarnessService()
         : this(LocateWorkspaceRoot(), null)
@@ -77,10 +84,32 @@ public sealed class AgentHarnessService : IAgentHarnessService
     {
     }
 
+    /// <summary>
+    /// Work inside a workspace the host chose. Preferred over the root-discovering
+    /// constructors, which fall back to the process's current directory when no solution
+    /// file is found — an accident on any machine that is not a developer's.
+    /// </summary>
+    public AgentHarnessService(ConciergeWorkspace workspace, IAgentRunLogPublisher? publisher = null, IToolTimeoutPolicy? timeouts = null)
+        : this((workspace ?? throw new ArgumentNullException(nameof(workspace))).Root, publisher, timeouts)
+    {
+    }
+
     public AgentHarnessService(string workspaceRoot, IAgentRunLogPublisher? publisher)
+        : this(workspaceRoot, publisher, null)
+    {
+    }
+
+    /// <param name="workspaceRoot">The trusted root every path is resolved against.</param>
+    /// <param name="publisher">Where finished run logs are relayed, or null for nowhere.</param>
+    /// <param name="timeouts">
+    /// How long a command may run. Null keeps <see cref="ToolTimeoutPolicy.Default"/>, which
+    /// is the five-minute ceiling this class enforced before the policy was extracted.
+    /// </param>
+    public AgentHarnessService(string workspaceRoot, IAgentRunLogPublisher? publisher, IToolTimeoutPolicy? timeouts)
     {
         WorkspaceRoot = Path.GetFullPath(workspaceRoot);
         _publisher = publisher ?? new NullAgentRunLogPublisher();
+        _timeouts = timeouts ?? ToolTimeoutPolicy.Default;
         Directory.CreateDirectory(LogDirectory);
         _logs = LoadLogs().ToList();
     }
@@ -131,6 +160,108 @@ public sealed class AgentHarnessService : IAgentHarnessService
         return Result("read_file", ConciergeToolOutcome.Succeeded, $"Read {relativePath}.", content, started);
     }
 
+    /// <summary>
+    /// Reads a slice of a file by line, so a large file can be examined without loading it
+    /// into a context window that cannot hold it. Offsets before the start are clamped;
+    /// a window past the end is empty rather than an error.
+    /// </summary>
+    public async Task<ConciergeToolResult> ReadFileWindowAsync(string relativePath, int offsetLines, int maxLines, CancellationToken cancellationToken = default)
+    {
+        var started = DateTimeOffset.UtcNow;
+        var fullPath = ResolveTrustedPath(relativePath);
+        if (!File.Exists(fullPath))
+        {
+            return Result("read_file_window", ConciergeToolOutcome.Failed, $"File not found: {relativePath}", string.Empty, started);
+        }
+
+        var lines = await File.ReadAllLinesAsync(fullPath, cancellationToken);
+        var offset = Math.Clamp(offsetLines, 0, lines.Length);
+        var take = Math.Max(0, Math.Min(maxLines, lines.Length - offset));
+        // Plain newlines: the window is read by a model and by the diff view, neither of
+        // which wants carriage returns, whatever the file itself uses.
+        var window = string.Join('\n', lines.Skip(offset).Take(take));
+        var summary = $"Read lines {offset + 1}-{offset + take} of {lines.Length} in {relativePath}.";
+        return Result("read_file_window", ConciergeToolOutcome.Succeeded, summary, window, started);
+    }
+
+    /// <summary>
+    /// Shows the diff a literal edit would produce, without applying it. Same approval
+    /// contract as a write: the person decides against the change, not its description.
+    /// </summary>
+    public async Task<FileWritePreview> PreviewEditFileAsync(string relativePath, string find, string replace, CancellationToken cancellationToken = default)
+    {
+        var fullPath = ResolveTrustedPath(relativePath);
+        var existing = File.Exists(fullPath) ? await File.ReadAllTextAsync(fullPath, cancellationToken) : string.Empty;
+        var proposed = ApplyEdit(existing, find, replace, out _);
+        return new FileWritePreview(relativePath, proposed ?? existing, BuildDiffPreview(existing, proposed ?? existing), RequiresApproval: true);
+    }
+
+    /// <summary>
+    /// Replaces one exact occurrence of <paramref name="find"/>. Text that is absent, or
+    /// present more than once, fails rather than guessing which line was meant — a wrong
+    /// guess corrupts the file silently, and the model can retry with more context.
+    /// </summary>
+    public async Task<ConciergeToolResult> EditFileAsync(string relativePath, string find, string replace, bool approved, CancellationToken cancellationToken = default)
+    {
+        var started = DateTimeOffset.UtcNow;
+        var fullPath = ResolveTrustedPath(relativePath);
+        if (!approved)
+        {
+            return Result("edit_file", ConciergeToolOutcome.ApprovalRequired, "File edit requires approval.", string.Empty, started);
+        }
+
+        if (!File.Exists(fullPath))
+        {
+            return Result("edit_file", ConciergeToolOutcome.Failed, $"File not found: {relativePath}", string.Empty, started);
+        }
+
+        var existing = await File.ReadAllTextAsync(fullPath, cancellationToken);
+        var edited = ApplyEdit(existing, find, replace, out var occurrences);
+        if (edited is null)
+        {
+            var reason = occurrences == 0
+                ? $"Text to replace was not found in {relativePath}."
+                : $"Text to replace appears {occurrences} times in {relativePath}; include more surrounding text to identify one.";
+            return Result("edit_file", ConciergeToolOutcome.Failed, reason, string.Empty, started);
+        }
+
+        await File.WriteAllTextAsync(fullPath, edited, cancellationToken);
+        return Result("edit_file", ConciergeToolOutcome.Succeeded, $"Edited {relativePath}.", string.Empty, started);
+    }
+
+    /// <summary>
+    /// Applies a literal single-occurrence replacement, or returns null with the occurrence
+    /// count when the edit is not uniquely determined.
+    /// </summary>
+    private static string? ApplyEdit(string content, string find, string replace, out int occurrences)
+    {
+        occurrences = 0;
+        if (string.IsNullOrEmpty(find))
+        {
+            return null;
+        }
+
+        var index = content.IndexOf(find, StringComparison.Ordinal);
+        while (index >= 0)
+        {
+            occurrences++;
+            if (occurrences > 1)
+            {
+                return null;
+            }
+
+            index = content.IndexOf(find, index + find.Length, StringComparison.Ordinal);
+        }
+
+        if (occurrences != 1)
+        {
+            return null;
+        }
+
+        var at = content.IndexOf(find, StringComparison.Ordinal);
+        return string.Concat(content.AsSpan(0, at), replace, content.AsSpan(at + find.Length));
+    }
+
     public async Task<FileWritePreview> PreviewWriteFileAsync(string relativePath, string content, CancellationToken cancellationToken = default)
     {
         var fullPath = ResolveTrustedPath(relativePath);
@@ -165,7 +296,7 @@ public sealed class AgentHarnessService : IAgentHarnessService
         var executable = tokens[0];
         var arguments = tokens.Skip(1).ToList();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromMinutes(5));
+        timeout.CancelAfter(_timeouts.TimeoutFor("shell"));
 
         using var process = new Process
         {
