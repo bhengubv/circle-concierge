@@ -89,3 +89,7 @@ desktop.ini
 # *.nupkg / *.snupkg rules above would otherwise hide them, so re-include.
 !local-packages/**/*.nupkg
 !local-packages/**/*.snupkg
+
+# ---- Python bytecode cache -------------------------------------------------
+__pycache__/
+*.py[cod]
