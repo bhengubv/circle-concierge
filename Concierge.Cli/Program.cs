@@ -34,6 +34,8 @@ var mesh = services.GetRequiredService<IMeshTransportService>();
 var media = services.GetRequiredService<IMediaStudioService>();
 var command = args.FirstOrDefault()?.ToLowerInvariant() ?? "help";
 
+try
+{
 switch (command)
 {
     case "tools":
@@ -176,6 +178,17 @@ switch (command)
         Console.WriteLine("  media");
         break;
 }
+}
+catch (InvalidOperationException refusal)
+{
+    // The path guards in AgentHarnessService refuse by throwing. That is right for a
+    // library and wrong for a person: a stack trace says nothing about what was refused
+    // or why, and leaks the internals of a product meant for people who are not developers.
+    Console.Error.WriteLine($"Refused: {refusal.Message}");
+    return 1;
+}
+
+return 0;
 
 static void PrintResult(ConciergeToolResult result)
 {
