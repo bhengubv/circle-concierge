@@ -1,3 +1,4 @@
+using Concierge.Shared;
 using Concierge.Shared.Chat;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -16,6 +17,12 @@ public partial class App : Application
 
 	protected override Window CreateWindow(IActivationState? activationState)
 	{
+		// MAUI builds a service provider but runs no host, so nothing starts the services
+		// registered with AddHostedService — including the on-device model loader. Without
+		// this line the engine never leaves "Engine queued for load…" and the app can never
+		// answer anything. It returns immediately; loading a model takes minutes.
+		ConciergeHostedServices.StartInBackground(_services);
+
 		return new Window(new MainPage()) { Title = "Concierge" };
 	}
 

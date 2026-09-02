@@ -147,12 +147,26 @@ public interface IModelDownloadRequired
     /// agreed to it. Returns <c>false</c> rather than throwing when it does not work out;
     /// <see cref="IChatRuntime.StatusMessage"/> carries the reason.
     /// </summary>
-    /// <param name="progress">Fraction complete, 0 to 1. A bare ratio is thin comfort on a slow
-    /// link, but it beats a screen that looks hung.</param>
+    /// <param name="progress">Where it is up to. Reported often enough to show movement.</param>
+    /// <param name="cancellationToken">
+    /// Stops the transfer. Honoured mid-download, not only between steps — a person who has
+    /// changed their mind about 21 GB needs it to stop now, not at the end.
+    /// </param>
     Task<bool> AcceptDownloadAsync(
-        IProgress<float>? progress = null,
+        IProgress<ModelDownloadProgress>? progress = null,
         CancellationToken cancellationToken = default);
 }
+
+/// <summary>
+/// Where a model download has got to.
+/// </summary>
+/// <param name="Ratio">Completion, 0 to 1. Zero when the total size is not yet known.</param>
+/// <param name="Description">
+/// A line fit to put straight on screen — what is being fetched, how much of it, how fast, how
+/// long is left. A bare fraction is indistinguishable from a hang at the slow end of a
+/// connection, and the slow end is where the people this is built for are.
+/// </param>
+public sealed record ModelDownloadProgress(double Ratio, string Description);
 
 /// <summary>
 /// A model the runtime wants but does not have.

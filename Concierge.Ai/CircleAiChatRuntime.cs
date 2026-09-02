@@ -50,7 +50,17 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
 {
     private readonly ILogger<CircleAiChatRuntime> _logger;
     private readonly CircleAiChatOptions _options;
+
+    // Everything below is guarded by _statusGate. _selected in particular is written on a pool
+    // thread by LoadAsync and read on the render thread through PendingDownload.
     private ModelSelection? _selected;
+    private IChatGenerator? _generator;
+    private bool _accepting;
+    private bool _disposed;
+
+    // Cancelled on disposal. A 21 GB transfer must not outlive the app that started it, and
+    // the native handle must not be freed underneath a decode that is still running.
+    private readonly CancellationTokenSource _lifetime = new();
 
     // Not readonly: completing it with null is how "no model" is reported to waiters, and
     // accepting a download afterwards has to give later callers something to wait on again.
@@ -77,17 +87,33 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
     /// What selection picked, once <see cref="LoadAsync"/> has run. Null before that.
     /// Non-null with <c>RequiresDownload</c> means the engine is waiting on a decision.
     /// </summary>
-    public ModelSelection? Selected => _selected;
+    public ModelSelection? Selected
+    {
+        get { lock (_statusGate) { return _selected; } }
+    }
 
     /// <inheritdoc/>
-    public PendingModelDownload? PendingDownload => _selected is { } selection
-        ? new PendingModelDownload(
-            selection.ModelId,
-            selection.EstimatedBytes,
-            // NothingFits means the catalogue had nothing this device can run and the smallest
-            // entry was handed back anyway. Worth saying before somebody spends an hour on it.
-            FitsThisDevice: selection.Quality != SelectionQuality.NothingFits)
-        : null;
+    public PendingModelDownload? PendingDownload
+    {
+        get
+        {
+            ModelSelection? selection;
+            lock (_statusGate)
+            {
+                selection = _selected;
+            }
+
+            return selection is null
+                ? null
+                : new PendingModelDownload(
+                    selection.ModelId,
+                    selection.EstimatedBytes,
+                    // NothingFits means the catalogue had nothing this device can run and the
+                    // smallest entry was handed back anyway. Worth saying before somebody
+                    // spends an hour on it.
+                    FitsThisDevice: selection.Quality != SelectionQuality.NothingFits);
+        }
+    }
 
     public string Id => "circleai";
     public string EngineLabel => _engineLabel;
@@ -121,7 +147,11 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
             // multi-gigabyte transfer on their connection without asking is not ours to do.
             if (tier.RequiresDownload && !_options.AllowAutomaticDownload)
             {
-                _selected = tier;
+                lock (_statusGate)
+                {
+                    _selected = tier;
+                }
+
                 var gigabytes = tier.EstimatedBytes / 1024d / 1024d / 1024d;
                 SetStatus(
                     $"{tier.ModelId} needs a {gigabytes:0.#} GB download before it can run.",
@@ -132,19 +162,12 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
 
             SetStatus($"Resolving model path for {tier.ModelId}…", ready: false);
 
-            // BundleModelLoader, not LocalModelManager. Every entry in the registry is
-            // bundle-shaped, and the legacy manager throws on all of them — which is why the
-            // engine never came up on any machine. It also returns the weight blob rather than
-            // config.json, which is what MNN's Llm::create() actually loads, so even a
-            // downloaded bundle would have failed at the next step.
-            using var loader = new BundleModelLoader(modelsDirectory);
-            var modelPath = await loader.DownloadModelAsync(tier.ModelId).ConfigureAwait(false);
+            var modelPath = await FetchAsync(tier.ModelId, null, cancellationToken).ConfigureAwait(false);
 
             SetStatus($"Loading {tier.ModelId} into memory (one-time)…", ready: false);
-            var generator = new QwenTextGenerator(modelPath, _options.ContextSize);
+            Publish(CreateGenerator(modelPath));
 
             SetStatus($"Ready · {tier.ModelId}", ready: true);
-            _generatorReady.TrySetResult(generator);
         }
         catch (OperationCanceledException)
         {
@@ -161,44 +184,69 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
 
     /// <inheritdoc/>
     public async Task<bool> AcceptDownloadAsync(
-        IProgress<float>? progress = null,
+        IProgress<ModelDownloadProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        if (_selected is not { } selection)
+        ModelSelection selection;
+        lock (_statusGate)
         {
-            SetStatus("No model has been selected yet.", ready: false);
-            return false;
+            if (_disposed)
+            {
+                return false;
+            }
+
+            // Without this, two clicks build two generators, each holding the weights. The
+            // first would be replaced and never disposed — gigabytes, on a device that may
+            // only have two of them.
+            if (_accepting)
+            {
+                return false;
+            }
+
+            if (_selected is not { } pending)
+            {
+                _statusMessage = "No model has been selected yet.";
+                _isReady = false;
+                return false;
+            }
+
+            selection = pending;
+            _accepting = true;
         }
+
+        // Linked so that closing the app stops the transfer, not only the person clicking stop.
+        using var stopping = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
 
         try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-
             var gigabytes = selection.EstimatedBytes / 1024d / 1024d / 1024d;
             SetStatus($"Downloading {selection.ModelId} ({gigabytes:0.#} GB)…", ready: false);
 
-            Directory.CreateDirectory(_options.ModelsDirectory);
-            using var loader = new BundleModelLoader(_options.ModelsDirectory);
-            var modelPath = await loader.DownloadModelAsync(selection.ModelId, progress).ConfigureAwait(false);
-
-            cancellationToken.ThrowIfCancellationRequested();
+            var modelPath = await FetchAsync(selection.ModelId, progress, stopping.Token).ConfigureAwait(false);
+            stopping.Token.ThrowIfCancellationRequested();
 
             SetStatus($"Loading {selection.ModelId} into memory (one-time)…", ready: false);
-            var generator = new QwenTextGenerator(modelPath, _options.ContextSize);
+            var generator = CreateGenerator(modelPath);
 
-            // The original source already handed out null to whoever asked while the model was
-            // missing. Those callers have their answer; a fresh one is what the next caller waits on.
-            var ready = new TaskCompletionSource<IChatGenerator?>(TaskCreationOptions.RunContinuationsAsynchronously);
-            ready.TrySetResult(generator);
-            _generatorReady = ready;
+            if (!Publish(generator))
+            {
+                // Disposed while the model was loading. Free what we just built rather than
+                // leave the weights resident with nothing holding them.
+                generator.Dispose();
+                return false;
+            }
 
-            _selected = null;
+            lock (_statusGate)
+            {
+                _selected = null;
+            }
+
             SetStatus($"Ready · {selection.ModelId}", ready: true);
             return true;
         }
         catch (OperationCanceledException)
         {
-            SetStatus("Download cancelled.", ready: false);
+            SetStatus("Download stopped.", ready: false);
             return false;
         }
         catch (Exception ex)
@@ -207,12 +255,98 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
             SetStatus($"Engine offline: {ex.Message}", ready: false);
             return false;
         }
+        finally
+        {
+            lock (_statusGate)
+            {
+                _accepting = false;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Fetches a model bundle. Goes through <see cref="CircleAiChatOptions.ModelFetcher"/> when
+    /// one is supplied, so a host can point at its own mirror and a test can avoid the network.
+    /// </summary>
+    private async Task<string> FetchAsync(
+        string modelId,
+        IProgress<ModelDownloadProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        if (_options.ModelFetcher is { } fetcher)
+        {
+            return await fetcher(modelId, progress, cancellationToken).ConfigureAwait(false);
+        }
+
+        Directory.CreateDirectory(_options.ModelsDirectory);
+
+        // BundleModelLoader, not LocalModelManager. Every entry in the registry is
+        // bundle-shaped, and the legacy manager throws on all of them — which is why the
+        // engine never came up on any machine. It also returns the weight blob rather than
+        // config.json, which is what MNN's Llm::create() actually loads, so even a downloaded
+        // bundle would have failed at the next step.
+        using var loader = new BundleModelLoader(_options.ModelsDirectory);
+
+        // The rich overload, not the IProgress<float> one: that one drops the byte counts and
+        // the ETA one call before the screen, and takes no cancellation token — so a stop
+        // button wired to it would be a lie.
+        var relayed = progress is null
+            ? null
+            : new Progress<DownloadProgress>(report =>
+                progress.Report(new ModelDownloadProgress(report.Ratio, report.Describe())));
+
+        return await loader.DownloadModelAsync(modelId, relayed, cancellationToken).ConfigureAwait(false);
+    }
+
+    private IChatGenerator CreateGenerator(string modelPath)
+        => _options.GeneratorFactory is { } factory
+            ? factory(modelPath)
+            : new QwenTextGenerator(modelPath, _options.ContextSize);
+
+    /// <summary>
+    /// Makes <paramref name="generator"/> the one this runtime owns, disposing whatever it
+    /// replaces. Returns false when the runtime has been disposed, in which case the caller
+    /// owns the generator it just built.
+    /// </summary>
+    private bool Publish(IChatGenerator generator)
+    {
+        IChatGenerator? replaced;
+        lock (_statusGate)
+        {
+            if (_disposed)
+            {
+                return false;
+            }
+
+            replaced = _generator;
+            _generator = generator;
+
+            // Whoever was waiting while there was no model already has their answer. A fresh
+            // source is what the next caller waits on.
+            var ready = new TaskCompletionSource<IChatGenerator?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            ready.SetResult(generator);
+            _generatorReady = ready;
+        }
+
+        replaced?.Dispose();
+        return true;
     }
 
     public async IAsyncEnumerable<string> StreamAsync(
         IReadOnlyList<ChatTurn> messages,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        // Checked before the gate: WaitAsync on a disposed SemaphoreSlim throws, and a shut-down
+        // engine should answer like an engine that has no model, not blow up the page.
+        lock (_statusGate)
+        {
+            if (_disposed)
+            {
+                yield return "[The engine has shut down.]";
+                yield break;
+            }
+        }
+
         var generator = await _generatorReady.Task.ConfigureAwait(false);
         if (generator is null)
         {
@@ -333,14 +467,55 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
         }
     }
 
+    /// <summary>
+    /// Stops anything in flight and frees the model.
+    /// </summary>
+    /// <remarks>
+    /// Order matters. Cancelling first stops a download that would otherwise keep running
+    /// against somebody's data after the app is gone. Waiting on the generation gate keeps the
+    /// native handle alive until the decode using it has finished — freeing it underneath a
+    /// running generation is a crash, not an exception.
+    /// </remarks>
     public async ValueTask DisposeAsync()
     {
-        if (_generatorReady.Task.IsCompletedSuccessfully)
+        lock (_statusGate)
         {
-            var generator = await _generatorReady.Task.ConfigureAwait(false);
-            generator?.Dispose();
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
         }
+
+        await _lifetime.CancelAsync().ConfigureAwait(false);
+
+        var held = false;
+        try
+        {
+            held = await _generationGate.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException)
+        {
+            // Already gone; nothing is decoding.
+        }
+
+        IChatGenerator? generator;
+        lock (_statusGate)
+        {
+            generator = _generator;
+            _generator = null;
+        }
+
+        generator?.Dispose();
+
+        if (held)
+        {
+            _generationGate.Release();
+        }
+
         _generationGate.Dispose();
+        _lifetime.Dispose();
     }
 
     private void SetStatus(string message, bool ready)
@@ -360,6 +535,21 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
 /// </summary>
 public sealed class CircleAiChatOptions
 {
+    /// <summary>
+    /// How a model bundle is fetched. Null means CircleAI's <c>BundleModelLoader</c> against
+    /// the default source — what ships. A host with its own mirror can substitute one, and a
+    /// test can supply one that never touches the network, which is the only way to exercise
+    /// this path without pulling twenty-one gigabytes.
+    /// </summary>
+    public Func<string, IProgress<ModelDownloadProgress>?, CancellationToken, Task<string>>? ModelFetcher { get; init; }
+
+    /// <summary>
+    /// How a generator is built from a model path. Null means <c>QwenTextGenerator</c>, which
+    /// opens the native model. Substitutable for the same reason as
+    /// <see cref="ModelFetcher"/> — a real one needs real weights on disk.
+    /// </summary>
+    public Func<string, IChatGenerator>? GeneratorFactory { get; init; }
+
     public string ModelsDirectory { get; init; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Concierge",

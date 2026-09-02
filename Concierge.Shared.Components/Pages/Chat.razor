@@ -17,6 +17,7 @@
 @inject ISkillCatalogService SkillCatalog
 @inject NavigationManager Nav
 @inject IJSRuntime JS
+@implements IDisposable
 
 <section class="chat-shell">
     <aside class="chat-sidebar">
@@ -81,7 +82,8 @@
                     }
                     @if (_downloading)
                     {
-                        <span>Downloading @pending.ModelId — @(_downloadProgress.ToString("P0")) done. You can keep using the app.</span>
+                        <progress max="1" value="@_downloadProgress"></progress>
+                        <span>@(_downloadDetail ?? "Starting…")</span>
                         <button class="button quiet" type="button" @onclick="CancelDownload">Stop</button>
                     }
                     else
@@ -335,44 +337,86 @@
 
     private bool _downloading;
     private double _downloadProgress;
+    private string? _downloadDetail;
     private CancellationTokenSource? _downloadCancellation;
+    private bool _gone;
 
     private PendingModelDownload? PendingModel
         => (_activeRuntime as IModelDownloadRequired)?.PendingDownload;
 
     private async Task AcceptDownload()
     {
-        if (_activeRuntime is not IModelDownloadRequired runtime || _downloading)
+        if (_activeRuntime is not IModelDownloadRequired runtime || _downloading || _gone)
         {
             return;
         }
 
+        var stopping = new CancellationTokenSource();
+
         _downloading = true;
         _downloadProgress = 0;
-        _downloadCancellation = new CancellationTokenSource();
+        _downloadDetail = null;
+        _downloadCancellation = stopping;
 
-        // Rendering from the reporting thread, not on it — the download does not run on the
-        // renderer and Blazor will not accept a state change from anywhere else.
-        var progress = new Progress<float>(fraction =>
+        // Progress<T> posts its callbacks, so these arrive off the renderer — InvokeAsync, not
+        // a direct StateHasChanged. They can also arrive after the page is gone, which is what
+        // _gone is for: rendering a disposed component throws.
+        var progress = new Progress<ModelDownloadProgress>(report =>
         {
-            _downloadProgress = fraction;
-            InvokeAsync(StateHasChanged);
+            if (_gone)
+            {
+                return;
+            }
+
+            _downloadProgress = report.Ratio;
+            _downloadDetail = report.Description;
+            _ = InvokeAsync(StateHasChanged);
         });
 
         try
         {
-            await runtime.AcceptDownloadAsync(progress, _downloadCancellation.Token);
+            await runtime.AcceptDownloadAsync(progress, stopping.Token);
         }
         finally
         {
             _downloading = false;
-            _downloadCancellation.Dispose();
             _downloadCancellation = null;
-            StateHasChanged();
+
+            // Disposed only after it is unreachable — CancelDownload runs on the renderer, but
+            // cancelling a disposed source throws, and the earlier version disposed it here
+            // while the field still pointed at it.
+            stopping.Dispose();
+
+            if (!_gone)
+            {
+                StateHasChanged();
+            }
         }
     }
 
-    private void CancelDownload() => _downloadCancellation?.Cancel();
+    private void CancelDownload()
+    {
+        // Not disposed here: whoever started it owns it and disposes it when it returns.
+        try
+        {
+            _downloadCancellation?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // It finished between the click and this line.
+        }
+    }
+
+    /// <summary>
+    /// Leaving the page stops a download that is running. It is not background work the person
+    /// asked for anywhere else, and left alone it holds this component alive through the
+    /// progress callback for as long as the transfer takes.
+    /// </summary>
+    public void Dispose()
+    {
+        _gone = true;
+        CancelDownload();
+    }
 
     private bool _showSkillPicker;
     private string _skillFilter = string.Empty;

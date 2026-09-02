@@ -15,10 +15,12 @@ namespace Concierge.Shared.Safety;
 /// <remarks>
 /// Settings.Strictness == Off is a zero-cost pass-through. When kid mode is
 /// on we never bypass — that's the point of the parental-controls contract.
-/// IPersistableChatRuntime delegation is propagated so the MAUI host's
-/// OnSleep / OnResume hooks keep working unchanged.
+/// Optional capabilities are propagated: IPersistableChatRuntime so the MAUI host's
+/// OnSleep / OnResume hooks keep working, and IModelDownloadRequired so the on-device
+/// engine can still ask before fetching a model. Nothing holds the real runtime — every
+/// host resolves this — so a capability that stops here stops existing.
 /// </remarks>
-public sealed class ContentFilterChatRuntimeDecorator : IChatRuntime, IPersistableChatRuntime
+public sealed class ContentFilterChatRuntimeDecorator : IChatRuntime, IPersistableChatRuntime, IModelDownloadRequired
 {
     // Stable message the UI shows when a refusal lands. Kept short + warm
     // because Bell's voice is "honest, never punitive". The actual reason
@@ -53,6 +55,22 @@ public sealed class ContentFilterChatRuntimeDecorator : IChatRuntime, IPersistab
     public string EngineLabel => _inner.EngineLabel;
     public bool IsReady => _inner.IsReady;
     public string StatusMessage => _inner.StatusMessage;
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Null when the wrapped runtime has no model to fetch — a cloud adapter, say. The wrapper
+    /// reports what is there and never invents one.
+    /// </remarks>
+    public PendingModelDownload? PendingDownload =>
+        (_inner as IModelDownloadRequired)?.PendingDownload;
+
+    /// <inheritdoc/>
+    public Task<bool> AcceptDownloadAsync(
+        IProgress<ModelDownloadProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+        => _inner is IModelDownloadRequired inner
+            ? inner.AcceptDownloadAsync(progress, cancellationToken)
+            : Task.FromResult(false);
 
     public async IAsyncEnumerable<string> StreamAsync(
         IReadOnlyList<ChatTurn> messages,
