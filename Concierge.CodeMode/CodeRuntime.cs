@@ -60,13 +60,18 @@ public sealed class ProcessCodeRuntime : ICodeRuntime
 {
     private const int MaxLogEntries = 200;
 
-    private readonly IAgentToolRegistry _tools;
+    private readonly Func<IReadOnlyList<IAgentTool>> _tools;
     private readonly ICodeSandbox _sandbox;
     private readonly string _hostPath;
     private readonly string _workspaceRoot;
     private readonly TimeSpan _timeout;
 
-    /// <param name="tools">What programs may call.</param>
+    /// <param name="tools">
+    /// What programs may call, resolved when a program runs rather than when this is built.
+    /// Deferred deliberately: the tool registry contains <c>run_code</c> itself, so resolving
+    /// it in this constructor is a dependency cycle — and .NET's container cannot see a cycle
+    /// through a factory, so it deadlocks instead of failing.
+    /// </param>
     /// <param name="sandbox">The boundary programs run inside.</param>
     /// <param name="hostPath">The host executable, or its dll to run under <c>dotnet</c>.</param>
     /// <param name="workspaceRoot">Where the child process starts.</param>
@@ -77,7 +82,7 @@ public sealed class ProcessCodeRuntime : ICodeRuntime
     /// </param>
     /// <param name="timeout">How long a program may run before it is killed.</param>
     public ProcessCodeRuntime(
-        IAgentToolRegistry tools,
+        Func<IReadOnlyList<IAgentTool>> tools,
         ICodeSandbox sandbox,
         string hostPath,
         string workspaceRoot,
@@ -213,8 +218,12 @@ public sealed class ProcessCodeRuntime : ICodeRuntime
     private async Task<JsonObject> RunToolAsync(JsonObject? parameters, CancellationToken cancellationToken)
     {
         var name = parameters?["name"]?.GetValue<string>() ?? string.Empty;
-        var tool = _tools.Tools.FirstOrDefault(candidate =>
-            string.Equals(candidate.Name, name, StringComparison.OrdinalIgnoreCase));
+
+        // A program cannot call run_code: nesting one program inside another buys nothing and
+        // makes the timeout and the process boundary meaningless.
+        var tool = _tools()
+            .Where(candidate => !string.Equals(candidate.Name, "run_code", StringComparison.OrdinalIgnoreCase))
+            .FirstOrDefault(candidate => string.Equals(candidate.Name, name, StringComparison.OrdinalIgnoreCase));
 
         if (tool is null)
         {

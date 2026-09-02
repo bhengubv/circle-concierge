@@ -46,7 +46,10 @@ public static class ConciergeCodeModeServiceCollectionExtensions
         var hostPath = Path.Combine(hostDirectory, "Concierge.CodeMode.Host.dll");
 
         services.TryAddSingleton<ICodeRuntime>(provider => new ProcessCodeRuntime(
-            provider.GetRequiredService<IAgentToolRegistry>(),
+            // Resolved on use, not now. run_code is itself in the registry, so resolving it
+            // here closes a cycle the container cannot see through a factory — it deadlocks
+            // rather than throwing, and every page that touches the tool list hangs.
+            () => provider.GetRequiredService<IAgentToolRegistry>().Tools,
             CodeSandbox.ForCurrentPlatform(),
             hostPath,
             workspaceRoot ?? hostDirectory,

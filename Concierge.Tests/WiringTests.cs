@@ -1,3 +1,4 @@
+using Concierge.CodeMode;
 using Concierge.Shared;
 using Concierge.Shared.Chat;
 using Concierge.Shared.Context;
@@ -157,4 +158,117 @@ public sealed class HostWiringTests : IDisposable
 
         return services.BuildServiceProvider();
     }
+}
+
+/// <summary>
+/// That building a host's container and resolving from it actually completes.
+/// </summary>
+/// <remarks>
+/// These exist because of a deadlock that reached a commit. Registering code mode created a
+/// cycle — ICodeRuntime needs the tool registry, the registry needs every IAgentTool, and
+/// run_code is one of them. .NET detects a cycle through constructors and throws; through a
+/// factory lambda it cannot see one, so it deadlocked inside ConcurrentDictionary.GetOrAdd.
+/// No exception, no log entry, just a request that never returned. Only the chat page touched
+/// the tool list, so every other page looked fine.
+///
+/// Every assertion here is bounded by a timeout, because the failure mode being guarded
+/// against is a hang, and a test that hangs proves nothing.
+/// </remarks>
+public sealed class ContainerResolutionTests : IDisposable
+{
+    private static readonly TimeSpan Budget = TimeSpan.FromSeconds(20);
+
+    private readonly string _dataRoot =
+        Path.Combine(Path.GetTempPath(), $"concierge-resolve-{Guid.NewGuid():N}");
+
+    public void Dispose()
+    {
+        try
+        {
+            Directory.Delete(_dataRoot, recursive: true);
+        }
+        catch (IOException)
+        {
+            // Disposable temp directory, and it may never have been created.
+        }
+    }
+
+    [Fact]
+    public async Task The_tool_registry_resolves_with_code_mode_registered()
+    {
+        // The exact resolution that deadlocked.
+        await WithinBudget(() =>
+        {
+            using var provider = HostWithCodeMode();
+            return provider.GetRequiredService<IAgentToolRegistry>().Tools.Count;
+        });
+    }
+
+    [Fact]
+    public async Task Every_tool_resolves_with_code_mode_registered()
+    {
+        await WithinBudget(() =>
+        {
+            using var provider = HostWithCodeMode();
+            return provider.GetServices<IAgentTool>().Count();
+        });
+    }
+
+    [Fact]
+    public async Task The_code_runtime_resolves_on_its_own()
+    {
+        await WithinBudget(() =>
+        {
+            using var provider = HostWithCodeMode();
+            return provider.GetService<Concierge.CodeMode.ICodeRuntime>() is null ? 0 : 1;
+        });
+    }
+
+    [Fact]
+    public async Task Everything_the_chat_page_injects_resolves()
+    {
+        // The page is where the deadlock surfaced: it is the only one that touches all of
+        // these at once.
+        await WithinBudget(() =>
+        {
+            using var provider = HostWithCodeMode();
+            using var scope = provider.CreateScope();
+            var services = scope.ServiceProvider;
+
+            _ = services.GetRequiredService<IConversationStore>();
+            _ = services.GetRequiredService<IAgentToolRegistry>();
+            _ = services.GetRequiredService<IToolCallScheduler>();
+            _ = services.GetRequiredService<IRepeatToolReminder>();
+            _ = services.GetRequiredService<IToolResultPruner>();
+            _ = services.GetRequiredService<ICompactionEngine>();
+            _ = services.GetRequiredService<ConciergeToolLoopOptions>();
+            return 1;
+        });
+    }
+
+    /// <summary>
+    /// Runs the resolution on a worker and fails if it does not finish. A deadlocked container
+    /// never returns, so the assertion has to be the clock rather than the result.
+    /// </summary>
+    private static async Task WithinBudget(Func<int> resolve)
+    {
+        var work = Task.Run(resolve);
+        var finished = await Task.WhenAny(work, Task.Delay(Budget));
+
+        Assert.True(
+            ReferenceEquals(finished, work),
+            $"Resolution did not complete within {Budget.TotalSeconds:0}s — the container is deadlocked.");
+
+        await work;
+    }
+
+    private ServiceProvider HostWithCodeMode()
+        => new ServiceCollection()
+            .AddConciergeCore()
+            .AddConciergeChat(Path.Combine(_dataRoot, "chat.db"))
+            .AddConciergeTools()
+            .AddConciergeRuntime()
+            .AddConciergeState(_dataRoot)
+            .AddConciergeCodeMode(AppContext.BaseDirectory)
+            .BuildServiceProvider();
 }

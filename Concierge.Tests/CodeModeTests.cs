@@ -73,7 +73,7 @@ public sealed class CodeModeTests
     public void A_runtime_refuses_to_exist_with_no_boundary_and_no_decision()
     {
         Assert.Throws<InvalidOperationException>(() => new ProcessCodeRuntime(
-            Registry(),
+            () => Registry().Tools,
             new UnconfinedSandbox(),
             HostPath(),
             Path.GetTempPath()));
@@ -83,7 +83,7 @@ public sealed class CodeModeTests
     public void The_refusal_says_what_is_missing()
     {
         var failure = Assert.Throws<InvalidOperationException>(() => new ProcessCodeRuntime(
-            Registry(),
+            () => Registry().Tools,
             new UnconfinedSandbox(),
             HostPath(),
             Path.GetTempPath()));
@@ -265,7 +265,7 @@ public sealed class CodeModeTests
 
     private static ProcessCodeRuntime Runtime(TimeSpan timeout, params IAgentTool[] tools)
         => new(
-            Registry(tools),
+            () => Registry(tools).Tools,
             new UnconfinedSandbox(),
             HostPath(),
             Path.GetTempPath(),
@@ -273,7 +273,7 @@ public sealed class CodeModeTests
             timeout);
 
     private static ProcessCodeRuntime Runtime(ICodeSandbox sandbox)
-        => new(Registry(), sandbox, HostPath(), Path.GetTempPath(), acceptNoSandbox: true);
+        => new(() => Registry().Tools, sandbox, HostPath(), Path.GetTempPath(), acceptNoSandbox: true);
 
     private static IAgentToolRegistry Registry(params IAgentTool[] tools) => new AgentToolRegistry(tools);
 
