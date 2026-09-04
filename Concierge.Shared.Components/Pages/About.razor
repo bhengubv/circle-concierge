@@ -1,5 +1,42 @@
 @page "/about"
-@using System.Reflection
 @inject NavigationManager Nav
 
-@* UI deleted. Rebuild here. *@
+@*
+    What is running, precisely enough to report a fault against.
+
+    A version alone is not much use when something goes wrong; the build is
+    what identifies the code. Both come from the assembly rather than from a
+    constant somebody has to remember to bump.
+*@
+
+<div class="room">
+    <div class="room-top">
+        <a class="room-back" href="/">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 6 9 12 15 18"/></svg>
+            Workspace
+        </a>
+        <h1>About</h1>
+    </div>
+
+    <p class="room-lede">
+        Concierge does the work on your own machine and shows you what it did.
+    </p>
+
+    <div class="room-body">
+        <RoomSection Title="This build" Open="true">
+            <div class="rows">
+                <div class="row"><span class="row-name">Version</span><span class="row-val">@_version</span></div>
+                <div class="row"><span class="row-name">Build</span><span class="row-val">@_build</span></div>
+            </div>
+            <p class="room-note">Quote the build when reporting a fault — the version alone does not identify the code.</p>
+        </RoomSection>
+
+        <RoomSection Title="Where things are">
+            <div class="rows">
+                <a class="row" href="product"><span class="row-name">Product<span class="row-sub">What Concierge is, and where the rest of it is</span></span></a>
+                <a class="row" href="engineering"><span class="row-name">Engineering<span class="row-sub">What it can do to your machine</span></span></a>
+                <a class="row" href="help"><span class="row-name">Help<span class="row-sub">How to use it</span></span></a>
+            </div>
+        </RoomSection>
+    </div>
+</div>

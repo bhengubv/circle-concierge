@@ -2,4 +2,69 @@
 @inject IJSRuntime JS
 @inject NavigationManager Nav
 
-@* UI deleted. Rebuild here. *@
+@*
+    Who is using it.
+
+    This is the friendly front of the same thing Settings calls Family mode.
+    It exists separately because the two are asked in different moments: a
+    parent setting the device up goes to Settings, and a person handing the
+    watch or the tablet to somebody else wants one screen and three big
+    choices. The setting itself is one setting either way.
+
+    Kept on this device in localStorage rather than sent anywhere, which is
+    the same promise the rest of the product makes about what is local.
+*@
+
+<div class="room">
+    <div class="room-top">
+        <a class="room-back" href="/">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 6 9 12 15 18"/></svg>
+            Workspace
+        </a>
+        <h1>Who is chatting</h1>
+    </div>
+
+    <p class="room-lede">Pick one. It changes how it talks and what it will talk about.</p>
+
+    <div class="room-body">
+        <RoomSection Title="Right now" Count="@_options.Length" Open="true">
+            <div class="rows">
+                @foreach (var option in _options)
+                {
+                    var value = option.Value;
+                    var chosen = _current == value;
+
+                    <button class="row" type="button"
+                            aria-pressed="@(chosen ? "true" : "false")"
+                            @onclick="@(() => Pick(value))" @onpointerup="@(() => Pick(value))">
+                        <span class="row-name">
+                            @option.Title
+                            <span class="row-sub">@option.Description</span>
+                        </span>
+
+                        @if (chosen)
+                        {
+                            <span class="state"><span class="dot dot-done" aria-hidden="true"></span>On</span>
+                        }
+                    </button>
+                }
+            </div>
+
+            @if (_savedAt is not null)
+            {
+                <p class="room-note">Saved. Now set to @DescribeMode(_current).</p>
+            }
+            else
+            {
+                <p class="room-note">Kept on this device.</p>
+            }
+        </RoomSection>
+
+        <RoomSection Title="The stricter controls">
+            <p class="room-note">
+                Filtering strength, and what the filter has caught, are in Settings under
+                Family mode — opened from what is answering, at the bottom of the sidebar.
+            </p>
+        </RoomSection>
+    </div>
+</div>

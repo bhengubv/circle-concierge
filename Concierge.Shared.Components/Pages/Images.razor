@@ -1,5 +1,143 @@
 @page "/images"
-@using Concierge.Shared.Media
 @inject IEnumerable<IImageRuntime> Runtimes
 
-@* UI deleted. Rebuild here. *@
+@*
+    Images: describe one, and see what came back.
+
+    The runtime picker is first because it is the choice that decides whether
+    anything happens at all — with no image runtime registered this page can
+    only say so, and saying so plainly beats a button that never answers.
+*@
+
+<div class="room">
+    <div class="room-top">
+        <a class="room-back" href="/">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 6 9 12 15 18"/></svg>
+            Workspace
+        </a>
+        <h1>Images</h1>
+    </div>
+
+    <p class="room-lede">Describe a picture and it will make one.</p>
+
+    <div class="room-body">
+        @if (_orderedRuntimes.Count == 0)
+        {
+            <p class="room-note">
+                No image runtime is set up on this device, so nothing here can run yet.
+            </p>
+        }
+        else
+        {
+            <RoomSection Title="Describe it" Open="true">
+                <div class="row">
+                    <span class="row-name">Made by</span>
+                    <div class="seg" role="group" aria-label="Runtime">
+                        @foreach (var runtime in _orderedRuntimes)
+                        {
+                            var id = runtime.Id;
+                            <button class="seg-opt @(_selectedRuntimeId == id ? "is-on" : null)"
+                                    type="button"
+                                    aria-pressed="@(_selectedRuntimeId == id ? "true" : "false")"
+                                    @onclick="@(() => _selectedRuntimeId = id)">@runtime.Id</button>
+                        }
+                    </div>
+                </div>
+
+                <textarea class="comp-input" rows="3" style="width:100%;"
+                          placeholder="A quiet hotel lobby at dawn"
+                          aria-label="What to draw"
+                          value="@_prompt"
+                          @oninput="OnPromptChanged"></textarea>
+
+                <input class="comp-input" type="text" style="width:100%;"
+                       placeholder="Anything to avoid (optional)"
+                       aria-label="What to avoid"
+                       value="@_negative"
+                       @oninput="OnNegativeChanged" />
+
+                <button class="btn btn-primary" type="button" disabled="@(!CanGenerate)"
+                        @onclick="GenerateAsync" @onpointerup="GenerateAsync">
+                    @(_busy ? "Drawing…" : "Draw it")
+                </button>
+
+                <p class="room-note">@_statusMessage</p>
+            </RoomSection>
+
+            @* Size and count have sensible defaults and are rarely changed, so
+               they fold. With them in the section you type into, the room ran
+               55px past the bottom of the window. *@
+            <RoomSection Title="Options">
+                <div class="row">
+                    <span class="row-name">Size</span>
+                    <div class="seg" role="group" aria-label="Size">
+                        @foreach (var size in new[] { 512, 768, 1024 })
+                        {
+                            var choice = size;
+                            <button class="seg-opt @(_size == choice ? "is-on" : null)"
+                                    type="button"
+                                    aria-pressed="@(_size == choice ? "true" : "false")"
+                                    @onclick="@(() => _size = choice)">@choice</button>
+                        }
+                    </div>
+                </div>
+
+                <div class="row">
+                    <span class="row-name">How many</span>
+                    <div class="seg" role="group" aria-label="How many">
+                        @foreach (var count in new[] { 1, 2, 4 })
+                        {
+                            var choice = count;
+                            <button class="seg-opt @(_count == choice ? "is-on" : null)"
+                                    type="button"
+                                    aria-pressed="@(_count == choice ? "true" : "false")"
+                                    @onclick="@(() => _count = choice)">@choice</button>
+                        }
+                    </div>
+                </div>
+
+            </RoomSection>
+
+            <RoomSection Title="What came back" Count="@_artifacts.Count">
+                @if (_artifacts.Count == 0)
+                {
+                    <p class="room-note">Nothing yet.</p>
+                }
+                else
+                {
+                    <div class="room-grid">
+                        @foreach (var artifact in _artifacts)
+                        {
+                            <article class="room-card">
+                                @if (!string.IsNullOrWhiteSpace(artifact.Url))
+                                {
+                                    <img src="@artifact.Url" alt="@artifact.Prompt" style="width:100%;border-radius:8px;" />
+                                }
+                                else if (artifact.Bytes is { Length: > 0 })
+                                {
+                                    <img src="@ToDataUri(artifact)" alt="@artifact.Prompt" style="width:100%;border-radius:8px;" />
+                                }
+                                <p class="room-note">@artifact.Prompt</p>
+                            </article>
+                        }
+                    </div>
+                }
+            </RoomSection>
+        }
+    </div>
+</div>
+
+@code {
+    private void OnPromptChanged(ChangeEventArgs e)
+        => _prompt = e.Value?.ToString() ?? string.Empty;
+
+    private void OnNegativeChanged(ChangeEventArgs e)
+        => _negative = e.Value?.ToString() ?? string.Empty;
+
+    /// <summary>
+    /// A runtime may hand back bytes rather than a URL — a local one has
+    /// nowhere to host the file.
+    /// </summary>
+    private static string ToDataUri(ImageArtifact artifact)
+        => $"data:{artifact.MimeType};base64,{Convert.ToBase64String(artifact.Bytes ?? Array.Empty<byte>())}";
+}

@@ -1,4 +1,88 @@
-@using Concierge.Shared.Settings
 @inject IConciergeSecretStore SecretStore
 
-@* UI deleted. Rebuild here. *@
+@*
+    Where a cloud key is entered.
+
+    Three rules the markup holds to, and two of them are about not lying:
+
+    A saved value is never rendered back. The store can return it, and putting
+    it in an input would put it in the DOM, in a screenshot, and in anything
+    that reads the page. A key is either configured or it is not — that is the
+    whole status, and re-entering is how you change it.
+
+    It says a restart is needed, because it is: the runtimes read their
+    configuration once at startup, so a key saved here does nothing until then.
+
+    And one field at a time. Three rows each carrying a label and an input ran
+    the settings panel 166px past the bottom of the window, and scrollbars are
+    hidden app-wide so nothing said so. You are only ever setting one key
+    anyway, so pressing a provider opens its field and closes the last.
+*@
+
+<div class="rows">
+    @* While one is open the other two are hidden, not just folded. Three
+       rows plus a field and a button still ran the panel 69px past the
+       window; you are setting one key, and the others are one press away
+       again the moment you close this one. *@
+    @foreach (var field in Fields.Where(f => _editing is null || _editing == f.Key))
+    {
+        var key = field.Key;
+        var open = _editing == key;
+
+        <button class="row" type="button"
+                aria-expanded="@(open ? "true" : "false")"
+                @onclick="@(() => Edit(key))" @onpointerup="@(() => Edit(key))">
+            <span class="row-name">
+                @field.Label
+                <span class="row-sub">@field.Where</span>
+            </span>
+
+            @if (IsConfigured(key))
+            {
+                <span class="state"><span class="dot dot-done" aria-hidden="true"></span>Saved</span>
+            }
+            else
+            {
+                <span class="state"><span class="dot dot-waiting" aria-hidden="true"></span>Not set</span>
+            }
+        </button>
+
+        @if (open)
+        {
+            <input class="comp-input"
+                   type="password"
+                   autocomplete="off"
+                   spellcheck="false"
+                   placeholder="@(IsConfigured(key) ? "Enter a new key to replace it" : "Paste the key")"
+                   aria-label="@field.Label"
+                   @oninput="@(e => OnFieldChanged(key, e.Value?.ToString() ?? string.Empty))" />
+
+            <button class="btn btn-primary" type="button" disabled="@(_saving || _drafts.Count == 0)"
+                    @onclick="SaveAsync" @onpointerup="SaveAsync">
+                @(_saving ? "Saving…" : "Save")
+            </button>
+        }
+    }
+</div>
+
+<p class="room-note">@_statusMessage</p>
+
+@code {
+    /// <summary>
+    /// The keys worth offering, with the place you get each one. A field
+    /// labelled only "Anthropic:ApiKey" tells somebody the configuration key
+    /// and not where to find the value.
+    /// </summary>
+    private static readonly (string Key, string Label, string Where)[] Fields =
+    [
+        ("Anthropic:ApiKey", "Anthropic", "console.anthropic.com, under API keys"),
+        ("OpenAI:ApiKey", "OpenAI", "platform.openai.com, under API keys"),
+        ("Gemini:ApiKey", "Google Gemini", "aistudio.google.com, under Get API key"),
+    ];
+
+    /// <summary>Which provider's field is showing. One at a time, so the panel
+    /// fits the window it floats in.</summary>
+    private string? _editing;
+
+    private void Edit(string key) => _editing = _editing == key ? null : key;
+}

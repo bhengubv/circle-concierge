@@ -1,7 +1,96 @@
 @page "/history"
-@using Concierge.Shared.Chat
 @inject IConversationStore Store
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
-@* UI deleted. Rebuild here. *@
+@*
+    Every thread, when the sidebar is not enough.
+
+    The workspace sidebar lists three and offers the rest, which is right for
+    picking up what you were doing and wrong for finding something from a
+    fortnight ago. This is the search, and the only place a thread can be
+    deleted — that belongs behind a deliberate visit rather than one press from
+    the thread you are reading.
+*@
+
+<div class="room">
+    <div class="room-top">
+        <a class="room-back" href="/">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 6 9 12 15 18"/></svg>
+            Workspace
+        </a>
+        <h1>History</h1>
+    </div>
+
+    <p class="room-lede">Everything you have asked, newest first.</p>
+
+    <div class="room-body">
+        <input class="comp-input skills-find"
+               type="search"
+               placeholder="Search your threads"
+               aria-label="Search threads"
+               value="@_query"
+               @oninput="OnQueryChanged" />
+
+        @if (_loading)
+        {
+            <p class="room-note">Loading…</p>
+        }
+        else if (_conversations is null || _conversations.Count == 0)
+        {
+            <p class="room-note">Nothing here yet.</p>
+        }
+        else
+        {
+            var shown = _conversations
+                .Where(c => _query.Length == 0
+                            || (c.Title ?? string.Empty).Contains(_query, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            @if (shown.Count == 0)
+            {
+                <p class="room-note">Nothing matches “@_query”.</p>
+            }
+            else
+            {
+                @* Grouped by day: "when" is how people look for a conversation
+                   they half remember. *@
+                @foreach (var day in shown.GroupBy(c => c.UpdatedAt.ToLocalTime().Date).OrderByDescending(g => g.Key))
+                {
+                    <RoomSection Title="@DayName(day.Key)" Count="@day.Count()" Open="true">
+                        <div class="rows">
+                            @foreach (var conversation in day.OrderByDescending(c => c.UpdatedAt))
+                            {
+                                var id = conversation.Id;
+
+                                <div class="row">
+                                    <a class="row-name" href="@($"/chat/{id}")">
+                                        @conversation.Title
+                                        <span class="row-sub">@RelativeTime(conversation.UpdatedAt)</span>
+                                    </a>
+
+                                    @if (_pendingDeleteId == id)
+                                    {
+                                        @* Asked once, in place. A thread is work,
+                                           and a modal over the list hides which
+                                           one is about to go. *@
+                                        <span class="ask-actions">
+                                            <button class="btn" type="button" @onclick="ConfirmDelete" @onpointerup="ConfirmDelete">Delete</button>
+                                            <button class="btn" type="button" @onclick="CancelDelete" @onpointerup="CancelDelete">Keep</button>
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <button class="row-val" type="button" style="background:none;border:0;cursor:pointer;"
+                                                title="Delete this thread"
+                                                @onclick="@(() => RequestDelete(id))" @onpointerup="@(() => RequestDelete(id))">Delete</button>
+                                    }
+                                </div>
+                            }
+                        </div>
+                    </RoomSection>
+                }
+            }
+        }
+    </div>
+</div>

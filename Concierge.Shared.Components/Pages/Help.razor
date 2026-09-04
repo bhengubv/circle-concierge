@@ -1,4 +1,56 @@
 @page "/help"
 @inject NavigationManager Nav
 
-@* UI deleted. Rebuild here. *@
+@*
+    How to use it, written as answers rather than a tour.
+
+    Everything here is a question somebody actually arrives with. What it is
+    not is a feature list — Product is the directory, Engineering is the list
+    of what the tools can do, and repeating either here would mean three
+    places to keep true.
+*@
+
+<div class="room">
+    <div class="room-top">
+        <a class="room-back" href="/">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 6 9 12 15 18"/></svg>
+            Workspace
+        </a>
+        <h1>Help</h1>
+    </div>
+
+    <p class="room-lede">Ask for what you want in your own words. Everything below is optional.</p>
+
+    <div class="room-body">
+        <RoomSection Title="Getting an answer" Open="true">
+            <div class="rows">
+                <div class="row"><span class="row-name">Ask<span class="row-sub">Type in the box at the bottom, or press the microphone and talk.</span></span></div>
+                <div class="row"><span class="row-name">A new line<span class="row-sub">Shift + Enter. Enter on its own sends.</span></span></div>
+                <div class="row"><span class="row-name">Attach a file<span class="row-sub">The paperclip takes a text file up to 256 KB.</span></span></div>
+            </div>
+        </RoomSection>
+
+        <RoomSection Title="When it wants to do something">
+            <div class="rows">
+                <div class="row"><span class="row-name">It asks first<span class="row-sub">Anything that changes or deletes stops and waits, in the thread, where the run stopped.</span></span></div>
+                <div class="row"><span class="row-name">Or it does not<span class="row-sub">The switch under the composer is "May act on its own". Off means it asks every time.</span></span></div>
+                <div class="row"><span class="row-name">Seeing the work<span class="row-sub">Each tool it ran is a chip in the thread. Press one to read the output.</span></span></div>
+            </div>
+            <p class="room-note">Engineering lists every tool and what each is allowed to do.</p>
+        </RoomSection>
+
+        <RoomSection Title="Making it better at something">
+            <div class="rows">
+                <div class="row"><span class="row-name">Skills<span class="row-sub">Turning one on changes how it answers for the rest of the conversation. Sidebar, then Browse.</span></span></div>
+                <div class="row"><span class="row-name">Which model<span class="row-sub">Under the composer, and in Settings. The one on this device needs no key and no network.</span></span></div>
+            </div>
+        </RoomSection>
+
+        <RoomSection Title="If something is wrong">
+            <div class="rows">
+                <a class="row" href="about"><span class="row-name">About<span class="row-sub">The version and build to quote when reporting it</span></span></a>
+                <a class="row" href="release"><span class="row-name">Release<span class="row-sub">What has to be true before a build ships, and how each was checked</span></span></a>
+            </div>
+        </RoomSection>
+    </div>
+</div>

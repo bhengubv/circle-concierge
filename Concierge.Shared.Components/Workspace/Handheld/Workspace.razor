@@ -202,6 +202,27 @@
                     </div>
                 }
             </section>
+
+            @*
+                Things you use rather than read. Kept apart from Rooms so
+                neither group grows past what the sidebar can show.
+            *@
+            <section class="ws-group @(IsGroupOpen("tools") ? "is-open" : null)">
+                <button class="ws-head" type="button" @onclick='@(() => ToggleGroup("tools"))'>
+                    <svg class="ws-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
+                    <span class="ws-head-name">Tools</span>
+                    <span class="ws-head-count">@ToolLinks.Length</span>
+                </button>
+                @if (IsGroupOpen("tools"))
+                {
+                    <div class="ws-group-body">
+                        @foreach (var tool in ToolLinks)
+                        {
+                            <a class="ws-room" href="@tool.Href">@tool.Name</a>
+                        }
+                    </div>
+                }
+            </section>
         </div>
 
         @*

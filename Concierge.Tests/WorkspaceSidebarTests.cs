@@ -71,12 +71,13 @@ public sealed class WorkspaceSidebarTests : BunitContext
         var cut = RenderWorkspace();
 
         var groups = cut.FindAll("section.ws-group");
-        Assert.Equal(4, groups.Count);
+        Assert.Equal(5, groups.Count);
 
         Assert.Contains("is-open", groups[0].ClassName);        // Threads
         Assert.DoesNotContain("is-open", groups[1].ClassName);  // Approvals
         Assert.DoesNotContain("is-open", groups[2].ClassName);  // Skills
         Assert.DoesNotContain("is-open", groups[3].ClassName);  // Rooms
+        Assert.DoesNotContain("is-open", groups[4].ClassName);  // Tools
     }
 
     /// <summary>
@@ -97,8 +98,8 @@ public sealed class WorkspaceSidebarTests : BunitContext
 
     /// <summary>
     /// The order is the conversation first and the destinations last: what you
-    /// are doing, what is waiting on you, what is shaping the answers, and then
-    /// the rooms you go and read.
+    /// are doing, what is waiting on you, what is shaping the answers, then the
+    /// rooms you go and read, and last the tools you go and use.
     /// </summary>
     [Fact]
     public void The_groups_run_from_the_conversation_to_the_destinations()
@@ -106,7 +107,26 @@ public sealed class WorkspaceSidebarTests : BunitContext
         var cut = RenderWorkspace();
 
         var names = cut.FindAll(".ws-head-name").Select(e => e.TextContent.Trim()).ToArray();
-        Assert.Equal(new[] { "Threads", "Approvals", "Skills", "Rooms" }, names);
+        Assert.Equal(new[] { "Threads", "Approvals", "Skills", "Rooms", "Tools" }, names);
+    }
+
+    /// <summary>
+    /// Everything the workspace can reach, reachable. History, Diagrams and
+    /// Images kept their routes through the redesign and would otherwise be
+    /// addressable only by typing a URL.
+    /// </summary>
+    [Fact]
+    public void Every_tool_is_reachable_from_the_sidebar()
+    {
+        var cut = RenderWorkspace();
+        Header(cut, "Tools").Click();
+
+        var hrefs = cut.FindAll("section.ws-group")[4]
+            .QuerySelectorAll("a.ws-room")
+            .Select(a => a.GetAttribute("href"))
+            .ToArray();
+
+        Assert.Equal(new[] { "history", "diagrams", "images" }, hrefs);
     }
 
     /// <summary>

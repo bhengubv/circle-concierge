@@ -261,8 +261,14 @@ public sealed class RoomTests : BunitContext
 
         var hrefs = cut.FindAll(".room-sec-body a.row").Select(a => a.GetAttribute("href")).ToArray();
 
+        // The directory covers everything the sidebar does not: the rooms it
+        // lists, plus the pages that have no group of their own.
         Assert.Equal(
-            new[] { "engineering", "beyond", "business-apis", "roadmap", "release", "pricing" },
+            new[]
+            {
+                "engineering", "beyond", "business-apis", "roadmap", "release", "pricing",
+                "history", "diagrams", "images", "switch-mode", "help", "about"
+            },
             hrefs);
     }
 

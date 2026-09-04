@@ -1080,6 +1080,19 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     ];
 
     /// <summary>
+    /// Things you go and use, as opposed to rooms you go and read. Their own
+    /// group rather than six more entries under Rooms: ten links in one
+    /// unfolded group overflowed the sidebar, which is the defect the
+    /// accordion was introduced to stop.
+    /// </summary>
+    protected static readonly (string Name, string Href)[] ToolLinks =
+    [
+        ("History", "history"),
+        ("Diagrams", "diagrams"),
+        ("Images", "images")
+    ];
+
+    /// <summary>
     /// One HttpClient for the voice endpoints, for the life of the process.
     ///
     /// Both callers used to do `using var http = new HttpClient(...)` per call.

@@ -1,7 +1,101 @@
 @page "/diagrams"
-@using Concierge.Diagrams.Design
-@using Concierge.Shared.Diagrams
 @inject IEnumerable<IDiagramRuntime> Runtimes
 @inject IServiceProvider Services
 
-@* UI deleted. Rebuild here. *@
+@*
+    Diagrams: write one, or pull one in from a design tool.
+
+    Mermaid renders here directly — the app already registers the renderer for
+    the thread, so a diagram in a conversation and a diagram on this page are
+    the same thing. The importers are the other half: a Penpot or Figma file
+    comes back as structure the assistant can reason about rather than pixels
+    it cannot.
+*@
+
+<div class="room">
+    <div class="room-top">
+        <a class="room-back" href="/">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 6 9 12 15 18"/></svg>
+            Workspace
+        </a>
+        <h1>Diagrams</h1>
+    </div>
+
+    <p class="room-lede">Write a diagram in text and watch it draw, or bring one in from a design file.</p>
+
+    <div class="room-body">
+        <RoomSection Title="Draw one" Open="true">
+            @* Three rows, measured: six ran the room 43px past the window. *@
+            <textarea class="comp-input" rows="3" spellcheck="false"
+                      style="width:100%;"
+                      aria-label="Diagram source"
+                      value="@_source"
+                      @oninput="OnSourceChanged"></textarea>
+
+            @if (_mermaidArtifact is not null)
+            {
+                <div class="row">
+                    <span class="row-name">@_mermaidArtifact.Title</span>
+                    <span class="row-val">@_mermaidArtifact.Elements.Count parts</span>
+                </div>
+
+                @* Rendered by the same mechanism the thread uses. *@
+                <pre class="diagram mermaid">@_mermaidArtifact.Source</pre>
+            }
+        </RoomSection>
+
+        <RoomSection Title="Bring one in" Count="@_orderedRuntimes.Count">
+            <div class="row">
+                <span class="row-name">Source</span>
+                <div class="seg" role="group" aria-label="Source">
+                    @foreach (var runtime in _orderedRuntimes.Where(r => !string.Equals(r.Id, "mermaid", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        var id = runtime.Id;
+                        <button class="seg-opt @(_fetchSource == id ? "is-on" : null)"
+                                type="button"
+                                aria-pressed="@(_fetchSource == id ? "true" : "false")"
+                                @onclick="@(() => _fetchSource = id)">@runtime.Id</button>
+                    }
+                </div>
+            </div>
+
+            <div class="row">
+                <span class="row-name">File id</span>
+                <input class="comp-input" style="max-width:220px;" type="text"
+                       placeholder="Paste a file id"
+                       aria-label="File id"
+                       value="@_fetchId"
+                       @oninput="OnFetchIdChanged" />
+            </div>
+
+            <button class="btn btn-primary" type="button" disabled="@(!CanFetch)"
+                    @onclick="FetchAsync" @onpointerup="FetchAsync">
+                @(_fetching ? "Fetching…" : "Fetch")
+            </button>
+
+            <p class="room-note">@_fetchStatus</p>
+
+            @if (_fetchedArtifact is not null)
+            {
+                <div class="rows">
+                    <div class="row"><span class="row-name">Title</span><span class="row-val">@_fetchedArtifact.Title</span></div>
+                    <div class="row"><span class="row-name">Kind</span><span class="row-val">@_fetchedArtifact.Kind</span></div>
+                    <div class="row"><span class="row-name">Parts</span><span class="row-val">@_fetchedArtifact.Elements.Count</span></div>
+                </div>
+                <p class="room-note">@_fetchedArtifact.Summary</p>
+            }
+        </RoomSection>
+    </div>
+</div>
+
+@code {
+    // Recompute and FetchAsync live in the code-behind; these only feed them.
+    private void OnSourceChanged(ChangeEventArgs e)
+    {
+        _source = e.Value?.ToString() ?? string.Empty;
+        Recompute();
+    }
+
+    private void OnFetchIdChanged(ChangeEventArgs e)
+        => _fetchId = e.Value?.ToString() ?? string.Empty;
+}

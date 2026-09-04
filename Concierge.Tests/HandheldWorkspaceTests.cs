@@ -72,7 +72,7 @@ public sealed class HandheldWorkspaceTests : BunitContext
         var cut = RenderWorkspace();
 
         Assert.Single(cut.FindAll("aside.ws-side"));
-        Assert.Equal(4, cut.FindAll("aside.ws-side button.ws-head").Count);
+        Assert.Equal(5, cut.FindAll("aside.ws-side button.ws-head").Count);
         Assert.Single(cut.FindAll("button.ws-menu"));
     }
 
