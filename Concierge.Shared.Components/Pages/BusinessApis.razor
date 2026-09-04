@@ -2,4 +2,117 @@
 @inject IScalarApiService ScalarApi
 @inject IMediaStudioService MediaStudio
 
-@* UI deleted. Rebuild here. *@
+@*
+    Business APIs: the outside systems Concierge can reach, and the API Room
+    it reaches them through.
+
+    The groups at the bottom are the honest part of this room — they name the
+    kinds of system a business actually runs on rather than implying that all
+    of them are wired. What is built in and what is not is stated per
+    capability, not averaged into a claim.
+*@
+
+@{
+    var scalar = ScalarApi.GetSnapshot();
+    var media = MediaStudio.GetSnapshot();
+}
+
+<div class="room">
+    <div class="room-top">
+        <a class="room-back" href="/">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 6 9 12 15 18"/></svg>
+            Workspace
+        </a>
+        <h1>Business APIs</h1>
+    </div>
+
+    <p class="room-lede">
+        An API Room with Scalar-style workflows: read the reference, try a call, and
+        keep the result beside the work it belongs to.
+    </p>
+
+    <div class="room-body">
+        <RoomSection Title="The API room" Open="true">
+            <div class="rows">
+                <div class="row"><span class="row-name">Built on</span><span class="row-val">@scalar.Name</span></div>
+                <div class="row"><span class="row-name">Licence</span><span class="row-val">@scalar.License</span></div>
+                <div class="row"><span class="row-name">How it is used</span><span class="row-val">@scalar.IntegrationMode</span></div>
+            </div>
+        </RoomSection>
+
+        <RoomSection Title="What it does" Count="@scalar.Capabilities.Count">
+            <div class="room-grid">
+                @foreach (var capability in scalar.Capabilities)
+                {
+                    <article class="room-card">
+                        <div class="room-card-top">
+                            <span class="room-card-name">@capability.Name</span>
+                            <span class="state">
+                                <span class="dot @(capability.BuiltInByDefault ? "dot-done" : "dot-waiting")" aria-hidden="true"></span>
+                                @(capability.BuiltInByDefault ? "Built in" : "Not yet")
+                            </span>
+                        </div>
+                        <p>@capability.ConciergeUse</p>
+                        <p class="room-note">Limit: @capability.SafetyBoundary</p>
+                    </article>
+                }
+            </div>
+        </RoomSection>
+
+        <RoomSection Title="Ways in" Count="@scalar.Templates.Count">
+            <div class="rows">
+                @foreach (var template in scalar.Templates)
+                {
+                    <div class="row">
+                        <span class="row-name">
+                            @template.Name
+                            <span class="row-sub">@template.Purpose</span>
+                        </span>
+                        <span class="row-val">@template.Steps.Count steps</span>
+                    </div>
+                }
+            </div>
+        </RoomSection>
+
+        <RoomSection Title="Media library" Count="@media.RecentItems.Count">
+            @if (media.RecentItems.Count == 0)
+            {
+                <p class="room-note">Nothing in it yet. @media.Summary</p>
+            }
+            else
+            {
+                <div class="rows">
+                    @foreach (var item in media.RecentItems)
+                    {
+                        <div class="row">
+                            <span class="row-name">
+                                @item.Title
+                                <span class="row-sub">@item.ContentType</span>
+                            </span>
+                            <span class="row-val">@item.FormattedDuration</span>
+                        </div>
+                    }
+                </div>
+            }
+        </RoomSection>
+
+        <RoomSection Title="Kinds of system it connects to" Count="@Groups.Length">
+            <div class="rows">
+                @foreach (var group in Groups)
+                {
+                    <div class="row">
+                        <span class="row-name">
+                            @group.Name
+                            <span class="row-sub">@group.Summary</span>
+                        </span>
+                        <span class="row-val">@group.Examples</span>
+                    </div>
+                }
+            </div>
+            <p class="room-note">
+                Named as categories, not as connections. Each one is wired when the
+                work needs it, with its own key and its own approval.
+            </p>
+        </RoomSection>
+    </div>
+</div>

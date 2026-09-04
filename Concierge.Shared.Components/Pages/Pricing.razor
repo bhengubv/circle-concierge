@@ -1,4 +1,122 @@
 @page "/pricing"
 @inject IPricingService PricingCatalog
 
-@* UI deleted. Rebuild here. *@
+@*
+    Pricing.
+
+    The temptation in a pricing room is to render the plans and stop. What
+    makes it usable is the other three things the service already carries:
+    the usage band you are actually in, what each plan does NOT include, and
+    the single sentence saying when you would outgrow it. Limits and upgrade
+    triggers are rendered with the plan, not in a footnote.
+*@
+
+@{
+    var snapshot = PricingCatalog.GetSnapshot();
+}
+
+<div class="room">
+    <div class="room-top">
+        <a class="room-back" href="/">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 6 9 12 15 18"/></svg>
+            Workspace
+        </a>
+        <h1>Pricing</h1>
+    </div>
+
+    <p class="room-lede">@snapshot.Positioning</p>
+
+    <div class="room-body">
+        <RoomSection Title="How much you use it" Count="@snapshot.UsageBands.Count" Open="true">
+            <div class="rows">
+                @foreach (var band in snapshot.UsageBands)
+                {
+                    <div class="row">
+                        <span class="row-name">
+                            @band.Name
+                            <span class="row-sub">@band.Summary</span>
+                        </span>
+                        <span class="row-val">
+                            @(band.RequiresContact ? "Talk to us" : $"{band.IncludedMonthlyRuns:N0} runs · {band.IncludedTeamSeats} seats")
+                        </span>
+                    </div>
+                }
+            </div>
+        </RoomSection>
+
+        <RoomSection Title="Plans" Count="@snapshot.Plans.Count">
+            <div class="room-grid">
+                @foreach (var plan in snapshot.Plans)
+                {
+                    <article class="room-card">
+                        <div class="room-card-top">
+                            <span class="room-card-name">@plan.Name</span>
+                            <span class="row-val">@plan.MonthlyPriceLabel</span>
+                        </div>
+                        <p>@plan.Summary</p>
+
+                        <ul class="room-list">
+                            @foreach (var line in plan.Included)
+                            {
+                                <li>@line</li>
+                            }
+                        </ul>
+
+                        @* The half a pricing page usually leaves out. *@
+                        @if (plan.Limits.Count > 0)
+                        {
+                            <p class="room-note">Not included: @string.Join("; ", plan.Limits)</p>
+                        }
+                        <p class="room-note">Outgrow it when: @plan.UpgradeTrigger</p>
+                    </article>
+                }
+            </div>
+        </RoomSection>
+
+        <RoomSection Title="Add-ons" Count="@snapshot.AddOns.Count">
+            <div class="rows">
+                @foreach (var addOn in snapshot.AddOns)
+                {
+                    <div class="row">
+                        <span class="row-name">
+                            @addOn.Name
+                            <span class="row-sub">@addOn.Summary</span>
+                        </span>
+                        <span class="row-val">@addOn.BillingModel</span>
+                    </div>
+                }
+            </div>
+        </RoomSection>
+
+        <RoomSection Title="Where to start" Count="@snapshot.Paths.Count">
+            <div class="rows">
+                @foreach (var path in snapshot.Paths)
+                {
+                    <div class="row">
+                        <span class="row-name">
+                            @path.Label
+                            <span class="row-sub">@path.Summary</span>
+                        </span>
+                        <span class="row-val">@NamePlans(snapshot, path.RecommendedPlanIds)</span>
+                    </div>
+                }
+            </div>
+            <p class="room-note">Prices are shown in @snapshot.CurrencyMode.</p>
+        </RoomSection>
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Paths recommend plans by id. An id is not a name, and "free,builder"
+    /// is not something anybody wants to read.
+    /// </summary>
+    private static string NamePlans(PricingSnapshot snapshot, IReadOnlyList<string> planIds)
+    {
+        var names = planIds
+            .Select(id => snapshot.Plans.FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase))?.Name)
+            .Where(name => !string.IsNullOrWhiteSpace(name));
+
+        return string.Join(" or ", names);
+    }
+}

@@ -2,4 +2,111 @@
 @inject IBeyondClaudeService BeyondClaude
 @inject IMeshTransportService Mesh
 
-@* UI deleted. Rebuild here. *@
+@*
+    Beyond Code: what Concierge is for once it stops being a coding tool.
+
+    This was a marketing page. It is now a room, which is a different thing:
+    every capability below is read from IBeyondClaudeService and carries the
+    boundary that constrains it, because a capability without its boundary is
+    a claim rather than a description. The status is a dot and a word, like
+    everywhere else.
+*@
+
+@{
+    var snapshot = BeyondClaude.GetSnapshot();
+    var mesh = Mesh.GetSnapshot();
+}
+
+<div class="room">
+    <div class="room-top">
+        <a class="room-back" href="/">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 6 9 12 15 18"/></svg>
+            Workspace
+        </a>
+        <h1>Beyond Code</h1>
+    </div>
+
+    <p class="room-lede">
+        Concierge started as something that writes code. These are the things it does
+        that are not that — each one with the limit it works inside.
+    </p>
+
+    <div class="room-body">
+        <RoomSection Title="What it can do" Count="@snapshot.Capabilities.Count" Open="true">
+            @* Three, then the rest on request. Eleven cards ran the room 495px
+               past the bottom of the window. *@
+            <div class="room-grid">
+                @foreach (var capability in (_allCapabilities ? snapshot.Capabilities : snapshot.Capabilities.Take(3)))
+                {
+                    <article class="room-card">
+                        <div class="room-card-top">
+                            <span class="room-card-name">@capability.PlainEnglishName</span>
+                            <span class="state">
+                                <span class="dot @Rooms.Dot(capability.Status)" aria-hidden="true"></span>
+                                @Rooms.Word(capability.Status)
+                            </span>
+                        </div>
+                        <p>@capability.Summary</p>
+                        <p class="room-note">Limit: @capability.SafetyBoundary</p>
+                    </article>
+                }
+            </div>
+            @if (!_allCapabilities && snapshot.Capabilities.Count > 3)
+            {
+                <button class="ws-more" type="button" @onclick="@(() => _allCapabilities = true)" @onpointerup="@(() => _allCapabilities = true)">
+                    Show all @snapshot.Capabilities.Count
+                </button>
+            }
+        </RoomSection>
+
+        <RoomSection Title="Where it remembers things" Count="@snapshot.MemoryRooms.Count">
+            <div class="rows">
+                @foreach (var room in snapshot.MemoryRooms)
+                {
+                    <div class="row">
+                        <span class="row-name">
+                            @room.Name
+                            <span class="row-sub">@room.Purpose</span>
+                        </span>
+                        <span class="row-val">@(room.PortableAcrossDevices ? "Follows you" : "This device")</span>
+                    </div>
+                }
+            </div>
+        </RoomSection>
+
+        <RoomSection Title="Mesh">
+            <div class="rows">
+                <div class="row">
+                    <span class="row-name">This node</span>
+                    <span class="row-val">@mesh.NodeTag</span>
+                </div>
+                <div class="row">
+                    <span class="row-name">Peers it knows</span>
+                    <span class="row-val">@mesh.KnownPeers</span>
+                </div>
+                <div class="row">
+                    <span class="row-name">Waiting to send</span>
+                    <span class="row-val">@mesh.PendingBundles</span>
+                </div>
+                <div class="row">
+                    <span class="row-name">Transport</span>
+                    <span class="state">
+                        <span class="dot @(mesh.IsActive ? "dot-done" : "dot-waiting")" aria-hidden="true"></span>
+                        @(mesh.IsActive ? "Running" : "Not running")
+                    </span>
+                </div>
+            </div>
+            <p class="room-note">@mesh.Summary</p>
+        </RoomSection>
+
+        <RoomSection Title="Picking work back up">
+            <p class="room-note">@snapshot.SafeResume.Summary</p>
+            <div class="rows">
+                <div class="row"><span class="row-name">Asks before resuming</span><span class="row-val">@YesNo(snapshot.SafeResume.RequiresUserApproval)</span></div>
+                <div class="row"><span class="row-name">Keeps the original sandbox</span><span class="row-val">@YesNo(snapshot.SafeResume.KeepsOriginalSandbox)</span></div>
+                <div class="row"><span class="row-name">Refuses to widen permissions</span><span class="row-val">@YesNo(snapshot.SafeResume.BlocksPermissionBypass)</span></div>
+                <div class="row"><span class="row-name">Stops when the context changes</span><span class="row-val">@YesNo(snapshot.SafeResume.StopsWhenContextChanges)</span></div>
+            </div>
+        </RoomSection>
+    </div>
+</div>

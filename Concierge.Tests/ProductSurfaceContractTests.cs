@@ -19,19 +19,38 @@ public sealed class ProductSurfaceContractTests
         });
     }
 
+    /// <summary>
+    /// Every room stays reachable, and adding Beyond Code does not push the
+    /// others out — the guarantee this has always protected.
+    ///
+    /// Where navigation lives has moved. There is no NavMenu.razor any more:
+    /// the tab bar and the ⋯ menu are gone and the workspace sidebar is the
+    /// only way to a room, so that is what this reads. Two of the seven names
+    /// it used to check are no longer routes at all — Settings and Skills are
+    /// panels over the workspace — so they are asserted as the controls that
+    /// open them instead, which is the same guarantee against the thing that
+    /// now provides it.
+    /// </summary>
     [Fact]
     public void Navigation_exposes_beyond_code_without_hiding_core_rooms()
     {
         var root = FindWorkspaceRoot();
-        var nav = File.ReadAllText(Path.Combine(root, "Concierge.Shared.Components", "Layout", "NavMenu.razor"));
+        var workspace = File.ReadAllText(Path.Combine(root, "Concierge.Shared.Components", "Pages", "Chat.razor"));
+        var links = File.ReadAllText(Path.Combine(root, "Concierge.Shared.Components", "Pages", "Chat.razor.cs"));
 
-        Assert.Contains("href=\"beyond\"", nav, StringComparison.Ordinal);
-        Assert.Contains("Beyond Code", nav, StringComparison.Ordinal);
-        Assert.Contains("href=\"engineering\"", nav, StringComparison.Ordinal);
-        Assert.Contains("href=\"product\"", nav, StringComparison.Ordinal);
-        Assert.Contains("href=\"settings\"", nav, StringComparison.Ordinal);
-        Assert.Contains("href=\"approvals\"", nav, StringComparison.Ordinal);
-        Assert.Contains("href=\"pricing\"", nav, StringComparison.Ordinal);
+        Assert.Contains("Beyond Code", links, StringComparison.Ordinal);
+        Assert.Contains("\"beyond\"", links, StringComparison.Ordinal);
+        Assert.Contains("\"engineering\"", links, StringComparison.Ordinal);
+        Assert.Contains("\"product\"", links, StringComparison.Ordinal);
+        Assert.Contains("\"pricing\"", links, StringComparison.Ordinal);
+
+        // The rooms group renders those, and the queue has its own way in.
+        Assert.Contains("a class=\"ws-room\"", workspace, StringComparison.Ordinal);
+        Assert.Contains("href=\"approvals\"", workspace, StringComparison.Ordinal);
+
+        // Settings and Skills are panels now, not destinations.
+        Assert.Contains("<Settings", workspace, StringComparison.Ordinal);
+        Assert.Contains("<Skills", workspace, StringComparison.Ordinal);
     }
 
     [Fact]

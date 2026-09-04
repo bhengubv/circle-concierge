@@ -1,4 +1,65 @@
 @page "/roadmap"
 @inject IConciergeStateService Concierge
 
-@* UI deleted. Rebuild here. *@
+@*
+    Roadmap: what is being worked on, in the order it is being worked on.
+
+    The order is the content. ProductionTasks carry a distinct Priority and
+    the service guarantees they come back sorted, so this room renders the
+    sequence rather than inventing categories on top of it.
+*@
+
+@{
+    var tasks = Concierge.GetProductionTasks();
+}
+
+<div class="room">
+    <div class="room-top">
+        <a class="room-back" href="/">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 6 9 12 15 18"/></svg>
+            Workspace
+        </a>
+        <h1>Roadmap</h1>
+    </div>
+
+    <p class="room-lede">
+        What is being worked on and in what order. No dates — the order is the
+        commitment, and a date nobody can keep is worse than none.
+    </p>
+
+    <div class="room-body">
+        <RoomSection Title="In order" Count="@tasks.Count" Open="true">
+            @* Five, then the rest on request. Fifteen ran the room 540px past
+               the bottom of the window, and with scrollbars hidden app-wide
+               nothing said so. The order is the content here, so this shows
+               the top of the order rather than a filtered subset. *@
+            <div class="rows">
+                @foreach (var task in (_all ? tasks : tasks.Take(5)))
+                {
+                    <div class="row">
+                        <span class="row-name">
+                            @task.Priority. @task.Title
+                            <span class="row-sub">@task.Summary</span>
+                        </span>
+                        <span class="state">
+                            <span class="dot @Rooms.Dot(task.Status)" aria-hidden="true"></span>
+                            @Rooms.Word(task.Status)
+                        </span>
+                    </div>
+                }
+            </div>
+            @if (!_all && tasks.Count > 5)
+            {
+                <button class="ws-more" type="button" @onclick="@(() => _all = true)" @onpointerup="@(() => _all = true)">
+                    Show all @tasks.Count
+                </button>
+            }
+        </RoomSection>
+    </div>
+</div>
+
+@code {
+    /// <summary>Whether the whole order is showing. Starts false so the room
+    /// fits the window it opens in.</summary>
+    private bool _all;
+}

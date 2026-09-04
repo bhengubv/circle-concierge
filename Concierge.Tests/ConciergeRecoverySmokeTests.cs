@@ -39,7 +39,11 @@ public sealed class ConciergeRecoverySmokeTests
     // "/" is the workspace now, and the workspace is Chat.razor. Home.razor no
     // longer claims a route: the app is one screen, not a set of pages.
     [InlineData("Chat.razor", "@page \"/\"")]
-    [InlineData("Skills.razor", "@page \"/skills\"")]
+    // Skills is no longer a route either, for the same reason and by the same
+    // route: it is a picker panel over the workspace, opened from the Skills
+    // group in the sidebar. That it is reachable, and that turning one on
+    // reaches the composer, is asserted in WorkspaceSkillsTests against the
+    // rendered UI.
     // Settings is no longer a route. It is a panel over the workspace, opened
     // from the runtime row in the sidebar — neither reference has a settings
     // screen you travel to. What must still hold is that it is reachable, and
@@ -51,6 +55,11 @@ public sealed class ConciergeRecoverySmokeTests
     [InlineData("BusinessApis.razor", "@page \"/business-apis\"")]
     [InlineData("Beyond.razor", "@page \"/beyond\"")]
     [InlineData("Pricing.razor", "@page \"/pricing\"")]
+    // The two rooms this list had always omitted. Both were shells when it was
+    // written and neither was noticed missing, which is the argument for
+    // listing every room here rather than the ones that happened to break.
+    [InlineData("Engineering.razor", "@page \"/engineering\"")]
+    [InlineData("Product.razor", "@page \"/product\"")]
     public void Rebuilt_web_routes_exist(string fileName, string routeDirective)
     {
         var root = FindWorkspaceRoot();

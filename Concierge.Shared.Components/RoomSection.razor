@@ -1,0 +1,53 @@
+@*
+    A folding section of a room.
+
+    Scrollbars are hidden app-wide, so a room that runs past the bottom of the
+    window gives no sign there is more — Pricing ran 1303px past it. The answer
+    everywhere else in this app is to fold: the sidebar groups, the settings
+    accordion. This is the same thing for rooms, so a room fits the window it
+    opens in and going further is a deliberate press.
+
+    The heading stays an h2 and the button sits inside it, rather than the
+    other way round: a heading wrapped in a button stops being announced as a
+    heading, and the headings are how somebody navigates a room by keyboard.
+*@
+
+<section class="room-sec @(_open ? "is-open" : null)">
+    <h2>
+        <button class="room-sec-head" type="button"
+                aria-expanded="@(_open ? "true" : "false")"
+                @onclick="Toggle" @onpointerup="Toggle">
+            <svg class="ws-chev @(_open ? "is-open" : null)" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
+            <span class="room-sec-name">@Title</span>
+            @if (Count is not null)
+            {
+                <span class="room-sec-count">@Count</span>
+            }
+        </button>
+    </h2>
+
+    @if (_open)
+    {
+        <div class="room-sec-body">@ChildContent</div>
+    }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+
+    /// <summary>How much is behind a folded section. Without it a fold hides
+    /// both the content and the fact that there is any.</summary>
+    [Parameter] public int? Count { get; set; }
+
+    /// <summary>Whether it starts unfolded. The first section of a room does,
+    /// so a room never opens as a column of closed headings.</summary>
+    [Parameter] public bool Open { get; set; }
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private bool _open;
+
+    protected override void OnInitialized() => _open = Open;
+
+    private void Toggle() => _open = !_open;
+}

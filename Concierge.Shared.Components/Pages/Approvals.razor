@@ -2,4 +2,81 @@
 @inject IConciergeStateService Concierge
 @inject ISnackbar Snackbar
 
-@* UI deleted. Rebuild here. *@
+@*
+    Approvals: everything waiting on a decision, across every conversation.
+
+    An approval that stops a run renders inline in the thread, where the run
+    stopped — covering the work to ask about it hides the context the answer
+    depends on. This room is the other case: the queue, seen all at once,
+    when you want to clear it rather than happen upon it.
+
+    Risk is a dot and a word plus one line saying how far the thing can
+    reach. The old build rendered it as a coloured pill, which made the queue
+    look like an alarm panel and made "low" shout as loudly as "critical".
+*@
+
+@{
+    var pending = Concierge.GetSnapshot().Approvals
+        .OrderByDescending(a => RiskWeight(a.Risk))
+        .ThenBy(a => a.CreatedAt)
+        .ToList();
+    var undecided = pending.Count(a => !_decided.ContainsKey(a.Id));
+}
+
+<div class="room">
+    <div class="room-top">
+        <a class="room-back" href="/">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 6 9 12 15 18"/></svg>
+            Workspace
+        </a>
+        <h1>Approvals</h1>
+    </div>
+
+    <p class="room-lede">
+        Everything waiting on you, riskiest first. Anything that stopped a run mid-way
+        is also shown in the conversation it stopped in.
+    </p>
+
+    <div class="room-body">
+        @if (pending.Count == 0)
+        {
+            <p class="room-note">Nothing is waiting.</p>
+        }
+        else
+        {
+            <RoomSection Title="Waiting on you" Count="@undecided" Open="true">
+                <div class="rows">
+                    @foreach (var approval in pending)
+                    {
+                        var verdict = _decided.TryGetValue(approval.Id, out var v) ? v : null;
+
+                        <div class="row">
+                            <span class="row-name">
+                                @approval.Title
+                                <span class="row-sub">@approval.Summary</span>
+                                <span class="row-sub">@ReachOf(approval.Risk) · asked @RelativeTime(approval.CreatedAt)</span>
+                            </span>
+
+                            @if (verdict is null)
+                            {
+                                <span class="ask-actions">
+                                    <button class="btn btn-primary" type="button"
+                                            @onclick="@(() => Approve(approval))" @onpointerup="@(() => Approve(approval))">Allow</button>
+                                    <button class="btn" type="button"
+                                            @onclick="@(() => Reject(approval))" @onpointerup="@(() => Reject(approval))">Deny</button>
+                                </span>
+                            }
+                            else
+                            {
+                                <span class="state">
+                                    <span class="dot @(verdict == "approved" ? "dot-done" : "dot-danger")" aria-hidden="true"></span>
+                                    @(verdict == "approved" ? "Allowed" : "Denied")
+                                </span>
+                            }
+                        </div>
+                    }
+                </div>
+            </RoomSection>
+        }
+    </div>
+</div>

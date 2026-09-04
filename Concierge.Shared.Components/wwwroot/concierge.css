@@ -246,7 +246,10 @@ a:hover { text-decoration: underline; }
     padding: var(--s3) var(--s5);
     border-bottom: 1px solid var(--rule-soft);
 }
-.ws-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-md); font-weight: 600; }
+/* An h1, because it names the document — the thread you are in. The margin
+   reset matters: a UA h1 carries 0.67em top and bottom and would push the top
+   bar to twice its height. */
+.ws-title { margin: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-md); font-weight: 600; }
 .ws-top-meta { flex: 0 0 auto; display: flex; align-items: center; gap: var(--s2); color: var(--ink-faint); font-size: var(--t-sm); }
 
 .ws-thread {
@@ -549,7 +552,9 @@ a:hover { text-decoration: underline; }
     box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
 }
 .sheet-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); }
-.sheet-title { font-size: var(--t-lg); font-weight: 620; }
+/* Also an h1: a panel is its own document region, and it is what
+   aria-labelledby points at. Same margin reset, same reason. */
+.sheet-title { margin: 0; font-size: var(--t-lg); font-weight: 620; }
 .sheet-group { display: flex; flex-direction: column; gap: var(--s2); }
 .sheet-label {
     color: var(--ink-faint);
@@ -774,3 +779,188 @@ button.row:hover { color: var(--ink); }
     overflow: hidden;
 }
 .skill-row { min-height: auto; }
+
+/* ── Rooms ────────────────────────────────────────────────────────────────
+   The seven rooms are the one place in the app that is not a conversation:
+   Pricing, Roadmap, Release, Product, Engineering, Beyond, Business APIs.
+   They keep their routes because they are destinations — you go and read
+   them — but they must not become a second visual language. So they are
+   built from the primitives the workspace already uses: .row, .row-name,
+   .row-val, .dot, .state. Nothing new is invented below except the frame.
+
+   The layout is @Body and nothing else, so a room draws its own frame and
+   its own way back. */
+
+.room {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    background: var(--ground);
+    color: var(--ink);
+    overflow: hidden;
+}
+
+.room-top {
+    display: flex;
+    align-items: center;
+    gap: var(--s3);
+    padding: var(--s3) var(--s5);
+    border-bottom: 1px solid var(--rule-soft);
+    flex: none;
+}
+
+.room-back {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s1);
+    padding: var(--s1) var(--s2);
+    margin-left: calc(var(--s2) * -1);
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--ink-soft);
+    font: inherit;
+    font-size: var(--t-sm);
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.room-back:hover { background: var(--raised); color: var(--ink); }
+
+/* The room's name. An h1 because it is the entry point of the document —
+   it is what a screen reader announces and what browser QA looks for. */
+.room h1 {
+    margin: 0;
+    font-size: var(--t-lg);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+}
+
+/* One line under the title saying what the room is for. Rooms are the part
+   of the app people arrive at without context. */
+.room-lede {
+    margin: 0;
+    padding: var(--s3) var(--s5) 0;
+    max-width: 68ch;
+    color: var(--ink-soft);
+    font-size: var(--t-sm);
+    line-height: 1.55;
+    flex: none;
+}
+
+/* The one scrolling region in a room. Scrollbars are hidden app-wide, so a
+   room ends with its last section and never mid-sentence: sections are
+   short and the body is the only thing that moves. */
+.room-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: none;
+    padding: var(--s3) var(--s5) var(--s3);
+    display: flex;
+    flex-direction: column;
+    gap: var(--s3);
+}
+
+.room-body::-webkit-scrollbar { width: 0; height: 0; }
+
+.room-sec { display: flex; flex-direction: column; gap: var(--s2); }
+
+/* A card grid for things that are genuinely parallel — plans, capabilities,
+   lanes. Auto-fit rather than a fixed column count, because a room is read
+   at whatever width the window happens to be. */
+.room-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+    gap: var(--s2);
+}
+
+.room-card {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s1);
+    padding: var(--s3);
+    border: 1px solid var(--rule-soft);
+    border-radius: 10px;
+    background: var(--panel);
+}
+
+.room-card-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--s2);
+}
+
+.room-card-name { font-size: var(--t-md); font-weight: 600; }
+
+.room-card p {
+    margin: 0;
+    color: var(--ink-soft);
+    font-size: var(--t-sm);
+    line-height: 1.55;
+}
+
+/* A boundary, a limit, a caveat — the quietest text in a room, because it
+   is the thing a marketing page would leave out. */
+.room-note {
+    margin: 0;
+    color: var(--ink-faint);
+    font-size: var(--t-xs);
+    line-height: 1.5;
+}
+
+.room-list { margin: 0; padding-left: 1.1em; display: flex; flex-direction: column; gap: 2px; }
+.room-list li { color: var(--ink-soft); font-size: var(--t-sm); line-height: 1.5; }
+
+/* The rooms group in the workspace sidebar. */
+.ws-room {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s2);
+    width: 100%;
+    padding: var(--s1) var(--s3);
+    border: 0;
+    background: transparent;
+    color: var(--ink-soft);
+    font: inherit;
+    font-size: var(--t-sm);
+    text-align: left;
+    text-decoration: none;
+    border-radius: 7px;
+    cursor: pointer;
+}
+
+.ws-room:hover { background: var(--raised); color: var(--ink); }
+
+/* A room's section headings fold. See RoomSection.razor: scrollbars are
+   hidden app-wide, so a room has to fit the window it opens in. */
+.room-sec > h2 { margin: 0; }
+
+.room-sec-head {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+    width: 100%;
+    padding: var(--s1) 0;
+    border: 0;
+    background: transparent;
+    color: var(--ink-faint);
+    font: inherit;
+    font-size: var(--t-xs);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-align: left;
+    cursor: pointer;
+}
+
+.room-sec-head:hover { color: var(--ink-soft); }
+.room-sec-name { flex: 1 1 auto; min-width: 0; }
+
+/* What is behind the fold, so folding hides the content and not the fact
+   that there is any. */
+.room-sec-count { letter-spacing: 0; text-transform: none; color: var(--ink-faint); }
+
+.room-sec-body { display: flex; flex-direction: column; gap: var(--s2); padding-top: var(--s1); }

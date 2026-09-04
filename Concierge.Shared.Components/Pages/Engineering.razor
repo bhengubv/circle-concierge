@@ -1,4 +1,103 @@
 @page "/engineering"
 @inject IAgentHarnessService Harness
 
-@* UI deleted. Rebuild here. *@
+@*
+    Engineering: the tools Concierge can actually run, and what each one is
+    allowed to do.
+
+    This is the room that earns trust, so it is written to be checked rather
+    than believed. Every tool states whether it only reads, whether it can
+    destroy something, and what risk it carries — read from the harness that
+    enforces those flags, not from a list maintained by hand.
+*@
+
+@{
+    var tools = Harness.GetTools();
+    var logs = Harness.GetRunLogs();
+}
+
+<div class="room">
+    <div class="room-top">
+        <a class="room-back" href="/">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 6 9 12 15 18"/></svg>
+            Workspace
+        </a>
+        <h1>Engineering</h1>
+    </div>
+
+    <p class="room-lede">
+        What Concierge can do to your machine, tool by tool. Anything that can change
+        or destroy something asks first — this room is where you check that claim.
+    </p>
+
+    <div class="room-body">
+        <RoomSection Title="Working in" Open="true">
+            <div class="rows">
+                <div class="row">
+                    <span class="row-name">Workspace root</span>
+                    <span class="row-val">@Harness.WorkspaceRoot</span>
+                </div>
+                <div class="row">
+                    <span class="row-name">Tools available</span>
+                    <span class="row-val">@tools.Count</span>
+                </div>
+            </div>
+            <p class="room-note">Nothing outside that folder is reachable by a file tool.</p>
+        </RoomSection>
+
+        <RoomSection Title="Reads only" Count="@tools.Count(t => t.IsReadOnly)">
+            <div class="rows">
+                @foreach (var tool in tools.Where(t => t.IsReadOnly))
+                {
+                    <div class="row">
+                        <span class="row-name">
+                            @tool.UserFacingName
+                            <span class="row-sub">@tool.Description</span>
+                        </span>
+                        <span class="state"><span class="dot dot-done" aria-hidden="true"></span>Safe</span>
+                    </div>
+                }
+            </div>
+        </RoomSection>
+
+        <RoomSection Title="Can change things" Count="@tools.Count(t => !t.IsReadOnly)">
+            <div class="rows">
+                @foreach (var tool in tools.Where(t => !t.IsReadOnly))
+                {
+                    <div class="row">
+                        <span class="row-name">
+                            @tool.UserFacingName
+                            <span class="row-sub">@tool.Description</span>
+                        </span>
+                        <span class="state">
+                            <span class="dot @(tool.IsDestructive ? "dot-danger" : "dot-waiting")" aria-hidden="true"></span>
+                            @(tool.IsDestructive ? "Asks first — destructive" : "Asks first")
+                        </span>
+                    </div>
+                }
+            </div>
+        </RoomSection>
+
+        <RoomSection Title="Recent runs" Count="@logs.Count">
+            @if (logs.Count == 0)
+            {
+                <p class="room-note">Nothing has run yet.</p>
+            }
+            else
+            {
+                <div class="rows">
+                    @foreach (var log in logs.Take(8))
+                    {
+                        <div class="row">
+                            <span class="row-name">
+                                @log.Goal
+                                <span class="row-sub">@log.Results.Count tool calls</span>
+                            </span>
+                            <span class="row-val">@log.CreatedAt.ToLocalTime().ToString("d MMM HH:mm")</span>
+                        </div>
+                    }
+                </div>
+            }
+        </RoomSection>
+    </div>
+</div>

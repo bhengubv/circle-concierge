@@ -12,6 +12,10 @@ namespace Concierge.Shared.Components.Pages;
 public partial class Beyond
 {
 
+    /// <summary>Whether every capability is showing. Starts false so the room
+    /// fits the window it opens in.</summary>
+    private bool _allCapabilities;
+
     private static string YesNo(bool value)
     {
         return value ? "yes" : "no";

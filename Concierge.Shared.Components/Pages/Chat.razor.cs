@@ -968,9 +968,55 @@ public partial class Chat
     /// start open because they are what is happening; Skills is a catalogue of
     /// sixty-nine and stays shut until asked for. Folding is what keeps the
     /// sidebar inside the window without a scrollbar.</summary>
-    private bool _openThreads = true;
-    private bool _openApprovals = true;
-    private bool _openSkills;
+
+    /// <summary>
+    /// Folded by default. The rooms are destinations you visit occasionally;
+    /// the threads above them are the work.
+    /// </summary>
+
+    /// <summary>
+    /// Whether every thread is listed. Starts false so the four sidebar groups
+    /// fit the window without a scrollbar.
+    /// </summary>
+    private bool _allThreads;
+
+    /// <summary>
+    /// Which sidebar group is unfolded — one at a time, deliberately.
+    ///
+    /// Threads and Approvals both opened until Rooms made a fourth group: four
+    /// headers plus two open bodies overflowed the sidebar by 67px in a 479px
+    /// window, which put Rooms below the fold and Skills behind the runtime
+    /// footer. Scrollbars are hidden app-wide so nothing said so, and capping
+    /// the thread list recovered 3px because the "show all" control replaces
+    /// the row it hides. An accordion cannot outgrow the space it has, which
+    /// is the same conclusion the settings panel reached.
+    ///
+    /// Threads opens on arrival because it is the work. A folded group still
+    /// shows its count, so Approvals waiting on you is visible without being
+    /// unfolded.
+    /// </summary>
+    private string? _openGroup = "threads";
+
+    private bool IsGroupOpen(string key) => string.Equals(_openGroup, key, StringComparison.Ordinal);
+
+    private void ToggleGroup(string key) => _openGroup = IsGroupOpen(key) ? null : key;
+
+    /// <summary>
+    /// The rooms, in the order somebody new to Concierge would want them:
+    /// what it is, then what it can do to your machine, then what it costs.
+    /// Product leads because it is the directory of the rest; leaving it out
+    /// left its route reachable from nowhere.
+    /// </summary>
+    private static readonly (string Name, string Href)[] RoomLinks =
+    [
+        ("Product", "product"),
+        ("Engineering", "engineering"),
+        ("Beyond Code", "beyond"),
+        ("Business APIs", "business-apis"),
+        ("Roadmap", "roadmap"),
+        ("Release", "release"),
+        ("Pricing", "pricing")
+    ];
 
     /// <summary>
     /// One HttpClient for the voice endpoints, for the life of the process.

@@ -1,4 +1,76 @@
 @page "/release"
 @inject IConciergeStateService Concierge
 
-@* UI deleted. Rebuild here. *@
+@*
+    Release: what has to be true before a build ships, and the evidence for
+    each one.
+
+    A gate without its evidence is a tick box, so the evidence is rendered
+    with the gate rather than behind it. Gates that are not ready say so in
+    the same dot-and-word every other status in the app uses.
+*@
+
+@{
+    var snapshot = Concierge.GetSnapshot();
+    var gates = snapshot.ProductionGates;
+    var ready = gates.Count(g => g.Status == HardeningStatus.Ready);
+}
+
+<div class="room">
+    <div class="room-top">
+        <a class="room-back" href="/">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 6 9 12 15 18"/></svg>
+            Workspace
+        </a>
+        <h1>Release</h1>
+    </div>
+
+    <p class="room-lede">
+        What has to be true before a build ships, and how each one was checked.
+    </p>
+
+    <div class="room-body">
+        <RoomSection Title="Gates" Open="true">
+            <div class="rows">
+                <div class="row">
+                    <span class="row-name">Passing</span>
+                    <span class="row-val">@ready of @gates.Count</span>
+                </div>
+            </div>
+        </RoomSection>
+
+        <RoomSection Title="Each one" Count="@gates.Count">
+            <div class="rows">
+                @foreach (var gate in gates)
+                {
+                    <div class="row">
+                        <span class="row-name">
+                            @gate.Name
+                            <span class="row-sub">@gate.Summary</span>
+                        </span>
+                        <span class="state">
+                            <span class="dot @Rooms.Dot(gate.Status)" aria-hidden="true"></span>
+                            @Rooms.Word(gate.Status)
+                        </span>
+                    </div>
+                }
+            </div>
+        </RoomSection>
+
+        <RoomSection Title="Evidence" Count="@gates.Count">
+            <div class="rows">
+                @foreach (var gate in gates)
+                {
+                    <div class="row">
+                        <span class="row-name">@gate.Name</span>
+                        <span class="row-val">@gate.Evidence</span>
+                    </div>
+                }
+            </div>
+            <p class="room-note">
+                Each line names how the gate was checked, so a claim here can be
+                repeated by somebody who does not trust it.
+            </p>
+        </RoomSection>
+    </div>
+</div>

@@ -51,30 +51,79 @@ public sealed class WorkspaceSidebarTests : BunitContext
     // ── What is open when you arrive ──────────────────────────────────────
 
     /// <summary>
-    /// Threads and Approvals are what is happening, so they open. Skills is a
-    /// catalogue of sixty-nine and stays shut — that is what keeps the sidebar
-    /// inside the window without a scrollbar.
+    /// One group at a time, and it is Threads — the work.
+    ///
+    /// Threads and Approvals both opened until Rooms made a fourth group: four
+    /// headers with two bodies unfolded overflowed the sidebar by 67px in a
+    /// 479px-tall window, putting Rooms below the fold and Skills behind the
+    /// runtime footer, with no scrollbar to say so. Capping the thread list
+    /// recovered 3px, because the "show all" control replaces the row it
+    /// hides. An accordion cannot outgrow the space it has.
+    ///
+    /// This is measured, and bUnit cannot measure it — see the fit note in
+    /// RoomTests. What is asserted here is the structure that follows from it.
     /// </summary>
     [Fact]
-    public void Threads_and_approvals_start_open_and_skills_starts_closed()
+    public void Only_one_group_is_open_and_it_is_the_work()
     {
         var cut = RenderWorkspace();
 
         var groups = cut.FindAll("section.ws-group");
-        Assert.Equal(3, groups.Count);
+        Assert.Equal(4, groups.Count);
 
-        Assert.Contains("is-open", groups[0].ClassName);   // Threads
-        Assert.Contains("is-open", groups[1].ClassName);   // Approvals
-        Assert.DoesNotContain("is-open", groups[2].ClassName); // Skills
+        Assert.Contains("is-open", groups[0].ClassName);        // Threads
+        Assert.DoesNotContain("is-open", groups[1].ClassName);  // Approvals
+        Assert.DoesNotContain("is-open", groups[2].ClassName);  // Skills
+        Assert.DoesNotContain("is-open", groups[3].ClassName);  // Rooms
     }
 
+    /// <summary>
+    /// Opening one closes the last. Without this the sidebar grows back to the
+    /// size that did not fit.
+    /// </summary>
     [Fact]
-    public void The_groups_are_threads_approvals_and_skills_in_that_order()
+    public void Opening_a_group_folds_the_one_that_was_open()
+    {
+        var cut = RenderWorkspace();
+
+        Header(cut, "Rooms").Click();
+
+        var groups = cut.FindAll("section.ws-group");
+        Assert.DoesNotContain("is-open", groups[0].ClassName);  // Threads folded
+        Assert.Contains("is-open", groups[3].ClassName);        // Rooms open
+    }
+
+    /// <summary>
+    /// The order is the conversation first and the destinations last: what you
+    /// are doing, what is waiting on you, what is shaping the answers, and then
+    /// the rooms you go and read.
+    /// </summary>
+    [Fact]
+    public void The_groups_run_from_the_conversation_to_the_destinations()
     {
         var cut = RenderWorkspace();
 
         var names = cut.FindAll(".ws-head-name").Select(e => e.TextContent.Trim()).ToArray();
-        Assert.Equal(new[] { "Threads", "Approvals", "Skills" }, names);
+        Assert.Equal(new[] { "Threads", "Approvals", "Skills", "Rooms" }, names);
+    }
+
+    /// <summary>
+    /// Every room is reachable. The rooms kept their routes through the
+    /// redesign, and with the tab bar and the ⋯ menu both gone this group is
+    /// the only thing that reaches them — a route nothing links to is deleted
+    /// in every way that matters.
+    /// </summary>
+    [Fact]
+    public void Every_room_is_reachable_from_the_sidebar()
+    {
+        var cut = RenderWorkspace();
+        Header(cut, "Rooms").Click();
+
+        var hrefs = cut.FindAll("a.ws-room").Select(a => a.GetAttribute("href")).ToArray();
+
+        Assert.Equal(
+            new[] { "product", "engineering", "beyond", "business-apis", "roadmap", "release", "pricing" },
+            hrefs);
     }
 
     // ── Folding ───────────────────────────────────────────────────────────
@@ -94,13 +143,13 @@ public sealed class WorkspaceSidebarTests : BunitContext
     /// <summary>
     /// The whole reason folding is acceptable: a closed group still says how much
     /// is inside it, so a folded Approvals still reports what is waiting on you.
+    /// That matters more now that Approvals arrives folded — the count is the
+    /// only thing telling you two decisions are outstanding.
     /// </summary>
     [Fact]
     public void A_folded_group_still_shows_its_count()
     {
         var cut = RenderWorkspace();
-
-        Header(cut, "Approvals").Click(); // fold it
 
         var group = cut.FindAll("section.ws-group")[1];
         Assert.DoesNotContain("is-open", group.ClassName);
@@ -133,6 +182,7 @@ public sealed class WorkspaceSidebarTests : BunitContext
     public void An_approval_shows_its_risk_as_a_dot_and_nothing_louder()
     {
         var cut = RenderWorkspace();
+        Header(cut, "Approvals").Click();
 
         var approvals = cut.FindAll("section.ws-group")[1];
         var rows = approvals.QuerySelectorAll(".ws-item");
@@ -157,6 +207,7 @@ public sealed class WorkspaceSidebarTests : BunitContext
     public void Approvals_are_named_so_you_can_tell_them_apart()
     {
         var cut = RenderWorkspace();
+        Header(cut, "Approvals").Click();
 
         var titles = cut.FindAll("section.ws-group")[1]
             .QuerySelectorAll(".ws-item-label")

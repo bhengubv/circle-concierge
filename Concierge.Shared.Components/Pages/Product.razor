@@ -1,3 +1,73 @@
 @page "/product"
+@inject IConciergeStateService Concierge
 
-@* UI deleted. Rebuild here. *@
+@*
+    Product: what Concierge is, and where the rest of it is.
+
+    Every other room answers one question. This one exists because somebody
+    arriving without context needs to know which room to open, so it is a
+    directory with real counts rather than a pitch — the numbers come from
+    the same services the rooms themselves read.
+*@
+
+@{
+    var snapshot = Concierge.GetSnapshot();
+}
+
+<div class="room">
+    <div class="room-top">
+        <a class="room-back" href="/">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 6 9 12 15 18"/></svg>
+            Workspace
+        </a>
+        <h1>Product</h1>
+    </div>
+
+    <p class="room-lede">
+        Concierge is an assistant that does the work on your own machine and shows you
+        what it did. A model runs locally, tools act inside one folder, and anything
+        that changes something asks first.
+    </p>
+
+    <div class="room-body">
+        <RoomSection Title="What is in it" Open="true">
+            <div class="rows">
+                <div class="row"><span class="row-name">Skills it can take on</span><span class="row-val">@snapshot.Skills.Count</span></div>
+                <div class="row"><span class="row-name">Model providers</span><span class="row-val">@snapshot.Providers.Count</span></div>
+                <div class="row"><span class="row-name">Release gates</span><span class="row-val">@snapshot.ProductionGates.Count</span></div>
+                <div class="row"><span class="row-name">Health checks</span><span class="row-val">@snapshot.Diagnostics.Count</span></div>
+            </div>
+        </RoomSection>
+
+        <RoomSection Title="The other rooms" Count="@RoomDirectory.Length">
+            <div class="rows">
+                @foreach (var room in RoomDirectory)
+                {
+                    <a class="row" href="@room.Href">
+                        <span class="row-name">
+                            @room.Name
+                            <span class="row-sub">@room.Answers</span>
+                        </span>
+                    </a>
+                }
+            </div>
+        </RoomSection>
+    </div>
+</div>
+
+@code {
+    /// <summary>
+    /// Each room, described by the question it answers rather than by its
+    /// name — the name is already the link text, and repeating it twice tells
+    /// somebody arriving here nothing.
+    /// </summary>
+    private static readonly (string Name, string Href, string Answers)[] RoomDirectory =
+    [
+        ("Engineering", "engineering", "What can it do to my machine?"),
+        ("Beyond Code", "beyond", "What is it for besides writing code?"),
+        ("Business APIs", "business-apis", "What outside systems can it reach?"),
+        ("Roadmap", "roadmap", "What is being worked on next?"),
+        ("Release", "release", "What has to be true before it ships?"),
+        ("Pricing", "pricing", "What does it cost, and what is not included?")
+    ];
+}

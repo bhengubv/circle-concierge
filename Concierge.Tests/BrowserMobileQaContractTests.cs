@@ -4,7 +4,11 @@ public sealed class BrowserMobileQaContractTests
 {
     private static readonly string[] Routes =
     [
-        "Home.razor",
+        // "/" is the workspace and the workspace is Chat.razor. Home.razor kept
+        // its name but lost its route — it is a holder for camera and voice
+        // interop that renders no markup, so requiring a heading of it would
+        // be requiring a heading of nothing.
+        "Chat.razor",
         "Skills.razor",
         "Settings.razor",
         "Approvals.razor",
@@ -28,19 +32,48 @@ public sealed class BrowserMobileQaContractTests
         Assert.False(string.IsNullOrWhiteSpace(label));
     }
 
+    /// <summary>
+    /// The sidebar responds to the window, and no scrollbar is ever visible.
+    ///
+    /// This read MainLayout.razor.css and NavMenu.razor.css, which no longer
+    /// exist — the per-component stylesheets were replaced by one sheet, and
+    /// the breakpoint moved from 641px to 760px, which is where the sidebar
+    /// and a usable thread actually stop fitting side by side. The guarantee
+    /// is unchanged; the file and the number are not.
+    ///
+    /// Note what this deliberately does NOT claim any more: see the skipped
+    /// test below.
+    /// </summary>
     [Fact]
-    public void Main_layout_keeps_sidebar_responsive_for_mobile_and_desktop()
+    public void The_sidebar_responds_to_the_window_and_no_scrollbar_shows()
     {
         var root = FindWorkspaceRoot();
-        var layoutCss = File.ReadAllText(Path.Combine(root, "Concierge.Shared.Components", "Layout", "MainLayout.razor.css"));
-        var navCss = File.ReadAllText(Path.Combine(root, "Concierge.Shared.Components", "Layout", "NavMenu.razor.css"));
+        var css = File.ReadAllText(Path.Combine(root, "Concierge.Shared.Components", "wwwroot", "concierge.css"));
 
-        Assert.Contains("@media (max-width: 640.98px)", layoutCss, StringComparison.Ordinal);
-        Assert.Contains("@media (min-width: 641px)", layoutCss, StringComparison.Ordinal);
-        Assert.Contains("overflow-y: auto", navCss, StringComparison.Ordinal);
-        // No-scrollbar rule — scrolling still works, but the bar must not be visible.
-        Assert.Contains("scrollbar-width: none", navCss, StringComparison.Ordinal);
-        Assert.Contains("::-webkit-scrollbar", navCss, StringComparison.Ordinal);
+        Assert.Contains("@media (min-width: 760px) { .ws-side { display: flex; } }", css, StringComparison.Ordinal);
+
+        // Scrolling still works; the bar must not be visible. Hidden globally
+        // rather than per component, which is why collapsible groups carry the
+        // job of keeping a long list inside the window.
+        Assert.Contains("scrollbar-width: none", css, StringComparison.Ordinal);
+        Assert.Contains("::-webkit-scrollbar", css, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Below 760px the sidebar is display:none and nothing replaces it, so
+    /// there is no way to reach a thread, a room, or the approval queue on a
+    /// phone. The old bottom tab bar was deleted with the rest of the UI and
+    /// desktop was made the priority deliberately.
+    ///
+    /// This is skipped rather than absent because the previous version of this
+    /// test was named "..._for_mobile_and_desktop" and passed, which asserted
+    /// that mobile worked while nothing checked that it did. A skipped test
+    /// says the gap is known; a deleted one says nobody thought of it.
+    /// </summary>
+    [Fact(Skip = "Mobile navigation does not exist below 760px — desktop first, by decision.")]
+    public void Mobile_has_a_way_to_reach_threads_and_rooms()
+    {
+        Assert.Fail("No navigation is rendered below the 760px breakpoint.");
     }
 
     [Fact]

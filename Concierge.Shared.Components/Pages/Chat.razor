@@ -59,19 +59,26 @@
                 shows its count, so a folded Approvals still says two are
                 waiting on you.
             *@
-            <section class="ws-group @(_openThreads ? "is-open" : null)">
-                <button class="ws-head" type="button" @onclick="@(() => _openThreads = !_openThreads)">
+            <section class="ws-group @(IsGroupOpen("threads") ? "is-open" : null)">
+                <button class="ws-head" type="button" @onclick='@(() => ToggleGroup("threads"))'>
                     <svg class="ws-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
                     <span class="ws-head-name">Threads</span>
                     <span class="ws-head-count">@_conversations.Count</span>
                 </button>
-                @if (_openThreads)
+                @if (IsGroupOpen("threads"))
                 {
                     <div class="ws-group-body">
                         <button class="ws-item" type="button" @onclick="StartNewAsync" @onpointerup="StartNewAsync">
                             <span class="ws-item-label" style="color:var(--accent-ink);">New thread</span>
                         </button>
-                        @foreach (var conversation in _conversations)
+                        @*
+                            The three most recent, then the rest on request.
+                            Four threads plus four group headers overflowed the
+                            sidebar by 67px, which put Rooms below the fold and
+                            Skills behind the runtime footer — and with
+                            scrollbars hidden app-wide, nothing said so.
+                        *@
+                        @foreach (var conversation in (_allThreads ? _conversations : _conversations.Take(3)))
                         {
                             var conv = conversation;
                             <a class="ws-item @(conv.Id == _active?.Id ? "is-active" : null)" href="@($"/chat/{conv.Id}")">
@@ -79,17 +86,24 @@
                                 <span class="ws-item-meta">@Ago(conv.UpdatedAt)</span>
                             </a>
                         }
+                        @if (!_allThreads && _conversations.Count > 3)
+                        {
+                            <button class="ws-more" type="button"
+                                    @onclick="@(() => _allThreads = true)" @onpointerup="@(() => _allThreads = true)">
+                                Show all @_conversations.Count
+                            </button>
+                        }
                     </div>
                 }
             </section>
 
-            <section class="ws-group @(_openApprovals ? "is-open" : null)">
-                <button class="ws-head" type="button" @onclick="@(() => _openApprovals = !_openApprovals)">
+            <section class="ws-group @(IsGroupOpen("approvals") ? "is-open" : null)">
+                <button class="ws-head" type="button" @onclick='@(() => ToggleGroup("approvals"))'>
                     <svg class="ws-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
                     <span class="ws-head-name">Approvals</span>
                     <span class="ws-head-count">@snapshot.Approvals.Count</span>
                 </button>
-                @if (_openApprovals)
+                @if (IsGroupOpen("approvals"))
                 {
                     <div class="ws-group-body">
                         @if (snapshot.Approvals.Count == 0)
@@ -104,6 +118,14 @@
                                 <span class="ws-item-meta">@Ago(approval.CreatedAt)</span>
                             </span>
                         }
+                        @*
+                            The queue seen all at once, for clearing it rather
+                            than happening upon it. Deciding still happens in
+                            the thread where the run stopped; this is the
+                            overview, and without it /approvals is a route
+                            nothing reaches.
+                        *@
+                        <a class="ws-more" href="approvals">Open the queue</a>
                     </div>
                 }
             </section>
@@ -114,13 +136,13 @@
                 that is worth a permanent place. The catalogue is a search, and
                 searches belong behind a control, not in a sidebar.
             *@
-            <section class="ws-group @(_openSkills ? "is-open" : null)">
-                <button class="ws-head" type="button" @onclick="@(() => _openSkills = !_openSkills)">
+            <section class="ws-group @(IsGroupOpen("skills") ? "is-open" : null)">
+                <button class="ws-head" type="button" @onclick='@(() => ToggleGroup("skills"))'>
                     <svg class="ws-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
                     <span class="ws-head-name">Skills</span>
                     <span class="ws-head-count">@_activeSkillIds.Count</span>
                 </button>
-                @if (_openSkills)
+                @if (IsGroupOpen("skills"))
                 {
                     <div class="ws-group-body">
                         @if (_activeSkillIds.Count == 0)
@@ -146,6 +168,32 @@
                     </div>
                 }
             </section>
+
+            @*
+                The rooms. Everything above this is the conversation; these are
+                the six places that are not one — what the tools can do, what
+                it costs, what ships next. They keep their own routes because
+                they are destinations you read rather than modes you work in,
+                and this group is how you reach them now that there is no tab
+                bar and no ⋯ menu. Folded by default: they are somewhere you go
+                occasionally, and the threads above are not.
+            *@
+            <section class="ws-group @(IsGroupOpen("rooms") ? "is-open" : null)">
+                <button class="ws-head" type="button" @onclick='@(() => ToggleGroup("rooms"))'>
+                    <svg class="ws-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
+                    <span class="ws-head-name">Rooms</span>
+                    <span class="ws-head-count">@RoomLinks.Length</span>
+                </button>
+                @if (IsGroupOpen("rooms"))
+                {
+                    <div class="ws-group-body">
+                        @foreach (var room in RoomLinks)
+                        {
+                            <a class="ws-room" href="@room.Href">@room.Name</a>
+                        }
+                    </div>
+                }
+            </section>
         </div>
 
         @*
@@ -164,7 +212,7 @@
 
     <main class="ws-main">
         <header class="ws-top">
-            <span class="ws-title">@(_active?.Title ?? "Concierge")</span>
+            <h1 class="ws-title">@(_active?.Title ?? "Concierge")</h1>
             <span class="ws-top-meta">
                 @if (_streaming)
                 {
