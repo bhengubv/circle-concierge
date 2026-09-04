@@ -128,13 +128,18 @@
             </section>
         </div>
 
-        @* What is answering, permanently on screen. It was the third group of
-           the Settings page. *@
-        <div class="ws-runtime">
+        @*
+            What is answering, permanently on screen — and the way into settings.
+            Pressing what is answering to change what answers is the shortest
+            true sentence about where that control belongs; it was the third
+            group of a page you had to navigate to.
+        *@
+        <button class="ws-runtime" type="button" title="Settings"
+                @onclick="@(() => _settingsOpen = true)" @onpointerup="@(() => _settingsOpen = true)">
             <span class="dot @(runtime.RegistryAvailable ? "dot-done" : "dot-waiting")" aria-hidden="true"></span>
             <span class="ws-runtime-name">@runtime.Engine</span>
             <span class="ws-item-meta">on device</span>
-        </div>
+        </button>
     </aside>
 
     <main class="ws-main">
@@ -308,4 +313,9 @@
             </div>
         </div>
     </main>
+
+    @if (_settingsOpen)
+    {
+        <Settings OnClose="@(() => _settingsOpen = false)" />
+    }
 </div>

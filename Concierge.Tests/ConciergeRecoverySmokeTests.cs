@@ -40,7 +40,11 @@ public sealed class ConciergeRecoverySmokeTests
     // longer claims a route: the app is one screen, not a set of pages.
     [InlineData("Chat.razor", "@page \"/\"")]
     [InlineData("Skills.razor", "@page \"/skills\"")]
-    [InlineData("Settings.razor", "@page \"/settings\"")]
+    // Settings is no longer a route. It is a panel over the workspace, opened
+    // from the runtime row in the sidebar — neither reference has a settings
+    // screen you travel to. What must still hold is that it is reachable, and
+    // that is asserted in WorkspaceSettingsTests against the rendered UI rather
+    // than against a directive in a file.
     [InlineData("Approvals.razor", "@page \"/approvals\"")]
     [InlineData("Release.razor", "@page \"/release\"")]
     [InlineData("Roadmap.razor", "@page \"/roadmap\"")]

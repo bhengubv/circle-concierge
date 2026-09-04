@@ -1091,4 +1091,8 @@ public partial class Chat
             // Recovery is best effort; the conversation must still open.
         }
     }
+
+    /// <summary>Settings is a panel over the work, not a place you go. Opened
+    /// from the runtime row at the foot of the sidebar.</summary>
+    private bool _settingsOpen;
 }

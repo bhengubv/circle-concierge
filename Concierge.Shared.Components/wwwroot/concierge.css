@@ -534,11 +534,15 @@ a:hover { text-decoration: underline; }
     transform: translate(-50%, -50%);
     display: flex;
     flex-direction: column;
-    gap: var(--s4);
+    gap: var(--s2);
     width: min(94vw, 560px);
-    max-height: min(86dvh, 720px);
+    /* Measured, not guessed: with one group unfolded the panel came out 78px
+       taller than the window it floats in, and scrollbars are hidden app-wide
+       so nothing said the rest was there. The height it is allowed and the
+       padding it spends were both tightened until it fits. */
+    max-height: min(96dvh, 780px);
     overflow-y: auto;
-    padding: var(--s5);
+    padding: var(--s3) var(--s5) var(--s4);
     background: var(--panel);
     border: 1px solid var(--rule);
     border-radius: var(--radius-lg);
@@ -716,3 +720,39 @@ a:hover { text-decoration: underline; }
 .diagram-source > summary { list-style: none; }
 .diagram-source > summary::-webkit-details-marker { display: none; }
 .diagram-source[open] > summary { color: var(--ink); }
+
+/* The runtime row is a control now — it opens settings — so it needs a button's
+   reset and something to show under the pointer. */
+.ws-runtime {
+    width: 100%;
+    border: 0;
+    border-top: 1px solid var(--rule);
+    background: none;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.ws-runtime:hover { background: var(--raised); color: var(--ink); }
+
+/* A row that is a button carries no chrome of its own. */
+button.row { width: 100%; border: 0; border-bottom: 1px solid var(--rule-soft); background: none; font: inherit; text-align: left; cursor: pointer; }
+button.row:hover { color: var(--ink); }
+.row-name { display: flex; flex-direction: column; gap: 2px; }
+
+/* A settings group header is a control, like the sidebar's. */
+.sheet-head-btn {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+    width: 100%;
+    padding: var(--s2) 0;
+    border: 0;
+    background: none;
+    color: var(--ink-faint);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.sheet-head-btn:hover { color: var(--ink-soft); }
+.sheet-head-btn .sheet-label { cursor: pointer; }
+.ws-chev.is-open { transform: rotate(90deg); }

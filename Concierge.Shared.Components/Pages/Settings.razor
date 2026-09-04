@@ -1,4 +1,3 @@
-@page "/settings"
 @using CircleAI.ContentPolicy
 @using Concierge.Shared.Safety
 @inject IConciergeStateService Concierge
@@ -8,4 +7,250 @@
 @inject ISafetyAuditLog SafetyAudit
 @inject IJSRuntime JS
 
-@* UI deleted. Rebuild here. *@
+@*
+    Settings, as a panel over the work.
+
+    It is no longer a route. Neither reference has a settings screen you travel
+    to: Claude Design floats a dark Tweaks panel over the canvas, and Codex keeps
+    the two settings that matter — approval and model — in the composer itself.
+    Concierge already moved those two. What is left here is everything you change
+    rarely, and changing it should not mean leaving the conversation.
+
+    The controls follow the reference rather than the web's defaults: either/or
+    choices are segmented pickers, not dropdowns, so the options are visible and
+    choosing is one press instead of two.
+*@
+
+@{
+    var snapshot = Concierge.GetSnapshot();
+    var runtime = LlmRuntime.GetSnapshot();
+    var runtimes = ChatRuntimes
+        .GroupBy(r => r.Id, StringComparer.OrdinalIgnoreCase)
+        .Select(g => g.First())
+        .OrderByDescending(r => string.Equals(r.Id, "circleai", StringComparison.OrdinalIgnoreCase))
+        .ThenBy(r => r.EngineLabel, StringComparer.OrdinalIgnoreCase)
+        .ToList();
+}
+
+<div class="sheet-back" @onclick="Close" aria-hidden="true"></div>
+
+<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <div class="sheet-head">
+        <span class="sheet-title" id="settings-title">Settings</span>
+        <button class="icon-btn" type="button" title="Close" @onclick="Close" @onpointerup="Close">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+            <span class="sr">Close settings</span>
+        </button>
+    </div>
+
+    @* ── Who answers ─────────────────────────────────────────────────── *@
+    <section class="sheet-group">
+        <button class="sheet-head-btn" type="button" @onclick="@(() => Toggle("who"))">
+            <svg class="ws-chev @(IsOpen("who") ? "is-open" : null)" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
+            <span class="sheet-label">Who answers</span>
+        </button>
+        @if (IsOpen("who"))
+        {
+        <div class="rows">
+            @foreach (var rt in runtimes)
+            {
+                var runtimeId = rt.Id;
+                var isLocal = string.Equals(runtimeId, "circleai", StringComparison.OrdinalIgnoreCase);
+                var isSelected = (_selectedProviderId is null && isLocal)
+                              || string.Equals(runtimeId, _selectedProviderId, StringComparison.OrdinalIgnoreCase);
+
+                <button class="row" type="button"
+                        @onclick="@(() => SelectProviderAsync(runtimeId))"
+                        @onpointerup="@(() => SelectProviderAsync(runtimeId))">
+                    <span class="row-name">
+                        @rt.EngineLabel
+                        @*
+                            NOT rt.StatusMessage. That reads "Anthropic API key
+                            not configured — set Anthropic:ApiKey in
+                            IConfiguration to enable", which is true and is
+                            addressed to whoever wrote the code. The person
+                            reading this needs to know what to do about it.
+                        *@
+                        <span class="row-sub">@Explain(rt, isLocal)</span>
+                    </span>
+                    @if (isSelected)
+                    {
+                        <span class="state"><span class="dot dot-done" aria-hidden="true"></span>Answering</span>
+                    }
+                </button>
+            }
+        </div>
+        }
+    </section>
+
+    @* ── Family mode ─────────────────────────────────────────────────── *@
+    <section class="sheet-group">
+        <button class="sheet-head-btn" type="button" @onclick="@(() => Toggle("family"))">
+            <svg class="ws-chev @(IsOpen("family") ? "is-open" : null)" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
+            <span class="sheet-label">Family mode</span>
+        </button>
+        @if (IsOpen("family"))
+        {
+
+        <div class="row">
+            <span class="row-name">
+                Kid mode
+                <span class="row-sub">Filters every prompt and every reply on this device.</span>
+            </span>
+            <label class="toggle">
+                <input type="checkbox" checked="@SafetySettings.KidMode" @onchange="OnKidModeChanged" />
+                <span class="toggle-track" aria-hidden="true"><span class="toggle-knob"></span></span>
+                <span class="sr">Kid mode</span>
+            </label>
+        </div>
+
+        @*
+            A segmented picker, not a <select>. Three options that are visible
+            and one press to change — the pattern both references use for a
+            choice this small.
+        *@
+        <div class="row">
+            <span class="row-name">Strictness</span>
+            <div class="seg" role="group" aria-label="Strictness">
+                @foreach (var level in new[] { SafetyStrictness.Off, SafetyStrictness.Balanced, SafetyStrictness.Strict })
+                {
+                    var choice = level;
+                    <button class="seg-opt @(SafetySettings.Strictness == choice ? "is-on" : null)"
+                            type="button"
+                            aria-pressed="@(SafetySettings.Strictness == choice ? "true" : "false")"
+                            @onclick="@(() => SetStrictness(choice))">@choice</button>
+                }
+            </div>
+        </div>
+
+        @if (SafetySettings.KidMode || SafetySettings.Strictness != SafetyStrictness.Off)
+        {
+            <div class="row">
+                <span class="row-name">Profile label</span>
+                <input class="comp-input" style="max-width:200px;" type="text" placeholder="Optional"
+                       value="@SafetySettings.ProfileLabel" @onchange="OnProfileLabelChanged" />
+            </div>
+        }
+        }
+    </section>
+
+    @* ── Limits ──────────────────────────────────────────────────────── *@
+    <section class="sheet-group">
+        <button class="sheet-head-btn" type="button" @onclick="@(() => Toggle("limits"))">
+            <svg class="ws-chev @(IsOpen("limits") ? "is-open" : null)" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
+            <span class="sheet-label">Limits</span>
+        </button>
+        @if (IsOpen("limits"))
+        {
+        <div class="rows">
+            <div class="row"><span class="row-name">Jobs at once</span><span class="row-val">@snapshot.ResourceControl.MaxConcurrentRuns</span></div>
+            <div class="row"><span class="row-name">Background jobs</span><span class="row-val">@snapshot.ResourceControl.MaxBackgroundRuns</span></div>
+            <div class="row"><span class="row-name">Give up after</span><span class="row-val">@snapshot.ResourceControl.RunTimeoutMinutes min</span></div>
+            <div class="row"><span class="row-name">Clean up owned processes</span><span class="row-val">@(snapshot.ResourceControl.CleanupOwnedProcesses ? "On" : "Off")</span></div>
+        </div>
+        }
+    </section>
+
+    @* ── Reference ───────────────────────────────────────────────────── *@
+    <section class="sheet-group">
+        <button class="sheet-head-btn" type="button" @onclick="@(() => Toggle("device"))">
+            <svg class="ws-chev @(IsOpen("device") ? "is-open" : null)" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
+            <span class="sheet-label">On this device</span>
+        </button>
+        @if (IsOpen("device"))
+        {
+        <div class="rows">
+            <div class="row"><span class="row-name">Engine</span><span class="row-val">@runtime.Engine v@(runtime.EngineVersion)</span></div>
+            <div class="row"><span class="row-name">Device</span><span class="row-val">@runtime.DeviceSummary</span></div>
+            <div class="row">
+                <span class="row-name">Model registry</span>
+                <span class="state">
+                    <span class="dot @(runtime.RegistryAvailable ? "dot-done" : "dot-waiting")" aria-hidden="true"></span>
+                    @(runtime.RegistryAvailable ? "Available" : "Unavailable")
+                </span>
+            </div>
+        </div>
+        }
+    </section>
+
+    @if (_auditEntries.Count > 0)
+    {
+        <section class="sheet-group">
+            <button class="sheet-head-btn" type="button" @onclick="@(() => Toggle("audit"))">
+                <svg class="ws-chev @(IsOpen("audit") ? "is-open" : null)" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
+                <span class="sheet-label">What the filter caught</span>
+            </button>
+            @if (IsOpen("audit"))
+            {
+            <div class="rows">
+                @foreach (var entry in _auditEntries.Take(10))
+                {
+                    <div class="row">
+                        <span class="row-name">
+                            @entry.Action
+                            <span class="row-sub">@entry.Reason</span>
+                        </span>
+                        <span class="row-val">@entry.AtUtc.ToLocalTime().ToString("HH:mm")</span>
+                    </div>
+                }
+            </div>
+            }
+        </section>
+    }
+</div>
+
+@code {
+    /// <summary>Raised when the panel should close — the backdrop, the close
+    /// control, or anything else that dismisses it.</summary>
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private Task Close() => OnClose.InvokeAsync();
+
+    /// <summary>
+    /// Strictness moved from a select to a segmented picker, so the change comes
+    /// from a press rather than a ChangeEventArgs. The existing handler is kept
+    /// for anything still binding to it.
+    /// </summary>
+    private async Task SetStrictness(SafetyStrictness level)
+    {
+        SafetySettings.Strictness = level;
+        await RefreshAuditAsync();
+    }
+
+    /// <summary>
+    /// Which groups are unfolded. The panel is taller than the window it floats
+    /// in — five groups of rows — and scrollbars are hidden everywhere in this
+    /// app, so a cut-off panel gives no sign there is more. Folding is the same
+    /// answer the sidebar uses, and it means the panel fits.
+    ///
+    /// "Who answers" starts open because it is the one people come here for.
+    /// </summary>
+    /// One at a time, deliberately. With several groups unfolded the panel ran
+    /// 246px past the bottom of the window and, with scrollbars hidden app-wide,
+    /// said nothing about it. An accordion cannot outgrow the space it has.
+    private string? _open = "who";
+
+    private bool IsOpen(string key) => string.Equals(_open, key, StringComparison.Ordinal);
+
+    private void Toggle(string key) => _open = IsOpen(key) ? null : key;
+
+    /// <summary>
+    /// What a runtime's state means to the person reading it.
+    ///
+    /// IChatRuntime.StatusMessage says "Anthropic API key not configured — set
+    /// Anthropic:ApiKey in IConfiguration to enable". That is accurate and it is
+    /// addressed to whoever wrote the code; it names a configuration key nobody
+    /// looking at this screen can act on.
+    /// </summary>
+    private static string Explain(IChatRuntime runtime, bool isLocal)
+    {
+        if (isLocal)
+        {
+            return "On this device. No key, no network.";
+        }
+
+        return runtime.IsReady
+            ? "In the cloud. Key saved."
+            : "In the cloud. Needs an API key before it can answer.";
+    }
+}
