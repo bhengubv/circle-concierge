@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The Wear OS head.
+
+    Concierge is a Blazor Hybrid app everywhere else: a MAUI BlazorWebView,
+    which is an Android WebView. Wear OS ships no WebView provider at all —
+    `pm list packages | grep webview` returns nothing on a Wear OS 5 image —
+    so the app crashes in the WebView constructor before any markup runs. No
+    stylesheet or breakpoint reaches that, which is why this head exists.
+
+    So: .NET for Android with native views and no MAUI. It shares
+    Concierge.Shared with every other head, which is plain net10.0 and pulls
+    in no UI dependency, so the services and the behaviour are the same ones.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-android</TargetFramework>
+    <SupportedOSPlatformVersion>30</SupportedOSPlatformVersion>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UseMaui>false</UseMaui>
+
+    <ApplicationId>com.companyname.concierge.wear</ApplicationId>
+    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+    <ApplicationVersion>1</ApplicationVersion>
+
+    <!-- Coverage gates in Concierge.Tests do not apply to a UI head. -->
+    <CollectCoverage>false</CollectCoverage>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Concierge.Shared\Concierge.Shared.csproj" />
+  </ItemGroup>
+
+</Project>

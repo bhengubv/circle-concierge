@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+	<uses-sdk android:minSdkVersion="30" android:targetSdkVersion="34" />
+
+	<!-- A watch application, and a standalone one: it does not require a
+	     paired phone to be useful, because the decision it exists to take is
+	     already on the wrist. -->
+	<uses-feature android:name="android.hardware.type.watch" />
+	<uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+	<application android:label="Concierge" android:allowBackup="false" android:supportsRtl="true">
+		<meta-data android:name="com.google.android.wearable.standalone" android:value="true" />
+	</application>
+</manifest>

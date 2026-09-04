@@ -983,24 +983,20 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
     /// <summary>Risk as a dot, and nothing else. No filled cards, no coloured
     /// badges — a dot and the word beside it is the whole status vocabulary.</summary>
-    protected static string RiskDot(string? risk) => (risk ?? string.Empty).ToLowerInvariant() switch
+    protected static string RiskDot(string? risk) => ApprovalRisk.SeverityOf(risk) switch
     {
-        "high" or "critical" => "dot-danger",
-        "medium" => "dot-waiting",
-        "low" => "dot-done",
+        ApprovalSeverity.Danger => "dot-danger",
+        ApprovalSeverity.Caution => "dot-waiting",
+        ApprovalSeverity.Settled => "dot-done",
         _ => "dot-idle",
     };
 
-    /// <summary>What a risk level means in reach. Derived from the level rather
-    /// than written per item, because the queue carries no scope field and a
-    /// specific-sounding sentence that is not backed by data is worse than a
-    /// general one that is true.</summary>
-    protected static string ReachOf(string? risk) => (risk ?? string.Empty).ToLowerInvariant() switch
-    {
-        "high" or "critical" => "It can reach files and tools outside this conversation",
-        "medium" => "It can change things inside this workspace",
-        _ => "It stays inside this conversation",
-    };
+    /// <summary>
+    /// What a risk level means in reach. The wording lives in
+    /// Concierge.Shared.ApprovalRisk because the Wear OS head asks the same
+    /// question and must not answer it differently.
+    /// </summary>
+    protected static string ReachOf(string? risk) => ApprovalRisk.ReachOf(risk);
 
     /// <summary>"4m", "3h", then a date. Past a day a duration stops being
     /// useful and a date starts.</summary>
