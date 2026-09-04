@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    These were MAUI's template defaults: a purple #512BD4 with a darker
+    #2B0B98. colorPrimaryDark is the Android status bar, so a #141414 app ran
+    under a bright purple strip on every phone. Nothing in Concierge is purple.
+
+    Matched to the palette in concierge.css: ground for the system bars, and
+    the one saturated colour in the product for the accent.
+-->
 <resources>
-    <color name="colorPrimary">#512BD4</color>
-    <color name="colorPrimaryDark">#2B0B98</color>
-    <color name="colorAccent">#2B0B98</color>
+    <color name="colorPrimary">#141414</color>
+    <color name="colorPrimaryDark">#141414</color>
+    <color name="colorAccent">#2196F3</color>
 </resources>

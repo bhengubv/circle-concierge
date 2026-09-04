@@ -133,11 +133,36 @@ a:hover { text-decoration: underline; }
    THE WORKSPACE
    ============================================================ */
 
+/* The window, inset from whatever the system is covering.
+   Android 15 draws apps edge to edge for targetSdk 35+, so on a phone the
+   top bar sat underneath the status bar — no title, no menu control — and
+   "Shift + Enter for a new line" was cut off by the gesture bar. The host
+   already asks for viewport-fit=cover; nothing was reading the insets it
+   provides. Zero everywhere else, so desktop and web are unaffected. */
 .ws {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     height: 100dvh;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
     background: var(--ground);
+}
+
+/* Rooms are their own full-height page and need the same treatment. */
+.room {
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* The drawer is fixed to the viewport, so it is not inside the shell's
+   padding and has to inset itself. */
+@media (max-width: 759.98px) {
+    .ws-side {
+        padding-top: env(safe-area-inset-top, 0px);
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
 }
 
 /* The sidebar appears when there is width for it. Below that the thread has
