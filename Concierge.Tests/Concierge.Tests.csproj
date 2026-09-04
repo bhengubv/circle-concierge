@@ -31,9 +31,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="bunit" Version="2.9.0" />
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
     <PackageReference Include="coverlet.msbuild" Version="6.0.4" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.0" />
+    <!-- 10.0.10 not 10.0.0: bUnit pulls Microsoft.AspNetCore.Components.Web 10.0.10, which
+         requires DI >= 10.0.10, and NU1605 treats the downgrade as an error. -->
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="Verify.Xunit" Version="31.12.5" />
     <PackageReference Include="xunit" Version="2.9.3" />

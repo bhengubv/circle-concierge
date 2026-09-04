@@ -51,19 +51,18 @@ public sealed class BrowserMobileQaContractTests
         foreach (var route in Routes)
         {
             var page = File.ReadAllText(Path.Combine(root, "Concierge.Shared.Components", "Pages", route));
-            // The Family Mode rebuild introduced two new page-header
-            // conventions alongside the legacy ones:
-            //   * home-hero — Bell mascot stage on Home (replaces page-header)
-            //   * cu-page-title — generic "Concierge UI" page title used by
-            //     Approvals + future rebuilds. Substring match so the eyebrow/
-            //     lede/title trio counts as one entry point.
+            // This used to be an allowlist of class names, and it grew by one
+            // entry every time the design changed — page-header, then hero,
+            // then agent-stage, then home-hero, then cu-page-title. That made
+            // it a test of which stylesheet was current rather than of what it
+            // was actually protecting, which is that a page opens with a
+            // visible title you can see and a screen reader can announce.
+            //
+            // Asserting on <h1> says that directly, and survives the next
+            // redesign without an edit.
             Assert.True(
-                page.Contains("page-header", StringComparison.Ordinal)
-                || page.Contains("class=\"hero\"", StringComparison.Ordinal)
-                || page.Contains("agent-stage", StringComparison.Ordinal)
-                || page.Contains("home-hero", StringComparison.Ordinal)
-                || page.Contains("cu-page-title", StringComparison.Ordinal),
-                $"{route} needs a visible entry point for browser QA.");
+                page.Contains("<h1", StringComparison.Ordinal),
+                $"{route} needs a visible <h1> entry point for browser QA.");
         }
     }
 

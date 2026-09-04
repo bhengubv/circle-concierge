@@ -1,29 +1,37 @@
-@*
-    ShellLayout — minimal warm shell.
-
-    Brand on the left, single ⋯ menu trigger on the right (one tap reveals
-    every destination: New chat, History, Skills, Settings, Switch mode,
-    Help, About). The page is still the product — but every destination is
-    now one tap away instead of zero, which was the right answer to "where
-    are the menu options?"
-*@
 @inherits LayoutComponentBase
+@implements IDisposable
 @inject NavigationManager Nav
+@inject IConciergeStateService State
 
-@* Asking permission is not page content: it belongs above whatever is on
-   screen, in every shell, so a tool call can never act unasked. *@
-<ApprovalPrompt />
+@*
+    The shell is a frame and nothing else.
 
-<div class="app-shell">
-    <header class="app-topbar">
-        <a class="app-brand" href="/" aria-label="Concierge home">
-            <span class="app-brand-dot" aria-hidden="true"></span>
-            <span class="app-brand-name">Concierge</span>
-        </a>
-        <AppMenu />
-    </header>
+    It used to carry a top bar with a brand and a ⋯ menu, and then a five-tab
+    bottom navigation bar. Neither reference has either: Codex has a sidebar,
+    Claude Design has modes. Concierge is one workspace now, and the workspace
+    draws its own sidebar — so the only thing left for a layout to do is hold
+    the page.
 
-    <main class="app-content" role="main">
-        @Body
-    </main>
+    The permission prompt used to live here, above everything, as a modal. It
+    has moved into the thread: a run stops in the middle of doing something,
+    and covering the work to ask about it hides the context the answer depends
+    on. It is now the last thing in the conversation, which is where the run
+    actually stopped.
+*@
+
+@Body
+
+<div id="blazor-error-ui" data-nosnippet>
+    Something went wrong.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">×</span>
 </div>
+
+@code {
+    // The shell watches nothing itself any more; the workspace reads the
+    // services it needs. IDisposable is kept because the host registers the
+    // layout as disposable and removing it is a separate change.
+    public void Dispose()
+    {
+    }
+}

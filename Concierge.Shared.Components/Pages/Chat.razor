@@ -1,3 +1,4 @@
+@page "/"
 @page "/chat"
 @page "/chat/{ConversationId:guid}"
 @using System.Text
@@ -15,1044 +16,296 @@
 @inject Concierge.Shared.ConciergeToolLoopOptions LoopOptions
 @inject Concierge.Shared.Skills.ISkillRuntime SkillRuntime
 @inject ISkillCatalogService SkillCatalog
+@inject IConciergeStateService State
+@inject ILlmRuntimeService LlmRuntime
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 @implements IDisposable
 
-<section class="chat-shell">
-    <aside class="chat-sidebar">
-        <div class="chat-sidebar-header">
-            <p class="eyebrow">Chat</p>
-            <button class="button primary" type="button" @onclick="StartNewAsync">New conversation</button>
-        </div>
-        <nav class="chat-conversation-list" aria-label="Conversations">
-            @if (_conversations.Count == 0)
-            {
-                <p class="chat-empty">No conversations yet. Start one to begin.</p>
-            }
-            else
-            {
-                @foreach (var conversation in _conversations)
-                {
-                    <a class="chat-conversation-link @(conversation.Id == ConversationId ? "active" : null)"
-                       href="@($"chat/{conversation.Id}")">
-                        <strong>@conversation.Title</strong>
-                        <span>@conversation.UpdatedAt.ToLocalTime().ToString("MMM d, HH:mm")</span>
-                    </a>
-                }
-            }
-        </nav>
+@*
+    The workspace.
 
-        <div class="chat-provider-picker">
-            <label for="chat-provider-select">Provider</label>
-            <select id="chat-provider-select"
-                    class="chat-provider-select"
-                    value="@_activeRuntime?.Id"
-                    @onchange="OnProviderChanged">
-                @foreach (var runtime in _orderedRuntimes)
-                {
-                    @* CircleAI doesn't need a key — it's the on-device model.
-                       "— loading…" is the honest status while the model
-                       resolves. Cloud providers without a key still say
-                       "— needs key" so the user knows what's missing. *@
-                    var isCircleAi = string.Equals(runtime.Id, DefaultProviderId, StringComparison.OrdinalIgnoreCase);
-                    var suffix = runtime.IsReady ? "" : (isCircleAi ? "— loading…" : "— needs key");
-                    <option value="@runtime.Id">
-                        @runtime.EngineLabel @suffix
-                    </option>
-                }
-            </select>
-        </div>
+    This is the whole application now. Concierge had nineteen routes, a bottom
+    tab bar and a ⋯ menu; neither of the references it is meant to resemble has
+    any of that. Codex is a sidebar of threads and one thread beside it. Claude
+    Design is a conversation and the work it produces, side by side. Nothing
+    navigates anywhere in either.
 
-        <div class="chat-engine-pill" data-ready="@(_activeRuntime?.IsReady ?? false)">
-            <strong>@(_activeRuntime?.EngineLabel ?? "No runtime")</strong>
-            <span>@(_activeRuntime?.StatusMessage ?? "No chat runtime registered.")</span>
+    So: threads, skills and approvals are sections of a sidebar you can see
+    while you work, not destinations. Permission is asked inside the thread at
+    the point the run stopped. What the model is, and whether it may act without
+    asking, live under the composer where Codex puts them — both were screens.
+*@
 
-            @* The engine picks its own model from the device, so it is the first to know one is
-               missing — but a 21 GB download is not its decision to make. This is where it asks. *@
-            @if (PendingModel is { } pending)
-            {
-                <div class="chat-engine-download">
-                    @if (!pending.FitsThisDevice)
-                    {
-                        <span class="chat-engine-warning">
-                            Nothing in the catalogue fits this device. @pending.ModelId is the
-                            smallest available and may run slowly.
-                        </span>
-                    }
-                    @if (_downloading)
-                    {
-                        <progress max="1" value="@_downloadProgress"></progress>
-                        <span>@(_downloadDetail ?? "Starting…")</span>
-                        <button class="button quiet" type="button" @onclick="CancelDownload">Stop</button>
-                    }
-                    else
-                    {
-                        <button class="button" type="button" @onclick="AcceptDownload">
-                            Download @pending.ModelId (@pending.Gigabytes.ToString("0.#") GB)
-                        </button>
-                        <span>One time. Uses your connection — best on wifi.</span>
-                    }
-                </div>
-            }
-        </div>
+@{
+    var snapshot = State.GetSnapshot();
+    var runtime = LlmRuntime.GetSnapshot();
+    var recent = _conversations.Take(6).ToList();
+}
 
-        @* ── Active skills + picker ─────────────────────────────────────── *@
-        <div class="chat-skills-panel">
-            <div class="chat-skills-head">
-                <p class="eyebrow">Active skills</p>
-                <button class="button quiet" type="button" @onclick="ToggleSkillPicker">
-                    @(_showSkillPicker ? "Close" : "+ Add skill")
+<div class="ws">
+
+    <aside class="ws-side">
+        <a class="ws-brand" href="/">
+            <span class="ws-brand-dot" aria-hidden="true"></span>
+            Concierge
+        </a>
+
+        <div class="ws-scroll">
+            @*
+                Long lists are folded, not scrolled. Threads and Approvals open
+                because they are what is happening; Skills is a catalogue of
+                sixty-nine and stays shut until asked for. A closed group still
+                shows its count, so a folded Approvals still says two are
+                waiting on you.
+            *@
+            <section class="ws-group @(_openThreads ? "is-open" : null)">
+                <button class="ws-head" type="button" @onclick="@(() => _openThreads = !_openThreads)">
+                    <svg class="ws-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
+                    <span class="ws-head-name">Threads</span>
+                    <span class="ws-head-count">@_conversations.Count</span>
                 </button>
-            </div>
-            @if (_activeSkillIds.Count == 0)
-            {
-                <p class="chat-skills-empty">No specialists active. The assistant uses its base profile only.</p>
-            }
-            else
-            {
-                <ul class="chat-skills-active">
-                    @foreach (var id in _activeSkillIds.ToList())
-                    {
-                        var info = SkillCatalog.GetSkills().FirstOrDefault(s => string.Equals(s.Id, id, StringComparison.OrdinalIgnoreCase));
-                        var label = info?.Name ?? id;
-                        var area = info?.Area ?? "Skill";
-                        var localId = id;
-                        <li class="chat-skill-chip">
-                            <strong>@label</strong>
-                            <span>@area</span>
-                            <button type="button" class="chat-skill-remove" @onclick="@(() => DeactivateSkill(localId))" title="Deactivate">×</button>
-                        </li>
-                    }
-                </ul>
-            }
-            @if (_showSkillPicker)
-            {
-                <div class="chat-skill-picker">
-                    <input class="chat-skill-filter" type="search"
-                           placeholder="Filter skills…"
-                           @bind="_skillFilter" @bind:event="oninput" />
-                    <ul class="chat-skill-options">
-                        @{
-                            var all = SkillCatalog.GetSkills();
-                            var filtered = string.IsNullOrWhiteSpace(_skillFilter)
-                                ? all
-                                : all.Where(s =>
-                                    s.Name.Contains(_skillFilter, StringComparison.OrdinalIgnoreCase) ||
-                                    s.Area.Contains(_skillFilter, StringComparison.OrdinalIgnoreCase) ||
-                                    s.Summary.Contains(_skillFilter, StringComparison.OrdinalIgnoreCase));
-                            // Cap to 40 to keep the menu snappy — filter narrows further.
-                            filtered = filtered.Take(40);
-                        }
-                        @foreach (var skill in filtered)
+                @if (_openThreads)
+                {
+                    <div class="ws-group-body">
+                        <button class="ws-item" type="button" @onclick="StartNewAsync" @onpointerup="StartNewAsync">
+                            <span class="ws-item-label" style="color:var(--accent-ink);">New thread</span>
+                        </button>
+                        @foreach (var conversation in _conversations)
                         {
-                            var localId = skill.Id;
-                            var isOn = _activeSkillIds.Contains(localId);
-                            <li class="chat-skill-option @(isOn ? "is-on" : "")"
-                                @onclick="@(() => ToggleSkill(localId))">
-                                <strong>@skill.Name</strong>
-                                <span class="chat-skill-area">@skill.Area</span>
-                                <p>@skill.Summary</p>
-                            </li>
+                            var conv = conversation;
+                            <a class="ws-item @(conv.Id == _active?.Id ? "is-active" : null)" href="@($"/chat/{conv.Id}")">
+                                <span class="ws-item-label">@conv.Title</span>
+                                <span class="ws-item-meta">@Ago(conv.UpdatedAt)</span>
+                            </a>
                         }
-                    </ul>
-                </div>
-            }
-        </div>
-    </aside>
-
-    <main class="chat-thread" aria-live="polite">
-        @if (_active is null)
-        {
-            <div class="chat-empty-state">
-                <h1>Pick a conversation or start a new one.</h1>
-                <p>
-                    @if (_activeRuntime is not null)
-                    {
-                        <text>Concierge runs on @_activeRuntime.EngineLabel. @_activeRuntime.StatusMessage</text>
-                    }
-                </p>
-            </div>
-        }
-        else
-        {
-            <header class="chat-thread-header">
-                <h1>@_active.Title</h1>
-                <span>@_active.Messages.Count messages · started @_active.CreatedAt.ToLocalTime().ToString("MMM d, yyyy HH:mm")</span>
-                <details class="chat-system-prompt">
-                    <summary>System prompt @(string.IsNullOrWhiteSpace(_systemPromptDraft) ? "(empty)" : "(" + _systemPromptDraft.Length + " chars)")</summary>
-                    <textarea rows="4"
-                              spellcheck="false"
-                              placeholder="Optional. Shapes how the assistant responds for this conversation."
-                              @bind="_systemPromptDraft"
-                              @bind:event="oninput"></textarea>
-                    <div class="chat-system-prompt-row">
-                        <label>
-                            <input type="checkbox" @bind="_includeToolCatalog" />
-                            Append tool catalog (@Tools.Tools.Count tools)
-                        </label>
-                        <label>
-                            <input type="checkbox" @bind="_executeToolCalls" />
-                            Auto-execute tool calls
-                        </label>
-                        <button class="button" type="button" @onclick="SaveSystemPromptAsync" disabled="@_streaming">Save</button>
                     </div>
-                </details>
-            </header>
-
-            <div class="chat-messages">
-                @foreach (var message in _active.Messages)
-                {
-                    <article class="chat-bubble @message.Role">
-                        <header>
-                            <strong>@FormatRole(message.Role)</strong>
-                            @if (!string.IsNullOrWhiteSpace(message.ProducedBy))
-                            {
-                                <span class="chat-bubble-engine">@message.ProducedBy</span>
-                            }
-                            <time>@message.CreatedAt.ToLocalTime().ToString("HH:mm")</time>
-                            @if (message.Role == "assistant")
-                            {
-                                <button type="button"
-                                        class="chat-speak-button"
-                                        title="Read this turn aloud"
-                                        @onclick="@(() => SpeakAsync(message.Content))">🔊</button>
-                            }
-                        </header>
-                        @if (message.Role == "assistant")
-                        {
-                            <AssistantContent Content="@message.Content" />
-                        }
-                        else
-                        {
-                            <p>@message.Content</p>
-                        }
-                    </article>
                 }
-                @if (_streaming)
-                {
-                    <article class="chat-bubble assistant streaming">
-                        <header>
-                            <strong>Assistant</strong>
-                            <span class="chat-bubble-engine">@(_activeRuntime?.EngineLabel ?? "")</span>
-                            <time>@DateTimeOffset.Now.ToLocalTime().ToString("HH:mm")</time>
-                            @if (_toolLoopIteration > 0)
-                            {
-                                <span class="chat-bubble-engine">tool loop · iter @_toolLoopIteration / @MaxToolIterations</span>
-                            }
-                        </header>
-                        <AssistantContent Content="@_streamingBuffer" />
-                    </article>
-                }
-            </div>
+            </section>
 
-            <form class="chat-composer" @onsubmit="SendAsync" @onsubmit:preventDefault>
-                @if (_pendingAttachments.Count > 0)
+            <section class="ws-group @(_openApprovals ? "is-open" : null)">
+                <button class="ws-head" type="button" @onclick="@(() => _openApprovals = !_openApprovals)">
+                    <svg class="ws-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
+                    <span class="ws-head-name">Approvals</span>
+                    <span class="ws-head-count">@snapshot.Approvals.Count</span>
+                </button>
+                @if (_openApprovals)
                 {
-                    <div class="chat-attachments">
-                        @foreach (var attachment in _pendingAttachments)
+                    <div class="ws-group-body">
+                        @if (snapshot.Approvals.Count == 0)
                         {
-                            <span class="chat-attachment-chip">
-                                @attachment.FileName · @attachment.Bytes.Length bytes
-                                <button type="button" @onclick="@(() => RemoveAttachment(attachment))">×</button>
+                            <span class="ws-item" style="cursor:default;color:var(--ink-faint);">Nothing waiting</span>
+                        }
+                        @foreach (var approval in snapshot.Approvals)
+                        {
+                            <span class="ws-item" style="cursor:default;">
+                                <span class="dot @RiskDot(approval.Risk)" aria-hidden="true"></span>
+                                <span class="ws-item-label">@approval.Title</span>
+                                <span class="ws-item-meta">@Ago(approval.CreatedAt)</span>
                             </span>
                         }
                     </div>
                 }
-                <textarea @bind="_composerText"
-                          @bind:event="oninput"
-                          placeholder="Ask Concierge anything…"
-                          rows="3"
-                          disabled="@(!CanSend && !_streaming)"></textarea>
-                <div class="chat-composer-row">
-                    <div class="chat-composer-actions">
-                        <InputFile OnChange="OnAttachmentSelected"
-                                   class="chat-file-input"
-                                   accept=".txt,.md,.markdown,.json,.cs,.razor,.xml,.yaml,.yml,.toml,.csv,.log" />
-                        <button type="button"
-                                class="chat-mic-button @(_recording ? "active" : "")"
-                                @onclick="ToggleMicAsync"
-                                title="@(_recording ? "Stop recording" : "Speak — Whisper transcribes")">
-                            @(_recording ? "■" : "🎙")
-                        </button>
-                    </div>
-                    <span class="chat-hint">@_composerHint</span>
-                    @*
-                        type=button + dual @onclick/@onpointerup. Android
-                        MAUI BlazorWebView drops touch-originated form-submit
-                        events intermittently; we cannot rely on the form
-                        @onsubmit propagating. The form keeps @onsubmit so
-                        keyboard Enter still works on desktop.
-                    *@
-                    <button class="button primary"
-                            type="button"
-                            disabled="@(!CanSend)"
-                            @onclick="SendAsync"
-                            @onpointerup="SendAsync">
-                        @(_streaming ? "Streaming…" : "Send")
-                    </button>
-                </div>
-            </form>
-        }
-    </main>
-</section>
+            </section>
 
-@code {
-    [Parameter] public Guid? ConversationId { get; set; }
-
-    // Was a constant. The right ceiling differs between a phone on battery and a desktop,
-    // and Concierge already varies the model by device state, so this belongs with the
-    // other budgets rather than nailed to the page.
-    private int MaxToolIterations => LoopOptions.MaxToolIterations;
-    private const long MaxAttachmentBytes = 256 * 1024; // 256 KB — text-only attachments in v1
-    private const string OwnerId = "local";
-
-    private List<Conversation> _conversations = new();
-    private Conversation? _active;
-    private string _composerText = string.Empty;
-    private bool _streaming;
-    private string _streamingBuffer = string.Empty;
-    private CancellationTokenSource? _streamCts;
-    private int _toolLoopIteration;
-
-    private List<IChatRuntime> _orderedRuntimes = new();
-    private IChatRuntime? _activeRuntime;
-    private string _systemPromptDraft = string.Empty;
-    private bool _includeToolCatalog = true;
-    private bool _executeToolCalls = true;
-
-    private readonly List<TextAttachment> _pendingAttachments = new();
-    private bool _recording;
-
-    /// <summary>
-    /// Currently-activated skill ids for this conversation. Their SKILL.md
-    /// bodies get prepended to the system prompt on every send. Stack any
-    /// number — Concierge composes them in <c>ISkillRuntime.ComposeSystemPrompt</c>.
-    /// </summary>
-    private readonly HashSet<string> _activeSkillIds = new(StringComparer.OrdinalIgnoreCase);
-    // ── Model download ─────────────────────────────────────────────────
-    // The on-device engine reports a missing model rather than fetching it; these carry the
-    // person's answer back. Runtimes that ship with their model implement none of this and
-    // PendingModel stays null.
-
-    private bool _downloading;
-    private double _downloadProgress;
-    private string? _downloadDetail;
-    private CancellationTokenSource? _downloadCancellation;
-    private bool _gone;
-
-    private PendingModelDownload? PendingModel
-        => (_activeRuntime as IModelDownloadRequired)?.PendingDownload;
-
-    private async Task AcceptDownload()
-    {
-        if (_activeRuntime is not IModelDownloadRequired runtime || _downloading || _gone)
-        {
-            return;
-        }
-
-        var stopping = new CancellationTokenSource();
-
-        _downloading = true;
-        _downloadProgress = 0;
-        _downloadDetail = null;
-        _downloadCancellation = stopping;
-
-        // Progress<T> posts its callbacks, so these arrive off the renderer — InvokeAsync, not
-        // a direct StateHasChanged. They can also arrive after the page is gone, which is what
-        // _gone is for: rendering a disposed component throws.
-        var progress = new Progress<ModelDownloadProgress>(report =>
-        {
-            if (_gone)
-            {
-                return;
-            }
-
-            _downloadProgress = report.Ratio;
-            _downloadDetail = report.Description;
-            _ = InvokeAsync(StateHasChanged);
-        });
-
-        try
-        {
-            await runtime.AcceptDownloadAsync(progress, stopping.Token);
-        }
-        finally
-        {
-            _downloading = false;
-            _downloadCancellation = null;
-
-            // Disposed only after it is unreachable — CancelDownload runs on the renderer, but
-            // cancelling a disposed source throws, and the earlier version disposed it here
-            // while the field still pointed at it.
-            stopping.Dispose();
-
-            if (!_gone)
-            {
-                StateHasChanged();
-            }
-        }
-    }
-
-    private void CancelDownload()
-    {
-        // Not disposed here: whoever started it owns it and disposes it when it returns.
-        try
-        {
-            _downloadCancellation?.Cancel();
-        }
-        catch (ObjectDisposedException)
-        {
-            // It finished between the click and this line.
-        }
-    }
-
-    /// <summary>
-    /// Leaving the page stops a download that is running. It is not background work the person
-    /// asked for anywhere else, and left alone it holds this component alive through the
-    /// progress callback for as long as the transfer takes.
-    /// </summary>
-    public void Dispose()
-    {
-        _gone = true;
-        CancelDownload();
-    }
-
-    private bool _showSkillPicker;
-    private string _skillFilter = string.Empty;
-
-    private string _composerHint = "Shift + Enter for newline · drag a text file or use 🎙 for voice.";
-
-    private bool CanSend
-        => !_streaming
-           && (!string.IsNullOrWhiteSpace(_composerText) || _pendingAttachments.Count > 0)
-           && _active is not null
-           && (_activeRuntime?.IsReady ?? false);
-
-    protected override async Task OnInitializedAsync()
-    {
-        _orderedRuntimes = Runtimes
-            .GroupBy(r => r.Id, StringComparer.OrdinalIgnoreCase)
-            .Select(g => g.First())
-            // CircleAI first by construction — it's the philosophy of the
-            // product (local-first, private, no API key needed). Ready ones
-            // next, then alphabetical for stable order.
-            .OrderByDescending(r => string.Equals(r.Id, DefaultProviderId, StringComparison.OrdinalIgnoreCase))
-            .ThenByDescending(r => r.IsReady)
-            .ThenBy(r => r.EngineLabel, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        _activeRuntime = await ChooseActiveRuntimeAsync();
-
-        await RefreshSidebarAsync();
-
-        // Home → Chat handoff:
-        //   ?q=...     — prefill the composer with the typed prompt and send.
-        //   ?image=1   — pull the captured base64 JPEG from sessionStorage,
-        //                wrap as an attachment, send "What is this?" + image.
-        //   ?voice=1   — voice was captured on Home; transcript will be in
-        //                sessionStorage already (the Home mic flow stores it).
-        //   ?demo=1    — script a single "show me what you can do" turn.
-        await ConsumeHomeHandoffAsync();
-    }
-
-    private async Task ConsumeHomeHandoffAsync()
-    {
-        try
-        {
-            var uri = new Uri(Nav.Uri);
-            var q = System.Web.HttpUtility.ParseQueryString(uri.Query);
-
-            var prefill = q["q"];
-            if (!string.IsNullOrWhiteSpace(prefill))
-            {
-                _active ??= await Store.StartAsync(OwnerId);
-                _composerText = prefill;
-                StateHasChanged();
-                if (_activeRuntime?.IsReady == true)
+            <section class="ws-group @(_openSkills ? "is-open" : null)">
+                <button class="ws-head" type="button" @onclick="@(() => _openSkills = !_openSkills)">
+                    <svg class="ws-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
+                    <span class="ws-head-name">Skills</span>
+                    <span class="ws-head-count">@snapshot.Skills.Count</span>
+                </button>
+                @if (_openSkills)
                 {
-                    // Runtime is ready — send immediately, normal flow.
-                    await SendAsync();
+                    <div class="ws-group-body">
+                        @foreach (var skill in snapshot.Skills)
+                        {
+                            <span class="ws-item" style="cursor:default;">
+                                <span class="ws-item-label">@skill.Name</span>
+                            </span>
+                        }
+                    </div>
+                }
+            </section>
+        </div>
+
+        @* What is answering, permanently on screen. It was the third group of
+           the Settings page. *@
+        <div class="ws-runtime">
+            <span class="dot @(runtime.RegistryAvailable ? "dot-done" : "dot-waiting")" aria-hidden="true"></span>
+            <span class="ws-runtime-name">@runtime.Engine</span>
+            <span class="ws-item-meta">on device</span>
+        </div>
+    </aside>
+
+    <main class="ws-main">
+        <header class="ws-top">
+            <span class="ws-title">@(_active?.Title ?? "Concierge")</span>
+            <span class="ws-top-meta">
+                @if (_streaming)
+                {
+                    <span class="dot dot-waiting" aria-hidden="true"></span>
+                    <span>@(_toolLoopIteration > 0 ? $"working · step {_toolLoopIteration}" : "thinking")</span>
                 }
                 else
                 {
-                    // Runtime is still warming up (CircleAI loading the
-                    // local model on first launch). Save the user's prompt
-                    // to the conversation NOW so it doesn't disappear, and
-                    // let the user see it. When they hit Send again — or as
-                    // soon as the runtime becomes ready — the response flow
-                    // takes over. Without this guard the entire prompt is
-                    // silently dropped because CanSend gates on IsReady.
-                    await Store.AppendEventAsync(_active.Id, ConversationEventType.UserMessage, prefill);
-                    _active = await Store.GetAsync(_active.Id);
-                    _composerText = string.Empty;
-                    await RefreshSidebarAsync();
-                    StateHasChanged();
+                    <span>@(_activeRuntime?.EngineLabel ?? runtime.Engine)</span>
                 }
-                return;
-            }
+            </span>
+        </header>
 
-            if (q["image"] == "1")
-            {
-                var b64 = await JS.InvokeAsync<string?>("sessionStorage.getItem", "concierge-pending-image");
-                await JS.InvokeVoidAsync("sessionStorage.removeItem", "concierge-pending-image");
-                if (!string.IsNullOrEmpty(b64))
-                {
-                    _active ??= await Store.StartAsync(OwnerId, title: "Picture chat");
-                    var bytes = Convert.FromBase64String(b64);
-                    _pendingAttachments.Add(new TextAttachment(
-                        $"picture-{DateTime.UtcNow:yyyyMMdd-HHmmss}.jpg",
-                        bytes));
-                    _composerText = "What's in this picture?";
-                    StateHasChanged();
-                    await SendAsync();
-                }
-                return;
-            }
-
-            if (q["demo"] == "1")
-            {
-                _active ??= await Store.StartAsync(OwnerId, title: "A quick demo");
-                _composerText = "Tell me a tiny 3-line haiku about a friendly bellhop helping a guest in a hotel lobby.";
-                StateHasChanged();
-                await SendAsync();
-                return;
-            }
-        }
-        catch
+        @if (_active is null)
         {
-            // Handoff is best-effort — never block the chat from rendering.
-        }
-    }
-
-    protected override async Task OnParametersSetAsync()
-    {
-        if (ConversationId is { } id)
-        {
-            _active = await Store.GetAsync(id);
-            _systemPromptDraft = _active?.SystemPrompt ?? string.Empty;
+            @* Codex's empty panel is one glyph and one line. No tiles, no
+               suggestions, no hero — the composer below is the invitation. *@
+            <div class="empty">
+                <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M4 5h16v11H8l-4 4z"/>
+                </svg>
+                <span class="empty-line">Ask for anything, or pick up a thread</span>
+            </div>
         }
         else
         {
-            _active = null;
-            _systemPromptDraft = string.Empty;
-        }
-    }
-
-    private async Task SaveSystemPromptAsync()
-    {
-        if (_active is null)
-        {
-            return;
-        }
-        _active.SystemPrompt = _systemPromptDraft;
-        await Task.CompletedTask;
-    }
-
-    private void ToggleSkillPicker() => _showSkillPicker = !_showSkillPicker;
-
-    private void ToggleSkill(string id)
-    {
-        if (!_activeSkillIds.Add(id))
-        {
-            _activeSkillIds.Remove(id);
-        }
-    }
-
-    private void DeactivateSkill(string id) => _activeSkillIds.Remove(id);
-
-    // The product's local-first identity: CircleAI is the default LLM.
-    // Cloud providers exist as escape hatches when the user explicitly
-    // picks one in Settings or here. Saved choice lives in localStorage
-    // under this key so the page remembers across launches.
-    private const string DefaultProviderId = "circleai";
-    private const string ProviderPreferenceStorageKey = "concierge-provider-id";
-
-    private async Task<IChatRuntime?> ChooseActiveRuntimeAsync()
-    {
-        // 1. User's saved preference (set in Settings or via the picker
-        //    on this page). Only honor it if the runtime is actually
-        //    registered — otherwise the dropdown shows a phantom option.
-        string? savedId = null;
-        try
-        {
-            savedId = await JS.InvokeAsync<string?>("localStorage.getItem", ProviderPreferenceStorageKey);
-        }
-        catch { /* localStorage may not be available during prerender. */ }
-
-        if (!string.IsNullOrWhiteSpace(savedId))
-        {
-            var saved = _orderedRuntimes.FirstOrDefault(r => string.Equals(r.Id, savedId, StringComparison.OrdinalIgnoreCase));
-            if (saved is not null) return saved;
-        }
-
-        // 2. CircleAI — the philosophical default. We don't gate on IsReady
-        //    here because CircleAI loads asynchronously in the background;
-        //    showing it as the picked engine (with its own "loading…" status)
-        //    is more honest than silently demoting to a cloud provider.
-        var circleai = _orderedRuntimes.FirstOrDefault(r => string.Equals(r.Id, DefaultProviderId, StringComparison.OrdinalIgnoreCase));
-        if (circleai is not null) return circleai;
-
-        // 3. Whatever is actually ready.
-        return _orderedRuntimes.FirstOrDefault(r => r.IsReady)
-            ?? _orderedRuntimes.FirstOrDefault();
-    }
-
-    private async Task OnProviderChanged(ChangeEventArgs args)
-    {
-        var id = args.Value?.ToString();
-        if (string.IsNullOrEmpty(id))
-        {
-            return;
-        }
-        _activeRuntime = _orderedRuntimes.FirstOrDefault(r => r.Id == id) ?? _activeRuntime;
-        // Persist so the next launch lands on the same provider. Settings
-        // page reads/writes the same key.
-        try
-        {
-            await JS.InvokeVoidAsync("localStorage.setItem", ProviderPreferenceStorageKey, id);
-        }
-        catch { /* best-effort */ }
-    }
-
-    private async Task RefreshSidebarAsync()
-    {
-        _conversations = (await Store.ListAsync(OwnerId)).ToList();
-    }
-
-    private async Task StartNewAsync()
-    {
-        var conversation = await Store.StartAsync(OwnerId);
-        await RefreshSidebarAsync();
-        Nav.NavigateTo($"chat/{conversation.Id}");
-    }
-
-    private async Task OnAttachmentSelected(InputFileChangeEventArgs args)
-    {
-        foreach (var file in args.GetMultipleFiles(8))
-        {
-            if (file.Size > MaxAttachmentBytes)
-            {
-                _composerHint = $"{file.Name} skipped — over {MaxAttachmentBytes / 1024} KB. Text attachments only in v1.";
-                continue;
-            }
-
-            using var stream = file.OpenReadStream(MaxAttachmentBytes);
-            using var ms = new MemoryStream();
-            await stream.CopyToAsync(ms);
-            _pendingAttachments.Add(new TextAttachment(file.Name, ms.ToArray()));
-            _composerHint = "Attachment ready. Text contents will quote into the next message.";
-        }
-    }
-
-    private void RemoveAttachment(TextAttachment attachment)
-    {
-        _pendingAttachments.Remove(attachment);
-        _composerHint = _pendingAttachments.Count == 0
-            ? "Shift + Enter for newline · drag a text file or use 🎙 for voice."
-            : $"{_pendingAttachments.Count} attachment(s) ready.";
-    }
-
-    /// <summary>
-    /// Toggles mic capture via the JS interop module that wraps MediaRecorder. The module
-    /// returns a base64 webm blob which we POST to <c>/api/voice/transcribe</c>; the
-    /// resulting text is appended to the composer so the user can edit before send.
-    /// </summary>
-    private async Task ToggleMicAsync()
-    {
-        try
-        {
-            if (!_recording)
-            {
-                await JS.InvokeVoidAsync("conciergeVoice.start");
-                _recording = true;
-                _composerHint = "Recording… tap the mic again to stop.";
-            }
-            else
-            {
-                var base64 = await JS.InvokeAsync<string?>("conciergeVoice.stop");
-                _recording = false;
-                if (string.IsNullOrEmpty(base64))
-                {
-                    _composerHint = "No audio captured.";
-                    return;
-                }
-
-                _composerHint = "Transcribing…";
-                using var http = new HttpClient { BaseAddress = new Uri(Nav.BaseUri) };
-                using var response = await http.PostAsJsonAsync("api/voice/transcribe", new { audioBase64 = base64, fileName = "capture.webm" });
-                if (!response.IsSuccessStatusCode)
-                {
-                    _composerHint = $"Transcription failed ({(int)response.StatusCode}).";
-                    return;
-                }
-                var transcript = await response.Content.ReadFromJsonAsync<TranscriptResponse>();
-                if (!string.IsNullOrWhiteSpace(transcript?.Text))
-                {
-                    _composerText = string.IsNullOrWhiteSpace(_composerText)
-                        ? transcript.Text
-                        : _composerText.TrimEnd() + "\n" + transcript.Text;
-                    _composerHint = "Transcribed — edit and send when ready.";
-                }
-                else
-                {
-                    _composerHint = "Whisper returned empty text.";
-                }
-            }
-        }
-        catch (JSException ex)
-        {
-            _composerHint = $"Mic error: {ex.Message}";
-            _recording = false;
-        }
-    }
-
-    /// <summary>
-    /// Synthesises an assistant turn back to MP3 via the OpenAI voice endpoint (or whichever
-    /// IVoiceRuntime is wired) and plays it through the page's hidden audio element.
-    /// </summary>
-    private async Task SpeakAsync(string text)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            return;
-        }
-
-        try
-        {
-            using var http = new HttpClient { BaseAddress = new Uri(Nav.BaseUri) };
-            using var response = await http.PostAsJsonAsync("api/voice/speak", new { text });
-            if (!response.IsSuccessStatusCode)
-            {
-                return;
-            }
-            var bytes = await response.Content.ReadAsByteArrayAsync();
-            if (bytes.Length == 0)
-            {
-                return;
-            }
-            await JS.InvokeVoidAsync("conciergeVoice.play", Convert.ToBase64String(bytes), "audio/mpeg");
-        }
-        catch (JSException)
-        {
-            // Audio element missing or autoplay blocked — non-fatal.
-        }
-    }
-
-    private async Task SendAsync()
-    {
-        if (!CanSend || _active is null || _activeRuntime is null)
-        {
-            return;
-        }
-
-        var input = _composerText.Trim();
-        _composerText = string.Empty;
-
-        // Inline image generation — if the prompt clearly asks for an image
-        // ("draw / make a picture / generate an image / paint / illustrate"),
-        // and an IImageRuntime is wired, route to it and append the result
-        // as an assistant message. Falls through to chat if no runtime is
-        // ready (so the user gets a normal text answer instead of silence).
-        if (LooksLikeImagePrompt(input))
-        {
-            var imageRuntime = ImageRuntimes
-                .FirstOrDefault(r => r.IsReady && r.Id != "null");
-            if (imageRuntime is not null)
-            {
-                await Store.AppendEventAsync(_active.Id, ConversationEventType.UserMessage, input);
-                _active = await Store.GetAsync(_active.Id);
-                StateHasChanged();
-                try
-                {
-                    var artifacts = await imageRuntime.GenerateAsync(
-                        new Concierge.Shared.Media.ImageGenerationRequest(input));
-                    var first = artifacts.FirstOrDefault();
-                    if (first is not null)
+            <div class="ws-thread">
+                <div class="ws-thread-inner">
+                    @foreach (var message in _active.Messages)
                     {
-                        var img = !string.IsNullOrEmpty(first.Url)
-                            ? $"![generated]({first.Url})"
-                            : first.Bytes is { Length: > 0 }
-                                ? $"![generated](data:{first.MimeType};base64,{Convert.ToBase64String(first.Bytes)})"
-                                : "[empty image artifact]";
-                        await Store.AppendEventAsync(_active.Id, ConversationEventType.AssistantMessage,
-                            $"Here's what I came up with:\n\n{img}",
-                            imageRuntime.EngineLabel);
-                        _active = await Store.GetAsync(_active.Id);
-                        await RefreshSidebarAsync();
-                        StateHasChanged();
-                        return;
+                        if (message.Role == "tool")
+                        {
+                            var headline = message.Content.Split('\n')[0];
+                            var rest = message.Content.Length > headline.Length
+                                ? message.Content[(headline.Length + 1)..].Trim()
+                                : string.Empty;
+                            var open = _openTools.Contains(message.Id);
+
+                            <div class="chips">
+                                <button class="chip" type="button" aria-expanded="@(open ? "true" : "false")"
+                                        @onclick="@(() => ToggleTool(message.Id))">
+                                    <svg class="chip-bolt" viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M13 2L4.5 13.5H11l-1 8.5 8.5-11.5H12z"/></svg>
+                                    <span class="chip-what">@headline</span>
+                                    @if (rest.Length > 0)
+                                    {
+                                        <svg class="chip-more" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
+                                    }
+                                </button>
+                                @if (open && rest.Length > 0)
+                                {
+                                    <pre class="chip-out">@rest</pre>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <article class="msg">
+                                <span class="msg-who">@FormatRole(message.Role)</span>
+                                <div class="msg-body">
+                                    @if (message.Role == "assistant")
+                                    {
+                                        <AssistantContent Content="@message.Content" />
+                                    }
+                                    else
+                                    {
+                                        <p>@message.Content</p>
+                                    }
+                                </div>
+                            </article>
+                        }
                     }
-                }
-                catch (Exception ex)
-                {
-                    await Store.AppendEventAsync(_active.Id, ConversationEventType.AssistantMessage,
-                        $"I tried to draw that, but the image runtime returned an error: {ex.Message}",
-                        imageRuntime.EngineLabel);
-                    _active = await Store.GetAsync(_active.Id);
-                    StateHasChanged();
-                    return;
-                }
-                // No artifact returned — fall through to chat so the user
-                // gets a description even if generation failed silently.
-            }
-        }
 
-        // Attachments are inlined as fenced code blocks ahead of the prompt so the LLM sees
-        // them in context. Binary / image attachments are a v2 feature — text-only here.
-        var attachmentBlocks = _pendingAttachments
-            .Select(a => $"```file name=\"{a.FileName}\"\n{Encoding.UTF8.GetString(a.Bytes).TrimEnd()}\n```")
-            .ToList();
-        _pendingAttachments.Clear();
-
-        var fullPrompt = string.Join("\n\n", attachmentBlocks.Append(input).Where(s => !string.IsNullOrEmpty(s)));
-
-        await Store.AppendEventAsync(_active.Id, ConversationEventType.UserMessage, fullPrompt);
-        _active = await Store.GetAsync(_active.Id);
-        await RefreshSidebarAsync();
-        StateHasChanged();
-
-        _streaming = true;
-        _streamingBuffer = string.Empty;
-        _toolLoopIteration = 0;
-        _streamCts?.Cancel();
-        _streamCts = new CancellationTokenSource();
-
-        try
-        {
-            // Outer loop drives the tool-call cycle: stream → persist → if the assistant
-            // emitted ```tool-call``` blocks AND the user opted in, execute them, append the
-            // synthetic user turn with the results, and stream again. Cap at MaxToolIterations
-            // so a buggy reply can't pin the chat in a tight loop.
-            for (var iteration = 0; iteration <= MaxToolIterations; iteration++)
-            {
-                _toolLoopIteration = iteration;
-                StateHasChanged();
-
-                var assistantText = await StreamOnceAsync(_streamCts.Token);
-                if (assistantText is null)
-                {
-                    // Cancelled or empty — caller has already persisted whatever it could.
-                    break;
-                }
-
-                if (!_executeToolCalls || Tools.Tools.Count == 0)
-                {
-                    break;
-                }
-
-                var calls = ToolCallProtocol.Extract(assistantText);
-                if (calls.Count == 0)
-                {
-                    break;
-                }
-
-                if (iteration == MaxToolIterations)
-                {
-                    await Store.AppendEventAsync(_active!.Id, ConversationEventType.ToolResult,
-                        $"The tool loop stopped after {MaxToolIterations} rounds without finishing.");
-                    break;
-                }
-
-                // Each call is recorded before it runs, so a turn abandoned half way still
-                // leaves a log that says what was asked for.
-                foreach (var call in calls)
-                {
-                    await Store.AppendEventAsync(
-                        _active!.Id,
-                        ConversationEventType.ToolCall,
-                        call.Name + " " + (call.Arguments?.ToJsonString() ?? "{}"));
-                }
-
-                // The scheduler overlaps read-only calls, runs the rest alone, and returns a
-                // result for every call — including ones a cancellation stopped.
-                var planned = calls
-                    .Select(call => new PlannedToolCall(call.Name, call.Arguments))
-                    .ToList();
-
-                var outcomes = await ToolScheduler.ExecuteAsync(planned, _streamCts.Token);
-
-                var results = new List<(string ToolName, AgentToolResult Result)>();
-                foreach (var outcome in outcomes)
-                {
-                    // Oversized output is trimmed once here, rather than paid for on every
-                    // later request in this conversation.
-                    var pruned = ResultPruner.Prune(outcome.Result.Output);
-                    var result = pruned.WasPruned
-                        ? new AgentToolResult(outcome.Result.Success, pruned.Text, outcome.Result.FailureMessage)
-                        : outcome.Result;
-
-                    results.Add((outcome.ToolName, result));
-
-                    await Store.AppendEventAsync(
-                        _active!.Id,
-                        ConversationEventType.ToolResult,
-                        ToolCallProtocol.FormatResult(outcome.ToolName, result));
-
-                    // A model going round in circles is told so, rather than left to spend
-                    // the whole iteration budget discovering it.
-                    var reminder = RepeatReminder.Observe(outcome.ToolName, outcome.Result.Output);
-                    if (reminder is not null)
+                    @if (_streaming)
                     {
-                        await Store.AppendEventAsync(_active.Id, ConversationEventType.UserMessage, reminder);
+                        <article class="msg">
+                            <span class="msg-who">Concierge</span>
+                            <div class="msg-body"><AssistantContent Content="@_streamingBuffer" /></div>
+                        </article>
                     }
+
+                    @*
+                        Permission, where the run stopped — the live request
+                        from the tool loop, rendered as the last thing in the
+                        stream. The sidebar's Approvals group is the standing
+                        overview; this is the one actually blocking work, and
+                        it belongs in the conversation rather than appended to
+                        the end of it from a separate list.
+                    *@
+                    <ApprovalPrompt />
+                </div>
+            </div>
+        }
+
+        <div class="comp">
+            <div class="comp-inner">
+                @if (_pendingAttachments.Count > 0)
+                {
+                    <div class="chips">
+                        @foreach (var attachment in _pendingAttachments)
+                        {
+                            var att = attachment;
+                            <button class="chip" type="button" @onclick="@(() => RemoveAttachment(att))">
+                                <span class="chip-what">@att.FileName</span>
+                                <span class="chip-more">×</span>
+                            </button>
+                        }
+                    </div>
                 }
 
-                _active = await Store.GetAsync(_active!.Id);
-                StateHasChanged();
-            }
-        }
-        finally
-        {
-            if (_active is not null)
-            {
-                _active = await Store.GetAsync(_active.Id);
-                await RefreshSidebarAsync();
-            }
-            _streaming = false;
-            _streamingBuffer = string.Empty;
-            _toolLoopIteration = 0;
-            StateHasChanged();
-        }
-    }
+                <div class="comp-box">
+                    <textarea class="comp-input"
+                              rows="1"
+                              placeholder="Ask me anything"
+                              @bind="_composerText"
+                              @bind:event="oninput"></textarea>
 
-    /// <summary>
-    /// Streams one assistant turn over the active conversation history. Returns the
-    /// assembled assistant text (also persisted to the store) or <c>null</c> if the
-    /// stream was cancelled or the runtime emitted nothing.
-    /// </summary>
-    private async Task<string?> StreamOnceAsync(CancellationToken cancellationToken)
-    {
-        if (_active is null || _activeRuntime is null)
-        {
-            return null;
-        }
+                    <label class="icon-btn" title="Attach a text file">
+                        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11l-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L16 6"/></svg>
+                        <span class="sr">Attach a text file</span>
+                        <InputFile OnChange="OnAttachmentSelected" class="file-over"
+                                   accept=".txt,.md,.markdown,.json,.cs,.razor,.xml,.yaml,.yml,.toml,.csv,.log" />
+                    </label>
 
-        // Derived from the log rather than read off the message rows: the log is what is
-        // true, and it is the only place a tool result is distinguishable from something a
-        // person typed.
-        var turns = (await Store.DeriveMessagesAsync(_active.Id, cancellationToken)).ToList();
+                    <button class="icon-btn @(_recording ? "is-on" : null)" type="button"
+                            title="@(_recording ? "Stop recording" : "Speak")"
+                            @onclick="ToggleMicAsync">
+                        @if (_recording)
+                        {
+                            <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                        }
+                        else
+                        {
+                            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="21"/></svg>
+                        }
+                        <span class="sr">@(_recording ? "Stop recording" : "Speak")</span>
+                    </button>
 
-        // Compact before spending a request, not after one is refused for length. On the
-        // smallest on-device model this is the difference between a conversation that keeps
-        // going and one that stops after a handful of turns.
-        var compacted = await Compaction.CompactIfNeededAsync(
-            turns, LoopOptions.ContextBudgetTokens, cancellationToken);
+                    @* type=button with both handlers: MAUI's BlazorWebView drops
+                       touch-originated form submits. *@
+                    <button class="icon-btn icon-btn-send" type="button"
+                            aria-disabled="@(!CanSend)" disabled="@(!CanSend)"
+                            title="Send" @onclick="SendAsync" @onpointerup="SendAsync">
+                        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg>
+                        <span class="sr">Send</span>
+                    </button>
+                </div>
 
-        if (compacted.WasCompacted)
-        {
-            turns = compacted.Turns.ToList();
-            await Store.AppendEventAsync(
-                _active.Id,
-                ConversationEventType.CompactionReplace,
-                $"Summarised the earlier part of this conversation, reclaiming about {compacted.TokensReclaimed} tokens.");
-        }
-
-        var systemParts = new List<string>();
-
-        // ── Active skills first ────────────────────────────────────────────
-        // Skills come BEFORE custom system prompt + tool catalog so the
-        // assistant reads the specialist guidance as its primary identity for
-        // the turn, then layers user-specific overrides on top.
-        if (_activeSkillIds.Count > 0)
-        {
-            var skillPrompt = SkillRuntime.ComposeSystemPrompt(_activeSkillIds);
-            if (!string.IsNullOrWhiteSpace(skillPrompt))
-            {
-                systemParts.Add(skillPrompt);
-            }
-        }
-
-        var persisted = _active.SystemPrompt;
-        var systemText = !string.IsNullOrWhiteSpace(persisted) ? persisted : _systemPromptDraft;
-        if (!string.IsNullOrWhiteSpace(systemText))
-        {
-            systemParts.Add(systemText);
-        }
-        if (_includeToolCatalog && Tools.Tools.Count > 0)
-        {
-            systemParts.Add(Tools.BuildSystemPromptAddendum());
-        }
-        if (systemParts.Count > 0)
-        {
-            turns.Insert(0, new ChatTurn("system", string.Join("\n\n", systemParts)));
-        }
-
-        var buffer = new StringBuilder();
-        _streamingBuffer = string.Empty;
-        var cancelled = false;
-        try
-        {
-            await foreach (var chunk in _activeRuntime.StreamAsync(turns, cancellationToken))
-            {
-                buffer.Append(chunk);
-                _streamingBuffer = buffer.ToString();
-                StateHasChanged();
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            cancelled = true;
-        }
-        catch (Exception ex)
-        {
-            buffer.AppendLine();
-            buffer.Append("[stream error: ").Append(ex.Message).Append(']');
-            _streamingBuffer = buffer.ToString();
-        }
-
-        var assistantText = buffer.ToString();
-        if (cancelled)
-        {
-            if (assistantText.Length > 0)
-            {
-                await Store.AppendEventAsync(_active.Id, ConversationEventType.AssistantMessage,
-                    assistantText + "\n[stream cancelled before completion]",
-                    _activeRuntime.EngineLabel);
-            }
-            return null;
-        }
-
-        if (!string.IsNullOrWhiteSpace(assistantText))
-        {
-            await Store.AppendEventAsync(_active.Id, ConversationEventType.AssistantMessage, assistantText, _activeRuntime.EngineLabel);
-            _active = await Store.GetAsync(_active.Id);
-            return assistantText;
-        }
-
-        return null;
-    }
-
-    private static string FormatRole(string role) => role switch
-    {
-        "user" => "You",
-        "assistant" => "Assistant",
-        "system" => "System",
-        _ => role
-    };
-
-    private static bool LooksLikeImagePrompt(string text)
-    {
-        if (string.IsNullOrWhiteSpace(text)) return false;
-        var t = text.ToLowerInvariant();
-        ReadOnlySpan<string> triggers =
-        [
-            "draw me", "draw a", "draw an", "draw the",
-            "make a picture", "make me a picture", "make a drawing",
-            "paint", "illustrate",
-            "generate an image", "generate a picture",
-            "create an image", "create a picture",
-            "show me a picture of", "show me an image of",
-            "render a", "render an",
-        ];
-        foreach (var trig in triggers)
-        {
-            if (t.Contains(trig, StringComparison.Ordinal)) return true;
-        }
-        return false;
-    }
-
-    private sealed record TextAttachment(string FileName, byte[] Bytes);
-
-    private sealed record TranscriptResponse(string? Text, string? Language);
-}
+                @* Codex puts exactly these two under the input. Both were
+                   screens in Concierge. *@
+                <div class="comp-controls">
+                    @* A checkbox renders Windows' own blue tick box, which
+                       belongs to no design system. Codex uses a switch. *@
+                    <label class="toggle">
+                        <input type="checkbox" @bind="_executeToolCalls" />
+                        <span class="toggle-track" aria-hidden="true"><span class="toggle-knob"></span></span>
+                        <span class="toggle-label">@(_executeToolCalls ? "May act on its own" : "Ask before acting")</span>
+                    </label>
+                    <span class="comp-sep">·</span>
+                    <span>@(_activeRuntime?.EngineLabel ?? runtime.Engine)</span>
+                    @if (!string.IsNullOrWhiteSpace(_composerHint))
+                    {
+                        <span class="comp-sep">·</span>
+                        <span>@_composerHint</span>
+                    }
+                </div>
+            </div>
+        </div>
+    </main>
+</div>

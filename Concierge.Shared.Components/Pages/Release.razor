@@ -1,24 +1,4 @@
 @page "/release"
 @inject IConciergeStateService Concierge
 
-@{
-    var snapshot = Concierge.GetSnapshot();
-}
-
-<section class="page-header">
-    <p class="eyebrow">Release</p>
-    <h1>See what the app can verify before anything ships.</h1>
-    <p class="lede">Coding hardening is visible here, while owner-controlled credentials stay outside source control.</p>
-</section>
-
-<section class="card-grid">
-    @foreach (var gate in snapshot.ProductionGates)
-    {
-        <article class="surface-card @gate.Status.ToString().ToLowerInvariant()">
-            <strong>@gate.Name</strong>
-            <span>@gate.Status</span>
-            <p>@gate.Summary</p>
-            <small>@gate.Evidence</small>
-        </article>
-    }
-</section>
+@* UI deleted. Rebuild here. *@

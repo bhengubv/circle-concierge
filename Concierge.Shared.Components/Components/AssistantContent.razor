@@ -1,67 +1,68 @@
 @using Concierge.Shared.Diagrams
 
+@*
+    What the assistant said.
+
+    The code-behind splits the reply into segments — prose, and any fenced
+    mermaid blocks — and leaves an empty list when there is no diagram in it,
+    which is the common case. So the no-segments branch is the one that runs for
+    almost every reply, and it has to be the one that reads well.
+
+    Prose is split on blank lines into paragraphs. The previous version put the
+    entire reply in a single <p>, so a four-paragraph answer arrived as one
+    block of text with the line breaks collapsed.
+
+    Nothing here interprets markdown. The model's output is rendered as text,
+    not as HTML, and that is deliberate: @ in Razor escapes it, so a reply
+    containing markup cannot inject anything into the page.
+*@
+
 @if (_segments.Count == 0)
 {
-    <p>@Content</p>
+    @foreach (var paragraph in Paragraphs(Content))
+    {
+        <p class="prose">@paragraph</p>
+    }
 }
 else
 {
-    foreach (var segment in _segments)
+    @foreach (var segment in _segments)
     {
         if (segment.IsMermaid)
         {
             <MermaidBlock Source="@segment.Text" />
         }
-        else if (!string.IsNullOrWhiteSpace(segment.Text))
+        else
         {
-            <p>@segment.Text</p>
+            @foreach (var paragraph in Paragraphs(segment.Text))
+            {
+                <p class="prose">@paragraph</p>
+            }
         }
     }
 }
 
 @code {
-    [Parameter, EditorRequired] public string Content { get; set; } = string.Empty;
-
-    private readonly List<Segment> _segments = new();
-
-    protected override void OnParametersSet()
+    /// <summary>
+    /// Blank-line-separated paragraphs. A single trailing or leading blank line
+    /// does not create an empty paragraph, and a reply that is one line long
+    /// comes back as one paragraph rather than none.
+    /// </summary>
+    private static IEnumerable<string> Paragraphs(string text)
     {
-        _segments.Clear();
-        if (string.IsNullOrEmpty(Content))
+        if (string.IsNullOrWhiteSpace(text))
         {
-            return;
+            yield break;
         }
 
-        var blocks = MermaidDiagramRuntime.ExtractFencedBlocks(Content);
-        if (blocks.Count == 0)
+        var normalised = text.Replace("\r\n", "\n").Replace('\r', '\n');
+        foreach (var block in normalised.Split("\n\n", StringSplitOptions.RemoveEmptyEntries))
         {
-            return;
-        }
-
-        var cursor = 0;
-        foreach (var block in blocks)
-        {
-            if (block.Start > cursor)
+            var trimmed = block.Trim();
+            if (trimmed.Length > 0)
             {
-                var prefix = Content[cursor..block.Start].TrimEnd();
-                if (prefix.Length > 0)
-                {
-                    _segments.Add(new Segment(prefix, IsMermaid: false));
-                }
-            }
-            _segments.Add(new Segment(block.Source.Trim(), IsMermaid: true));
-            cursor = block.Start + block.Length;
-        }
-
-        if (cursor < Content.Length)
-        {
-            var tail = Content[cursor..].TrimStart();
-            if (tail.Length > 0)
-            {
-                _segments.Add(new Segment(tail, IsMermaid: false));
+                yield return trimmed;
             }
         }
     }
-
-    private sealed record Segment(string Text, bool IsMermaid);
 }

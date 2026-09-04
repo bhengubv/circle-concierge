@@ -127,10 +127,15 @@ public sealed class IntegrationContractTests
     public void Web_page_for_settings_surfaces_the_on_device_runtime()
     {
         var root = FindWorkspaceRoot();
-        var page = File.ReadAllText(Path.Combine(root, "Concierge.Shared.Components", "Pages", "Settings.razor"));
+        // This asserted on Settings.razor, third group down a page you had to
+        // navigate to. What is answering on this device is now pinned to the
+        // bottom of the workspace sidebar, permanently on screen — so the
+        // guarantee is unchanged and the place it is kept has moved.
+        var page = File.ReadAllText(Path.Combine(root, "Concierge.Shared.Components", "Pages", "Chat.razor"));
 
         Assert.Contains("@inject ILlmRuntimeService", page, StringComparison.Ordinal);
-        Assert.Contains("runtime.ProbedModels", page, StringComparison.Ordinal);
+        Assert.Contains("runtime.Engine", page, StringComparison.Ordinal);
+        Assert.Contains("on device", page, StringComparison.Ordinal);
     }
 
     [Fact]

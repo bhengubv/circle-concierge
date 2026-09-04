@@ -1,39 +1,4 @@
 @page "/skills"
 @inject IConciergeStateService Concierge
 
-@{
-    var skills = Concierge.GetSkills();
-    var areas = skills.Select(skill => skill.Area).Distinct().OrderBy(area => area).ToList();
-}
-
-<section class="page-header">
-    <p class="eyebrow">Skills</p>
-    <h1>Choose specialists without locking yourself to one model.</h1>
-    <p class="lede">Skills are grouped in plain human areas so engineering, creative work, business operations, and industry teams all have a place to start.</p>
-</section>
-
-<section class="tabs" aria-label="Skill areas">
-    @foreach (var area in areas)
-    {
-        <a href="#@area.Replace(" ", "-").ToLowerInvariant()">@area</a>
-    }
-</section>
-
-@foreach (var area in areas)
-{
-    <section class="panel" id="@area.Replace(" ", "-").ToLowerInvariant()">
-        <div class="section-heading">
-            <p class="eyebrow">@area</p>
-            <h2>@area skills</h2>
-        </div>
-        <div class="card-grid compact">
-            @foreach (var skill in skills.Where(item => item.Area == area))
-            {
-                <article class="surface-card">
-                    <strong>@skill.Name</strong>
-                    <span>@skill.Summary</span>
-                </article>
-            }
-        </div>
-    </section>
-}
+@* UI deleted. Rebuild here. *@

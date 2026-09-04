@@ -36,7 +36,9 @@ public sealed class ConciergeRecoverySmokeTests
     }
 
     [Theory]
-    [InlineData("Home.razor", "@page \"/\"")]
+    // "/" is the workspace now, and the workspace is Chat.razor. Home.razor no
+    // longer claims a route: the app is one screen, not a set of pages.
+    [InlineData("Chat.razor", "@page \"/\"")]
     [InlineData("Skills.razor", "@page \"/skills\"")]
     [InlineData("Settings.razor", "@page \"/settings\"")]
     [InlineData("Approvals.razor", "@page \"/approvals\"")]

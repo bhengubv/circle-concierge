@@ -23,7 +23,15 @@ public partial class App : Application
 		// answer anything. It returns immediately; loading a model takes minutes.
 		ConciergeHostedServices.StartInBackground(_services);
 
-		return new Window(new MainPage()) { Title = "Concierge" };
+		var window = new Window(new MainPage()) { Title = "Concierge" };
+
+		// The bottom navigation is pinned to the bottom of the window by
+		// height:100dvh. A window taller than the screen therefore hides it
+		// completely. This keeps the window inside the display it is on, and
+		// re-checks whenever that display changes.
+		WindowFit.Apply(window);
+
+		return window;
 	}
 
 	// ── MAUI lifecycle hooks ─────────────────────────────────────────────

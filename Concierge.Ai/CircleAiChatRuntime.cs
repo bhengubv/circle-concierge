@@ -142,21 +142,45 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
             var tier = selector.BestFit(probe, ChatCapability.Default | ChatCapability.Tools);
             _engineLabel = $"{tier.ModelId} (CircleAI)";
 
+            // The selector always answers RequiresDownload: true — its own comment says
+            // "selector cannot tell — caller checks the cache". This is that caller. Without
+            // this check the app asks for the same 21 GB on every launch, including the one
+            // right after it finished downloading it, and never comes up ready at all.
+            var alreadyHere = IsAlreadyDownloaded(tier.ModelId, modelsDirectory);
+
             // A model that is not on disk is not fetched here. RequiresDownload plus the
             // measured byte count is what the person needs in order to decide, and starting a
             // multi-gigabyte transfer on their connection without asking is not ours to do.
-            if (tier.RequiresDownload && !_options.AllowAutomaticDownload)
+            if (tier.RequiresDownload && !alreadyHere && !_options.AllowAutomaticDownload)
             {
+                // Before asking anybody to wait an hour: is there a model on this device that
+                // works right now? Best fit is a judgement about quality, and quality is worth
+                // nothing to somebody who cannot use the app yet. Take what is here, come up
+                // ready, and go on offering the better one.
+                var usable = selector.AllCandidates(probe)
+                    .FirstOrDefault(candidate =>
+                        candidate.Quality != SelectionQuality.NothingFits &&
+                        IsAlreadyDownloaded(candidate.ModelId, modelsDirectory));
+
                 lock (_statusGate)
                 {
                     _selected = tier;
                 }
 
-                var gigabytes = tier.EstimatedBytes / 1024d / 1024d / 1024d;
-                SetStatus(
-                    $"{tier.ModelId} needs a {gigabytes:0.#} GB download before it can run.",
-                    ready: false);
-                _generatorReady.TrySetResult(null);
+                if (usable is null)
+                {
+                    var gigabytes = tier.EstimatedBytes / 1024d / 1024d / 1024d;
+                    SetStatus(
+                        $"{tier.ModelId} needs a {gigabytes:0.#} GB download before it can run.",
+                        ready: false);
+                    _generatorReady.TrySetResult(null);
+                    return;
+                }
+
+                _engineLabel = $"{usable.ModelId} (CircleAI)";
+                SetStatus($"Loading {usable.ModelId} into memory (one-time)…", ready: false);
+                Publish(CreateGenerator(await FetchAsync(usable.ModelId, null, cancellationToken).ConfigureAwait(false)));
+                SetStatus($"Ready · {usable.ModelId}", ready: true);
                 return;
             }
 
@@ -205,8 +229,15 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
 
             if (_selected is not { } pending)
             {
-                _statusMessage = "No model has been selected yet.";
-                _isReady = false;
+                // Nothing pending can mean two very different things: nothing has been picked
+                // yet, or a model is loaded and there is nothing left to fetch. Saying "no
+                // model has been selected" in the second case, and dropping IsReady to say it,
+                // takes a working engine offline over a stray call.
+                if (!_isReady)
+                {
+                    _statusMessage = "No model has been selected yet.";
+                }
+
                 return false;
             }
 
@@ -296,6 +327,35 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
                 progress.Report(new ModelDownloadProgress(report.Ratio, report.Describe())));
 
         return await loader.DownloadModelAsync(modelId, relayed, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Is this model on the device already? Cheap on purpose — presence, not integrity.
+    /// </summary>
+    /// <remarks>
+    /// CircleAI draws that distinction and documents why: verifying the anchor file's SHA-256
+    /// means hashing hundreds of megabytes, which is fine before loading a model and ruinous on
+    /// a launch screen. The load path hashes; this only asks whether it is worth trying.
+    /// </remarks>
+    private bool IsAlreadyDownloaded(string modelId, string modelsDirectory)
+    {
+        try
+        {
+            if (_options.ModelPresence is { } present)
+            {
+                return present(modelId);
+            }
+
+            using var loader = new BundleModelLoader(modelsDirectory);
+            return loader.ModelPresent(modelId);
+        }
+        catch (Exception exception)
+        {
+            // Never a reason to fail the launch. Not knowing means asking, which is the safe
+            // side of this particular question.
+            _logger.LogWarning(exception, "Could not tell whether {ModelId} is on the device.", modelId);
+            return false;
+        }
     }
 
     private IChatGenerator CreateGenerator(string modelPath)
@@ -542,6 +602,12 @@ public sealed class CircleAiChatOptions
     /// this path without pulling twenty-one gigabytes.
     /// </summary>
     public Func<string, IProgress<ModelDownloadProgress>?, CancellationToken, Task<string>>? ModelFetcher { get; init; }
+
+    /// <summary>
+    /// Whether a model is already on the device. Null means CircleAI's
+    /// <c>BundleModelLoader.ModelPresent</c>, which checks presence without hashing.
+    /// </summary>
+    public Func<string, bool>? ModelPresence { get; init; }
 
     /// <summary>
     /// How a generator is built from a model path. Null means <c>QwenTextGenerator</c>, which

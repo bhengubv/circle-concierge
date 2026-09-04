@@ -1,0 +1,718 @@
+/* ============================================================
+   Concierge — one dark workspace
+
+   Written from nothing after the previous UI was deleted. The shape and the
+   surface both come from the two references rather than from the app that was
+   here before:
+
+     Codex          a sidebar of threads, one thread in the main area, and the
+                    controls that carry consequence sitting in the composer.
+                    Uniformly dark; all colour comes from content.
+
+     Claude Design  work and conversation side by side, modes instead of
+                    routes, and tool calls rendered as one quiet grey pill.
+
+   Neither has pages. Concierge had nineteen.
+
+   The rules this sheet holds itself to:
+
+     1. Chrome is greyscale. #2196F3 is the only saturated colour in it, and it
+        marks the thing you press.
+     2. Status is a dot and a word. Never a filled card, never a coloured
+        badge, never a coloured edge.
+     3. Tool activity is the quietest thing on screen, not the loudest.
+     4. Nothing is sized in fixed pixels that should respond to the window.
+   ============================================================ */
+
+:root {
+    /* ── Ground ────────────────────────────────────────────────────────
+       Four steps of dark, close together. The distance between them is
+       what separates a sidebar from a thread from an input — not borders,
+       and not shadows. */
+    --ground:  #141414;   /* the app itself */
+    --panel:   #191919;   /* sidebar, and anything sitting on the ground */
+    --raised:  #1F1F1F;   /* inputs, chips, the composer */
+    --sunken:  #101011;   /* quoted context, output, anything recessed */
+
+    /* A hairline. Most separation is still space. */
+    --rule:    #2A2A2B;
+    --rule-soft: #212122;
+
+    /* ── Ink ───────────────────────────────────────────────────────────
+       Not pure white: #FFFFFF on #141414 vibrates. */
+    --ink:       #EDEDEC;
+    --ink-soft:  #A3A3A1;
+    --ink-faint: #6E6E6C;
+
+    /* ── The one accent ────────────────────────────────────────────────
+       Brand blue. It appears on the thing you press and nowhere else, so
+       wherever it is, that is the action. --accent-ink is the same hue
+       lifted for text, because #2196F3 on #141414 is under 4.5:1. */
+    --accent:      #2196F3;
+    --accent-ink:  #74BFF9;
+    --accent-wash: rgba(33, 150, 243, 0.14);
+
+    /* ── Status ────────────────────────────────────────────────────────
+       Three states the app genuinely has. These are for DOTS and for the
+       word beside them. They never fill a surface, never tint a card edge
+       and never become a badge — that was the previous attempt, and it put
+       more colour in the chrome than either reference has anywhere. */
+    --done:    #3FB950;
+    --waiting: #D29922;
+    --danger:  #F85149;
+
+    /* ── Type ──────────────────────────────────────────────────────────
+       One sans for the interface, one mono for anything the machine wrote. */
+    --font: ui-sans-serif, -apple-system, "Segoe UI Variable Text", "Segoe UI",
+            system-ui, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
+
+    /* Fluid, so type grows with the window instead of the column merely
+       getting wider. Floors are phone-legible, ceilings are desktop. */
+    --t-xs: clamp(0.6875rem, 0.66rem + 0.10svmin, 0.75rem);
+    --t-sm: clamp(0.8125rem, 0.79rem + 0.11svmin, 0.875rem);
+    --t-md: clamp(0.9375rem, 0.90rem + 0.17svmin, 1.0625rem);
+    --t-lg: clamp(1.125rem, 1.06rem + 0.31svmin, 1.375rem);
+    --t-xl: clamp(1.5rem, 1.36rem + 0.63svmin, 2rem);
+
+    /* Rhythm, fluid against the smaller viewport dimension. svmin rather
+       than vw: a wide-but-short window is the case that breaks, and vw
+       would grow the spacing exactly where there is no height for it. */
+    --s1: clamp(3px,  0.25rem + 0.05svmin, 5px);
+    --s2: clamp(6px,  0.45rem + 0.15svmin, 10px);
+    --s3: clamp(8px,  0.60rem + 0.25svmin, 14px);
+    --s4: clamp(11px, 0.75rem + 0.35svmin, 18px);
+    --s5: clamp(15px, 1.00rem + 0.55svmin, 28px);
+    --s6: clamp(19px, 1.30rem + 0.75svmin, 38px);
+    --s7: clamp(26px, 1.90rem + 1.20svmin, 56px);
+
+    --radius:    8px;
+    --radius-lg: 14px;
+
+    /* The smallest thing anyone has to hit. */
+    --tap: 44px;
+    /* One measure for running prose. */
+    --measure: 72ch;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+/* Scrollbars hidden, scrolling kept. */
+* { scrollbar-width: none; -ms-overflow-style: none; }
+*::-webkit-scrollbar { display: none; }
+
+html {
+    height: 100%;
+    /* No font-size here: setting one in rem re-bases what rem means for the
+       whole sheet, which silently shrank every token in the last version. */
+    background: var(--ground);
+}
+
+body {
+    height: 100%;
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--font);
+    font-size: var(--t-md);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overscroll-behavior: none;
+}
+
+h1, h2, h3 { margin: 0; font-weight: 620; letter-spacing: -0.015em; line-height: 1.2; }
+p { margin: 0; }
+a { color: var(--accent-ink); text-decoration: none; }
+a:hover { text-decoration: underline; }
+::selection { background: var(--accent-wash); }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ============================================================
+   THE WORKSPACE
+   ============================================================ */
+
+.ws {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    height: 100dvh;
+    background: var(--ground);
+}
+
+/* The sidebar appears when there is width for it. Below that the thread has
+   the whole window, which is the right trade on a narrow one. */
+@media (min-width: 760px) {
+    .ws { grid-template-columns: clamp(220px, 22vw, 300px) minmax(0, 1fr); }
+}
+
+.ws-side {
+    display: none;
+    flex-direction: column;
+    min-height: 0;
+    background: var(--panel);
+    border-right: 1px solid var(--rule);
+}
+@media (min-width: 760px) { .ws-side { display: flex; } }
+
+.ws-main {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+/* ── Sidebar parts ─────────────────────────────────────────────────── */
+
+.ws-brand {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+    flex: 0 0 auto;
+    padding: var(--s4) var(--s4) var(--s3);
+    color: var(--ink);
+    font-size: var(--t-md);
+    font-weight: 620;
+    letter-spacing: -0.015em;
+    text-decoration: none;
+}
+.ws-brand:hover { text-decoration: none; }
+.ws-brand-dot { width: 8px; height: 8px; border-radius: 999px; background: var(--accent); }
+
+.ws-scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 0 var(--s3) var(--s3); }
+
+/* A section label. Uppercase and tracked, the quietest text in the panel —
+   you read it once to know where you are and never again. */
+.ws-section {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--s2);
+    padding: var(--s4) var(--s2) var(--s2);
+    color: var(--ink-faint);
+    font-size: var(--t-xs);
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+}
+.ws-section-count { font-variant-numeric: tabular-nums; letter-spacing: 0; }
+
+/* A row in the sidebar: a thread, a skill, an approval. One shape. */
+.ws-item {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+    width: 100%;
+    min-height: 34px;
+    padding: var(--s2);
+    border: 0;
+    border-radius: var(--radius);
+    background: none;
+    color: var(--ink-soft);
+    font: inherit;
+    font-size: var(--t-sm);
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+}
+.ws-item:hover { background: var(--raised); color: var(--ink); text-decoration: none; }
+.ws-item.is-active { background: var(--raised); color: var(--ink); }
+.ws-item-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ws-item-meta  { flex: 0 0 auto; color: var(--ink-faint); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
+
+/* The runtime, pinned to the bottom. What is answering, and whether it is
+   ready — the one fact worth having permanently on screen. */
+.ws-runtime {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+    flex: 0 0 auto;
+    padding: var(--s3) var(--s4);
+    border-top: 1px solid var(--rule);
+    color: var(--ink-soft);
+    font-size: var(--t-sm);
+}
+.ws-runtime-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Main column ───────────────────────────────────────────────────── */
+
+.ws-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s3);
+    flex: 0 0 auto;
+    min-height: 44px;
+    padding: var(--s3) var(--s5);
+    border-bottom: 1px solid var(--rule-soft);
+}
+.ws-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-md); font-weight: 600; }
+.ws-top-meta { flex: 0 0 auto; display: flex; align-items: center; gap: var(--s2); color: var(--ink-faint); font-size: var(--t-sm); }
+
+.ws-thread {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: var(--s5);
+}
+.ws-thread-inner { display: flex; flex-direction: column; gap: var(--s5); max-width: var(--measure); margin-inline: auto; }
+
+/* ============================================================
+   MESSAGES
+   ============================================================
+   A message is a name and some text. Not a bubble — a bubble is for a
+   messaging app, where who spoke is the point; here what was said is. */
+
+.msg { display: flex; flex-direction: column; gap: var(--s2); }
+.msg-who {
+    color: var(--ink-faint);
+    font-size: var(--t-xs);
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+}
+.msg-body { color: var(--ink); font-size: var(--t-md); overflow-wrap: anywhere; }
+.msg-body p + p { margin-top: var(--s3); }
+
+/* ============================================================
+   TOOL ACTIVITY
+   ============================================================
+   Claude Design renders a tool call as one grey pill with a bolt, a word and
+   a chevron. Nothing else. The previous version had a bordered card, a green
+   tick and a timing column — five signals for a line that mostly says
+   "I read a file". */
+
+.chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--s2);
+    max-width: 100%;
+    padding: 5px var(--s3);
+    border: 0;
+    border-radius: var(--radius);
+    background: var(--raised);
+    color: var(--ink-soft);
+    font: inherit;
+    font-size: var(--t-sm);
+    cursor: pointer;
+}
+.chip:hover { color: var(--ink); }
+.chip-bolt { flex: 0 0 auto; color: var(--ink-faint); }
+.chip-what { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip-more { flex: 0 0 auto; color: var(--ink-faint); transition: transform 120ms ease; }
+.chip[aria-expanded="true"] .chip-more { transform: rotate(90deg); }
+
+/* What it returned, when asked for. Machine output, so monospace and sunken. */
+.chip-out {
+    margin-top: var(--s2);
+    padding: var(--s3);
+    max-height: 300px;
+    overflow: auto;
+    background: var(--sunken);
+    border-radius: var(--radius);
+    color: var(--ink-soft);
+    font-family: var(--mono);
+    font-size: var(--t-xs);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.chips { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s2); }
+
+/* ============================================================
+   STATUS
+   ============================================================
+   A dot and a word. That is the whole vocabulary. */
+
+.dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 999px;
+    flex: 0 0 auto;
+    background: var(--ink-faint);
+}
+.dot-done    { background: var(--done); }
+.dot-waiting { background: var(--waiting); }
+.dot-danger  { background: var(--danger); }
+.dot-idle    { background: none; border: 1.5px solid var(--ink-faint); }
+
+.state { display: inline-flex; align-items: center; gap: var(--s2); color: var(--ink-soft); font-size: var(--t-sm); }
+
+/* ============================================================
+   ASKING PERMISSION
+   ============================================================
+   The one thing this product has that a chatbot does not. It happens inside
+   the thread, where the run stopped — not on a screen you navigate to. */
+
+.ask {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s3);
+    padding: var(--s4);
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-lg);
+}
+.ask-head { display: flex; align-items: center; gap: var(--s2); color: var(--ink); font-size: var(--t-md); }
+.ask-head .dot { margin-right: 2px; }
+
+/* What allowing it actually means, quoted out of the surface it sits on. */
+.ask-what {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s2);
+    padding: var(--s3);
+    background: var(--sunken);
+    border-radius: var(--radius);
+    color: var(--ink-soft);
+    font-size: var(--t-sm);
+}
+.ask-what-label {
+    color: var(--ink-faint);
+    font-size: var(--t-xs);
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+}
+.ask-actions { display: flex; gap: var(--s2); }
+
+/* ============================================================
+   BUTTONS
+   ============================================================ */
+
+.btn {
+    display: inline-grid;
+    place-items: center;
+    min-height: 34px;
+    padding: 0 var(--s4);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius);
+    background: var(--raised);
+    color: var(--ink);
+    font: inherit;
+    font-size: var(--t-sm);
+    font-weight: 550;
+    cursor: pointer;
+}
+.btn:hover { border-color: #3A3A3B; }
+
+.btn-primary { border-color: var(--accent); background: var(--accent); color: #0B1218; }
+.btn-primary:hover { border-color: #3BA5F5; background: #3BA5F5; }
+.btn-primary:disabled { border-color: var(--rule); background: var(--raised); color: var(--ink-faint); cursor: not-allowed; }
+
+.btn-quiet { border-color: transparent; background: none; color: var(--ink-soft); }
+.btn-quiet:hover { background: var(--raised); color: var(--ink); border-color: transparent; }
+
+/* ============================================================
+   THE COMPOSER
+   ============================================================
+   Codex puts "Ask for approval" and the model directly beneath the input.
+   Both were screens in Concierge; neither should be. */
+
+.comp { flex: 0 0 auto; padding: 0 var(--s5) var(--s4); }
+.comp-inner { display: flex; flex-direction: column; gap: var(--s2); max-width: var(--measure); margin-inline: auto; }
+
+.comp-box {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--s2);
+    padding: var(--s2) var(--s2) var(--s2) var(--s4);
+    background: var(--raised);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-lg);
+    transition: border-color 140ms;
+}
+.comp-box:focus-within { border-color: #3A3A3B; }
+
+.comp-input {
+    flex: 1;
+    min-width: 0;
+    min-height: 30px;
+    max-height: 200px;
+    padding: var(--s1) 0;
+    border: 0;
+    background: none;
+    color: var(--ink);
+    font: inherit;
+    font-size: var(--t-md);
+    line-height: 1.55;
+    resize: none;
+    outline: none;
+}
+.comp-input::placeholder { color: var(--ink-faint); }
+
+/* One shape for every icon control in the composer. */
+.icon-btn {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 32px;
+    height: 32px;
+    flex: 0 0 auto;
+    border: 0;
+    border-radius: var(--radius);
+    background: none;
+    color: var(--ink-faint);
+    cursor: pointer;
+    transition: background 120ms, color 120ms;
+}
+.icon-btn:hover { background: #262627; color: var(--ink); }
+.icon-btn.is-on { color: var(--danger); }
+.icon-btn-send { background: var(--accent); color: #0B1218; }
+.icon-btn-send:hover { background: #3BA5F5; color: #0B1218; }
+.icon-btn-send[aria-disabled="true"] { background: var(--raised); color: var(--ink-faint); cursor: not-allowed; }
+
+/* The label stays for a screen reader; only the glyph shows. */
+.sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* The row beneath the input: what it is allowed to do, and who is answering. */
+.comp-controls { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s3); padding: 0 var(--s2); color: var(--ink-faint); font-size: var(--t-sm); }
+.comp-sep { color: var(--rule); }
+
+/* A file input renders its own operating-system chrome. Stretched invisibly
+   over its icon button instead. Global, not scoped: <InputFile> is a child
+   component and never receives a scope attribute. */
+.file-over { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+
+/* ============================================================
+   CONTROLS
+   ============================================================ */
+
+/* Segmented picker. Both references use one for either/or rather than a
+   dropdown: the options are visible, and choosing is one tap not two. */
+.seg { display: inline-flex; padding: 2px; background: var(--sunken); border-radius: var(--radius); }
+.seg-opt {
+    padding: 5px var(--s3);
+    border: 0;
+    border-radius: 6px;
+    background: none;
+    color: var(--ink-soft);
+    font: inherit;
+    font-size: var(--t-sm);
+    cursor: pointer;
+    white-space: nowrap;
+}
+.seg-opt:hover { color: var(--ink); }
+.seg-opt.is-on { background: var(--raised); color: var(--ink); font-weight: 600; }
+
+/* Label left, value right, track underneath — the shape from Claude Design's
+   Tweaks panel. */
+.slide { display: flex; flex-direction: column; gap: var(--s1); }
+.slide-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); }
+.slide-name { color: var(--ink); font-size: var(--t-sm); }
+.slide-val  { color: var(--ink-soft); font-size: var(--t-sm); font-variant-numeric: tabular-nums; }
+.slide input[type="range"] { width: 100%; accent-color: var(--accent); }
+
+.rows { display: flex; flex-direction: column; }
+.row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s4);
+    min-height: var(--tap);
+    padding: var(--s2) 0;
+    border-bottom: 1px solid var(--rule-soft);
+}
+.row:last-child { border-bottom: 0; }
+.row-name { min-width: 0; color: var(--ink); font-size: var(--t-sm); }
+.row-sub  { color: var(--ink-faint); font-size: var(--t-xs); }
+.row-val  { flex: 0 0 auto; color: var(--ink-soft); font-size: var(--t-sm); font-variant-numeric: tabular-nums; }
+
+/* ============================================================
+   OVERLAY PANEL
+   ============================================================
+   Settings is not a place you go. It is a panel over the work, which is what
+   Claude Design does with Tweaks. */
+
+.sheet-back { position: fixed; inset: 0; z-index: 30; background: rgba(0, 0, 0, 0.5); }
+.sheet {
+    position: fixed;
+    z-index: 31;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    gap: var(--s4);
+    width: min(94vw, 560px);
+    max-height: min(86dvh, 720px);
+    overflow-y: auto;
+    padding: var(--s5);
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+}
+.sheet-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); }
+.sheet-title { font-size: var(--t-lg); font-weight: 620; }
+.sheet-group { display: flex; flex-direction: column; gap: var(--s2); }
+.sheet-label {
+    color: var(--ink-faint);
+    font-size: var(--t-xs);
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+}
+
+/* ============================================================
+   EMPTY
+   ============================================================
+   Codex's empty panel is one small glyph and nothing else. No tiles, no
+   suggestions, no hero. */
+
+.empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--s3);
+    color: var(--ink-faint);
+    text-align: center;
+}
+.empty-line { font-size: var(--t-md); }
+
+/* ── Toggle ───────────────────────────────────────────────────────────── */
+/* A checkbox renders the operating system's own control, which on Windows is a
+   blue tick box that belongs to no design system. Codex uses a switch for
+   "Ask for approval"; this is that switch. The input still does the work — it
+   is only moved out of sight, so the keyboard and the label still reach it. */
+.toggle { position: relative; display: inline-flex; align-items: center; gap: var(--s2); cursor: pointer; }
+.toggle input { position: absolute; width: 1px; height: 1px; opacity: 0; margin: 0; }
+
+.toggle-track {
+    display: inline-flex;
+    align-items: center;
+    flex: 0 0 auto;
+    width: 30px;
+    height: 18px;
+    padding: 2px;
+    border-radius: 999px;
+    background: #333334;
+    transition: background 140ms ease;
+}
+.toggle-knob {
+    width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    background: var(--ink-faint);
+    transition: transform 140ms ease, background 140ms ease;
+}
+.toggle input:checked + .toggle-track { background: var(--accent); }
+.toggle input:checked + .toggle-track .toggle-knob { transform: translateX(12px); background: #0B1218; }
+.toggle input:focus-visible + .toggle-track { outline: 2px solid var(--accent); outline-offset: 2px; }
+.toggle-label { color: var(--ink-soft); font-size: var(--t-sm); }
+.toggle input:checked ~ .toggle-label { color: var(--ink); }
+
+/* "View all (25)" — Codex's own affordance. It expands the list in place
+   rather than travelling to a page, because there are no pages. */
+.ws-more {
+    width: 100%;
+    padding: var(--s2);
+    border: 0;
+    border-radius: var(--radius);
+    background: none;
+    color: var(--ink-faint);
+    font: inherit;
+    font-size: var(--t-xs);
+    text-align: left;
+    cursor: pointer;
+}
+.ws-more:hover { background: var(--raised); color: var(--ink-soft); }
+
+/* The section's action sits on the label row but must not read as part of the
+   label, so it drops the tracking and the uppercase. */
+.ws-section-action {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--accent-ink);
+    font: inherit;
+    font-size: var(--t-xs);
+    letter-spacing: 0;
+    text-transform: none;
+    cursor: pointer;
+}
+.ws-section-action:hover { text-decoration: underline; }
+
+/* ── Sidebar groups ───────────────────────────────────────────────────── */
+/*
+   Hiding every scrollbar is the house rule and it stands. The sidebar was
+   overflowing because it renders four threads, two approvals and four skills
+   into a 500px window — and my answer was to put a scrollbar back, which is
+   papering over a layout problem with a control the app had deliberately
+   removed.
+
+   A long list belongs in a panel you can fold. What is open is what you care
+   about, and the sidebar fits without scrolling at all.
+*/
+.ws-group { display: flex; flex-direction: column; }
+
+/* The header is the control. The whole row is the hit target, not the chevron. */
+.ws-head {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+    width: 100%;
+    padding: var(--s4) var(--s2) var(--s2);
+    border: 0;
+    background: none;
+    color: var(--ink-faint);
+    font: inherit;
+    font-size: var(--t-xs);
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    text-align: left;
+    cursor: pointer;
+}
+.ws-head:hover { color: var(--ink-soft); }
+.ws-head-name { flex: 1; min-width: 0; }
+.ws-head-count { color: var(--ink-faint); font-variant-numeric: tabular-nums; letter-spacing: 0; }
+
+.ws-chev { flex: 0 0 auto; transition: transform 140ms ease; }
+.ws-group.is-open .ws-chev { transform: rotate(90deg); }
+
+/* An action on the header row must not read as part of the label. */
+.ws-head-action {
+    padding: 0 var(--s1);
+    border: 0;
+    background: none;
+    color: var(--accent-ink);
+    font: inherit;
+    font-size: var(--t-xs);
+    letter-spacing: 0;
+    text-transform: none;
+    cursor: pointer;
+}
+.ws-head-action:hover { text-decoration: underline; }
+
+/* Folded groups keep their count visible, so a closed Approvals still says
+   two are waiting. */
+.ws-group-body { display: flex; flex-direction: column; }
+
+/* ── What the assistant said ──────────────────────────────────────────── */
+/* Paragraphs, not one block of run-together text. The measure is set on the
+   thread, so this only owns the rhythm between paragraphs. */
+.prose { color: var(--ink); font-size: var(--t-md); line-height: 1.6; overflow-wrap: anywhere; }
+.prose + .prose { margin-top: var(--s3); }
+
+/* ── Diagrams ─────────────────────────────────────────────────────────── */
+.diagram { display: flex; flex-direction: column; gap: var(--s2); }
+
+/* The rendered SVG sits on the sunken surface, because mermaid draws for a
+   light background and needs its own ground rather than the app's. */
+.diagram-host {
+    padding: var(--s4);
+    background: #F7F5F2;
+    border-radius: var(--radius);
+    overflow-x: auto;
+}
+.diagram-host svg { max-width: 100%; height: auto; }
+
+/* The source uses the tool chip, because it is the same kind of thing: what
+   the machine wrote, there when wanted and quiet when not. */
+.diagram-source > summary { list-style: none; }
+.diagram-source > summary::-webkit-details-marker { display: none; }
+.diagram-source[open] > summary { color: var(--ink); }

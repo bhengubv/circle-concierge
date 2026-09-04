@@ -1,30 +1,4 @@
 @page "/roadmap"
 @inject IConciergeStateService Concierge
 
-@{
-    var tasks = Concierge.GetProductionTasks();
-}
-
-<section class="page-header">
-    <p class="eyebrow">Roadmap</p>
-    <h1>Production coding tasklist</h1>
-    <p class="lede">The rebuilt tasklist keeps the hardening work on screen and separates code readiness from owner-only launch details.</p>
-</section>
-
-<section class="metric-grid">
-    <div class="metric"><strong>@tasks.Count</strong><span>Total</span></div>
-    <div class="metric"><strong>@tasks.Count(task => task.Status == HardeningStatus.Ready)</strong><span>Ticked off</span></div>
-    <div class="metric"><strong>0</strong><span>Started</span></div>
-    <div class="metric"><strong>0</strong><span>Blocked in code</span></div>
-</section>
-
-<section class="card-grid">
-    @foreach (var task in tasks.OrderBy(task => task.Priority))
-    {
-        <article class="surface-card ready">
-            <strong>@task.Priority. @task.Title</strong>
-            <span>@task.Status</span>
-            <p>@task.Summary</p>
-        </article>
-    }
-</section>
+@* UI deleted. Rebuild here. *@

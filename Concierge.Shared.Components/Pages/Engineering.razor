@@ -1,26 +1,4 @@
 @page "/engineering"
 @inject IAgentHarnessService Harness
 
-<section class="page-header">
-    <p class="eyebrow">Build Room</p>
-    <h1>Plain-language controls for making software safely.</h1>
-    <p class="lede">Read files, propose changes, run tests, capture evidence, and keep the user in charge.</p>
-</section>
-
-<section class="metric-grid">
-    <div class="metric"><strong>@Harness.GetTools().Count</strong><span>agent tools</span></div>
-    <div class="metric"><strong>@Harness.GetTools().Count(tool => tool.IsReadOnly)</strong><span>read-only</span></div>
-    <div class="metric"><strong>@Harness.GetTools().Count(tool => tool.IsDestructive)</strong><span>approval gated</span></div>
-    <div class="metric"><strong>@Harness.GetRunLogs().Count</strong><span>run logs</span></div>
-</section>
-
-<section class="card-grid">
-    @foreach (var tool in Harness.GetTools())
-    {
-        <article class="surface-card">
-            <strong>@tool.UserFacingName</strong>
-            <span>@tool.Risk risk - @(tool.IsReadOnly ? "read-only" : "approval-aware")</span>
-            <p>@tool.Description</p>
-        </article>
-    }
-</section>
+@* UI deleted. Rebuild here. *@

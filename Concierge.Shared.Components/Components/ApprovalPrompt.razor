@@ -2,81 +2,67 @@
 @implements IDisposable
 @inject IToolApprovalService Approval
 
-@* Only rendered when the host wired an interactive approver. A host that did not is failing
-   closed on purpose, and there is nothing for a person to answer. *@
-@if (_approver is not null && _pending.Count > 0)
+@*
+    Permission, asked inside the conversation.
+
+    This was a modal sheet over the whole window. That is the wrong shape for
+    it: a run stops in the middle of doing something, and covering the work to
+    ask about it hides the very context the answer depends on. Codex asks in
+    the thread, where the run stopped, and the conversation simply waits.
+
+    So this renders as the last thing in the stream — after what the assistant
+    said, before the composer. Answer it and the run continues from there.
+*@
+
+@if (_pending.Count > 0)
 {
-    <div class="approval-overlay" role="dialog" aria-modal="true" aria-labelledby="approval-title">
-        <div class="approval-card">
-            <h2 id="approval-title">Can I do this?</h2>
+    var ask = _pending[0];
 
-            @{
-                var next = _pending[0];
-            }
-            <p class="approval-summary">@next.Request.Summary</p>
+    <section class="ask" role="group" aria-label="Waiting for your permission">
+        <div class="ask-head">
+            <span class="dot @RiskDot(ask.Request.Risk)" aria-hidden="true"></span>
+            <strong>@ask.Request.Summary</strong>
+        </div>
 
-            @if (!string.IsNullOrWhiteSpace(next.Request.Detail))
+        <div class="ask-what">
+            <span class="ask-what-label">@ask.Request.ToolName</span>
+            @if (!string.IsNullOrWhiteSpace(ask.Request.Detail))
             {
-                <pre class="approval-detail">@next.Request.Detail</pre>
+                @* The evidence the decision rests on — a diff for a write, the
+                   command line for a run. Machine text, so monospace. *@
+                <pre class="chip-out" style="margin:0;">@ask.Request.Detail</pre>
             }
-
-            <div class="approval-actions">
-                <button class="button primary" type="button"
-                        @onclick="@(() => Answer(next.Id, ToolApprovalDecision.Allowed))">
-                    Yes, go ahead
-                </button>
-                <button class="button quiet" type="button"
-                        @onclick="@(() => Answer(next.Id, ToolApprovalDecision.Denied))">
-                    No
-                </button>
-            </div>
-
-            @if (_pending.Count > 1)
+            else
             {
-                <p class="approval-queue">@(_pending.Count - 1) more waiting.</p>
+                <span>Nothing further to show.</span>
             }
         </div>
-    </div>
+
+        <div class="ask-actions">
+            @* type=button with both handlers: MAUI's BlazorWebView drops
+               touch-originated clicks on buttons intermittently. *@
+            <button class="btn btn-primary" type="button"
+                    @onclick="@(() => Answer(ask.Id, ToolApprovalDecision.Allowed))"
+                    @onpointerup="@(() => Answer(ask.Id, ToolApprovalDecision.Allowed))">Allow once</button>
+            <button class="btn" type="button"
+                    @onclick="@(() => Answer(ask.Id, ToolApprovalDecision.Denied))"
+                    @onpointerup="@(() => Answer(ask.Id, ToolApprovalDecision.Denied))">Deny</button>
+            @if (_pending.Count > 1)
+            {
+                <span class="state" style="margin-left:auto;">@(_pending.Count - 1) more after this</span>
+            }
+        </div>
+    </section>
 }
 
 @code {
-    private InteractiveToolApprovalService? _approver;
-    private IReadOnlyList<PendingApproval> _pending = [];
-
-    protected override void OnInitialized()
+    /// <summary>Risk is a dot and a word — the whole status vocabulary here.
+    /// Nothing fills a surface with colour.</summary>
+    private static string RiskDot(object? risk) => (risk?.ToString() ?? string.Empty).ToLowerInvariant() switch
     {
-        // The injected service may be the fail-closed default, in which case there is nothing
-        // to show and nothing to subscribe to.
-        _approver = Approval as InteractiveToolApprovalService;
-        if (_approver is null)
-        {
-            return;
-        }
-
-        _approver.PendingChanged += OnPendingChanged;
-        _pending = _approver.Pending;
-    }
-
-    private void OnPendingChanged(object? sender, EventArgs e)
-    {
-        _pending = _approver!.Pending;
-
-        // Raised from whichever thread ran the tool call, so the update has to be marshalled
-        // back onto the renderer's.
-        _ = InvokeAsync(StateHasChanged);
-    }
-
-    private void Answer(Guid id, ToolApprovalDecision decision)
-    {
-        _approver?.Answer(id, decision);
-        _pending = _approver?.Pending ?? [];
-    }
-
-    public void Dispose()
-    {
-        if (_approver is not null)
-        {
-            _approver.PendingChanged -= OnPendingChanged;
-        }
-    }
+        "high" or "critical" => "dot-danger",
+        "medium" => "dot-waiting",
+        "low" => "dot-done",
+        _ => "dot-idle",
+    };
 }
