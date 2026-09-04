@@ -1,0 +1,187 @@
+/* The watch recipe's own stylesheet.
+
+   Scoped to this component, so nothing here can reach the desktop or handheld
+   recipes — which is the point of building them as separate component sets
+   rather than one tree with breakpoints.
+
+   Sized in relative units against the smaller viewport axis: watch faces are
+   square or round and about 200 CSS px, and a round display clips the corners,
+   so content is inset and centred rather than pushed to the edges. */
+
+.wear {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    padding: 6% 8%;
+    background: var(--ground);
+    color: var(--ink);
+    text-align: center;
+    overflow: hidden;
+}
+
+/* ── A decision ──────────────────────────────────────────────────────── */
+
+.wear-ask {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4%;
+    height: 100%;
+}
+
+.wear-eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--ink-faint);
+    font-size: clamp(9px, 5svmin, 12px);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.wear-ask-what {
+    margin: 0;
+    font-size: clamp(13px, 7.5svmin, 18px);
+    font-weight: 600;
+    line-height: 1.25;
+
+    /* Three lines, then it stops. A watch cannot show a paragraph and a
+       truncated one is better than a screen with no room left for the two
+       controls that matter. */
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.wear-ask-reach {
+    margin: 0;
+    color: var(--ink-soft);
+    font-size: clamp(10px, 5.5svmin, 13px);
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* Two controls, side by side, each big enough to hit without looking. */
+.wear-acts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+    width: 100%;
+    margin-top: 2%;
+}
+
+.wear-yes,
+.wear-no {
+    min-height: 40px;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    font: inherit;
+    font-size: clamp(11px, 6svmin, 14px);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.wear-yes { border-color: var(--accent); background: var(--accent); color: #0B1218; }
+.wear-no { background: var(--raised); color: var(--ink); }
+
+/* ── Speaking ────────────────────────────────────────────────────────── */
+
+.wear-say {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    gap: 4%;
+}
+
+.wear-reply {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    overflow: hidden;
+}
+
+.wear-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: var(--ink-faint);
+    font-size: clamp(10px, 5.5svmin, 13px);
+}
+
+/* The answer. Clamped rather than scrolled: scrollbars are hidden app-wide,
+   and a hidden scrollbar on a watch is a promise nobody can see. */
+.wear-text {
+    margin: 0;
+    font-size: clamp(12px, 6.5svmin, 16px);
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 5;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.wear-idle {
+    margin: 0;
+    color: var(--ink-faint);
+    font-size: clamp(11px, 6svmin, 14px);
+}
+
+/* The interface. Round, centred, and the largest thing on the screen. */
+.wear-mic {
+    flex: 0 0 auto;
+    align-self: center;
+    display: grid;
+    place-items: center;
+    width: clamp(52px, 30svmin, 72px);
+    height: clamp(52px, 30svmin, 72px);
+    border: 0;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #0B1218;
+    cursor: pointer;
+}
+
+.wear-mic.is-live {
+    background: var(--danger);
+    color: #fff;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+    .wear-mic.is-live { animation: wear-pulse 1.4s ease-in-out infinite; }
+}
+
+@keyframes wear-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(248, 81, 73, 0.45); }
+    50% { box-shadow: 0 0 0 8px rgba(248, 81, 73, 0); }
+}
+
+/* Round faces.
+   Wear OS reports its display shape, and most watches are round. A square
+   layout inside a circle loses its corners: at 200px the Allow and Deny
+   buttons run to the edges at the widest part of the face and clip. Inset
+   further and let the type shrink — a legible circle beats a cropped square.
+   Ignored by every square face and by the browser, which report no shape. */
+@media (shape: round) {
+    .wear {
+        padding: 14%;
+    }
+
+    /* The controls sit low, where the chord is short, so they narrow more
+       than the text above them. */
+    .wear-acts {
+        width: 88%;
+        margin-inline: auto;
+    }
+
+    .wear-ask-what { -webkit-line-clamp: 2; }
+    .wear-text { -webkit-line-clamp: 4; }
+}

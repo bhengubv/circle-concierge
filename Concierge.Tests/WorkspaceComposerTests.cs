@@ -39,7 +39,7 @@ public sealed class WorkspaceComposerTests : BunitContext
         }
     }
 
-    private IRenderedComponent<Concierge.Shared.Components.Pages.Chat> RenderWith(bool runtimeReady)
+    private IRenderedComponent<Concierge.Shared.Components.Workspace.Desktop.Workspace> RenderWith(bool runtimeReady)
     {
         var dbPath = Path.Combine(Path.GetTempPath(), $"composer-{Guid.NewGuid():N}.db");
         Services.AddLogging();
@@ -59,10 +59,10 @@ public sealed class WorkspaceComposerTests : BunitContext
             db.Database.EnsureCreated();
         }
 
-        return Render<Concierge.Shared.Components.Pages.Chat>();
+        return Render<Concierge.Shared.Components.Workspace.Desktop.Workspace>();
     }
 
-    private static IElement Send(IRenderedComponent<Concierge.Shared.Components.Pages.Chat> cut)
+    private static IElement Send(IRenderedComponent<Concierge.Shared.Components.Workspace.Desktop.Workspace> cut)
         => cut.Find("button.icon-btn-send");
 
     // ── When you can send ─────────────────────────────────────────────────

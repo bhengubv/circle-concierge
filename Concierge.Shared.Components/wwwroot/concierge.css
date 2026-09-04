@@ -1044,3 +1044,7 @@ button.row:hover { color: var(--ink); }
 @media (max-width: 759.98px) {
     .ws-menu { display: inline-grid; }
 }
+
+/* The blank frame while the form factor is being measured. See Pages/Chat.razor:
+   rendering a guess and correcting it would remount the workspace. */
+.ff-wait { height: 100dvh; background: var(--ground); }

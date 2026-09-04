@@ -54,7 +54,7 @@ public sealed class WorkspaceHandoffTests : BunitContext
         var nav = Services.GetRequiredService<NavigationManager>();
 
         // Land on the workspace, exactly as the app does.
-        var cut = Render<Concierge.Shared.Components.Pages.Chat>();
+        var cut = Render<Concierge.Shared.Components.Workspace.Desktop.Workspace>();
 
         // Then navigate to the SAME component with a handoff on the query string.
         // This is the move that used to do nothing at all.
@@ -100,7 +100,7 @@ public sealed class WorkspaceHandoffTests : BunitContext
         }
 
         var nav = Services.GetRequiredService<NavigationManager>();
-        var cut = Render<Concierge.Shared.Components.Pages.Chat>();
+        var cut = Render<Concierge.Shared.Components.Workspace.Desktop.Workspace>();
 
         nav.NavigateTo("/chat?q=Only%20once");
         Thread.Sleep(700);
@@ -144,7 +144,7 @@ public sealed class WorkspaceHandoffTests : BunitContext
         }
 
         var nav = Services.GetRequiredService<NavigationManager>();
-        var cut = Render<Concierge.Shared.Components.Pages.Chat>();
+        var cut = Render<Concierge.Shared.Components.Workspace.Desktop.Workspace>();
 
         nav.NavigateTo("/chat");
         Thread.Sleep(700);

@@ -1,0 +1,118 @@
+@inherits Concierge.Shared.Components.Workspace.WorkspaceBase
+
+@*
+    The watch recipe.
+
+    A watch is not a small phone. At roughly 200 CSS px square there is room
+    for one thing, and the arm holding it is usually doing something else, so
+    the design question is not "what fits" but "what is worth an interruption".
+
+    Two answers, in this order:
+
+    1. A decision. If a run has stopped and is waiting on you, that is the
+       screen — allow or deny, nothing else. This is the thing a watch is
+       genuinely better at than a phone: it is already on your wrist.
+    2. Otherwise, speak. There is no keyboard worth using at this size, so the
+       microphone is the whole interface and the last reply sits above it.
+
+    What is deliberately absent: the sidebar, the thread list, skills, rooms,
+    settings, attachments and the typed composer. Not hidden by a breakpoint —
+    never built into this recipe, because a watch that offers all of it offers
+    none of it well. The phone and desktop recipes are where that work happens.
+*@
+
+@{
+    var snapshot = State.GetSnapshot();
+    var waiting = snapshot.Approvals.FirstOrDefault(a => !_decided.ContainsKey(a.Id));
+}
+
+<div class="wear">
+
+    @if (waiting is not null)
+    {
+        @* A decision, and nothing else on screen. *@
+        <div class="wear-ask">
+            <span class="wear-eyebrow">
+                <span class="dot @RiskDot(waiting.Risk)" aria-hidden="true"></span>
+                Needs you
+            </span>
+
+            <p class="wear-ask-what">@waiting.Title</p>
+            <p class="wear-ask-reach">@ReachOf(waiting.Risk)</p>
+
+            <div class="wear-acts">
+                <button class="wear-yes" type="button"
+                        @onclick="@(() => Decide(waiting.Id, true))"
+                        @onpointerup="@(() => Decide(waiting.Id, true))">Allow</button>
+                <button class="wear-no" type="button"
+                        @onclick="@(() => Decide(waiting.Id, false))"
+                        @onpointerup="@(() => Decide(waiting.Id, false))">Deny</button>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="wear-say">
+
+            @* What it said, or what it is doing. One of the two, never both. *@
+            <div class="wear-reply">
+                @if (_streaming)
+                {
+                    <span class="wear-state">
+                        <span class="dot dot-waiting" aria-hidden="true"></span>
+                        @(_toolLoopIteration > 0 ? "working" : "thinking")
+                    </span>
+                    @if (!string.IsNullOrWhiteSpace(_streamingBuffer))
+                    {
+                        <p class="wear-text">@_streamingBuffer</p>
+                    }
+                }
+                else if (LastReply() is { Length: > 0 } reply)
+                {
+                    <p class="wear-text">@reply</p>
+                }
+                else
+                {
+                    <p class="wear-idle">Tap to talk</p>
+                }
+            </div>
+
+            @*
+                The microphone is the interface, so it is the biggest thing on
+                the screen and sits at the bottom where a thumb reaches.
+            *@
+            <button class="wear-mic @(_recording ? "is-live" : null)"
+                    type="button"
+                    aria-label="@(_recording ? "Stop and send" : "Speak")"
+                    @onclick="ToggleMicAsync" @onpointerup="ToggleMicAsync">
+                @if (_recording)
+                {
+                    <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>
+                }
+                else
+                {
+                    <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3z"/><path d="M5 11a7 7 0 0 0 14 0"/><path d="M12 18v3"/></svg>
+                }
+            </button>
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>
+    /// The last thing the assistant said, trimmed to what a watch can show.
+    ///
+    /// A watch reads one answer, not a transcript — scrolling back through a
+    /// conversation on a 200px screen is not something anybody does, and the
+    /// phone in the same pocket is better at it.
+    /// </summary>
+    private string LastReply()
+    {
+        // Role, the way the thread reads it — "assistant", not "tool" and not
+        // "user". A tool result is machinery and never the answer.
+        var last = _active?.Messages?
+            .LastOrDefault(m => m.Role == "assistant");
+
+        return last?.Content ?? string.Empty;
+    }
+}

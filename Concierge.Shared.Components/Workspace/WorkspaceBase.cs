@@ -1,6 +1,18 @@
-// Code-behind for Chat. The markup this came from was deleted: none of the
-// screens looked anything like the design they are meant to look like, so the
-// UI is being rebuilt rather than edited. This is the logic that survived.
+// The workspace, without a shape.
+//
+// Every form factor runs this: the conversation list, the send loop, the tool
+// loop, approvals, skills, drafts and the MAUI WebView workarounds. None of it
+// knows what it looks like, and none of it is duplicated per form factor —
+// three recipes rendering different markup must still behave identically,
+// which only holds if the behaviour lives in exactly one place.
+//
+// The views are Workspace/Desktop, Workspace/Handheld and Workspace/Wearable.
+// Each is markup and a stylesheet and nothing else; Pages/Chat.razor picks one.
+//
+// This is a move, not a rewrite. Every member below came out of
+// Pages/Chat.razor.cs unchanged except for its visibility: a view is a derived
+// class rather than the other half of a partial, so what was private had to
+// become protected for the markup to reach it.
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.Components.Web;
@@ -10,58 +22,76 @@ using System.Text.Json.Nodes;
 using Concierge.Shared.Chat;
 using Concierge.Shared.Tools;
 
-namespace Concierge.Shared.Components.Pages;
+namespace Concierge.Shared.Components.Workspace;
 
-public partial class Chat
+public abstract class WorkspaceBase : ComponentBase, IDisposable
 {
+    // These were @inject directives in Chat.razor. A view cannot inject for its
+    // base, so they move here — same services, same names, same lifetimes.
+    [Inject] protected IConversationStore Store { get; set; } = default!;
+    [Inject] protected IEnumerable<IChatRuntime> Runtimes { get; set; } = default!;
+    [Inject] protected IEnumerable<Concierge.Shared.Media.IImageRuntime> ImageRuntimes { get; set; } = default!;
+    [Inject] protected IAgentToolRegistry Tools { get; set; } = default!;
+    [Inject] protected Concierge.Shared.Tools.IToolCallScheduler ToolScheduler { get; set; } = default!;
+    [Inject] protected Concierge.Shared.Tools.IRepeatToolReminder RepeatReminder { get; set; } = default!;
+    [Inject] protected Concierge.Shared.Context.IToolResultPruner ResultPruner { get; set; } = default!;
+    [Inject] protected Concierge.Shared.Context.ICompactionEngine Compaction { get; set; } = default!;
+    [Inject] protected Concierge.Shared.ConciergeToolLoopOptions LoopOptions { get; set; } = default!;
+    [Inject] protected Concierge.Shared.Skills.ISkillRuntime SkillRuntime { get; set; } = default!;
+    [Inject] protected ISkillCatalogService SkillCatalog { get; set; } = default!;
+    [Inject] protected IConciergeStateService State { get; set; } = default!;
+    [Inject] protected ILlmRuntimeService LlmRuntime { get; set; } = default!;
+    [Inject] protected NavigationManager Nav { get; set; } = default!;
+    [Inject] protected IJSRuntime JS { get; set; } = default!;
+
 
     [Parameter] public Guid? ConversationId { get; set; }
 
     // Was a constant. The right ceiling differs between a phone on battery and a desktop,
     // and Concierge already varies the model by device state, so this belongs with the
     // other budgets rather than nailed to the page.
-    private int MaxToolIterations => LoopOptions.MaxToolIterations;
-    private const long MaxAttachmentBytes = 256 * 1024; // 256 KB — text-only attachments in v1
-    private const string OwnerId = "local";
+    protected int MaxToolIterations => LoopOptions.MaxToolIterations;
+    protected const long MaxAttachmentBytes = 256 * 1024; // 256 KB — text-only attachments in v1
+    protected const string OwnerId = "local";
 
-    private List<Conversation> _conversations = new();
-    private Conversation? _active;
-    private string _composerText = string.Empty;
-    private bool _streaming;
-    private string _streamingBuffer = string.Empty;
-    private CancellationTokenSource? _streamCts;
-    private int _toolLoopIteration;
+    protected List<Conversation> _conversations = new();
+    protected Conversation? _active;
+    protected string _composerText = string.Empty;
+    protected bool _streaming;
+    protected string _streamingBuffer = string.Empty;
+    protected CancellationTokenSource? _streamCts;
+    protected int _toolLoopIteration;
 
-    private List<IChatRuntime> _orderedRuntimes = new();
-    private IChatRuntime? _activeRuntime;
-    private string _systemPromptDraft = string.Empty;
-    private bool _includeToolCatalog = true;
-    private bool _executeToolCalls = true;
+    protected List<IChatRuntime> _orderedRuntimes = new();
+    protected IChatRuntime? _activeRuntime;
+    protected string _systemPromptDraft = string.Empty;
+    protected bool _includeToolCatalog = true;
+    protected bool _executeToolCalls = true;
 
-    private readonly List<TextAttachment> _pendingAttachments = new();
-    private bool _recording;
+    protected readonly List<TextAttachment> _pendingAttachments = new();
+    protected bool _recording;
 
     /// <summary>
     /// Currently-activated skill ids for this conversation. Their SKILL.md
     /// bodies get prepended to the system prompt on every send. Stack any
     /// number — Concierge composes them in <c>ISkillRuntime.ComposeSystemPrompt</c>.
     /// </summary>
-    private readonly HashSet<string> _activeSkillIds = new(StringComparer.OrdinalIgnoreCase);
+    protected readonly HashSet<string> _activeSkillIds = new(StringComparer.OrdinalIgnoreCase);
     // ── Model download ─────────────────────────────────────────────────
     // The on-device engine reports a missing model rather than fetching it; these carry the
     // person's answer back. Runtimes that ship with their model implement none of this and
     // PendingModel stays null.
 
-    private bool _downloading;
-    private double _downloadProgress;
-    private string? _downloadDetail;
-    private CancellationTokenSource? _downloadCancellation;
-    private bool _gone;
+    protected bool _downloading;
+    protected double _downloadProgress;
+    protected string? _downloadDetail;
+    protected CancellationTokenSource? _downloadCancellation;
+    protected bool _gone;
 
-    private PendingModelDownload? PendingModel
+    protected PendingModelDownload? PendingModel
         => (_activeRuntime as IModelDownloadRequired)?.PendingDownload;
 
-    private async Task AcceptDownload()
+    protected async Task AcceptDownload()
     {
         if (_activeRuntime is not IModelDownloadRequired runtime || _downloading || _gone)
         {
@@ -111,7 +141,7 @@ public partial class Chat
         }
     }
 
-    private void CancelDownload()
+    protected void CancelDownload()
     {
         // Not disposed here: whoever started it owns it and disposes it when it returns.
         try
@@ -161,18 +191,18 @@ public partial class Chat
         }
     }
 
-    private bool _showSkillPicker;
-    private string _skillFilter = string.Empty;
+    protected bool _showSkillPicker;
+    protected string _skillFilter = string.Empty;
 
     // Named the two icons sitting right beside it and pointed at a emoji that
     // is no longer there. The field still doubles as the status line for
     // attachments and transcription; only the resting text changed.
-    private string _composerHint = "Shift + Enter for a new line";
+    protected string _composerHint = "Shift + Enter for a new line";
 
     // _active is deliberately not required. Sending from the empty screen
     // creates the conversation; requiring one to exist first is what forced a
     // separate "Start a chat" button into the design.
-    private bool CanSend
+    protected bool CanSend
         => !_streaming
            && (!string.IsNullOrWhiteSpace(_composerText) || _pendingAttachments.Count > 0)
            && (_activeRuntime?.IsReady ?? false);
@@ -212,7 +242,7 @@ public partial class Chat
         await ConsumeHomeHandoffAsync();
     }
 
-    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    protected void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
         => _ = InvokeAsync(async () =>
         {
             // Every link in the drawer is an anchor, so one line here closes
@@ -227,9 +257,9 @@ public partial class Chat
     /// <summary>The query string most recently acted on. Without this the same
     /// handoff fires repeatedly, because OnParametersSetAsync runs on every
     /// parameter change and SendAsync causes re-renders of its own.</summary>
-    private string? _handledHandoff;
+    protected string? _handledHandoff;
 
-    private async Task ConsumeHomeHandoffAsync()
+    protected async Task ConsumeHomeHandoffAsync()
     {
         try
         {
@@ -335,7 +365,7 @@ public partial class Chat
         await ConsumeHomeHandoffAsync();
     }
 
-    private async Task SaveSystemPromptAsync()
+    protected async Task SaveSystemPromptAsync()
     {
         if (_active is null)
         {
@@ -345,7 +375,7 @@ public partial class Chat
         await Task.CompletedTask;
     }
 
-    private void ToggleSkillPicker()
+    protected void ToggleSkillPicker()
     {
         _showSkillPicker = !_showSkillPicker;
 
@@ -355,13 +385,13 @@ public partial class Chat
     }
 
     /// <summary>Opens settings, and closes the drawer it was pressed in.</summary>
-    private void OpenSettings()
+    protected void OpenSettings()
     {
         _settingsOpen = true;
         _drawerOpen = false;
     }
 
-    private void ToggleSkill(string id)
+    protected void ToggleSkill(string id)
     {
         if (!_activeSkillIds.Add(id))
         {
@@ -369,16 +399,16 @@ public partial class Chat
         }
     }
 
-    private void DeactivateSkill(string id) => _activeSkillIds.Remove(id);
+    protected void DeactivateSkill(string id) => _activeSkillIds.Remove(id);
 
     // The product's local-first identity: CircleAI is the default LLM.
     // Cloud providers exist as escape hatches when the user explicitly
     // picks one in Settings or here. Saved choice lives in localStorage
     // under this key so the page remembers across launches.
-    private const string DefaultProviderId = "circleai";
-    private const string ProviderPreferenceStorageKey = "concierge-provider-id";
+    protected const string DefaultProviderId = "circleai";
+    protected const string ProviderPreferenceStorageKey = "concierge-provider-id";
 
-    private async Task<IChatRuntime?> ChooseActiveRuntimeAsync()
+    protected async Task<IChatRuntime?> ChooseActiveRuntimeAsync()
     {
         // 1. User's saved preference (set in Settings or via the picker
         //    on this page). Only honor it if the runtime is actually
@@ -408,7 +438,7 @@ public partial class Chat
             ?? _orderedRuntimes.FirstOrDefault();
     }
 
-    private async Task OnProviderChanged(ChangeEventArgs args)
+    protected async Task OnProviderChanged(ChangeEventArgs args)
     {
         var id = args.Value?.ToString();
         if (string.IsNullOrEmpty(id))
@@ -425,19 +455,19 @@ public partial class Chat
         catch { /* best-effort */ }
     }
 
-    private async Task RefreshSidebarAsync()
+    protected async Task RefreshSidebarAsync()
     {
         _conversations = (await Store.ListAsync(OwnerId)).ToList();
     }
 
-    private async Task StartNewAsync()
+    protected async Task StartNewAsync()
     {
         var conversation = await Store.StartAsync(OwnerId);
         await RefreshSidebarAsync();
         Nav.NavigateTo($"chat/{conversation.Id}");
     }
 
-    private async Task OnAttachmentSelected(InputFileChangeEventArgs args)
+    protected async Task OnAttachmentSelected(InputFileChangeEventArgs args)
     {
         foreach (var file in args.GetMultipleFiles(8))
         {
@@ -455,7 +485,7 @@ public partial class Chat
         }
     }
 
-    private void RemoveAttachment(TextAttachment attachment)
+    protected void RemoveAttachment(TextAttachment attachment)
     {
         _pendingAttachments.Remove(attachment);
         _composerHint = _pendingAttachments.Count == 0
@@ -468,7 +498,7 @@ public partial class Chat
     /// returns a base64 webm blob which we POST to <c>/api/voice/transcribe</c>; the
     /// resulting text is appended to the composer so the user can edit before send.
     /// </summary>
-    private async Task ToggleMicAsync()
+    protected async Task ToggleMicAsync()
     {
         try
         {
@@ -521,7 +551,7 @@ public partial class Chat
     /// Synthesises an assistant turn back to MP3 via the OpenAI voice endpoint (or whichever
     /// IVoiceRuntime is wired) and plays it through the page's hidden audio element.
     /// </summary>
-    private async Task SpeakAsync(string text)
+    protected async Task SpeakAsync(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -549,7 +579,7 @@ public partial class Chat
         }
     }
 
-    private async Task SendAsync()
+    protected async Task SendAsync()
     {
         if (!CanSend || _activeRuntime is null)
         {
@@ -760,7 +790,7 @@ public partial class Chat
     /// assembled assistant text (also persisted to the store) or <c>null</c> if the
     /// stream was cancelled or the runtime emitted nothing.
     /// </summary>
-    private async Task<string?> StreamOnceAsync(CancellationToken cancellationToken)
+    protected async Task<string?> StreamOnceAsync(CancellationToken cancellationToken)
     {
         if (_active is null || _activeRuntime is null)
         {
@@ -890,7 +920,7 @@ public partial class Chat
         return null;
     }
 
-    private static string FormatRole(string role) => role switch
+    protected static string FormatRole(string role) => role switch
     {
         "user" => "You",
         "assistant" => "Assistant",
@@ -898,7 +928,7 @@ public partial class Chat
         _ => role
     };
 
-    private static bool LooksLikeImagePrompt(string text)
+    protected static bool LooksLikeImagePrompt(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return false;
         var t = text.ToLowerInvariant();
@@ -919,9 +949,9 @@ public partial class Chat
         return false;
     }
 
-    private sealed record TextAttachment(string FileName, byte[] Bytes);
+    protected sealed record TextAttachment(string FileName, byte[] Bytes);
 
-    private sealed record TranscriptResponse(string? Text, string? Language);
+    protected sealed record TranscriptResponse(string? Text, string? Language);
 
     // ── The workspace ─────────────────────────────────────────────────────
     // Added when the UI was rebuilt as one screen. Threads, skills, approvals
@@ -930,9 +960,9 @@ public partial class Chat
 
     /// <summary>Tool chips are collapsed until asked. Claude Design renders a
     /// tool call as one grey pill with a chevron; the output is behind it.</summary>
-    private readonly HashSet<Guid> _openTools = new();
+    protected readonly HashSet<Guid> _openTools = new();
 
-    private void ToggleTool(Guid id)
+    protected void ToggleTool(Guid id)
     {
         if (!_openTools.Remove(id))
         {
@@ -943,9 +973,9 @@ public partial class Chat
     /// <summary>Decisions on pending approvals, in memory. Persistence is a
     /// layered concern; what matters here is that answering one removes it from
     /// the thread immediately rather than leaving it sitting there.</summary>
-    private readonly Dictionary<string, bool> _decided = new(StringComparer.Ordinal);
+    protected readonly Dictionary<string, bool> _decided = new(StringComparer.Ordinal);
 
-    private void Decide(string id, bool allowed)
+    protected void Decide(string id, bool allowed)
     {
         _decided[id] = allowed;
         StateHasChanged();
@@ -953,7 +983,7 @@ public partial class Chat
 
     /// <summary>Risk as a dot, and nothing else. No filled cards, no coloured
     /// badges — a dot and the word beside it is the whole status vocabulary.</summary>
-    private static string RiskDot(string? risk) => (risk ?? string.Empty).ToLowerInvariant() switch
+    protected static string RiskDot(string? risk) => (risk ?? string.Empty).ToLowerInvariant() switch
     {
         "high" or "critical" => "dot-danger",
         "medium" => "dot-waiting",
@@ -965,7 +995,7 @@ public partial class Chat
     /// than written per item, because the queue carries no scope field and a
     /// specific-sounding sentence that is not backed by data is worse than a
     /// general one that is true.</summary>
-    private static string ReachOf(string? risk) => (risk ?? string.Empty).ToLowerInvariant() switch
+    protected static string ReachOf(string? risk) => (risk ?? string.Empty).ToLowerInvariant() switch
     {
         "high" or "critical" => "It can reach files and tools outside this conversation",
         "medium" => "It can change things inside this workspace",
@@ -974,7 +1004,7 @@ public partial class Chat
 
     /// <summary>"4m", "3h", then a date. Past a day a duration stops being
     /// useful and a date starts.</summary>
-    private static string Ago(DateTimeOffset at)
+    protected static string Ago(DateTimeOffset at)
     {
         var span = DateTimeOffset.UtcNow - at.ToUniversalTime();
         if (span.TotalMinutes < 1) return "now";
@@ -997,7 +1027,7 @@ public partial class Chat
     /// Whether every thread is listed. Starts false so the four sidebar groups
     /// fit the window without a scrollbar.
     /// </summary>
-    private bool _allThreads;
+    protected bool _allThreads;
 
     /// <summary>
     /// Which sidebar group is unfolded — one at a time, deliberately.
@@ -1024,17 +1054,17 @@ public partial class Chat
     /// display:none and the bottom tab bar that used to stand in for it had
     /// been deleted.
     /// </summary>
-    private bool _drawerOpen;
+    protected bool _drawerOpen;
 
-    private void OpenDrawer() => _drawerOpen = true;
+    protected void OpenDrawer() => _drawerOpen = true;
 
-    private void CloseDrawer() => _drawerOpen = false;
+    protected void CloseDrawer() => _drawerOpen = false;
 
-    private string? _openGroup = "threads";
+    protected string? _openGroup = "threads";
 
-    private bool IsGroupOpen(string key) => string.Equals(_openGroup, key, StringComparison.Ordinal);
+    protected bool IsGroupOpen(string key) => string.Equals(_openGroup, key, StringComparison.Ordinal);
 
-    private void ToggleGroup(string key) => _openGroup = IsGroupOpen(key) ? null : key;
+    protected void ToggleGroup(string key) => _openGroup = IsGroupOpen(key) ? null : key;
 
     /// <summary>
     /// The rooms, in the order somebody new to Concierge would want them:
@@ -1042,7 +1072,7 @@ public partial class Chat
     /// Product leads because it is the directory of the rest; leaving it out
     /// left its route reachable from nowhere.
     /// </summary>
-    private static readonly (string Name, string Href)[] RoomLinks =
+    protected static readonly (string Name, string Href)[] RoomLinks =
     [
         ("Product", "product"),
         ("Engineering", "engineering"),
@@ -1065,11 +1095,11 @@ public partial class Chat
     /// until the component runs, and differs between the MAUI host and the web
     /// host sharing this component.
     /// </summary>
-    private static readonly object _voiceGate = new();
-    private static HttpClient? _voiceClient;
-    private static string? _voiceBase;
+    protected static readonly object _voiceGate = new();
+    protected static HttpClient? _voiceClient;
+    protected static string? _voiceBase;
 
-    private static HttpClient VoiceClient(string baseUri)
+    protected static HttpClient VoiceClient(string baseUri)
     {
         lock (_voiceGate)
         {
@@ -1097,15 +1127,15 @@ public partial class Chat
     // that has been written survives what an in-flight transaction does not,
     // and it needs no change to the event log's schema.
 
-    private static string DraftDirectory => Path.Combine(
+    protected static string DraftDirectory => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "Concierge",
         "drafts");
 
-    private static string DraftPath(Guid conversationId)
+    protected static string DraftPath(Guid conversationId)
         => Path.Combine(DraftDirectory, $"{conversationId:N}.partial");
 
-    private static async Task WriteDraftAsync(Guid conversationId, string text)
+    protected static async Task WriteDraftAsync(Guid conversationId, string text)
     {
         try
         {
@@ -1120,7 +1150,7 @@ public partial class Chat
         }
     }
 
-    private static void DeleteDraft(Guid conversationId)
+    protected static void DeleteDraft(Guid conversationId)
     {
         try
         {
@@ -1141,7 +1171,7 @@ public partial class Chat
     /// generation never finished. The text goes into the log where it belongs,
     /// marked, so a truncated answer is never mistaken for a whole one.
     /// </summary>
-    private async Task RecoverDraftAsync(Guid conversationId)
+    protected async Task RecoverDraftAsync(Guid conversationId)
     {
         try
         {
@@ -1175,5 +1205,5 @@ public partial class Chat
 
     /// <summary>Settings is a panel over the work, not a place you go. Opened
     /// from the runtime row at the foot of the sidebar.</summary>
-    private bool _settingsOpen;
+    protected bool _settingsOpen;
 }

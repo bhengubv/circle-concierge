@@ -1,0 +1,429 @@
+@inherits Concierge.Shared.Components.Workspace.WorkspaceBase
+
+@*
+    The tablet and phone recipe.
+
+    Same work, less room. The sidebar is a drawer over the thread rather than a
+    column beside it, opened from the top bar and dismissed by the scrim or by
+    going anywhere — a phone cannot afford a permanent 220px column, and a tab
+    bar would be a second navigation model for a sidebar that already works.
+
+    Both of these have a soft keyboard, so typing costs a third of the screen
+    and voice is often the faster way in. The composer keeps its microphone
+    prominent for that reason.
+*@
+
+@using System.Text
+@using System.Text.Json.Nodes
+@using Concierge.Shared.Chat
+@using Concierge.Shared.Tools
+
+@*
+    The workspace.
+
+    This is the whole application now. Concierge had nineteen routes, a bottom
+    tab bar and a ⋯ menu; neither of the references it is meant to resemble has
+    any of that. Codex is a sidebar of threads and one thread beside it. Claude
+    Design is a conversation and the work it produces, side by side. Nothing
+    navigates anywhere in either.
+
+    So: threads, skills and approvals are sections of a sidebar you can see
+    while you work, not destinations. Permission is asked inside the thread at
+    the point the run stopped. What the model is, and whether it may act without
+    asking, live under the composer where Codex puts them — both were screens.
+*@
+
+@{
+    var snapshot = State.GetSnapshot();
+    var runtime = LlmRuntime.GetSnapshot();
+    var recent = _conversations.Take(6).ToList();
+}
+
+<div class="ws">
+
+    @*
+        Below 760px this is a drawer over the thread rather than a column
+        beside it — same markup, same groups, different presentation. See the
+        narrow-window block in concierge.css. Above 760px .is-open means
+        nothing and the scrim is never rendered.
+    *@
+    @if (_drawerOpen)
+    {
+        <button class="ws-scrim" type="button" aria-label="Close the menu"
+                @onclick="CloseDrawer" @onpointerup="CloseDrawer"></button>
+    }
+
+    <aside class="ws-side @(_drawerOpen ? "is-open" : null)">
+        <a class="ws-brand" href="/">
+            <span class="ws-brand-dot" aria-hidden="true"></span>
+            Concierge
+        </a>
+
+        <div class="ws-scroll">
+            @*
+                Long lists are folded, not scrolled. Threads and Approvals open
+                because they are what is happening; Skills is a catalogue of
+                sixty-nine and stays shut until asked for. A closed group still
+                shows its count, so a folded Approvals still says two are
+                waiting on you.
+            *@
+            <section class="ws-group @(IsGroupOpen("threads") ? "is-open" : null)">
+                <button class="ws-head" type="button" @onclick='@(() => ToggleGroup("threads"))'>
+                    <svg class="ws-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
+                    <span class="ws-head-name">Threads</span>
+                    <span class="ws-head-count">@_conversations.Count</span>
+                </button>
+                @if (IsGroupOpen("threads"))
+                {
+                    <div class="ws-group-body">
+                        <button class="ws-item" type="button" @onclick="StartNewAsync" @onpointerup="StartNewAsync">
+                            <span class="ws-item-label" style="color:var(--accent-ink);">New thread</span>
+                        </button>
+                        @*
+                            The three most recent, then the rest on request.
+                            Four threads plus four group headers overflowed the
+                            sidebar by 67px, which put Rooms below the fold and
+                            Skills behind the runtime footer — and with
+                            scrollbars hidden app-wide, nothing said so.
+                        *@
+                        @foreach (var conversation in (_allThreads ? _conversations : _conversations.Take(3)))
+                        {
+                            var conv = conversation;
+                            <a class="ws-item @(conv.Id == _active?.Id ? "is-active" : null)" href="@($"/chat/{conv.Id}")">
+                                <span class="ws-item-label">@conv.Title</span>
+                                <span class="ws-item-meta">@Ago(conv.UpdatedAt)</span>
+                            </a>
+                        }
+                        @if (!_allThreads && _conversations.Count > 3)
+                        {
+                            <button class="ws-more" type="button"
+                                    @onclick="@(() => _allThreads = true)" @onpointerup="@(() => _allThreads = true)">
+                                Show all @_conversations.Count
+                            </button>
+                        }
+                    </div>
+                }
+            </section>
+
+            <section class="ws-group @(IsGroupOpen("approvals") ? "is-open" : null)">
+                <button class="ws-head" type="button" @onclick='@(() => ToggleGroup("approvals"))'>
+                    <svg class="ws-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
+                    <span class="ws-head-name">Approvals</span>
+                    <span class="ws-head-count">@snapshot.Approvals.Count</span>
+                </button>
+                @if (IsGroupOpen("approvals"))
+                {
+                    <div class="ws-group-body">
+                        @if (snapshot.Approvals.Count == 0)
+                        {
+                            <span class="ws-item" style="cursor:default;color:var(--ink-faint);">Nothing waiting</span>
+                        }
+                        @foreach (var approval in snapshot.Approvals)
+                        {
+                            <span class="ws-item" style="cursor:default;">
+                                <span class="dot @RiskDot(approval.Risk)" aria-hidden="true"></span>
+                                <span class="ws-item-label">@approval.Title</span>
+                                <span class="ws-item-meta">@Ago(approval.CreatedAt)</span>
+                            </span>
+                        }
+                        @*
+                            The queue seen all at once, for clearing it rather
+                            than happening upon it. Deciding still happens in
+                            the thread where the run stopped; this is the
+                            overview, and without it /approvals is a route
+                            nothing reaches.
+                        *@
+                        <a class="ws-more" href="approvals">Open the queue</a>
+                    </div>
+                }
+            </section>
+
+            @*
+                What is ON, not all sixty-nine. An active skill composes into the
+                system prompt before every turn, so it is shaping the answers —
+                that is worth a permanent place. The catalogue is a search, and
+                searches belong behind a control, not in a sidebar.
+            *@
+            <section class="ws-group @(IsGroupOpen("skills") ? "is-open" : null)">
+                <button class="ws-head" type="button" @onclick='@(() => ToggleGroup("skills"))'>
+                    <svg class="ws-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
+                    <span class="ws-head-name">Skills</span>
+                    <span class="ws-head-count">@_activeSkillIds.Count</span>
+                </button>
+                @if (IsGroupOpen("skills"))
+                {
+                    <div class="ws-group-body">
+                        @if (_activeSkillIds.Count == 0)
+                        {
+                            <span class="ws-item" style="cursor:default;color:var(--ink-faint);">None on</span>
+                        }
+                        else
+                        {
+                            @foreach (var skill in snapshot.Skills.Where(s => _activeSkillIds.Contains(s.Id)))
+                            {
+                                var activeId = skill.Id;
+                                <button class="ws-item" type="button" title="Turn off"
+                                        @onclick="@(() => DeactivateSkill(activeId))">
+                                    <span class="dot dot-done" aria-hidden="true"></span>
+                                    <span class="ws-item-label">@skill.Name</span>
+                                    <span class="ws-item-meta">off</span>
+                                </button>
+                            }
+                        }
+                        <button class="ws-more" type="button" @onclick="ToggleSkillPicker">
+                            Browse all @snapshot.Skills.Count
+                        </button>
+                    </div>
+                }
+            </section>
+
+            @*
+                The rooms. Everything above this is the conversation; these are
+                the six places that are not one — what the tools can do, what
+                it costs, what ships next. They keep their own routes because
+                they are destinations you read rather than modes you work in,
+                and this group is how you reach them now that there is no tab
+                bar and no ⋯ menu. Folded by default: they are somewhere you go
+                occasionally, and the threads above are not.
+            *@
+            <section class="ws-group @(IsGroupOpen("rooms") ? "is-open" : null)">
+                <button class="ws-head" type="button" @onclick='@(() => ToggleGroup("rooms"))'>
+                    <svg class="ws-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
+                    <span class="ws-head-name">Rooms</span>
+                    <span class="ws-head-count">@RoomLinks.Length</span>
+                </button>
+                @if (IsGroupOpen("rooms"))
+                {
+                    <div class="ws-group-body">
+                        @foreach (var room in RoomLinks)
+                        {
+                            <a class="ws-room" href="@room.Href">@room.Name</a>
+                        }
+                    </div>
+                }
+            </section>
+        </div>
+
+        @*
+            What is answering, permanently on screen — and the way into settings.
+            Pressing what is answering to change what answers is the shortest
+            true sentence about where that control belongs; it was the third
+            group of a page you had to navigate to.
+        *@
+        <button class="ws-runtime" type="button" title="Settings"
+                @onclick="OpenSettings" @onpointerup="OpenSettings">
+            <span class="dot @(runtime.RegistryAvailable ? "dot-done" : "dot-waiting")" aria-hidden="true"></span>
+            <span class="ws-runtime-name">@runtime.Engine</span>
+            <span class="ws-item-meta">on device</span>
+        </button>
+    </aside>
+
+    <main class="ws-main">
+        <header class="ws-top">
+            <button class="ws-menu" type="button"
+                    title="Menu"
+                    aria-label="Open the menu"
+                    aria-expanded="@(_drawerOpen ? "true" : "false")"
+                    @onclick="OpenDrawer" @onpointerup="OpenDrawer">
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+            </button>
+            <h1 class="ws-title">@(_active?.Title ?? "Concierge")</h1>
+            <span class="ws-top-meta">
+                @if (_streaming)
+                {
+                    <span class="dot dot-waiting" aria-hidden="true"></span>
+                    <span>@(_toolLoopIteration > 0 ? $"working · step {_toolLoopIteration}" : "thinking")</span>
+                }
+                else
+                {
+                    <span>@(_activeRuntime?.EngineLabel ?? runtime.Engine)</span>
+                }
+            </span>
+        </header>
+
+        @if (_active is null)
+        {
+            @* Codex's empty panel is one glyph and one line. No tiles, no
+               suggestions, no hero — the composer below is the invitation. *@
+            <div class="empty">
+                <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M4 5h16v11H8l-4 4z"/>
+                </svg>
+                <span class="empty-line">Ask for anything, or pick up a thread</span>
+            </div>
+        }
+        else
+        {
+            <div class="ws-thread">
+                <div class="ws-thread-inner">
+                    @foreach (var message in _active.Messages)
+                    {
+                        if (message.Role == "tool")
+                        {
+                            var headline = message.Content.Split('\n')[0];
+                            var rest = message.Content.Length > headline.Length
+                                ? message.Content[(headline.Length + 1)..].Trim()
+                                : string.Empty;
+                            var open = _openTools.Contains(message.Id);
+
+                            <div class="chips">
+                                <button class="chip" type="button" aria-expanded="@(open ? "true" : "false")"
+                                        @onclick="@(() => ToggleTool(message.Id))">
+                                    <svg class="chip-bolt" viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M13 2L4.5 13.5H11l-1 8.5 8.5-11.5H12z"/></svg>
+                                    <span class="chip-what">@headline</span>
+                                    @if (rest.Length > 0)
+                                    {
+                                        <svg class="chip-more" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
+                                    }
+                                </button>
+                                @if (open && rest.Length > 0)
+                                {
+                                    <pre class="chip-out">@rest</pre>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <article class="msg">
+                                <span class="msg-who">@FormatRole(message.Role)</span>
+                                <div class="msg-body">
+                                    @if (message.Role == "assistant")
+                                    {
+                                        <AssistantContent Content="@message.Content" />
+                                    }
+                                    else
+                                    {
+                                        <p>@message.Content</p>
+                                    }
+                                </div>
+                            </article>
+                        }
+                    }
+
+                    @if (_streaming)
+                    {
+                        <article class="msg">
+                            <span class="msg-who">Concierge</span>
+                            <div class="msg-body"><AssistantContent Content="@_streamingBuffer" /></div>
+                        </article>
+                    }
+
+                    @*
+                        Permission, where the run stopped — the live request
+                        from the tool loop, rendered as the last thing in the
+                        stream. The sidebar's Approvals group is the standing
+                        overview; this is the one actually blocking work, and
+                        it belongs in the conversation rather than appended to
+                        the end of it from a separate list.
+                    *@
+                    <ApprovalPrompt />
+                </div>
+            </div>
+        }
+
+        <div class="comp">
+            <div class="comp-inner">
+                @if (_pendingAttachments.Count > 0)
+                {
+                    <div class="chips">
+                        @foreach (var attachment in _pendingAttachments)
+                        {
+                            var att = attachment;
+                            <button class="chip" type="button" @onclick="@(() => RemoveAttachment(att))">
+                                <span class="chip-what">@att.FileName</span>
+                                <span class="chip-more">×</span>
+                            </button>
+                        }
+                    </div>
+                }
+
+                <div class="comp-box">
+                    <textarea class="comp-input"
+                              rows="1"
+                              placeholder="Ask me anything"
+                              @bind="_composerText"
+                              @bind:event="oninput"></textarea>
+
+                    <label class="icon-btn" title="Attach a text file">
+                        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11l-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L16 6"/></svg>
+                        <span class="sr">Attach a text file</span>
+                        <InputFile OnChange="OnAttachmentSelected" class="file-over"
+                                   accept=".txt,.md,.markdown,.json,.cs,.razor,.xml,.yaml,.yml,.toml,.csv,.log" />
+                    </label>
+
+                    <button class="icon-btn @(_recording ? "is-on" : null)" type="button"
+                            title="@(_recording ? "Stop recording" : "Speak")"
+                            @onclick="ToggleMicAsync">
+                        @if (_recording)
+                        {
+                            <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                        }
+                        else
+                        {
+                            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="21"/></svg>
+                        }
+                        <span class="sr">@(_recording ? "Stop recording" : "Speak")</span>
+                    </button>
+
+                    @* type=button with both handlers: MAUI's BlazorWebView drops
+                       touch-originated form submits. *@
+                    <button class="icon-btn icon-btn-send" type="button"
+                            aria-disabled="@(!CanSend)" disabled="@(!CanSend)"
+                            title="Send" @onclick="SendAsync" @onpointerup="SendAsync">
+                        <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg>
+                        <span class="sr">Send</span>
+                    </button>
+                </div>
+
+                @* Codex puts exactly these two under the input. Both were
+                   screens in Concierge. *@
+                @if (_activeSkillIds.Count > 0)
+                {
+                    @* Beside the input, because they change every reply that
+                       leaves it — the same reason the model name is here. *@
+                    <div class="chips">
+                        @foreach (var skill in State.GetSkills().Where(s => _activeSkillIds.Contains(s.Id)))
+                        {
+                            var activeId = skill.Id;
+                            <button class="chip" type="button" title="Turn off"
+                                    @onclick="@(() => DeactivateSkill(activeId))">
+                                <span class="dot dot-done" aria-hidden="true"></span>
+                                <span class="chip-what">@skill.Name</span>
+                                <span class="chip-more">×</span>
+                            </button>
+                        }
+                    </div>
+                }
+
+                <div class="comp-controls">
+                    @* A checkbox renders Windows' own blue tick box, which
+                       belongs to no design system. Codex uses a switch. *@
+                    <label class="toggle">
+                        <input type="checkbox" @bind="_executeToolCalls" />
+                        <span class="toggle-track" aria-hidden="true"><span class="toggle-knob"></span></span>
+                        <span class="toggle-label">@(_executeToolCalls ? "May act on its own" : "Ask before acting")</span>
+                    </label>
+                    <span class="comp-sep">·</span>
+                    <span>@(_activeRuntime?.EngineLabel ?? runtime.Engine)</span>
+                    @if (!string.IsNullOrWhiteSpace(_composerHint))
+                    {
+                        <span class="comp-sep">·</span>
+                        <span>@_composerHint</span>
+                    }
+                </div>
+            </div>
+        </div>
+    </main>
+
+    @if (_settingsOpen)
+    {
+        <Settings OnClose="@(() => _settingsOpen = false)" />
+    }
+
+    @if (_showSkillPicker)
+    {
+        <Skills ActiveIds="_activeSkillIds"
+                OnToggle="ToggleSkill"
+                OnClose="ToggleSkillPicker" />
+    }
+</div>

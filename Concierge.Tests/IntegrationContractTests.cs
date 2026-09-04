@@ -127,13 +127,21 @@ public sealed class IntegrationContractTests
     public void Web_page_for_settings_surfaces_the_on_device_runtime()
     {
         var root = FindWorkspaceRoot();
+
         // This asserted on Settings.razor, third group down a page you had to
         // navigate to. What is answering on this device is now pinned to the
-        // bottom of the workspace sidebar, permanently on screen — so the
-        // guarantee is unchanged and the place it is kept has moved.
-        var page = File.ReadAllText(Path.Combine(root, "Concierge.Shared.Components", "Pages", "Chat.razor"));
+        // bottom of the workspace sidebar, permanently on screen.
+        //
+        // It moved once more when the workspace split into recipes. The
+        // service is injected by WorkspaceBase, which every recipe inherits —
+        // a view cannot inject for its base — and the markup that shows it is
+        // the desktop recipe. Same guarantee, two files.
+        var basePath = Path.Combine(root, "Concierge.Shared.Components", "Workspace", "WorkspaceBase.cs");
+        var desktop = Path.Combine(root, "Concierge.Shared.Components", "Workspace", "Desktop", "Workspace.razor");
 
-        Assert.Contains("@inject ILlmRuntimeService", page, StringComparison.Ordinal);
+        Assert.Contains("ILlmRuntimeService LlmRuntime", File.ReadAllText(basePath), StringComparison.Ordinal);
+
+        var page = File.ReadAllText(desktop);
         Assert.Contains("runtime.Engine", page, StringComparison.Ordinal);
         Assert.Contains("on device", page, StringComparison.Ordinal);
     }

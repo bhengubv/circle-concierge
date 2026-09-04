@@ -21,7 +21,7 @@ namespace Concierge.Tests;
 /// </summary>
 public sealed class WorkspaceSettingsTests : BunitContext
 {
-    private IRenderedComponent<Concierge.Shared.Components.Pages.Chat> RenderWorkspace()
+    private IRenderedComponent<Concierge.Shared.Components.Workspace.Desktop.Workspace> RenderWorkspace()
     {
         var dbPath = Path.Combine(Path.GetTempPath(), $"settings-{Guid.NewGuid():N}.db");
         Services.AddLogging();
@@ -41,14 +41,14 @@ public sealed class WorkspaceSettingsTests : BunitContext
             db.Database.EnsureCreated();
         }
 
-        return Render<Concierge.Shared.Components.Pages.Chat>();
+        return Render<Concierge.Shared.Components.Workspace.Desktop.Workspace>();
     }
 
-    private static void Open(IRenderedComponent<Concierge.Shared.Components.Pages.Chat> cut)
+    private static void Open(IRenderedComponent<Concierge.Shared.Components.Workspace.Desktop.Workspace> cut)
         => cut.Find("button.ws-runtime").Click();
 
     /// <summary>Unfolds a settings group by its label.</summary>
-    private static void OpenGroup(IRenderedComponent<Concierge.Shared.Components.Pages.Chat> cut, string label)
+    private static void OpenGroup(IRenderedComponent<Concierge.Shared.Components.Workspace.Desktop.Workspace> cut, string label)
     {
         var header = cut.FindAll("button.sheet-head-btn")
             .First(b => b.QuerySelector(".sheet-label")!.TextContent.Trim() == label);

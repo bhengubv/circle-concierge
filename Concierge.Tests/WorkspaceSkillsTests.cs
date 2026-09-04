@@ -19,7 +19,7 @@ namespace Concierge.Tests;
 /// </summary>
 public sealed class WorkspaceSkillsTests : BunitContext
 {
-    private IRenderedComponent<Concierge.Shared.Components.Pages.Chat> RenderWorkspace()
+    private IRenderedComponent<Concierge.Shared.Components.Workspace.Desktop.Workspace> RenderWorkspace()
     {
         var dbPath = Path.Combine(Path.GetTempPath(), $"skills-{Guid.NewGuid():N}.db");
         Services.AddLogging();
@@ -39,15 +39,15 @@ public sealed class WorkspaceSkillsTests : BunitContext
             db.Database.EnsureCreated();
         }
 
-        return Render<Concierge.Shared.Components.Pages.Chat>();
+        return Render<Concierge.Shared.Components.Workspace.Desktop.Workspace>();
     }
 
-    private static void OpenSkillsGroup(IRenderedComponent<Concierge.Shared.Components.Pages.Chat> cut)
+    private static void OpenSkillsGroup(IRenderedComponent<Concierge.Shared.Components.Workspace.Desktop.Workspace> cut)
         => cut.FindAll("button.ws-head")
               .First(b => b.QuerySelector(".ws-head-name")!.TextContent.Trim() == "Skills")
               .Click();
 
-    private static void OpenPicker(IRenderedComponent<Concierge.Shared.Components.Pages.Chat> cut)
+    private static void OpenPicker(IRenderedComponent<Concierge.Shared.Components.Workspace.Desktop.Workspace> cut)
     {
         OpenSkillsGroup(cut);
         cut.Find("button.ws-more").Click();

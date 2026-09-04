@@ -35,8 +35,12 @@ public sealed class ProductSurfaceContractTests
     public void Navigation_exposes_beyond_code_without_hiding_core_rooms()
     {
         var root = FindWorkspaceRoot();
-        var workspace = File.ReadAllText(Path.Combine(root, "Concierge.Shared.Components", "Pages", "Chat.razor"));
-        var links = File.ReadAllText(Path.Combine(root, "Concierge.Shared.Components", "Pages", "Chat.razor.cs"));
+        // The workspace split into recipes: Pages/Chat.razor picks one, the
+        // desktop recipe is the markup, and the room list lives with the rest
+        // of the behaviour in WorkspaceBase so every recipe reaches the same
+        // rooms.
+        var workspace = File.ReadAllText(Path.Combine(root, "Concierge.Shared.Components", "Workspace", "Desktop", "Workspace.razor"));
+        var links = File.ReadAllText(Path.Combine(root, "Concierge.Shared.Components", "Workspace", "WorkspaceBase.cs"));
 
         Assert.Contains("Beyond Code", links, StringComparison.Ordinal);
         Assert.Contains("\"beyond\"", links, StringComparison.Ordinal);

@@ -42,8 +42,8 @@ public sealed class WorkspaceThreadTests : BunitContext
         return Services.GetRequiredService<IConversationStore>();
     }
 
-    private IRenderedComponent<Concierge.Shared.Components.Pages.Chat> Open(Guid id)
-        => Render<Concierge.Shared.Components.Pages.Chat>(ps => ps.Add(p => p.ConversationId, id));
+    private IRenderedComponent<Concierge.Shared.Components.Workspace.Desktop.Workspace> Open(Guid id)
+        => Render<Concierge.Shared.Components.Workspace.Desktop.Workspace>(ps => ps.Add(p => p.ConversationId, id));
 
     // ── What was said ─────────────────────────────────────────────────────
 
@@ -203,7 +203,7 @@ public sealed class WorkspaceThreadTests : BunitContext
     {
         Compose();
 
-        var cut = Render<Concierge.Shared.Components.Pages.Chat>();
+        var cut = Render<Concierge.Shared.Components.Workspace.Desktop.Workspace>();
 
         Assert.Equal("Concierge", cut.Find(".ws-title").TextContent.Trim());
         Assert.NotNull(cut.Find(".empty"));
