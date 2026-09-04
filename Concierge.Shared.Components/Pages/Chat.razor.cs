@@ -215,6 +215,11 @@ public partial class Chat
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
         => _ = InvokeAsync(async () =>
         {
+            // Every link in the drawer is an anchor, so one line here closes
+            // it for all of them — a thread, a room, the queue, the brand.
+            // Leaving it open would cover the thing it was used to reach.
+            _drawerOpen = false;
+
             await ConsumeHomeHandoffAsync();
             StateHasChanged();
         });
@@ -340,7 +345,21 @@ public partial class Chat
         await Task.CompletedTask;
     }
 
-    private void ToggleSkillPicker() => _showSkillPicker = !_showSkillPicker;
+    private void ToggleSkillPicker()
+    {
+        _showSkillPicker = !_showSkillPicker;
+
+        // The picker is a panel over everything. Leaving the drawer open
+        // underneath it means dismissing two things to get back to the work.
+        _drawerOpen = false;
+    }
+
+    /// <summary>Opens settings, and closes the drawer it was pressed in.</summary>
+    private void OpenSettings()
+    {
+        _settingsOpen = true;
+        _drawerOpen = false;
+    }
 
     private void ToggleSkill(string id)
     {
@@ -995,6 +1014,22 @@ public partial class Chat
     /// shows its count, so Approvals waiting on you is visible without being
     /// unfolded.
     /// </summary>
+    /// <summary>
+    /// Whether the sidebar is showing as a drawer. Only meaningful below
+    /// 760px, where the sidebar is a fixed overlay rather than a column;
+    /// above it the class means nothing and this stays false.
+    ///
+    /// Below that breakpoint there was previously no navigation at all — no
+    /// thread, no room, no approval queue — because the sidebar was
+    /// display:none and the bottom tab bar that used to stand in for it had
+    /// been deleted.
+    /// </summary>
+    private bool _drawerOpen;
+
+    private void OpenDrawer() => _drawerOpen = true;
+
+    private void CloseDrawer() => _drawerOpen = false;
+
     private string? _openGroup = "threads";
 
     private bool IsGroupOpen(string key) => string.Equals(_openGroup, key, StringComparison.Ordinal);

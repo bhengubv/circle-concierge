@@ -964,3 +964,83 @@ button.row:hover { color: var(--ink); }
 .room-sec-count { letter-spacing: 0; text-transform: none; color: var(--ink-faint); }
 
 .room-sec-body { display: flex; flex-direction: column; gap: var(--s2); padding-top: var(--s1); }
+
+/* ── The sidebar on a narrow window ───────────────────────────────────────
+   Below 760px there was no navigation at all: .ws-side was display:none and
+   nothing replaced it, so a thread, a room and the approval queue were all
+   unreachable. The bottom tab bar that used to be here was deleted for good
+   reasons — it was a phone pattern on a desktop app, it fell off the bottom
+   of short windows, and it duplicated a sidebar that already works.
+
+   So this is the same sidebar, presented differently: a drawer over the
+   thread. One navigation model, one set of markup, one place to change it.
+   Nothing below this comment exists above 760px. */
+
+/* The scrim is rendered whenever the drawer is open, and the drawer state is
+   plain C# that cannot see the viewport. Above 760px it must therefore take
+   itself out of the layout rather than out of the tree: as a visible grid
+   child it claimed the first column, which put the sidebar in the second and
+   started the thread at x=0. display:none, and the media query below turns it
+   back on where it belongs. */
+.ws-scrim { display: none; }
+
+@media (max-width: 759.98px) {
+    .ws-side {
+        display: flex;
+        position: fixed;
+        inset: 0 auto 0 0;
+        z-index: 40;
+        width: min(300px, 82vw);
+        transform: translateX(-100%);
+        transition: transform 160ms ease;
+        box-shadow: 0 0 40px rgba(0, 0, 0, 0.5);
+        will-change: transform;
+    }
+
+    .ws-side.is-open { transform: translateX(0); }
+
+    /* Dismissing by pressing the work you can still see. It is only in the
+       tree while the drawer is open, so it never sits over the composer. */
+    .ws-scrim {
+        display: block;
+        position: fixed;
+        inset: 0;
+        z-index: 39;
+        border: 0;
+        padding: 0;
+        background: rgba(0, 0, 0, 0.55);
+        cursor: pointer;
+    }
+
+}
+
+/* The control that opens it. Hidden where the sidebar is already on screen —
+   a menu button beside a visible sidebar is a button that does nothing. */
+.ws-menu {
+    display: none;
+    place-items: center;
+    flex: 0 0 auto;
+    width: 30px;
+    height: 30px;
+    margin-left: calc(var(--s1) * -1);
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--ink-soft);
+    cursor: pointer;
+}
+
+.ws-menu:hover { background: var(--raised); color: var(--ink); }
+
+/* Reduced motion: the drawer still opens, it just arrives. */
+@media (prefers-reduced-motion: reduce) {
+    .ws-side { transition: none; }
+}
+
+/* Last, deliberately. The base .ws-menu rule below the drawer block sets
+   display:none at the same specificity, so an override placed before it loses
+   and the button stayed hidden on a 404px viewport — the drawer was correct
+   and nothing could open it. */
+@media (max-width: 759.98px) {
+    .ws-menu { display: inline-grid; }
+}

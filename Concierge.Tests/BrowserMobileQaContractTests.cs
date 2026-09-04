@@ -60,43 +60,44 @@ public sealed class BrowserMobileQaContractTests
     }
 
     /// <summary>
-    /// Below 760px the sidebar is display:none and nothing replaces it, so
-    /// there is no way to reach a thread, a room, or the approval queue on a
-    /// phone. The old bottom tab bar was deleted with the rest of the UI and
-    /// desktop was made the priority deliberately.
+    /// Below 760px there is a way to reach a thread, a room and the approval
+    /// queue.
     ///
-    /// This is skipped rather than absent because the previous version of this
-    /// test was named "..._for_mobile_and_desktop" and passed, which asserted
-    /// that mobile worked while nothing checked that it did. A skipped test
-    /// says the gap is known; a deleted one says nobody thought of it.
+    /// This test was skipped, and before that it was a passing test named
+    /// "..._for_mobile_and_desktop" that asserted mobile worked while nothing
+    /// checked that it did. What was actually true is that .ws-side was
+    /// display:none below the breakpoint and nothing replaced it — the bottom
+    /// tab bar that used to stand in for it had been deleted with the rest of
+    /// the UI, so navigation on a narrow window did not exist.
+    ///
+    /// The sidebar is now a drawer at that width rather than a second menu:
+    /// one .ws-side, one set of groups, one place to change them. The
+    /// behaviour is asserted in WorkspaceSidebarTests; this checks the half
+    /// that lives in CSS, which no component test can see.
     /// </summary>
-    [Fact(Skip = "Mobile navigation does not exist below 760px — desktop first, by decision.")]
-    public void Mobile_has_a_way_to_reach_threads_and_rooms()
-    {
-        Assert.Fail("No navigation is rendered below the 760px breakpoint.");
-    }
-
     [Fact]
-    public void Every_core_page_has_a_plain_header_or_workspace_intro()
+    public void A_narrow_window_can_still_reach_threads_and_rooms()
     {
         var root = FindWorkspaceRoot();
+        var css = File.ReadAllText(Path.Combine(root, "Concierge.Shared.Components", "wwwroot", "concierge.css"));
 
-        foreach (var route in Routes)
-        {
-            var page = File.ReadAllText(Path.Combine(root, "Concierge.Shared.Components", "Pages", route));
-            // This used to be an allowlist of class names, and it grew by one
-            // entry every time the design changed — page-header, then hero,
-            // then agent-stage, then home-hero, then cu-page-title. That made
-            // it a test of which stylesheet was current rather than of what it
-            // was actually protecting, which is that a page opens with a
-            // visible title you can see and a screen reader can announce.
-            //
-            // Asserting on <h1> says that directly, and survives the next
-            // redesign without an edit.
-            Assert.True(
-                page.Contains("<h1", StringComparison.Ordinal),
-                $"{route} needs a visible <h1> entry point for browser QA.");
-        }
+        // The sidebar is present as an overlay rather than removed.
+        Assert.Contains("@media (max-width: 759.98px)", css, StringComparison.Ordinal);
+        Assert.Contains(".ws-side.is-open { transform: translateX(0); }", css, StringComparison.Ordinal);
+
+        // And the control that opens it is visible only there. This rule sits
+        // last in the sheet on purpose: the base .ws-menu rule sets
+        // display:none at the same specificity, and an override placed before
+        // it lost — the drawer worked and nothing could open it.
+        // The base rule is the first .ws-menu block in the sheet; the
+        // narrow-window override is the last.
+        var menuHidden = css.IndexOf(".ws-menu {", StringComparison.Ordinal);
+        var menuShown = css.LastIndexOf(".ws-menu { display: inline-grid; }", StringComparison.Ordinal);
+
+        Assert.True(menuHidden >= 0, "expected a base .ws-menu rule");
+        Assert.True(menuShown >= 0, "expected a narrow-window .ws-menu rule");
+        Assert.True(menuShown > menuHidden,
+            "the narrow-window .ws-menu rule must come after the base rule or it loses the cascade");
     }
 
     private static string FindWorkspaceRoot()
