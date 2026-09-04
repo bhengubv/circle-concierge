@@ -1,4 +1,121 @@
-@page "/skills"
-@inject IConciergeStateService Concierge
+@inject ISkillCatalogService SkillCatalog
 
-@* UI deleted. Rebuild here. *@
+@*
+    Skills, as something you switch on — not a catalogue you read.
+
+    The machinery was already here: active skill ids compose into the system
+    prompt through ISkillRuntime before every turn, so turning one on changes
+    what the assistant is for the rest of the conversation. What was missing was
+    any way to do it. The old page listed sixty-nine names and did nothing.
+
+    So this is a picker: search, and press to switch on. Sixty-nine of anything
+    is a search problem — reading the list is not a plan — and the count of what
+    is on matters more than the count of what exists, because that is what is
+    shaping the answers.
+*@
+
+@{
+    var all = SkillCatalog.GetSkills();
+    var shown = all
+        .Where(s => _filter.Length == 0
+                    || s.Name.Contains(_filter, StringComparison.OrdinalIgnoreCase)
+                    || s.Area.Contains(_filter, StringComparison.OrdinalIgnoreCase)
+                    || s.Summary.Contains(_filter, StringComparison.OrdinalIgnoreCase))
+        .OrderByDescending(s => ActiveIds.Contains(s.Id))
+        .ThenBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
+        .ToList();
+}
+
+<div class="sheet-back" @onclick="Close" aria-hidden="true"></div>
+
+<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="skills-title">
+    <div class="sheet-head">
+        <span class="sheet-title" id="skills-title">Skills</span>
+        <button class="icon-btn" type="button" title="Close" @onclick="Close" @onpointerup="Close">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+            <span class="sr">Close skills</span>
+        </button>
+    </div>
+
+    <input class="comp-input skills-find"
+           type="search"
+           placeholder="What do you want it to be good at?"
+           aria-label="Search skills"
+           value="@_filter"
+           @oninput="OnFilterChanged" />
+
+    <div class="sheet-count">
+        @if (ActiveIds.Count > 0)
+        {
+            <span class="state"><span class="dot dot-done" aria-hidden="true"></span>@ActiveIds.Count on</span>
+        }
+        else
+        {
+            <span>None on — it answers as itself</span>
+        }
+        <span class="row-val">@shown.Count of @all.Count</span>
+    </div>
+
+    @if (shown.Count == 0)
+    {
+        <p class="row-sub">Nothing matches “@_filter”.</p>
+    }
+    else
+    {
+        @* Five. Measured, not chosen: twelve three-line rows ran the panel
+           664px past the bottom of a 479px-tall window; clamping the summary to
+           one line and cutting to eight still left 147px hanging. A row is 56px
+           and the panel has 460px to spend, most of it on the search field this
+           list is really an accessory to. The count above says how many more
+           there are, and typing is how you reach them. *@
+        <div class="rows skills-list">
+            @foreach (var skill in shown.Take(5))
+            {
+                var id = skill.Id;
+                var on = ActiveIds.Contains(id);
+
+                <button class="row skill-row @(on ? "is-on" : null)"
+                        type="button"
+                        aria-pressed="@(on ? "true" : "false")"
+                        @onclick="@(() => OnToggle.InvokeAsync(id))"
+                        @onpointerup="@(() => OnToggle.InvokeAsync(id))">
+                    <span class="row-name">
+                        @skill.Name
+                        <span class="row-sub">@skill.Summary</span>
+                    </span>
+                    @if (on)
+                    {
+                        <span class="state"><span class="dot dot-done" aria-hidden="true"></span>On</span>
+                    }
+                    else
+                    {
+                        <span class="row-val">@skill.Area</span>
+                    }
+                </button>
+            }
+        </div>
+
+        @if (shown.Count > 5)
+        {
+            <p class="row-sub">@(shown.Count - 5) more — keep typing to narrow it down.</p>
+        }
+    }
+</div>
+
+@code {
+    /// <summary>Which skills are on. Owned by the workspace, because they shape
+    /// every turn it sends — this panel only offers them.</summary>
+    [Parameter, EditorRequired] public IReadOnlyCollection<string> ActiveIds { get; set; } = Array.Empty<string>();
+
+    [Parameter] public EventCallback<string> OnToggle { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private string _filter = string.Empty;
+
+    // Narrow while typing. Waiting for blur on a list of sixty-nine is waiting
+    // for the wrong event.
+    private void OnFilterChanged(ChangeEventArgs e)
+        => _filter = e.Value?.ToString() ?? string.Empty;
+
+    private Task Close() => OnClose.InvokeAsync();
+}

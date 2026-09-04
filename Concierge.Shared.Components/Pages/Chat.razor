@@ -108,21 +108,41 @@
                 }
             </section>
 
+            @*
+                What is ON, not all sixty-nine. An active skill composes into the
+                system prompt before every turn, so it is shaping the answers —
+                that is worth a permanent place. The catalogue is a search, and
+                searches belong behind a control, not in a sidebar.
+            *@
             <section class="ws-group @(_openSkills ? "is-open" : null)">
                 <button class="ws-head" type="button" @onclick="@(() => _openSkills = !_openSkills)">
                     <svg class="ws-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
                     <span class="ws-head-name">Skills</span>
-                    <span class="ws-head-count">@snapshot.Skills.Count</span>
+                    <span class="ws-head-count">@_activeSkillIds.Count</span>
                 </button>
                 @if (_openSkills)
                 {
                     <div class="ws-group-body">
-                        @foreach (var skill in snapshot.Skills)
+                        @if (_activeSkillIds.Count == 0)
                         {
-                            <span class="ws-item" style="cursor:default;">
-                                <span class="ws-item-label">@skill.Name</span>
-                            </span>
+                            <span class="ws-item" style="cursor:default;color:var(--ink-faint);">None on</span>
                         }
+                        else
+                        {
+                            @foreach (var skill in snapshot.Skills.Where(s => _activeSkillIds.Contains(s.Id)))
+                            {
+                                var activeId = skill.Id;
+                                <button class="ws-item" type="button" title="Turn off"
+                                        @onclick="@(() => DeactivateSkill(activeId))">
+                                    <span class="dot dot-done" aria-hidden="true"></span>
+                                    <span class="ws-item-label">@skill.Name</span>
+                                    <span class="ws-item-meta">off</span>
+                                </button>
+                            }
+                        }
+                        <button class="ws-more" type="button" @onclick="ToggleSkillPicker">
+                            Browse all @snapshot.Skills.Count
+                        </button>
                     </div>
                 }
             </section>
@@ -294,6 +314,24 @@
 
                 @* Codex puts exactly these two under the input. Both were
                    screens in Concierge. *@
+                @if (_activeSkillIds.Count > 0)
+                {
+                    @* Beside the input, because they change every reply that
+                       leaves it — the same reason the model name is here. *@
+                    <div class="chips">
+                        @foreach (var skill in State.GetSkills().Where(s => _activeSkillIds.Contains(s.Id)))
+                        {
+                            var activeId = skill.Id;
+                            <button class="chip" type="button" title="Turn off"
+                                    @onclick="@(() => DeactivateSkill(activeId))">
+                                <span class="dot dot-done" aria-hidden="true"></span>
+                                <span class="chip-what">@skill.Name</span>
+                                <span class="chip-more">×</span>
+                            </button>
+                        }
+                    </div>
+                }
+
                 <div class="comp-controls">
                     @* A checkbox renders Windows' own blue tick box, which
                        belongs to no design system. Codex uses a switch. *@
@@ -317,5 +355,12 @@
     @if (_settingsOpen)
     {
         <Settings OnClose="@(() => _settingsOpen = false)" />
+    }
+
+    @if (_showSkillPicker)
+    {
+        <Skills ActiveIds="_activeSkillIds"
+                OnToggle="ToggleSkill"
+                OnClose="ToggleSkillPicker" />
     }
 </div>

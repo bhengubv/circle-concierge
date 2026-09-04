@@ -756,3 +756,21 @@ button.row:hover { color: var(--ink); }
 .sheet-head-btn:hover { color: var(--ink-soft); }
 .sheet-head-btn .sheet-label { cursor: pointer; }
 .ws-chev.is-open { transform: rotate(90deg); }
+
+/* ── Skills ───────────────────────────────────────────────────────────── */
+.skills-find { width: 100%; padding: var(--s2) var(--s3); border: 1px solid var(--rule); border-radius: var(--radius); background: var(--sunken); }
+.sheet-count { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); color: var(--ink-faint); font-size: var(--t-sm); }
+
+/* A skill that is on carries the same 2px inset the rest of the app uses for
+   state, and the accent — because it is changing what the answers are. */
+.skill-row.is-on { box-shadow: inset 2px 0 0 var(--accent); padding-left: var(--s3); }
+
+/* A summary in a picker disambiguates; it does not explain. Three-line
+   summaries over twelve rows ran the panel 664px past the window. */
+.skill-row .row-sub {
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+.skill-row { min-height: auto; }
