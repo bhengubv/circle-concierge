@@ -7,8 +7,14 @@ namespace Concierge.Tests;
 
 public sealed class ToolRegistryTests
 {
+    /// <summary>
+    /// Renamed from "three harness adapters": the catalogue now also carries
+    /// the two web tools, which are not harness adapters at all. Counting is
+    /// still worth doing — a tool registered twice, or dropped by a DI change,
+    /// shows up here and nowhere else.
+    /// </summary>
     [Fact]
-    public void Add_concierge_tools_registers_three_harness_adapters_in_the_catalogue()
+    public void Add_concierge_tools_registers_the_whole_catalogue()
     {
         var workspace = CreateWorkspaceRoot();
         var harness = new AgentHarnessService(workspace);
@@ -20,10 +26,15 @@ public sealed class ToolRegistryTests
 
         var registry = provider.GetRequiredService<IAgentToolRegistry>();
 
-        Assert.Equal(3, registry.Tools.Count);
+        Assert.Equal(5, registry.Tools.Count);
         Assert.Contains(registry.Tools, t => t.Name == "read_file" && t.IsReadOnly);
         Assert.Contains(registry.Tools, t => t.Name == "write_file" && !t.IsReadOnly);
         Assert.Contains(registry.Tools, t => t.Name == "run_command" && !t.IsReadOnly);
+
+        // Neither web tool is read-only. They change nothing locally and they
+        // still leave the device, which is the thing being consented to.
+        Assert.Contains(registry.Tools, t => t.Name == "web_fetch" && !t.IsReadOnly);
+        Assert.Contains(registry.Tools, t => t.Name == "web_search" && !t.IsReadOnly);
     }
 
     [Fact]

@@ -116,7 +116,8 @@ public sealed class ShellPageTests : BunitContext
         Compose();
         var cut = Render<Concierge.Shared.Components.Components.ApiKeyEditor>();
 
-        Assert.Equal(3, cut.FindAll("button.row").Count);
+        // Three model providers plus the search provider.
+        Assert.Equal(4, cut.FindAll("button.row").Count);
         Assert.Empty(cut.FindAll("input[type=password]"));
 
         cut.FindAll("button.row")[0].Click();

@@ -34,7 +34,13 @@
                 @onclick="@(() => Edit(key))" @onpointerup="@(() => Edit(key))">
             <span class="row-name">
                 @field.Label
-                <span class="row-sub">@field.Where</span>
+                @* Where to get the key matters when you are about to paste one,
+                   not while scanning the list. Four rows each carrying it ran
+                   the panel 15px past the window. *@
+                @if (open)
+                {
+                    <span class="row-sub">@field.Where</span>
+                }
             </span>
 
             @if (IsConfigured(key))
@@ -78,6 +84,10 @@
         ("Anthropic:ApiKey", "Anthropic", "console.anthropic.com, under API keys"),
         ("OpenAI:ApiKey", "OpenAI", "platform.openai.com, under API keys"),
         ("Gemini:ApiKey", "Google Gemini", "aistudio.google.com, under Get API key"),
+
+        // Not a model — this is what lets web_search run at all. Without it
+        // the tool reports that it is not set up rather than failing per call.
+        ("Brave:ApiKey", "Brave Search", "brave.com/search/api, free tier — enables web search"),
     ];
 
     /// <summary>Which provider's field is showing. One at a time, so the panel

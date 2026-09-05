@@ -76,6 +76,29 @@ public static class MauiProgram
 			// registered above; pass-through when Strictness = Off.
 			.AddConciergeSafety();
 
+
+		// Search needs a key, and the key lives in the same store the API-key
+		// editor writes to. Read once at startup, like every other runtime —
+		// which is why that editor says a restart is needed.
+		builder.Services.AddSingleton<Concierge.Shared.Web.IWebSearch>(sp =>
+		{
+			try
+			{
+				var secrets = sp.GetRequiredService<IConciergeSecretStore>()
+					.LoadAsync().GetAwaiter().GetResult();
+
+				return secrets.TryGetValue("Brave:ApiKey", out var key) && !string.IsNullOrWhiteSpace(key)
+					? new Concierge.Shared.Web.BraveWebSearch(key)
+					: new Concierge.Shared.Web.UnconfiguredWebSearch();
+			}
+			catch (Exception)
+			{
+				// An unreadable secrets file must not stop the app starting;
+				// search simply reports that it is not set up.
+				return new Concierge.Shared.Web.UnconfiguredWebSearch();
+			}
+		});
+
 		builder.Services.AddSingleton<InteractiveToolApprovalService>();
 		builder.Services.AddSingleton<IToolApprovalService>(sp =>
 			new AuditingToolApprovalService(

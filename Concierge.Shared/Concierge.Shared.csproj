@@ -18,6 +18,15 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!--
+      The web layer keeps its guards internal: the SSRF check, the HTML-to-text
+      pass and the provider parser are implementation, not API. They are also
+      the parts most worth testing, so the test assembly can see them.
+    -->
+    <InternalsVisibleTo Include="Concierge.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <EmbeddedResource Include="Skills\Curated\**\SKILL.md" />
     <EmbeddedResource Include="Skills\Curated\catalog.json" />
   </ItemGroup>

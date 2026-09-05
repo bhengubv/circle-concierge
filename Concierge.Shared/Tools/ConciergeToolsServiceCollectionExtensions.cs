@@ -26,6 +26,17 @@ public static class ConciergeToolsServiceCollectionExtensions
         services.AddSingleton<IAgentTool, AgentHarnessReadTool>();
         services.AddSingleton<IAgentTool, AgentHarnessWriteTool>();
         services.AddSingleton<IAgentTool, AgentHarnessRunTool>();
+
+        // Reaching the network. Both ask before they run — Concierge's claim is
+        // that it works on your own device, so a turn that leaves it is a turn
+        // somebody should have agreed to. Search additionally needs a provider,
+        // and reports plainly when none is configured rather than failing per
+        // call; the host replaces UnconfiguredWebSearch once a key is saved.
+        services.TryAddSingleton<Concierge.Shared.Web.IWebAccess>(_ => new Concierge.Shared.Web.HttpWebAccess());
+        services.TryAddSingleton<Concierge.Shared.Web.IWebSearch>(_ => new Concierge.Shared.Web.UnconfiguredWebSearch());
+        services.AddSingleton<IAgentTool, WebFetchTool>();
+        services.AddSingleton<IAgentTool, WebSearchTool>();
+
         return services;
     }
 
