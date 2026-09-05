@@ -25,6 +25,14 @@ namespace Concierge.Tests;
 /// </summary>
 public sealed class RoomTests : BunitContext
 {
+    private readonly Concierge.Shared.Tools.InteractiveToolApprovalService _approver = new();
+
+    /// <summary>Blocks a tool call on a person, as the tool layer does. Discarded
+    /// rather than awaited: staying pending is the state under test.</summary>
+    private void Raise(string summary, Concierge.Shared.ConciergeToolRisk risk)
+        => _ = _approver.RequestAsync(
+            new Concierge.Shared.Tools.ToolApprovalRequest("write_file", summary, risk));
+
     private void Compose()
     {
         Services.AddLogging();
@@ -37,6 +45,11 @@ public sealed class RoomTests : BunitContext
             new Concierge.Shared.Session.FileSessionState(
                 Path.Combine(Path.GetTempPath(), $"session-{Guid.NewGuid():N}.json")));
         Services.AddMudServices();
+
+        // The approvals room reads the queue the tool loop blocks on, not the
+        // snapshot — which used to carry two hardcoded entries.
+        Services.AddSingleton<Concierge.Shared.Tools.InteractiveToolApprovalService>(_ => _approver);
+        Services.AddSingleton<Concierge.Shared.Tools.IToolApprovalService>(_ => _approver);
         JSInterop.Mode = JSRuntimeMode.Loose;
     }
 
@@ -292,47 +305,60 @@ public sealed class RoomTests : BunitContext
 
     // ── The queue ─────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Riskiest first, because the queue is read top-down and the thing that
+    /// can reach outside the workspace should not be third.
+    /// </summary>
     [Fact]
     public void The_queue_puts_the_riskiest_first()
     {
-        var cut = Open<Concierge.Shared.Components.Pages.Approvals>();
-        var expected = new ConciergeStateService().GetSnapshot().Approvals
-            .OrderByDescending(a => (a.Risk ?? "").ToLowerInvariant() switch
-            {
-                "critical" => 4,
-                "high" => 3,
-                "medium" => 2,
-                "low" => 1,
-                _ => 0
-            })
-            .ThenBy(a => a.CreatedAt)
-            .Select(a => a.Title)
-            .ToArray();
+        Raise("Run git status", Concierge.Shared.ConciergeToolRisk.Low);
+        Raise("Write notes.md", Concierge.Shared.ConciergeToolRisk.High);
+
+        Compose();
+        var cut = Render<Concierge.Shared.Components.Pages.Approvals>();
 
         var shown = cut.FindAll(".room .row-name").Select(e => e.TextContent.Trim()).ToArray();
 
-        Assert.NotEmpty(shown);
-        Assert.All(expected.Zip(shown), pair => Assert.StartsWith(pair.First, pair.Second));
+        Assert.Equal(2, shown.Length);
+        Assert.StartsWith("Write notes.md", shown[0]);
     }
 
     /// <summary>
-    /// Deciding, and then saying so. The old build rendered risk as a coloured
-    /// pill, which made "low" shout as loudly as "critical" and made the queue
-    /// read as an alarm panel — status is a dot and a word everywhere else.
+    /// Nothing waiting says so.
+    ///
+    /// The test that would have caught the fiction: this room listed two
+    /// approvals on a fresh install, with Allow buttons that answered requests
+    /// nobody had made.
     /// </summary>
     [Fact]
-    public void Deciding_replaces_the_choice_with_a_dot_and_a_word()
+    public void With_nothing_waiting_the_room_says_so()
     {
-        var cut = Open<Concierge.Shared.Components.Pages.Approvals>();
+        Compose();
+        var cut = Render<Concierge.Shared.Components.Pages.Approvals>();
+
+        Assert.Contains("Nothing is waiting", cut.Find(".room").TextContent);
+        Assert.Empty(cut.FindAll(".ask-actions"));
+    }
+
+    /// <summary>
+    /// Answering here answers the tool call itself — the same queue the inline
+    /// prompt in the thread reads, not a copy of it.
+    /// </summary>
+    [Fact]
+    public void Allowing_here_answers_the_waiting_tool_call()
+    {
+        Raise("Write notes.md", Concierge.Shared.ConciergeToolRisk.High);
+
+        Compose();
+        var cut = Render<Concierge.Shared.Components.Pages.Approvals>();
 
         Assert.Empty(cut.FindAll(".room .pill"));
+        Assert.Single(cut.FindAll(".ask-actions"));
 
-        var before = cut.FindAll(".ask-actions").Count;
-        Assert.True(before > 0, "expected something waiting on a decision");
+        cut.Find(".ask-actions button.btn-primary").Click();
 
-        cut.FindAll(".ask-actions button.btn-primary")[0].Click();
-
-        Assert.Equal(before - 1, cut.FindAll(".ask-actions").Count);
-        Assert.Contains(cut.FindAll(".room .state").Select(e => e.TextContent.Trim()), t => t == "Allowed");
+        // Gone from the queue, because the call it was blocking has been let go.
+        Assert.Empty(_approver.Pending);
     }
 }

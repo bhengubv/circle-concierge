@@ -77,10 +77,16 @@ public sealed class ConciergeStateService : IConciergeStateService
             skills,
             Tasks,
             Gates,
-            [
-                new("approval-001", "Review workspace write", "Medium", "File writes should pass through explicit review.", DateTimeOffset.UtcNow.AddMinutes(-18)),
-                new("approval-002", "MCP filesystem tool", "High", "Filesystem MCP remains disabled until reviewed.", DateTimeOffset.UtcNow.AddMinutes(-9))
-            ],
+            // Nothing. Approvals are not state this service knows about: they
+            // are tool calls blocked on a person, held by
+            // InteractiveToolApprovalService until answered.
+            //
+            // Two entries used to live here, and every surface that read them
+            // showed a queue of two that had never been requested — including
+            // Allow buttons that answered nothing. Kept empty rather than
+            // removed from the record so the shape survives for a real source
+            // later; see TASKS.md for the watch, which has no tool loop.
+            [],
             [
                 new("workload-001", "Rebuild Concierge shell", "Running", "Verified", DateTimeOffset.UtcNow.AddMinutes(-3)),
                 new("workload-002", "Browser QA baseline", "Ready", "Pending", DateTimeOffset.UtcNow.AddMinutes(-1))

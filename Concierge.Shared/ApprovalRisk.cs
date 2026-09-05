@@ -38,6 +38,29 @@ public static class ApprovalRisk
         _ => ApprovalSeverity.Unknown,
     };
 
+    /// <summary>
+    /// The same question asked of the tool layer's own enum.
+    ///
+    /// Two vocabularies for one idea: the approval queue used to carry a free
+    /// string, and a tool call carries ConciergeToolRisk. Mapping both here
+    /// keeps a watch, a sidebar and a thread from disagreeing about how loud a
+    /// given risk is.
+    /// </summary>
+    public static ApprovalSeverity SeverityOf(ConciergeToolRisk risk) => risk switch
+    {
+        ConciergeToolRisk.High => ApprovalSeverity.Danger,
+        ConciergeToolRisk.Medium => ApprovalSeverity.Caution,
+        _ => ApprovalSeverity.Settled,
+    };
+
+    /// <summary>What a tool's risk means in reach, for the same reason.</summary>
+    public static string ReachOf(ConciergeToolRisk risk) => risk switch
+    {
+        ConciergeToolRisk.High => "It can reach files and tools outside this conversation",
+        ConciergeToolRisk.Medium => "It can change things inside this workspace",
+        _ => "It stays inside this conversation",
+    };
+
     private static string Normalise(string? risk) => (risk ?? string.Empty).ToLowerInvariant();
 }
 

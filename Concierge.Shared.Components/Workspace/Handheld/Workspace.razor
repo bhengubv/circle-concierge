@@ -109,21 +109,21 @@
                 <button class="ws-head" type="button" @onclick='@(() => ToggleGroup("approvals"))'>
                     <svg class="ws-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
                     <span class="ws-head-name">Approvals</span>
-                    <span class="ws-head-count">@snapshot.Approvals.Count</span>
+                    <span class="ws-head-count">@_pendingApprovals.Count</span>
                 </button>
                 @if (IsGroupOpen("approvals"))
                 {
                     <div class="ws-group-body">
-                        @if (snapshot.Approvals.Count == 0)
+                        @if (_pendingApprovals.Count == 0)
                         {
                             <span class="ws-item" style="cursor:default;color:var(--ink-faint);">Nothing waiting</span>
                         }
-                        @foreach (var approval in snapshot.Approvals)
+                        @foreach (var approval in _pendingApprovals)
                         {
                             <span class="ws-item" style="cursor:default;">
-                                <span class="dot @RiskDot(approval.Risk)" aria-hidden="true"></span>
-                                <span class="ws-item-label">@approval.Title</span>
-                                <span class="ws-item-meta">@Ago(approval.CreatedAt)</span>
+                                <span class="dot @RiskDot(approval.Request.Risk)" aria-hidden="true"></span>
+                                <span class="ws-item-label">@approval.Request.Summary</span>
+                                <span class="ws-item-meta">@Ago(approval.AskedAt)</span>
                             </span>
                         }
                         @*

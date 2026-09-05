@@ -22,6 +22,20 @@ namespace Concierge.Tests;
 /// </summary>
 public sealed class WorkspaceSidebarTests : BunitContext
 {
+    private readonly Concierge.Shared.Tools.InteractiveToolApprovalService _approver = new();
+
+    /// <summary>
+    /// Blocks a tool call on a person, exactly as the tool layer does.
+    ///
+    /// Discarded rather than awaited: the call stays pending until answered,
+    /// which is the state under test. Raised before rendering so the component
+    /// reads it during initialisation and nothing depends on an event crossing
+    /// threads mid-test.
+    /// </summary>
+    private void Raise(string summary, Concierge.Shared.ConciergeToolRisk risk)
+        => _ = _approver.RequestAsync(
+            new Concierge.Shared.Tools.ToolApprovalRequest("write_file", summary, risk));
+
     private IRenderedComponent<Concierge.Shared.Components.Workspace.Desktop.Workspace> RenderWorkspace()
     {
         var dbPath = Path.Combine(Path.GetTempPath(), $"sidebar-{Guid.NewGuid():N}.db");
@@ -34,6 +48,12 @@ public sealed class WorkspaceSidebarTests : BunitContext
         Services.AddSingleton<Concierge.Shared.Session.ISessionState>(
             new Concierge.Shared.Session.FileSessionState(
                 Path.Combine(Path.GetTempPath(), $"session-{Guid.NewGuid():N}.json")));
+
+        // The real queue. Approvals used to come from two hardcoded entries in
+        // ConciergeStateService, so these tests asserted on a fiction; they now
+        // raise actual tool calls and assert on what is genuinely blocked.
+        Services.AddSingleton<Concierge.Shared.Tools.InteractiveToolApprovalService>(_ => _approver);
+        Services.AddSingleton<Concierge.Shared.Tools.IToolApprovalService>(_ => _approver);
         Services.AddConciergeChat(dbPath);
         Services.AddSingleton<IEnumerable<IChatRuntime>>(_ => Array.Empty<IChatRuntime>());
         Concierge.Shared.Tools.ConciergeToolsServiceCollectionExtensions.AddConciergeTools(Services);
@@ -173,18 +193,42 @@ public sealed class WorkspaceSidebarTests : BunitContext
     /// The whole reason folding is acceptable: a closed group still says how much
     /// is inside it, so a folded Approvals still reports what is waiting on you.
     /// That matters more now that Approvals arrives folded — the count is the
-    /// only thing telling you two decisions are outstanding.
+    /// only thing telling you a decision is outstanding.
     /// </summary>
     [Fact]
     public void A_folded_group_still_shows_its_count()
     {
+        Raise("Write notes.md", Concierge.Shared.ConciergeToolRisk.High);
+        Raise("Run git status", Concierge.Shared.ConciergeToolRisk.Low);
+
         var cut = RenderWorkspace();
 
         var group = cut.FindAll("section.ws-group")[1];
         Assert.DoesNotContain("is-open", group.ClassName);
 
-        var count = group.QuerySelector(".ws-head-count")!.TextContent.Trim();
-        Assert.Equal("2", count);
+        Assert.Equal("2", group.QuerySelector(".ws-head-count")!.TextContent.Trim());
+    }
+
+    /// <summary>
+    /// And with nothing waiting it says zero.
+    ///
+    /// This is the test that would have caught the fiction: the count was two
+    /// on a fresh install, before anything had run, because two approvals were
+    /// hardcoded into the snapshot.
+    /// </summary>
+    [Fact]
+    public void With_nothing_waiting_the_count_is_zero()
+    {
+        var cut = RenderWorkspace();
+
+        var group = cut.FindAll("section.ws-group")[1];
+        Assert.Equal("0", group.QuerySelector(".ws-head-count")!.TextContent.Trim());
+
+        Header(cut, "Approvals").Click();
+
+        // Re-found after the click: the earlier reference is to the element as
+        // it was before the group unfolded.
+        Assert.Contains("Nothing waiting", cut.FindAll("section.ws-group")[1].TextContent);
     }
 
     [Fact]
@@ -210,6 +254,9 @@ public sealed class WorkspaceSidebarTests : BunitContext
     [Fact]
     public void An_approval_shows_its_risk_as_a_dot_and_nothing_louder()
     {
+        Raise("Write notes.md", Concierge.Shared.ConciergeToolRisk.High);
+        Raise("Edit config", Concierge.Shared.ConciergeToolRisk.Medium);
+
         var cut = RenderWorkspace();
         Header(cut, "Approvals").Click();
 
@@ -235,6 +282,9 @@ public sealed class WorkspaceSidebarTests : BunitContext
     [Fact]
     public void Approvals_are_named_so_you_can_tell_them_apart()
     {
+        Raise("Write notes.md", Concierge.Shared.ConciergeToolRisk.High);
+        Raise("Run git status", Concierge.Shared.ConciergeToolRisk.Low);
+
         var cut = RenderWorkspace();
         Header(cut, "Approvals").Click();
 
@@ -243,8 +293,8 @@ public sealed class WorkspaceSidebarTests : BunitContext
             .Select(e => e.TextContent.Trim())
             .ToArray();
 
-        Assert.Contains("MCP filesystem tool", titles);
-        Assert.Contains("Review workspace write", titles);
+        Assert.Contains("Write notes.md", titles);
+        Assert.Contains("Run git status", titles);
     }
 
     // ── Threads ───────────────────────────────────────────────────────────
@@ -278,6 +328,12 @@ public sealed class WorkspaceSidebarTests : BunitContext
         Services.AddSingleton<Concierge.Shared.Session.ISessionState>(
             new Concierge.Shared.Session.FileSessionState(
                 Path.Combine(Path.GetTempPath(), $"session-{Guid.NewGuid():N}.json")));
+
+        // The real queue. Approvals used to come from two hardcoded entries in
+        // ConciergeStateService, so these tests asserted on a fiction; they now
+        // raise actual tool calls and assert on what is genuinely blocked.
+        Services.AddSingleton<Concierge.Shared.Tools.InteractiveToolApprovalService>(_ => _approver);
+        Services.AddSingleton<Concierge.Shared.Tools.IToolApprovalService>(_ => _approver);
         Services.AddConciergeChat(dbPath);
         Services.AddSingleton<IEnumerable<IChatRuntime>>(_ => Array.Empty<IChatRuntime>());
         Concierge.Shared.Tools.ConciergeToolsServiceCollectionExtensions.AddConciergeTools(Services);

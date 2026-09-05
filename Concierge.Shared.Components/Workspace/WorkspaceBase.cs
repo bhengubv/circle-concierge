@@ -44,6 +44,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     [Inject] protected NavigationManager Nav { get; set; } = default!;
     [Inject] protected IJSRuntime JS { get; set; } = default!;
     [Inject] protected Concierge.Shared.Session.ISessionState SessionState { get; set; } = default!;
+    [Inject] protected Concierge.Shared.Tools.IToolApprovalService Approval { get; set; } = default!;
 
 
     [Parameter] public Guid? ConversationId { get; set; }
@@ -169,6 +170,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     {
         _gone = true;
         Nav.LocationChanged -= OnLocationChanged;
+        StopWatchingApprovals();
         CancelDownload();
 
         // A generation still streaming when the page goes away used to be left
@@ -240,6 +242,8 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         // the thread by RecoverDraftAsync, and that is as far as it goes — a
         // run that stopped while asking permission must not resume itself.
         _session = await SessionState.LoadAsync();
+
+        WatchApprovals();
 
         foreach (var skillId in _session.Skills)
         {
@@ -1089,6 +1093,15 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
     /// <summary>Risk as a dot, and nothing else. No filled cards, no coloured
     /// badges — a dot and the word beside it is the whole status vocabulary.</summary>
+    /// <summary>The same dot, for the risk a tool call actually carries.</summary>
+    protected static string RiskDot(Concierge.Shared.ConciergeToolRisk risk) => ApprovalRisk.SeverityOf(risk) switch
+    {
+        ApprovalSeverity.Danger => "dot-danger",
+        ApprovalSeverity.Caution => "dot-waiting",
+        ApprovalSeverity.Settled => "dot-done",
+        _ => "dot-idle",
+    };
+
     protected static string RiskDot(string? risk) => ApprovalRisk.SeverityOf(risk) switch
     {
         ApprovalSeverity.Danger => "dot-danger",
@@ -1246,6 +1259,63 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
     /// <summary>Last read from disk. Held so a restore does not have to re-read
     /// the file every time a conversation opens.</summary>
+    // ── What is actually waiting ──────────────────────────────────────────
+
+    /// <summary>
+    /// The real approval queue.
+    ///
+    /// It used to come from ConciergeSnapshot.Approvals, which held two
+    /// hardcoded entries — so the sidebar permanently said two were waiting and
+    /// the room offered Allow on requests that had never been made. In a
+    /// product whose whole claim is that it asks before it acts, that is the
+    /// worst possible place for a lie.
+    ///
+    /// This is the same queue the inline prompt in the thread reads, and the
+    /// same subscription pattern: the service raises PendingChanged from
+    /// whichever thread ran the tool call, so redraws are marshalled back.
+    /// </summary>
+    protected IReadOnlyList<Concierge.Shared.Tools.PendingApproval> _pendingApprovals = [];
+
+    private Concierge.Shared.Tools.InteractiveToolApprovalService? _approver;
+
+    private void WatchApprovals()
+    {
+        // May be the fail-closed default, in which case there is no queue to
+        // show and nothing to subscribe to.
+        _approver = Approval as Concierge.Shared.Tools.InteractiveToolApprovalService;
+        if (_approver is null)
+        {
+            return;
+        }
+
+        _approver.PendingChanged += OnPendingApprovalsChanged;
+        _pendingApprovals = _approver.Pending;
+    }
+
+    private void OnPendingApprovalsChanged(object? sender, EventArgs e)
+    {
+        _pendingApprovals = _approver!.Pending;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void StopWatchingApprovals()
+    {
+        if (_approver is not null)
+        {
+            _approver.PendingChanged -= OnPendingApprovalsChanged;
+        }
+    }
+
+    /// <summary>Answers one, from the sidebar or the room.</summary>
+    protected void DecideApproval(Guid id, bool allowed)
+    {
+        _approver?.Answer(id, allowed
+            ? Concierge.Shared.Tools.ToolApprovalDecision.Allowed
+            : Concierge.Shared.Tools.ToolApprovalDecision.Denied);
+
+        _pendingApprovals = _approver?.Pending ?? [];
+    }
+
     protected Concierge.Shared.Session.SessionSnapshot _session =
         Concierge.Shared.Session.SessionSnapshot.Empty;
 

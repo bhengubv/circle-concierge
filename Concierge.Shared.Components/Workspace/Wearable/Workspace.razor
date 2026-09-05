@@ -23,7 +23,14 @@
 
 @{
     var snapshot = State.GetSnapshot();
-    var waiting = snapshot.Approvals.FirstOrDefault(a => !_decided.ContainsKey(a.Id));
+    // Nothing, for now, and deliberately.
+    //
+    // This screen was built on two hardcoded approvals, so a watch always had
+    // exactly two decisions waiting and neither existed. The real queue lives
+    // wherever the tool loop runs — the desktop — and a watch has no tool loop
+    // of its own, so until approvals can travel to it there is genuinely
+    // nothing here. An empty screen that is true beats a full one that is not.
+    ApprovalRequest? waiting = null;
 }
 
 <div class="wear">

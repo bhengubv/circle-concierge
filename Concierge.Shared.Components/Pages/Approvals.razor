@@ -1,27 +1,23 @@
 @page "/approvals"
-@inject IConciergeStateService Concierge
-@inject ISnackbar Snackbar
+@inject IToolApprovalService Approval
+@implements IDisposable
 
 @*
-    Approvals: everything waiting on a decision, across every conversation.
+    Approvals: everything actually waiting on a decision.
+
+    This read two hardcoded entries from ConciergeStateService and always
+    showed the same two, so a person could press Allow on a request that had
+    never been made. It now reads the queue the tool loop really blocks on —
+    the same one the inline prompt in the thread answers.
 
     An approval that stops a run renders inline in the thread, where the run
-    stopped — covering the work to ask about it hides the context the answer
-    depends on. This room is the other case: the queue, seen all at once,
-    when you want to clear it rather than happen upon it.
+    stopped: covering the work to ask about it hides the context the answer
+    depends on. This room is the other case — the queue seen all at once, when
+    you want to clear it rather than happen upon it.
 
-    Risk is a dot and a word plus one line saying how far the thing can
-    reach. The old build rendered it as a coloured pill, which made the queue
-    look like an alarm panel and made "low" shout as loudly as "critical".
+    Risk is a dot and a word plus one line saying how far the thing can reach.
+    Never a coloured pill: that made "low" shout as loudly as "critical".
 *@
-
-@{
-    var pending = Concierge.GetSnapshot().Approvals
-        .OrderByDescending(a => RiskWeight(a.Risk))
-        .ThenBy(a => a.CreatedAt)
-        .ToList();
-    var undecided = pending.Count(a => !_decided.ContainsKey(a.Id));
-}
 
 <div class="room">
     <div class="room-top">
@@ -38,41 +34,39 @@
     </p>
 
     <div class="room-body">
-        @if (pending.Count == 0)
+        @if (_pending.Count == 0)
         {
             <p class="room-note">Nothing is waiting.</p>
         }
         else
         {
-            <RoomSection Title="Waiting on you" Count="@undecided" Open="true">
+            <RoomSection Title="Waiting on you" Count="@_pending.Count" Open="true">
                 <div class="rows">
-                    @foreach (var approval in pending)
+                    @foreach (var approval in _pending.OrderByDescending(a => a.Request.Risk).ThenBy(a => a.AskedAt))
                     {
-                        var verdict = _decided.TryGetValue(approval.Id, out var v) ? v : null;
+                        var id = approval.Id;
 
                         <div class="row">
                             <span class="row-name">
-                                @approval.Title
-                                <span class="row-sub">@approval.Summary</span>
-                                <span class="row-sub">@ReachOf(approval.Risk) · asked @RelativeTime(approval.CreatedAt)</span>
+                                @approval.Request.Summary
+                                @if (!string.IsNullOrWhiteSpace(approval.Request.Detail))
+                                {
+                                    <span class="row-sub">@approval.Request.Detail</span>
+                                }
+                                <span class="row-sub">
+                                    <span class="dot @RiskDot(approval.Request.Risk)" aria-hidden="true"></span>
+                                    @ApprovalRisk.ReachOf(approval.Request.Risk) · asked @Ago(approval.AskedAt)
+                                </span>
                             </span>
 
-                            @if (verdict is null)
-                            {
-                                <span class="ask-actions">
-                                    <button class="btn btn-primary" type="button"
-                                            @onclick="@(() => Approve(approval))" @onpointerup="@(() => Approve(approval))">Allow</button>
-                                    <button class="btn" type="button"
-                                            @onclick="@(() => Reject(approval))" @onpointerup="@(() => Reject(approval))">Deny</button>
-                                </span>
-                            }
-                            else
-                            {
-                                <span class="state">
-                                    <span class="dot @(verdict == "approved" ? "dot-done" : "dot-danger")" aria-hidden="true"></span>
-                                    @(verdict == "approved" ? "Allowed" : "Denied")
-                                </span>
-                            }
+                            <span class="ask-actions">
+                                <button class="btn btn-primary" type="button"
+                                        @onclick="@(() => Answer(id, ToolApprovalDecision.Allowed))"
+                                        @onpointerup="@(() => Answer(id, ToolApprovalDecision.Allowed))">Allow</button>
+                                <button class="btn" type="button"
+                                        @onclick="@(() => Answer(id, ToolApprovalDecision.Denied))"
+                                        @onpointerup="@(() => Answer(id, ToolApprovalDecision.Denied))">Deny</button>
+                            </span>
                         </div>
                     }
                 </div>
@@ -80,3 +74,63 @@
         }
     </div>
 </div>
+
+@code {
+    private InteractiveToolApprovalService? _approver;
+    private IReadOnlyList<PendingApproval> _pending = [];
+
+    protected override void OnInitialized()
+    {
+        // May be the fail-closed default, in which case nothing can be waiting
+        // and there is nothing to subscribe to.
+        _approver = Approval as InteractiveToolApprovalService;
+        if (_approver is null)
+        {
+            return;
+        }
+
+        _approver.PendingChanged += OnPendingChanged;
+        _pending = _approver.Pending;
+    }
+
+    private void OnPendingChanged(object? sender, EventArgs e)
+    {
+        _pending = _approver!.Pending;
+
+        // Raised from whichever thread ran the tool call, so the redraw has to
+        // be marshalled back onto the renderer's.
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void Answer(Guid id, ToolApprovalDecision decision)
+    {
+        _approver?.Answer(id, decision);
+        _pending = _approver?.Pending ?? [];
+    }
+
+    private static string RiskDot(ConciergeToolRisk risk) => ApprovalRisk.SeverityOf(risk) switch
+    {
+        ApprovalSeverity.Danger => "dot-danger",
+        ApprovalSeverity.Caution => "dot-waiting",
+        ApprovalSeverity.Settled => "dot-done",
+        _ => "dot-idle",
+    };
+
+    /// <summary>"4m", "3h", then a date — the same shape the sidebar uses.</summary>
+    private static string Ago(DateTimeOffset at)
+    {
+        var span = DateTimeOffset.UtcNow - at.ToUniversalTime();
+        if (span.TotalMinutes < 1) return "just now";
+        if (span.TotalMinutes < 60) return $"{(int)span.TotalMinutes}m ago";
+        if (span.TotalHours < 24) return $"{(int)span.TotalHours}h ago";
+        return at.ToLocalTime().ToString("MMM d, HH:mm");
+    }
+
+    public void Dispose()
+    {
+        if (_approver is not null)
+        {
+            _approver.PendingChanged -= OnPendingChanged;
+        }
+    }
+}

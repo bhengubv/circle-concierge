@@ -41,11 +41,11 @@ release.
 
 Ordered. The first is a correctness problem; the rest are absences.
 
-### 1. The approvals queue is fake
-- [ ] Wire the sidebar Approvals group to `InteractiveToolApprovalService`
-- [ ] Wire the `/approvals` room to the same source
-- [ ] Delete the hardcoded `ApprovalRequest` seed data in `ConciergeStateService`
-- [ ] Test: with nothing pending, the count is 0 and the room says so
+### 1. ~~The approvals queue is fake~~ — done
+- [x] Wire the sidebar Approvals group to `InteractiveToolApprovalService`
+- [x] Wire the `/approvals` room to the same source
+- [x] Delete the hardcoded `ApprovalRequest` seed data in `ConciergeStateService`
+- [x] Test: with nothing pending, the count is 0 and the room says so
 
 > There are two approval systems and only one is real. Tool approvals render
 > inline in the thread through `ApprovalPrompt`, which works. The sidebar and
