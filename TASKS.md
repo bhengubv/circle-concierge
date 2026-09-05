@@ -223,6 +223,33 @@ under a cloud provider. A plan ticking off steps that failed. A flashlight
 offered on a desktop. A canvas has far more room to lie than a sidebar does, and
 the whole value of the product is that you can see what it did and stop it.
 
+### 10. The mesh had no radio
+
+`NullMeshSender` reports no peers and refuses every send. Everything above it —
+Aether identity, route store, DTN bundles with custody transfer, opportunistic
+delivery — was complete and had nothing to talk over, so bundles were created
+correctly and queued forever. Its own summary said it was waiting for "BLE,
+Wi-Fi Direct, internet relay" to attach.
+
+- [x] `LanMeshSender` — multicast discovery, length-prefixed TCP delivery
+- [x] Peers expire; an unreachable peer is "not now", not an exception, so DTN
+      keeps the bundle instead of losing it
+- [x] Opt-in — attaching a radio opens a port on somebody's machine and puts
+      traffic on their network, which a host should decide out loud
+- [x] Test: a packet reaches another node, and an answer comes back
+- [ ] Approvals as a bundle type, so the wrist can actually answer
+- [ ] BLE or Wi-Fi Direct, for when there is no shared network
+
+**The boundary, stated so it is not forgotten:** this transport does not
+authenticate anything. Aether packets carry a signature and a nonce and
+verifying them is the protocol's job. Anything on the same wifi can send bytes
+to this port, so an approval must not ride on it until that signature is
+checked — which is why the last two boxes are unticked rather than rushed.
+
+**Not built further on purpose.** The mesh is a NuGet package and an upgrade to
+it is in the pipeline elsewhere. This implements the published `IMeshSender` and
+stops there.
+
 ---
 
 ## Known gaps, not scheduled
@@ -268,7 +295,7 @@ the whole value of the product is that you can see what it did and stop it.
 Boxes that are re-checked per change rather than ticked once. All three hold as
 of `80cda9c`.
 
-- [x] 1077 tests pass — `dotnet test Concierge.Tests/Concierge.Tests.csproj`
+- [x] 1089 tests pass — `dotnet test Concierge.Tests/Concierge.Tests.csproj`
 - [x] Verified on the running desktop app, not only in tests — Engineering shows
       11 tools under their real names, no page overflow
 - [x] `[skip ci]` in the HEAD commit before any push
