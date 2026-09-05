@@ -10,7 +10,9 @@ using Concierge.Media;
 using Concierge.Media.Cloud;
 using Concierge.Mesh;
 using Concierge.Shared.Media;
+using Concierge.Devices;
 using Concierge.Shared;
+using Concierge.Shared.Devices;
 using Concierge.Shared.Chat;
 using Concierge.Shared.Safety;
 using Concierge.Shared.Diagrams;
@@ -74,6 +76,14 @@ public static class MauiProgram
 			// Tools published by other software, over MCP. Reads
 			// %LOCALAPPDATA%/Concierge/mcp.json; with no file, nothing starts.
 			.AddConciergeMcp()
+			// The device itself. Every other tool works on files, the web or a
+			// notebook; these reach the machine underneath. The portable two
+			// hold everywhere .NET runs; the MAUI set is written once and is
+			// true on Windows, Android, iOS and Mac Catalyst — and each one
+			// answers for itself whether this particular device can do it, so a
+			// desktop is never offered a flashlight.
+			.AddConciergeDeviceCapabilities()
+			.AddMauiDeviceCapabilities()
 			// AddConciergeAi() registers ILlmRuntimeService and the in-process
 			// chat runtime; AddConciergeAiIsolated() then replaces the chat
 			// runtime with one that talks to a child process.

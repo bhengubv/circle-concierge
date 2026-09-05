@@ -87,6 +87,38 @@
         </RoomSection>
 
         @*
+            What this device cannot do.
+
+            The model is never told about these — an unavailable capability is
+            absent from its catalogue, which is the whole design. A person is a
+            different matter: "why won't it text from my laptop" deserves an
+            answer, and silence is not one.
+        *@
+        @if (_unavailable.Count > 0)
+        {
+            <RoomSection Title="Not on this device" Count="@_unavailable.Count">
+                <div class="rows">
+                    @foreach (var capability in _unavailable)
+                    {
+                        <div class="row">
+                            <span class="row-name">
+                                @capability.Name
+                                <span class="row-sub">@capability.Description</span>
+                            </span>
+                            <span class="state">
+                                <span class="dot dot-idle" aria-hidden="true"></span>
+                                Not available here
+                            </span>
+                        </div>
+                    }
+                </div>
+                <p class="room-note">
+                    Concierge is never offered these on this device, so it will not try them.
+                </p>
+            </RoomSection>
+        }
+
+        @*
             Tools from other software. Listed apart from the built-in ones
             because the trust is different: these arrive over a protocol that
             says nothing about what they do, so every one asks before it runs.
@@ -170,6 +202,8 @@
     // say so, rather than fail to render at all.
     private Concierge.Shared.Tools.IAgentToolRegistry? _registry;
 
+    private IReadOnlyList<Concierge.Shared.Devices.IDeviceCapability> _unavailable = [];
+
     protected override void OnInitialized()
     {
         _mcp = Services.GetService(typeof(Concierge.Shared.Rpc.Mcp.McpToolSource))
@@ -179,6 +213,18 @@
 
         _registry = Services.GetService(typeof(Concierge.Shared.Tools.IAgentToolRegistry))
             as Concierge.Shared.Tools.IAgentToolRegistry;
+
+        // Every source this head wired, asked what it declared but cannot do.
+        // Resolved rather than injected, like the others: a head with no device
+        // layer renders this room without the section, not without the room.
+        _unavailable = (Services.GetService(typeof(IEnumerable<Concierge.Shared.Tools.IAgentToolSource>))
+                as IEnumerable<Concierge.Shared.Tools.IAgentToolSource> ?? [])
+            .OfType<Concierge.Shared.Devices.DeviceCapabilitySource>()
+            .SelectMany(source => source.Declared)
+            .Where(declared => !declared.Available)
+            .Select(declared => declared.Capability)
+            .OrderBy(capability => capability.Name, StringComparer.Ordinal)
+            .ToList();
     }
 
     /// <summary>

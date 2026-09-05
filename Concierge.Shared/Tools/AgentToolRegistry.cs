@@ -11,11 +11,11 @@ namespace Concierge.Shared.Tools;
 public sealed class AgentToolRegistry : IAgentToolRegistry
 {
     private readonly IReadOnlyList<IAgentTool> _compiledIn;
-    private readonly IReadOnlyList<Concierge.Shared.Rpc.Mcp.IAgentToolSource> _sources;
+    private readonly IReadOnlyList<IAgentToolSource> _sources;
 
     public AgentToolRegistry(
         IEnumerable<IAgentTool> tools,
-        IEnumerable<Concierge.Shared.Rpc.Mcp.IAgentToolSource>? sources = null)
+        IEnumerable<IAgentToolSource>? sources = null)
     {
         _compiledIn = tools.ToList();
         _sources = sources?.ToList() ?? [];

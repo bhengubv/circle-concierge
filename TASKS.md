@@ -104,6 +104,40 @@ a conversation. `write_file` is the only way to change anything, so the model
 must reproduce a whole file to alter one line — the same fault the notebook
 tools were built to avoid, sitting on every other file type in the repo.
 
+### 7. The device is not something Concierge can act on
+
+Every tool it has works on files, the web, or a notebook. Nothing reaches the
+machine it is running on — no clipboard, no notification, no "open this", no
+battery or network state. On a phone that gap is the whole product.
+
+Prompted by OpenDroid (Apache-2.0, Kotlin/Compose): one agent loop and sixty
+Android action executors. The code is not reusable here and the licence is not
+the reason — it is Kotlin, and Concierge is .NET across five heads. What
+transfers is the shape.
+
+The translation, and the part that makes it work everywhere: **a device action
+is another tool source**, the same seam MCP already uses. Each head contributes
+what it can actually do; a head that cannot do a thing does not advertise it.
+OpenDroid can assume Android. Concierge cannot, so absence has to be honest
+rather than a call that fails.
+
+- [x] `IDeviceCapability` — an action a head provides, with a runtime availability check
+- [x] `DeviceCapabilitySource : IAgentToolSource` — publishes only what this device can do
+- [x] Every acting capability approval-gated, with its arguments on the card
+- [x] `device_info` and `network_state` — portable, true everywhere .NET runs
+- [x] The MAUI set — clipboard read/write, battery, connection type, open link, flashlight.
+      Written once, true on Windows, Android, iOS and Mac Catalyst
+- [x] Engineering shows them, and shows what this device *cannot* do
+- [x] Test: 18, including that the container can actually be built
+- [ ] Android-only actions — send a message, place a call. Deliberately last: these are
+      where "it asks first" has to be exactly right, and they need a device to test on
+
+The thing worth keeping from the comparison is the thing OpenDroid does not do.
+Its README describes no confirmation workflow for sending a message or making a
+payment. Concierge asks before it acts, and that has to survive contact with a
+catalogue of actions that touch the real world — which is where an assistant
+that acts is most easily made dangerous.
+
 ---
 
 ## Known gaps, not scheduled
@@ -149,7 +183,7 @@ tools were built to avoid, sitting on every other file type in the repo.
 Boxes that are re-checked per change rather than ticked once. All three hold as
 of `80cda9c`.
 
-- [x] 1018 tests pass — `dotnet test Concierge.Tests/Concierge.Tests.csproj`
+- [x] 1036 tests pass — `dotnet test Concierge.Tests/Concierge.Tests.csproj`
 - [x] Verified on the running desktop app, not only in tests — Engineering shows
       11 tools under their real names, no page overflow
 - [x] `[skip ci]` in the HEAD commit before any push

@@ -252,8 +252,16 @@ public sealed class WorkspaceComposerTests : BunitContext
     {
         var cut = RenderWith(runtimeReady: true);
 
-        Assert.NotNull(cut.Find(".comp-box textarea.comp-input"));
-        Assert.NotNull(cut.Find(".empty"));
-        Assert.Empty(cut.FindAll(".ws-thread"));
+        // Waited for, not read once. The empty state is only correct after the
+        // thread list has loaded in OnInitializedAsync, so under a loaded machine
+        // the first render can be neither empty nor populated — the same flake the
+        // sidebar had, seen about once in a hundred runs and passing on retry,
+        // which is the worst way for a test to be wrong.
+        cut.WaitForAssertion(() =>
+        {
+            Assert.NotNull(cut.Find(".comp-box textarea.comp-input"));
+            Assert.NotNull(cut.Find(".empty"));
+            Assert.Empty(cut.FindAll(".ws-thread"));
+        });
     }
 }

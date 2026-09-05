@@ -4,19 +4,6 @@ using Concierge.Shared.Tools;
 
 namespace Concierge.Shared.Rpc.Mcp;
 
-/// <summary>
-/// Tools that arrive after start-up.
-///
-/// The registry collects <see cref="IAgentTool"/> from DI at construction, which
-/// works for tools compiled in and cannot work for tools published by another
-/// process — those are not known until it has been started and asked. A source
-/// is consulted each time the catalogue is read instead.
-/// </summary>
-public interface IAgentToolSource
-{
-    IReadOnlyList<IAgentTool> Tools { get; }
-}
-
 /// <summary>How one configured server is getting on.</summary>
 /// <param name="Name">As configured.</param>
 /// <param name="Connected">Whether the handshake succeeded.</param>
