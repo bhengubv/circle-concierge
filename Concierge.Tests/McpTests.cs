@@ -228,6 +228,43 @@ public sealed class McpTests : IDisposable
         => Assert.False(Wrap("files", new LocalTool("search"),
             UnavailableToolApprovalService.Instance).IsReadOnly);
 
+    // ── Acting freely ─────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Act freely has to reach the thing that asks.
+    ///
+    /// The tools ask for themselves — write_file, run_command and every remote
+    /// one call the approver directly — so a mode that only changed a flag in
+    /// the workspace would have changed nothing at all. This is the property
+    /// that makes the middle option meaningful: turn it off and the same call
+    /// stops interrupting.
+    /// </summary>
+    [Fact]
+    public async Task Act_freely_answers_without_queueing_anything()
+    {
+        var approver = new InteractiveToolApprovalService();
+        var inner = new LocalTool("search");
+        var tool = Wrap("files", inner, approver);
+
+        approver.AllowWithoutAsking = true;
+
+        var result = await tool.InvokeAsync(null);
+
+        Assert.True(result.Success);
+        Assert.True(inner.WasInvoked);
+
+        // Nobody was interrupted: nothing was ever queued.
+        Assert.Empty(approver.Pending);
+    }
+
+    /// <summary>
+    /// And the careful answer is the one that survives a wiring mistake: the
+    /// flag is false unless something sets it.
+    /// </summary>
+    [Fact]
+    public void Nothing_is_allowed_without_asking_by_default()
+        => Assert.False(new InteractiveToolApprovalService().AllowWithoutAsking);
+
     // ── Helpers ───────────────────────────────────────────────────────────
 
     /// <summary>

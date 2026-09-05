@@ -72,7 +72,7 @@ Ordered. The first is a correctness problem; the rest are absences.
 ### 4. Long work has no spine
 - [ ] Background tasks, so a long tool run does not block the thread
 - [ ] A visible plan for multi-step work — what it intends, what is done
-- [ ] Permission modes set up front, not only per action
+- [x] Permission modes set up front, not only per action — Plan only / Ask first / Act freely
 
 ### 5. Vision has nothing to see with
 - [ ] A vision-capable runtime — the local model is text-only

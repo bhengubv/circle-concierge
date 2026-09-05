@@ -157,6 +157,29 @@ public sealed class SessionStateTests : IDisposable
         Assert.Single(restored.Skills);
     }
 
+    /// <summary>
+    /// What it is allowed to do without asking survives a restart.
+    ///
+    /// Losing it would silently return somebody to being asked after they had
+    /// chosen not to be — or, worse, leave Act freely in place when they
+    /// thought they had gone back to asking.
+    /// </summary>
+    [Fact]
+    public async Task What_it_may_do_without_asking_survives_a_restart()
+    {
+        await New().SaveAsync(new SessionSnapshot(
+            Permission: Concierge.Shared.Tools.ToolPermissionMode.PlanOnly));
+
+        Assert.Equal(Concierge.Shared.Tools.ToolPermissionMode.PlanOnly,
+                     (await New().LoadAsync()).Permission);
+    }
+
+    /// <summary>Asking first is what a session with no saved choice gets.</summary>
+    [Fact]
+    public async Task A_fresh_session_asks_first()
+        => Assert.Equal(Concierge.Shared.Tools.ToolPermissionMode.AskFirst,
+                        (await New().LoadAsync()).Permission);
+
     [Fact]
     public async Task Clearing_forgets_everything()
     {

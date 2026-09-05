@@ -19,6 +19,10 @@ namespace Concierge.Shared.Session;
 ///
 ///   Text typed and not sent. The most common loss and the cheapest to fix.
 ///
+///   What it is allowed to do without asking. Losing that across a restart
+///   would silently return somebody to asking after they had chosen not to —
+///   or, worse, the reverse.
+///
 ///   Which skills were on. This one matters most and is the least visible: a
 ///   skill composes into the system prompt before every turn, so losing it
 ///   silently changes how the assistant answers, with nothing on screen to say
@@ -47,7 +51,8 @@ public interface ISessionState
 public sealed record SessionSnapshot(
     Guid? LastConversationId = null,
     IReadOnlyCollection<string>? ActiveSkillIds = null,
-    IReadOnlyDictionary<string, string>? UnsentText = null)
+    IReadOnlyDictionary<string, string>? UnsentText = null,
+    Concierge.Shared.Tools.ToolPermissionMode Permission = Concierge.Shared.Tools.ToolPermissionMode.AskFirst)
 {
     public static SessionSnapshot Empty { get; } = new();
 

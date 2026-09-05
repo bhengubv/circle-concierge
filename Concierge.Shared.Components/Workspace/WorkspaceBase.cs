@@ -68,7 +68,20 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     protected IChatRuntime? _activeRuntime;
     protected string _systemPromptDraft = string.Empty;
     protected bool _includeToolCatalog = true;
-    protected bool _executeToolCalls = true;
+    /// <summary>
+    /// How much it may do without being asked.
+    ///
+    /// Replaces a bool called _executeToolCalls behind a switch labelled "May
+    /// act on its own" / "Ask before acting". The bool decided whether tools
+    /// ran at all, so off meant nothing executed rather than that it asked, and
+    /// on still asked before every write. Both labels described something the
+    /// code did not do.
+    /// </summary>
+    protected Concierge.Shared.Tools.ToolPermissionMode _permission =
+        Concierge.Shared.Tools.ToolPermissionMode.AskFirst;
+
+    /// <summary>Kept so the loop reads the same way it did.</summary>
+    protected bool _executeToolCalls => _permission.RunsTools();
 
     protected readonly List<TextAttachment> _pendingAttachments = new();
 
@@ -244,6 +257,10 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         _session = await SessionState.LoadAsync();
 
         WatchApprovals();
+
+        // Restored after the approver is known, so Act freely is applied to it
+        // rather than only remembered. Not persisted: it came from the file.
+        SetPermission(_session.Permission, persist: false);
 
         foreach (var skillId in _session.Skills)
         {
@@ -1307,6 +1324,32 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     }
 
     /// <summary>Answers one, from the sidebar or the room.</summary>
+    /// <summary>
+    /// Chooses how much it may do, and tells the approver.
+    ///
+    /// Act freely has to reach the approval service itself: the tools ask for
+    /// themselves, so this is the only place that can answer for all of them
+    /// at once — including the remote ones from other software.
+    /// </summary>
+    protected void SetPermission(Concierge.Shared.Tools.ToolPermissionMode mode, bool persist = true)
+    {
+        _permission = mode;
+
+        if (_approver is not null)
+        {
+            _approver.AllowWithoutAsking = mode == Concierge.Shared.Tools.ToolPermissionMode.ActFreely;
+        }
+
+        // Not on the restore path. Saving what was just loaded writes nothing
+        // new, and doing it from OnInitializedAsync starts an unawaited disk
+        // write while the component is still initialising — which made the
+        // whole suite flaky, failing a different handful of tests each run.
+        if (persist)
+        {
+            _ = RememberSessionAsync();
+        }
+    }
+
     protected void DecideApproval(Guid id, bool allowed)
     {
         _approver?.Answer(id, allowed
@@ -1372,7 +1415,8 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         _session = new Concierge.Shared.Session.SessionSnapshot(
             LastConversationId: _active?.Id,
             ActiveSkillIds: _activeSkillIds.ToArray(),
-            UnsentText: unsent);
+            UnsentText: unsent,
+            Permission: _permission);
 
         await SessionState.SaveAsync(_session);
     }

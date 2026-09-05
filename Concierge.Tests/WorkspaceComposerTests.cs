@@ -126,35 +126,65 @@ public sealed class WorkspaceComposerTests : BunitContext
 
     /// <summary>
     /// Codex puts "Ask for approval" under the composer. Concierge had it behind
-    /// a tab as an entire screen; this is the same control, in the same place,
-    /// and its label says which way round it currently is.
+    /// a tab as an entire screen; this is the same decision, in the same place.
+    ///
+    /// It was a switch, and a switch could not tell the truth here. Off did not
+    /// mean "ask" — it meant tools never ran at all — and on still asked before
+    /// every write, because the tools ask for themselves. Three real states
+    /// need three choices.
     /// </summary>
     [Fact]
-    public void Whether_it_may_act_without_asking_is_a_switch_under_the_composer()
+    public void What_it_may_do_is_chosen_under_the_composer()
     {
         var cut = RenderWith(runtimeReady: true);
 
-        var toggle = cut.Find(".comp-controls .toggle input[type=checkbox]");
-        var label = cut.Find(".comp-controls .toggle-label");
+        var options = cut.FindAll(".comp-controls .seg .seg-opt")
+            .Select(e => e.TextContent.Trim())
+            .ToArray();
 
-        Assert.True(toggle.HasAttribute("checked"));
-        Assert.Equal("May act on its own", label.TextContent.Trim());
-
-        toggle.Change(false);
-
-        Assert.Equal("Ask before acting", cut.Find(".comp-controls .toggle-label").TextContent.Trim());
+        Assert.Equal(new[] { "Plan only", "Ask first", "Act freely" }, options);
     }
 
     /// <summary>
-    /// It is a switch, not the operating system's tick box. A raw checkbox
-    /// renders Windows' own blue control, which belongs to no design system.
+    /// Asking first is the default, because it is the product's actual promise.
     /// </summary>
     [Fact]
-    public void The_switch_is_drawn_not_borrowed_from_the_platform()
+    public void It_asks_first_unless_told_otherwise()
     {
         var cut = RenderWith(runtimeReady: true);
 
-        Assert.NotNull(cut.Find(".toggle .toggle-track .toggle-knob"));
+        var chosen = cut.FindAll(".comp-controls .seg .seg-opt")
+            .Single(e => e.GetAttribute("aria-pressed") == "true");
+
+        Assert.Equal("Ask first", chosen.TextContent.Trim());
+    }
+
+    [Fact]
+    public void Choosing_a_mode_marks_it()
+    {
+        var cut = RenderWith(runtimeReady: true);
+
+        cut.FindAll(".comp-controls .seg .seg-opt").Single(e => e.TextContent.Trim() == "Plan only").Click();
+
+        var chosen = cut.FindAll(".comp-controls .seg .seg-opt")
+            .Single(e => e.GetAttribute("aria-pressed") == "true");
+
+        Assert.Equal("Plan only", chosen.TextContent.Trim());
+    }
+
+    /// <summary>
+    /// Each says what it means. A person choosing here is deciding what
+    /// software may do to their machine, and three verbs alone do not say.
+    /// </summary>
+    [Fact]
+    public void Each_mode_explains_itself()
+    {
+        var cut = RenderWith(runtimeReady: true);
+
+        foreach (var option in cut.FindAll(".comp-controls .seg .seg-opt"))
+        {
+            Assert.False(string.IsNullOrWhiteSpace(option.GetAttribute("title")));
+        }
     }
 
     /// <summary>

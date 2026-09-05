@@ -407,11 +407,29 @@
                 <div class="comp-controls">
                     @* A checkbox renders Windows' own blue tick box, which
                        belongs to no design system. Codex uses a switch. *@
-                    <label class="toggle">
-                        <input type="checkbox" @bind="_executeToolCalls" />
-                        <span class="toggle-track" aria-hidden="true"><span class="toggle-knob"></span></span>
-                        <span class="toggle-label">@(_executeToolCalls ? "May act on its own" : "Ask before acting")</span>
-                    </label>
+                    @*
+                        Three choices, not a switch. A switch has two states and
+                        this has three, and the two it used to show were both
+                        mislabelled: off meant tools never ran rather than that
+                        it asked, and on still asked before every write.
+                    *@
+                    <div class="seg" role="group" aria-label="What it may do">
+                        @foreach (var mode in new[]
+                        {
+                            Concierge.Shared.Tools.ToolPermissionMode.PlanOnly,
+                            Concierge.Shared.Tools.ToolPermissionMode.AskFirst,
+                            Concierge.Shared.Tools.ToolPermissionMode.ActFreely,
+                        })
+                        {
+                            var choice = mode;
+                            <button class="seg-opt @(_permission == choice ? "is-on" : null)"
+                                    type="button"
+                                    title="@choice.Explain()"
+                                    aria-pressed="@(_permission == choice ? "true" : "false")"
+                                    @onclick="@(() => SetPermission(choice))"
+                                    @onpointerup="@(() => SetPermission(choice))">@choice.Label()</button>
+                        }
+                    </div>
                     <span class="comp-sep">·</span>
                     <span>@(_activeRuntime?.EngineLabel ?? runtime.Engine)</span>
                     @if (!string.IsNullOrWhiteSpace(_composerHint))

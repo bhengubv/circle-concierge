@@ -44,6 +44,20 @@ public sealed class InteractiveToolApprovalService : IToolApprovalService, IDisp
     /// <summary>Raised whenever the queue changes, so a surface can redraw.</summary>
     public event EventHandler? PendingChanged;
 
+    /// <summary>
+    /// When true, every request is allowed without anybody being asked.
+    ///
+    /// Set by the workspace when the permission mode is Act freely. It lives
+    /// here rather than in the tool loop because the tools ask for themselves —
+    /// write_file and run_command call the approver directly — so this is the
+    /// one place that can answer for all of them, local and remote alike.
+    ///
+    /// A property rather than a constructor argument because it is a decision
+    /// a person changes mid-conversation, and a false default because the
+    /// careful answer is the one that should survive a wiring mistake.
+    /// </summary>
+    public bool AllowWithoutAsking { get; set; }
+
     /// <summary>What is waiting, oldest first.</summary>
     public IReadOnlyList<PendingApproval> Pending =>
         _waiting.Values
@@ -61,6 +75,14 @@ public sealed class InteractiveToolApprovalService : IToolApprovalService, IDisp
         if (_disposed)
         {
             return ToolApprovalDecision.Unavailable;
+        }
+
+        if (AllowWithoutAsking)
+        {
+            // Nothing is queued and nobody is interrupted. The call still went
+            // through the approval seam, so a surface counting what ran can
+            // still see it — it is simply answered immediately.
+            return ToolApprovalDecision.Allowed;
         }
 
         var id = Guid.NewGuid();

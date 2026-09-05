@@ -148,7 +148,7 @@ public sealed class WorkspaceSettingsTests : BunitContext
         Open(cut);
         OpenGroup(cut, "Family mode");
 
-        var options = cut.FindAll(".seg .seg-opt").Select(e => e.TextContent.Trim()).ToArray();
+        var options = cut.FindAll(".sheet .seg .seg-opt").Select(e => e.TextContent.Trim()).ToArray();
         Assert.Equal(new[] { "Off", "Balanced", "Strict" }, options);
 
         Assert.Empty(cut.FindAll(".sheet select"));
@@ -162,11 +162,11 @@ public sealed class WorkspaceSettingsTests : BunitContext
         Open(cut);
         OpenGroup(cut, "Family mode");
 
-        cut.FindAll(".seg .seg-opt").Single(e => e.TextContent.Trim() == "Strict").Click();
+        cut.FindAll(".sheet .seg .seg-opt").Single(e => e.TextContent.Trim() == "Strict").Click();
 
         Assert.Equal(SafetyStrictness.Strict, safety.Strictness);
 
-        var chosen = cut.FindAll(".seg .seg-opt").Single(e => e.GetAttribute("aria-pressed") == "true");
+        var chosen = cut.FindAll(".sheet .seg .seg-opt").Single(e => e.GetAttribute("aria-pressed") == "true");
         Assert.Equal("Strict", chosen.TextContent.Trim());
     }
 
@@ -194,7 +194,7 @@ public sealed class WorkspaceSettingsTests : BunitContext
 
         Assert.Empty(cut.FindAll(".sheet input[type=text]"));
 
-        cut.FindAll(".seg .seg-opt").Single(e => e.TextContent.Trim() == "Balanced").Click();
+        cut.FindAll(".sheet .seg .seg-opt").Single(e => e.TextContent.Trim() == "Balanced").Click();
 
         Assert.Equal(SafetyStrictness.Balanced, safety.Strictness);
         Assert.NotNull(cut.Find(".sheet input[type=text]"));
