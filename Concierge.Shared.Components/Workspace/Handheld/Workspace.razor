@@ -444,7 +444,8 @@
 
     @if (_showSkillPicker)
     {
-        <Skills ActiveIds="_activeSkillIds"
+        <Skills OnCatalogueChanged="StateHasChanged"
+                ActiveIds="_activeSkillIds"
                 OnToggle="ToggleSkill"
                 OnClose="ToggleSkillPicker" />
     }

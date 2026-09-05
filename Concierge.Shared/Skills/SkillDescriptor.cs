@@ -34,7 +34,7 @@ public sealed record SkillDescriptor(
     /// <summary>Free-form tags (red-team, finance, code-review, ...).</summary>
     IReadOnlyList<string> Tags)
 {
-    public SkillInfo ToInfo() => new(Id, Name, Area, Description);
+    public SkillInfo ToInfo() => new(Id, Name, Area, Description, Source);
 }
 
 /// <summary>

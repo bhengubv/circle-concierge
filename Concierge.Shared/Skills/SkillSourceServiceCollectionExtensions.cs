@@ -23,6 +23,14 @@ public static class SkillSourceServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddLocalSkillSources(this IServiceCollection services)
     {
+        // Folders you have added yourself, from the Skills panel. Registered
+        // first and unconditionally: unlike the paths below it does not depend
+        // on an environment variable or on a folder existing on the machine
+        // this was written on.
+        services.AddSingleton<UserSkillFolders>(_ => new UserSkillFolders());
+        services.AddSingleton<ISkillSource>(sp =>
+            new UserFolderSkillSource(sp.GetRequiredService<UserSkillFolders>()));
+
         var root = Environment.GetEnvironmentVariable("CONCIERGE_SKILLS_ROOT");
         if (string.IsNullOrWhiteSpace(root))
         {

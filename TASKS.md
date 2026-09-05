@@ -61,10 +61,10 @@ Ordered. The first is a correctness problem; the rest are absences.
 
 > `McpClient` is 153 lines and is never instantiated outside its own file.
 
-### 3. Custom skills need a way in
-- [ ] Add a skill from the Skills panel — a folder picker, not an env var
-- [ ] Show where each skill came from, curated or yours
-- [ ] Test: a skill added at runtime composes into the next turn
+### 3. ~~Custom skills need a way in~~ — done
+- [x] Add a skill from the Skills panel — paste a folder, not an env var
+- [x] Show where each skill came from, curated or yours
+- [x] Test: a skill added at runtime reaches the catalogue
 
 > 70 curated skills, and the only way to add your own is
 > `CONCIERGE_SKILLS_ROOT` before launch.

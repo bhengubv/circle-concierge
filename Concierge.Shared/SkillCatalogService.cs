@@ -27,7 +27,9 @@ public interface ISkillCatalogService
 /// </summary>
 public sealed class SkillCatalogService : ISkillCatalogService
 {
-    private readonly Lazy<IReadOnlyList<SkillInfo>> _skills;
+    private readonly IReadOnlyList<ISkillSource> _sources;
+    private readonly object _gate = new();
+    private IReadOnlyList<SkillInfo>? _skills;
 
     /// <summary>Default constructor — embedded bundle only. Used when no
     /// <see cref="ISkillSource"/>s are registered in DI (e.g. minimal MAUI
@@ -35,12 +37,32 @@ public sealed class SkillCatalogService : ISkillCatalogService
     public SkillCatalogService() : this(Enumerable.Empty<ISkillSource>()) { }
 
     public SkillCatalogService(IEnumerable<ISkillSource> sources)
+        => _sources = sources?.ToList() ?? new List<ISkillSource>();
+
+    /// <summary>
+    /// Cached, and forgettable.
+    ///
+    /// It was a Lazy, which meant the catalogue was computed once and never
+    /// again — fine when every source was registered at start-up, and wrong the
+    /// moment somebody can add a folder while the app is running. Adding a
+    /// folder that never appears is worse than not being able to add one.
+    /// </summary>
+    public IReadOnlyList<SkillInfo> GetSkills()
     {
-        var src = sources?.ToList() ?? new List<ISkillSource>();
-        _skills = new Lazy<IReadOnlyList<SkillInfo>>(() => Compose(src));
+        lock (_gate)
+        {
+            return _skills ??= Compose(_sources);
+        }
     }
 
-    public IReadOnlyList<SkillInfo> GetSkills() => _skills.Value;
+    /// <summary>Forget the catalogue, so the next read picks up a new folder.</summary>
+    public void Refresh()
+    {
+        lock (_gate)
+        {
+            _skills = null;
+        }
+    }
 
     private static IReadOnlyList<SkillInfo> Compose(IReadOnlyList<ISkillSource> sources)
     {

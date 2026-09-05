@@ -48,6 +48,11 @@ public sealed class WorkspaceComposerTests : BunitContext
         // Session state defaults to the real per-user file. A test that reads
         // it depends on whatever the app last did, and a test that writes it
         // changes the user's app state — both happened before this line.
+        // Same reason as the session file: the real list is the user's, and a
+        // test that reads or writes it depends on what the app last did.
+        Services.AddSingleton(_ => new Concierge.Shared.Skills.UserSkillFolders(
+            Path.Combine(Path.GetTempPath(), $"skills-{Guid.NewGuid():N}.json")));
+
         Services.AddSingleton<Concierge.Shared.Session.ISessionState>(
             new Concierge.Shared.Session.FileSessionState(
                 Path.Combine(Path.GetTempPath(), $"session-{Guid.NewGuid():N}.json")));

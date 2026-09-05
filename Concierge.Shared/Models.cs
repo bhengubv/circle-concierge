@@ -20,7 +20,14 @@ public sealed record ProviderInfo(
     string LatestFamily,
     ProviderAccessKind AccessKind = ProviderAccessKind.DirectOfficialApi);
 
-public sealed record SkillInfo(string Id, string Name, string Area, string Summary);
+/// <param name="Source">
+/// Where it came from — "bundled" for the ones that ship inside the assembly,
+/// or the name of the folder it was found in. Defaulted so every existing
+/// construction still compiles, and surfaced because "why is it answering like
+/// that?" is answered by which skills are on and where they came from.
+/// </param>
+public sealed record SkillInfo(
+    string Id, string Name, string Area, string Summary, string Source = "bundled");
 
 public sealed record ProductionTask(int Priority, string Title, HardeningStatus Status, string Summary);
 

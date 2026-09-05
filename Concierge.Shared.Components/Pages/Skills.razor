@@ -1,4 +1,5 @@
 @inject ISkillCatalogService SkillCatalog
+@inject Concierge.Shared.Skills.UserSkillFolders Folders
 
 @*
     Skills, as something you switch on — not a catalogue you read.
@@ -89,7 +90,10 @@
                     }
                     else
                     {
-                        <span class="row-val">@skill.Area</span>
+                        @* Yours or ours. "Why is it answering like that?" is
+                           answered by which skills are on and where they came
+                           from, and until now the second half was not shown. *@
+                        <span class="row-val">@(skill.Source == "bundled" ? skill.Area : "yours")</span>
                     }
                 </button>
             }
@@ -100,6 +104,58 @@
             <p class="row-sub">@(shown.Count - 5) more — keep typing to narrow it down.</p>
         }
     }
+
+    @*
+        Your own skills. Until now the only way in was an environment variable
+        set before launch, pointing at a folder with three specific subfolder
+        names — a developer's arrangement in a product that is not only for
+        developers.
+
+        A path to paste rather than a folder picker: this renders in a WebView,
+        which has no directory picker, and a native one would have to be passed
+        in by each host. Pasting a path is the honest version of that, and the
+        folder is checked before it is accepted.
+    *@
+    <RoomSection Title="Your own skills" Count="@_folders.Count">
+        @if (_folders.Count > 0)
+        {
+            <div class="rows">
+                @foreach (var folder in _folders)
+                {
+                    var path = folder;
+                    <div class="row">
+                        <span class="row-name">
+                            @FolderName(path)
+                            <span class="row-sub">@path</span>
+                            @if (!Directory.Exists(path))
+                            {
+                                <span class="row-sub">Not there any more.</span>
+                            }
+                        </span>
+                        <button class="row-val" type="button" style="background:none;border:0;cursor:pointer;"
+                                @onclick="@(() => RemoveFolder(path))" @onpointerup="@(() => RemoveFolder(path))">Remove</button>
+                    </div>
+                }
+            </div>
+        }
+
+        <input class="comp-input"
+               type="text"
+               placeholder="Paste a folder of skills"
+               aria-label="Folder of skills"
+               value="@_newFolder"
+               @oninput="@(e => _newFolder = e.Value?.ToString() ?? string.Empty)" />
+
+        <button class="btn btn-primary" type="button" disabled="@string.IsNullOrWhiteSpace(_newFolder)"
+                @onclick="AddFolder" @onpointerup="AddFolder">Add</button>
+
+        @if (!string.IsNullOrWhiteSpace(_folderMessage))
+        {
+            <p class="room-note">@_folderMessage</p>
+        }
+
+        <p class="room-note">A skill is a folder with a SKILL.md in it.</p>
+    </RoomSection>
 </div>
 
 @code {
@@ -110,7 +166,60 @@
     [Parameter] public EventCallback<string> OnToggle { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
 
+    /// <summary>
+    /// Raised when the catalogue changes, so the workspace behind this panel
+    /// redraws. Without it the sidebar kept saying "Browse all 69" while the
+    /// panel said 70 — the snapshot is read fresh on every render, and the
+    /// parent had no reason to render.
+    /// </summary>
+    [Parameter] public EventCallback OnCatalogueChanged { get; set; }
+
     private string _filter = string.Empty;
+
+    // ── Your own skills ───────────────────────────────────────────────────
+
+    private IReadOnlyList<string> _folders = [];
+    private string _newFolder = string.Empty;
+    private string? _folderMessage;
+
+    protected override void OnInitialized() => _folders = Folders.All();
+
+    private void AddFolder()
+    {
+        _folderMessage = Folders.Add(_newFolder);
+
+        if (_folderMessage is null)
+        {
+            _newFolder = string.Empty;
+            _folders = Folders.All();
+
+            // The catalogue caches, so a folder added without this appears
+            // only after a restart — which looks exactly like it not working.
+            Reload();
+            _ = OnCatalogueChanged.InvokeAsync();
+        }
+    }
+
+    private void RemoveFolder(string folder)
+    {
+        _folderMessage = Folders.Remove(folder);
+        _folders = Folders.All();
+        Reload();
+        _ = OnCatalogueChanged.InvokeAsync();
+    }
+
+    /// <summary>The last segment of a path, whichever slash it ends with.</summary>
+    private static string FolderName(string path)
+        => System.IO.Path.GetFileName(path.TrimEnd(System.IO.Path.DirectorySeparatorChar,
+                                                   System.IO.Path.AltDirectorySeparatorChar));
+
+    private void Reload()
+    {
+        if (SkillCatalog is SkillCatalogService catalogue)
+        {
+            catalogue.Refresh();
+        }
+    }
 
     // Narrow while typing. Waiting for blur on a list of sixty-nine is waiting
     // for the wrong event.

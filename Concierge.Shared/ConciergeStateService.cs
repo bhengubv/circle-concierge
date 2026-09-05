@@ -1,6 +1,7 @@
 namespace Concierge.Shared;
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 public interface IConciergeStateService
 {
@@ -144,6 +145,11 @@ public static class ConciergeServiceCollectionExtensions
                 sp.GetService<IAgentRunLogPublisher>()));
         // Where you were: the thread, the skills that were on, and anything
         // typed and not sent. Local file, beside the drafts.
+        // Folders of your own skills. Registered here rather than only in
+        // AddLocalSkillSources because the Skills panel offers to add one
+        // whether or not any local source was configured.
+        services.TryAddSingleton(_ => new Concierge.Shared.Skills.UserSkillFolders());
+
         services.AddSingleton<Concierge.Shared.Session.ISessionState>(
             _ => new Concierge.Shared.Session.FileSessionState());
         services.AddSingleton<IBeyondClaudeService, BeyondClaudeService>();
