@@ -138,7 +138,7 @@ payment. Concierge asks before it acts, and that has to survive contact with a
 catalogue of actions that touch the real world — which is where an assistant
 that acts is most easily made dangerous.
 
-### 8. Three things taken from OpenDroid that were left behind
+### 8. ~~Three things taken from OpenDroid that were left behind~~ — done
 
 The device capability layer took the shape and left most of the ideas. These
 three are the ones worth having, all verifiable without a working runtime.
@@ -150,9 +150,12 @@ AgentLoop re-evaluates after each step. The plan strip already exists and ticks
 steps off; what is missing is what happens when a step does not go the way it
 said.
 
-- [ ] A failed step revises the rest of the plan rather than continuing past it
-- [ ] The revision is visible — a person watching sees the plan change and why
-- [ ] A plan that keeps failing stops rather than looping
+- [x] A failed step asks for a rethink rather than continuing past it — on the first
+      failure, not the third
+- [x] The revision is visible — the thread records it and the strip resets honestly
+- [x] A plan that keeps failing stops: two failed rounds in a row, or four rewrites
+- [x] And the strip stopped claiming progress nobody made — a round where every call
+      failed used to tick a step off anyway
 
 **Provider failover.** Twelve providers with automatic chaining there; here,
 three cloud runtimes and a local one with no chaining at all, so a provider
@@ -225,7 +228,7 @@ OpenDroid documents no confirmation step for.
 Boxes that are re-checked per change rather than ticked once. All three hold as
 of `80cda9c`.
 
-- [x] 1036 tests pass — `dotnet test Concierge.Tests/Concierge.Tests.csproj`
+- [x] 1077 tests pass — `dotnet test Concierge.Tests/Concierge.Tests.csproj`
 - [x] Verified on the running desktop app, not only in tests — Engineering shows
       11 tools under their real names, no page overflow
 - [x] `[skip ci]` in the HEAD commit before any push

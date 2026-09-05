@@ -80,8 +80,16 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
     protected int _planDone;
 
+    /// <summary>
+    /// Whether the plan is still describing what is happening. Holds the rules
+    /// about failed rounds, revisions and when to give up, so they can be decided
+    /// in one place and tested without a renderer.
+    /// </summary>
+    protected readonly Concierge.Shared.Tools.PlanProgress _plan = new();
+
     protected void ClearPlan()
     {
+        _plan.Clear();
         _planSteps = [];
         _planDone = 0;
     }
@@ -877,8 +885,18 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
                 // has happened rather than reconstructed from what did.
                 if (Concierge.Shared.Tools.PlanProtocol.Extract(assistantText) is { Count: > 0 } stated)
                 {
-                    _planSteps = stated;
-                    _planDone = 0;
+                    // A revision is worth saying out loud. The strip resets to
+                    // zero when the plan changes, and without a word for it that
+                    // looks like progress being lost rather than a plan being
+                    // rethought.
+                    if (_plan.State(stated))
+                    {
+                        await Store.AppendEventAsync(_active!.Id, ConversationEventType.ToolResult,
+                            $"The plan was revised ({_plan.Revisions} so far this turn).");
+                    }
+
+                    _planSteps = _plan.Steps;
+                    _planDone = _plan.Done;
                     StateHasChanged();
                 }
 
@@ -918,14 +936,13 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
                 var outcomes = await ToolScheduler.ExecuteAsync(planned, _streamCts.Token);
 
-                // One round of calls is one step done. Not exact — a model may
-                // take two rounds over a step, or one round over two — but it
-                // is honest about direction, which is what somebody watching
-                // needs in order to decide whether to let it carry on.
-                if (_planSteps.Count > 0 && _planDone < _planSteps.Count)
-                {
-                    _planDone++;
-                }
+                // One round of calls is one step done — but only a round where
+                // something actually worked. This used to tick forward regardless,
+                // so a run where every call failed still showed "3 of 5": the strip
+                // asserting progress nobody had made, in the place a person looks
+                // precisely because they are deciding whether to let it carry on.
+                var verdict = _plan.Round(outcomes.Select(o => o.Result.Success).ToList());
+                _planDone = _plan.Done;
 
                 var results = new List<(string ToolName, AgentToolResult Result)>();
                 foreach (var outcome in outcomes)
@@ -953,8 +970,27 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
                     }
                 }
 
+                // After the results, not before: the model should read what went
+                // wrong and then be asked to rethink, in that order. A nudge that
+                // arrives ahead of the failures is a non-sequitur.
+                if (verdict.Note is not null)
+                {
+                    await Store.AppendEventAsync(
+                        _active!.Id,
+                        verdict.AskForRevision ? ConversationEventType.UserMessage : ConversationEventType.ToolResult,
+                        verdict.Note);
+                }
+
                 _active = await Store.GetAsync(_active!.Id);
                 StateHasChanged();
+
+                // Enough rounds failing in a row, or enough rewrites, and it stops.
+                // The round cap would eventually catch this, but only after
+                // spending every remaining request discovering the same thing.
+                if (verdict.ShouldStop)
+                {
+                    break;
+                }
             }
         }
         finally
