@@ -1,5 +1,6 @@
 @page "/engineering"
 @inject IAgentHarnessService Harness
+@inject IServiceProvider Services
 
 @*
     Engineering: the tools Concierge can actually run, and what each one is
@@ -78,6 +79,56 @@
             </div>
         </RoomSection>
 
+        @*
+            Tools from other software. Listed apart from the built-in ones
+            because the trust is different: these arrive over a protocol that
+            says nothing about what they do, so every one asks before it runs.
+        *@
+        <RoomSection Title="From other software" Count="@_servers.Count">
+            @if (_mcp is null)
+            {
+                <p class="room-note">Not available in this build.</p>
+            }
+            else if (_servers.Count == 0)
+            {
+                <p class="room-note">
+                    No MCP servers are set up. Add them in @_mcp.ConfigPath and restart.
+                </p>
+            }
+            else
+            {
+                <div class="rows">
+                    @foreach (var server in _servers)
+                    {
+                        <div class="row">
+                            <span class="row-name">
+                                @server.Name
+                                <span class="row-sub">@server.Status</span>
+                                @if (server.ToolNames is { Count: > 0 })
+                                {
+                                    @* What it can do, not just that it is alive. *@
+                                    <span class="row-sub">@string.Join(", ", server.ToolNames)</span>
+                                }
+                            </span>
+                            <span class="state">
+                                <span class="dot @(server.Connected ? "dot-done" : "dot-waiting")" aria-hidden="true"></span>
+                                @(server.Connected ? (server.ToolCount == 1 ? "1 tool" : $"{server.ToolCount} tools") : "Not connected")
+                            </span>
+                        </div>
+                    }
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(_mcp.ConfigProblem))
+                {
+                    <p class="room-note">@_mcp.ConfigProblem</p>
+                }
+
+                <p class="room-note">
+                    Every one of these asks before it runs. Configured in @_mcp.ConfigPath
+                </p>
+            }
+        </RoomSection>
+
         <RoomSection Title="Recent runs" Count="@logs.Count">
             @if (logs.Count == 0)
             {
@@ -101,3 +152,18 @@
         </RoomSection>
     </div>
 </div>
+
+@code {
+    // Resolved rather than injected: a host that has not called AddConciergeMcp
+    // should render this room, not fail to.
+    private Concierge.Shared.Rpc.Mcp.McpToolSource? _mcp;
+    private IReadOnlyList<Concierge.Shared.Rpc.Mcp.McpServerStatus> _servers = [];
+
+    protected override void OnInitialized()
+    {
+        _mcp = Services.GetService(typeof(Concierge.Shared.Rpc.Mcp.McpToolSource))
+            as Concierge.Shared.Rpc.Mcp.McpToolSource;
+
+        _servers = _mcp?.Statuses ?? [];
+    }
+}

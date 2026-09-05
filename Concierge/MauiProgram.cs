@@ -1,5 +1,6 @@
 using CircleAI.Core;
 using Concierge.Ai;
+using Concierge.Shared.Rpc.Mcp;
 using Concierge.Ai.Isolated;
 using MudBlazor.Services;
 using Concierge.Chat.Cloud;
@@ -70,6 +71,9 @@ public static class MauiProgram
 			.AddConciergeDiagrams()
 			.AddConciergeMetrics()
 			.AddConciergeTools()
+			// Tools published by other software, over MCP. Reads
+			// %LOCALAPPDATA%/Concierge/mcp.json; with no file, nothing starts.
+			.AddConciergeMcp()
 			// AddConciergeAi() registers ILlmRuntimeService and the in-process
 			// chat runtime; AddConciergeAiIsolated() then replaces the chat
 			// runtime with one that talks to a child process.

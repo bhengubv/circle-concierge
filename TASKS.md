@@ -53,11 +53,11 @@ Ordered. The first is a correctness problem; the rest are absences.
 > press Allow on something that never existed. In a product whose pitch is
 > "it asks before it acts", that is the worst place to be wrong.
 
-### 2. MCP is a class, not a capability
-- [ ] Somewhere to configure a server (Settings, under Keys or its own group)
-- [ ] Connect on start-up and surface failures the way a runtime does
-- [ ] Register its tools into `IAgentToolRegistry` so the model can call them
-- [ ] Show connected servers and their tools in Engineering
+### 2. ~~MCP is a class, not a capability~~ — done
+- [x] Somewhere to configure a server — `%LOCALAPPDATA%/Concierge/mcp.json` (Settings, under Keys or its own group)
+- [x] Connect on start-up and surface failures the way a runtime does
+- [x] Register its tools into `IAgentToolRegistry` so the model can call them
+- [x] Show connected servers and their tools in Engineering
 
 > `McpClient` is 153 lines and is never instantiated outside its own file.
 

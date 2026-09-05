@@ -10,16 +10,35 @@ namespace Concierge.Shared.Tools;
 /// </summary>
 public sealed class AgentToolRegistry : IAgentToolRegistry
 {
-    public AgentToolRegistry(IEnumerable<IAgentTool> tools)
+    private readonly IReadOnlyList<IAgentTool> _compiledIn;
+    private readonly IReadOnlyList<Concierge.Shared.Rpc.Mcp.IAgentToolSource> _sources;
+
+    public AgentToolRegistry(
+        IEnumerable<IAgentTool> tools,
+        IEnumerable<Concierge.Shared.Rpc.Mcp.IAgentToolSource>? sources = null)
     {
-        Tools = tools
+        _compiledIn = tools.ToList();
+        _sources = sources?.ToList() ?? [];
+    }
+
+    /// <summary>
+    /// Computed rather than stored, because not every tool exists at start-up.
+    ///
+    /// Tools registered in DI are known when this is built; tools published by
+    /// an MCP server are not known until it has been started and asked, which
+    /// happens after. Snapshotting here meant a connected server's tools could
+    /// never reach the model — the catalogue had already been taken.
+    ///
+    /// Name collisions resolve first-wins, compiled-in before remote: a server
+    /// must not be able to shadow read_file by publishing its own.
+    /// </summary>
+    public IReadOnlyList<IAgentTool> Tools =>
+        _compiledIn
+            .Concat(_sources.SelectMany(source => source.Tools))
             .GroupBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
             .Select(g => g.First())
             .OrderBy(t => t.Name, StringComparer.OrdinalIgnoreCase)
             .ToList();
-    }
-
-    public IReadOnlyList<IAgentTool> Tools { get; }
 
     public string BuildSystemPromptAddendum()
     {

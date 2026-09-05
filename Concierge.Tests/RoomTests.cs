@@ -29,8 +29,9 @@ public sealed class RoomTests : BunitContext
 
     /// <summary>Blocks a tool call on a person, as the tool layer does. Discarded
     /// rather than awaited: staying pending is the state under test.</summary>
-    private void Raise(string summary, Concierge.Shared.ConciergeToolRisk risk)
-        => _ = _approver.RequestAsync(
+    private ValueTask<Concierge.Shared.Tools.ToolApprovalDecision> Raise(
+        string summary, Concierge.Shared.ConciergeToolRisk risk)
+        => _approver.RequestAsync(
             new Concierge.Shared.Tools.ToolApprovalRequest("write_file", summary, risk));
 
     private void Compose()
@@ -312,8 +313,8 @@ public sealed class RoomTests : BunitContext
     [Fact]
     public void The_queue_puts_the_riskiest_first()
     {
-        Raise("Run git status", Concierge.Shared.ConciergeToolRisk.Low);
-        Raise("Write notes.md", Concierge.Shared.ConciergeToolRisk.High);
+        _ = Raise("Run git status", Concierge.Shared.ConciergeToolRisk.Low);
+        _ = Raise("Write notes.md", Concierge.Shared.ConciergeToolRisk.High);
 
         Compose();
         var cut = Render<Concierge.Shared.Components.Pages.Approvals>();
@@ -346,9 +347,9 @@ public sealed class RoomTests : BunitContext
     /// prompt in the thread reads, not a copy of it.
     /// </summary>
     [Fact]
-    public void Allowing_here_answers_the_waiting_tool_call()
+    public async Task Allowing_here_answers_the_waiting_tool_call()
     {
-        Raise("Write notes.md", Concierge.Shared.ConciergeToolRisk.High);
+        var call = Raise("Write notes.md", Concierge.Shared.ConciergeToolRisk.High);
 
         Compose();
         var cut = Render<Concierge.Shared.Components.Pages.Approvals>();
@@ -358,7 +359,10 @@ public sealed class RoomTests : BunitContext
 
         cut.Find(".ask-actions button.btn-primary").Click();
 
-        // Gone from the queue, because the call it was blocking has been let go.
-        Assert.Empty(_approver.Pending);
+        // Awaited rather than asserting the queue is empty straight after the
+        // click: Answer completes the waiting call on another thread, so the
+        // queue drains a moment later. Checking it immediately passed alone and
+        // failed in a full run, which is the worst kind of test.
+        Assert.Equal(Concierge.Shared.Tools.ToolApprovalDecision.Allowed, await call);
     }
 }
