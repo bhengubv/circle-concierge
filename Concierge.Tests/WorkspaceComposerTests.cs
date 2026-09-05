@@ -191,7 +191,8 @@ public sealed class WorkspaceComposerTests : BunitContext
 
         var names = cut.FindAll(".comp-box .sr").Select(e => e.TextContent.Trim()).ToArray();
 
-        Assert.Contains("Attach a text file", names);
+        // Renamed when the picker started accepting pictures too.
+        Assert.Contains("Attach a file or a picture", names);
         Assert.Contains("Speak", names);
         Assert.Contains("Send", names);
     }

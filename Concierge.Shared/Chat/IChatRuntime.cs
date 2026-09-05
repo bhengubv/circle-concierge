@@ -50,7 +50,43 @@ public interface IChatRuntime
 /// </summary>
 /// <param name="Role">"system" / "user" / "assistant".</param>
 /// <param name="Content">Text content.</param>
-public sealed record ChatTurn(string Role, string Content);
+/// <param name="Images">
+/// Pictures attached to this turn, or null. Optional so every existing caller
+/// and every text-only runtime is unaffected: a runtime that cannot see simply
+/// never reads it.
+/// </param>
+public sealed record ChatTurn(string Role, string Content, IReadOnlyList<ChatImage>? Images = null);
+
+/// <summary>
+/// A picture attached to a turn.
+///
+/// Carried as bytes rather than a path or a data URI: the runtimes encode it
+/// differently — one wants base64 in JSON, another wants a byte array — and a
+/// data URI would mean every runtime that does not want one has to parse it
+/// back out.
+/// </summary>
+/// <param name="FileName">What it was called, for the transcript.</param>
+/// <param name="MediaType">e.g. <c>image/jpeg</c>. Sent to providers verbatim.</param>
+/// <param name="Bytes">The image itself.</param>
+public sealed record ChatImage(string FileName, string MediaType, byte[] Bytes);
+
+/// <summary>
+/// Optional capability for runtimes that can look at a picture.
+///
+/// Optional, and checked rather than assumed, because most cannot: the model
+/// that ships with Concierge runs on the device and is text-only. A UI that
+/// attaches an image regardless produces a prompt full of decoded JPEG bytes,
+/// which is what this codebase did — every attachment was folded into the
+/// prompt with Encoding.UTF8.GetString, pictures included.
+///
+/// A runtime that does not implement this is not asked to look at anything,
+/// and the person is told plainly instead.
+/// </summary>
+public interface IVisionCapableRuntime
+{
+    /// <summary>Media types it can accept, e.g. image/jpeg and image/png.</summary>
+    IReadOnlyCollection<string> SupportedImageMediaTypes { get; }
+}
 
 /// <summary>
 /// Optional capability for chat runtimes whose backend supports snapshotting

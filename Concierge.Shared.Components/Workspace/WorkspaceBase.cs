@@ -70,6 +70,11 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     protected bool _executeToolCalls = true;
 
     protected readonly List<TextAttachment> _pendingAttachments = new();
+
+    /// <summary>Pictures lifted out of the attachments for the turn being sent.
+    /// Separate from the text blocks because they travel beside the prompt
+    /// rather than inside it.</summary>
+    protected readonly List<ChatImage> _pendingImages = new();
     protected bool _recording;
 
     /// <summary>
@@ -699,11 +704,46 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
             }
         }
 
-        // Attachments are inlined as fenced code blocks ahead of the prompt so the LLM sees
-        // them in context. Binary / image attachments are a v2 feature — text-only here.
-        var attachmentBlocks = _pendingAttachments
-            .Select(a => $"```file name=\"{a.FileName}\"\n{Encoding.UTF8.GetString(a.Bytes).TrimEnd()}\n```")
-            .ToList();
+        // Attachments split by what they actually are, which the previous
+        // version did not do: everything went through Encoding.UTF8.GetString,
+        // pictures included, so the camera hand-off sent a few hundred
+        // kilobytes of decoded JPEG and asked what was in the picture.
+        // Content decides, not the file name: a PNG called notes.txt is
+        // still a PNG.
+        var attachmentBlocks = new List<string>();
+        _pendingImages.Clear();
+
+        foreach (var attachment in _pendingAttachments)
+        {
+            var mediaType = Concierge.Shared.Attachments.AttachmentKind.ImageMediaType(attachment.Bytes);
+
+            if (mediaType is not null)
+            {
+                _pendingImages.Add(new ChatImage(attachment.FileName, mediaType, attachment.Bytes));
+                continue;
+            }
+
+            if (!Concierge.Shared.Attachments.AttachmentKind.LooksLikeText(attachment.Bytes))
+            {
+                // Not text, and not a picture this understands. Naming it beats
+                // pasting its bytes into the prompt.
+                attachmentBlocks.Add($"[{attachment.FileName} was attached, but it is not text or a picture this can read.]");
+                continue;
+            }
+
+            attachmentBlocks.Add($"```file name=\"{attachment.FileName}\"\n{Encoding.UTF8.GetString(attachment.Bytes).TrimEnd()}\n```");
+        }
+
+        // A runtime that cannot see is told so, rather than handed pictures it
+        // will ignore. The model that ships with Concierge runs on the device
+        // and is text-only, so this is the common case, not the edge one.
+        if (_pendingImages.Count > 0 && _activeRuntime is not IVisionCapableRuntime)
+        {
+            var names = string.Join(", ", _pendingImages.Select(i => i.FileName));
+            attachmentBlocks.Add($"[{names} attached, but {_activeRuntime?.EngineLabel ?? "this model"} cannot look at pictures.]");
+            _pendingImages.Clear();
+        }
+
         _pendingAttachments.Clear();
 
         var fullPrompt = string.Join("\n\n", attachmentBlocks.Append(input).Where(s => !string.IsNullOrEmpty(s)));
@@ -896,6 +936,21 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         if (systemParts.Count > 0)
         {
             turns.Insert(0, new ChatTurn("system", string.Join("\n\n", systemParts)));
+        }
+
+        // Pictures ride on the last user turn, which is the one they were
+        // attached to. Done here rather than in the store because the
+        // transcript keeps what was said, and an image is not a message — it
+        // is something handed over with one.
+        if (_pendingImages.Count > 0)
+        {
+            var lastUser = turns.FindLastIndex(t =>
+                string.Equals(t.Role, "user", StringComparison.OrdinalIgnoreCase));
+
+            if (lastUser >= 0)
+            {
+                turns[lastUser] = turns[lastUser] with { Images = _pendingImages.ToArray() };
+            }
         }
 
         var buffer = new StringBuilder();

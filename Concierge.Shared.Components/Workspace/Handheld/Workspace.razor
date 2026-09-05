@@ -366,11 +366,11 @@
                               @bind:event="oninput"
                               @bind:after="OnComposerChangedAsync"></textarea>
 
-                    <label class="icon-btn" title="Attach a text file">
+                    <label class="icon-btn" title="Attach a file or a picture">
                         <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11l-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L16 6"/></svg>
-                        <span class="sr">Attach a text file</span>
+                        <span class="sr">Attach a file or a picture</span>
                         <InputFile OnChange="OnAttachmentSelected" class="file-over"
-                                   accept=".txt,.md,.markdown,.json,.cs,.razor,.xml,.yaml,.yml,.toml,.csv,.log" />
+                                   accept=".txt,.md,.markdown,.json,.cs,.razor,.xml,.yaml,.yml,.toml,.csv,.log,.png,.jpg,.jpeg,.gif,.webp" />
                     </label>
 
                     <button class="icon-btn @(_recording ? "is-on" : null)" type="button"
