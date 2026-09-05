@@ -111,6 +111,6 @@ needs a cloud key — the wire shapes are tested, the round trip is not.
 
 ## Standing checks
 
-- [ ] 891 tests pass — `dotnet test Concierge.Tests/Concierge.Tests.csproj`
+- [ ] 996 tests pass — `dotnet test Concierge.Tests/Concierge.Tests.csproj`
 - [ ] Verified on the running desktop app, not only in tests
 - [ ] `[skip ci]` in the HEAD commit before any push
