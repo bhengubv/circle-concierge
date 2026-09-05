@@ -113,7 +113,8 @@ tools were built to avoid, sitting on every other file type in the repo.
 - [~] iOS and Mac Catalyst — both compile from this Windows machine
       (`dotnet build -f net10.0-ios`, `-f net10.0-maccatalyst`, both clean). Neither has been
       *run*: that needs Apple hardware, so nothing about how they look or fit is verified
-- [ ] Mobile and wearable are not release-gated, by decision
+- [x] Mobile and wearable are not release-gated — your decision, made and standing.
+      Desktop runs point until the product is complete; the other heads stay in the tree
 - [x] Notebooks — `read_notebook` renders cells rather than JSON, `edit_notebook` changes one cell
       and leaves the rest byte-for-byte. No kernel; running one stays `run_command`
 
@@ -145,6 +146,10 @@ tools were built to avoid, sitting on every other file type in the repo.
 
 ## Standing checks
 
-- [ ] 1018 tests pass — `dotnet test Concierge.Tests/Concierge.Tests.csproj`
-- [ ] Verified on the running desktop app, not only in tests
-- [ ] `[skip ci]` in the HEAD commit before any push
+Boxes that are re-checked per change rather than ticked once. All three hold as
+of `80cda9c`.
+
+- [x] 1018 tests pass — `dotnet test Concierge.Tests/Concierge.Tests.csproj`
+- [x] Verified on the running desktop app, not only in tests — Engineering shows
+      11 tools under their real names, no page overflow
+- [x] `[skip ci]` in the HEAD commit before any push
