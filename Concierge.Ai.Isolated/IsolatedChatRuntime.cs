@@ -51,6 +51,12 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IDisposable, IAsyncDispo
     // routes by id — the provider picker, the settings panel — keeps working.
     public string Id => "circleai";
 
+    /// <summary>
+    /// Still on the device. The model moved to a child process so a native fault
+    /// costs the sentence rather than the application — it did not move machines.
+    /// </summary>
+    public bool LeavesDevice => false;
+
     public string EngineLabel => _engineLabel;
 
     public bool IsReady => _isReady && !_childFaulted;

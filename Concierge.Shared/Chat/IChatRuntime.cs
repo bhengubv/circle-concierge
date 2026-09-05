@@ -36,6 +36,23 @@ public interface IChatRuntime
     string StatusMessage { get; }
 
     /// <summary>
+    /// Whether a turn sent to this runtime leaves the machine.
+    ///
+    /// Concierge's claim is that it works on your own device, and the sidebar said
+    /// "on device" underneath whichever engine was selected — including the three
+    /// that are a cloud provider. This is the fact that makes that label true, and
+    /// it is what stops a failure on one runtime quietly continuing on another that
+    /// is somewhere else entirely.
+    ///
+    /// Defaulted to true rather than false, and deliberately: a runtime that has
+    /// not thought about the question is far more likely to be a network call than
+    /// a local model, and being wrong in this direction costs a label. Being wrong
+    /// the other way sends somebody's conversation off their machine without saying
+    /// so.
+    /// </summary>
+    bool LeavesDevice => true;
+
+    /// <summary>
     /// Streams the assistant reply chunk-by-chunk. Each yielded string is the next
     /// fragment to append. Callers concatenate in order and re-render between yields.
     /// </summary>

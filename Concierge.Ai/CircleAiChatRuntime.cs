@@ -116,6 +116,9 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
     }
 
     public string Id => "circleai";
+
+    /// <summary>The whole point of it. Nothing here goes anywhere.</summary>
+    public bool LeavesDevice => false;
     public string EngineLabel => _engineLabel;
     public bool IsReady => _isReady;
     public string StatusMessage => _statusMessage;

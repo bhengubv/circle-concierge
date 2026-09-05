@@ -87,6 +87,32 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     }
 
     protected List<IChatRuntime> _orderedRuntimes = new();
+
+    /// <summary>
+    /// Which runtime actually answered the turn in flight, and what failed first.
+    ///
+    /// Kept because the reply is stored with an engine label, and after a failover
+    /// the chosen runtime is not the one that spoke. A transcript that credits the
+    /// wrong model is worse than one with no label at all — it is the record of what
+    /// happened, and it would be wrong.
+    /// </summary>
+    protected Concierge.Shared.Chat.FailoverOutcome? _answeredBy;
+
+    /// <summary>
+    /// The engine to credit for the reply just produced: whoever actually answered,
+    /// falling back to the chosen runtime when nothing has run yet.
+    /// </summary>
+    protected string AnsweringLabel()
+        => _answeredBy?.Runtime.EngineLabel ?? _activeRuntime?.EngineLabel ?? string.Empty;
+
+    /// <summary>
+    /// What to say under the composer when a provider was skipped. Silence would
+    /// leave a person believing the engine they picked is the one that replied.
+    /// </summary>
+    protected string? FailoverNote()
+        => _answeredBy is { FellBackFrom.Count: > 0 } outcome
+            ? $"{string.Join(", ", outcome.FellBackFrom)} did not answer — {outcome.Runtime.EngineLabel} replied instead."
+            : null;
     protected IChatRuntime? _activeRuntime;
     protected string _systemPromptDraft = string.Empty;
     protected bool _includeToolCatalog = true;
@@ -1041,6 +1067,10 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         _streamingBuffer = string.Empty;
         var cancelled = false;
 
+        // Cleared per turn. Left standing, a failover on one turn would credit the
+        // wrong engine on every turn after it.
+        _answeredBy = null;
+
         // Recorded so a thread you have left still shows as working, and so it
         // can be stopped from somewhere other than here.
         if (_active is not null && _streamCts is not null)
@@ -1062,7 +1092,17 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
         try
         {
-            await foreach (var chunk in _activeRuntime.StreamAsync(turns, cancellationToken))
+            // Through the failover chain rather than straight at the chosen
+            // runtime. A provider having a bad afternoon used to be a dead turn:
+            // a stream error pasted into the thread with two other configured
+            // providers sitting idle. It only moves on from a failure before the
+            // first token, and never from a local runtime to a remote one.
+            await foreach (var chunk in Concierge.Shared.Chat.RuntimeFailover.StreamAsync(
+                _activeRuntime,
+                _orderedRuntimes,
+                turns,
+                outcome => _answeredBy = outcome,
+                cancellationToken))
             {
                 buffer.Append(chunk);
                 _streamingBuffer = buffer.ToString();
@@ -1096,7 +1136,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
             {
                 await Store.AppendEventAsync(_active.Id, ConversationEventType.AssistantMessage,
                     assistantText + "\n[stream cancelled before completion]",
-                    _activeRuntime.EngineLabel);
+                    AnsweringLabel());
             }
 
             // Whatever happened, the text is in the log now, so the checkpoint
@@ -1107,7 +1147,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
         if (!string.IsNullOrWhiteSpace(assistantText))
         {
-            await Store.AppendEventAsync(_active.Id, ConversationEventType.AssistantMessage, assistantText, _activeRuntime.EngineLabel);
+            await Store.AppendEventAsync(_active.Id, ConversationEventType.AssistantMessage, assistantText, AnsweringLabel());
             DeleteDraft(_active.Id);
             _active = await Store.GetAsync(_active.Id);
             return assistantText;

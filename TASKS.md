@@ -138,6 +138,45 @@ payment. Concierge asks before it acts, and that has to survive contact with a
 catalogue of actions that touch the real world — which is where an assistant
 that acts is most easily made dangerous.
 
+### 8. Three things taken from OpenDroid that were left behind
+
+The device capability layer took the shape and left most of the ideas. These
+three are the ones worth having, all verifiable without a working runtime.
+
+**Replanning.** `PlanProtocol` states a plan and nothing ever revises it. If
+step two fails, steps three to six run anyway against an assumption that is no
+longer true — or the loop stops at its round cap with no explanation. OpenDroid's
+AgentLoop re-evaluates after each step. The plan strip already exists and ticks
+steps off; what is missing is what happens when a step does not go the way it
+said.
+
+- [ ] A failed step revises the rest of the plan rather than continuing past it
+- [ ] The revision is visible — a person watching sees the plan change and why
+- [ ] A plan that keeps failing stops rather than looping
+
+**Provider failover.** Twelve providers with automatic chaining there; here,
+three cloud runtimes and a local one with no chaining at all, so a provider
+having a bad afternoon is a dead turn. This is small and it is the difference
+between an answer and nothing.
+
+- [x] Try the next configured runtime when one fails
+- [x] Say which one answered — the stored engine label credits whoever spoke
+- [x] Never past a refusal, never after the first token, never off the device
+- [x] And the sidebar stopped saying "on device" under a cloud provider
+
+**Screenshot.** Concierge has vision input and cannot take a picture of its own
+screen; there is not one reference to screen capture in the repository. It fits
+the capability layer exactly, works on the desktop today, and makes the vision
+work reachable without a person finding a file to attach.
+
+- [ ] `screenshot` as a device capability, approval-gated
+- [ ] Honest absence where a head cannot capture
+
+Two ideas from OpenDroid are deliberately **not** on this list: driving other
+apps through an accessibility service, and the payment actions. Both are where
+an assistant that acts becomes genuinely dangerous, and both are things
+OpenDroid documents no confirmation step for.
+
 ---
 
 ## Known gaps, not scheduled

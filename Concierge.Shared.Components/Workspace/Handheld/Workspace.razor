@@ -245,7 +245,18 @@
                 @onclick="OpenSettings" @onpointerup="OpenSettings">
             <span class="dot @(runtime.RegistryAvailable ? "dot-done" : "dot-waiting")" aria-hidden="true"></span>
             <span class="ws-runtime-name">@runtime.Engine</span>
-            <span class="ws-item-meta">on device</span>
+            @* Was the literal text "on device", under whichever engine was
+               selected — including the three that are a cloud provider. The
+               sidebar was contradicting the product's main claim on the one
+               line where somebody would look to check it.
+
+               Nothing at all when no runtime is answering: with no engine
+               there is no honest version of either label, and guessing would
+               reintroduce the same fault in the other direction. *@
+            @if (_activeRuntime is not null)
+            {
+                <span class="ws-item-meta">@(_activeRuntime.LeavesDevice ? "in the cloud" : "on device")</span>
+            }
         </button>
     </aside>
 

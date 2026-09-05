@@ -52,6 +52,12 @@ public sealed class ContentFilterChatRuntimeDecorator : IChatRuntime, IPersistab
     }
 
     public string Id => _inner.Id;
+
+    /// <summary>
+    /// Forwarded, like everything else here. A decorator that answered this for
+    /// itself would relabel a cloud provider as local simply by wrapping it.
+    /// </summary>
+    public bool LeavesDevice => _inner.LeavesDevice;
     public string EngineLabel => _inner.EngineLabel;
     public bool IsReady => _inner.IsReady;
     public string StatusMessage => _inner.StatusMessage;

@@ -387,8 +387,27 @@ public sealed class WorkspaceSidebarTests : BunitContext
 
         var runtime = cut.Find(".ws-runtime");
         Assert.Single(runtime.QuerySelectorAll(".dot"));
-        Assert.Contains("on device", runtime.TextContent);
         Assert.False(string.IsNullOrWhiteSpace(runtime.QuerySelector(".ws-runtime-name")!.TextContent));
+    }
+
+    /// <summary>
+    /// And it does not claim to be local when it is not.
+    ///
+    /// This line read "on device" underneath whichever engine was selected,
+    /// including the three that are a cloud provider — the sidebar contradicting
+    /// the product's main claim in the one place somebody would look to check it.
+    /// The previous version of this test asserted the constant, which is how a
+    /// passing suite can describe a screen that is lying.
+    ///
+    /// With no runtime registered at all — this fixture's case — there is no
+    /// honest version of either label, so there is none.
+    /// </summary>
+    [Fact]
+    public void The_sidebar_does_not_claim_to_be_local_without_a_local_engine()
+    {
+        var cut = RenderWorkspace();
+
+        Assert.DoesNotContain("on device", cut.Find(".ws-runtime").TextContent);
     }
 
     // ── What the sidebar must not be ──────────────────────────────────────
