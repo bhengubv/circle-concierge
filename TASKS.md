@@ -183,6 +183,46 @@ apps through an accessibility service, and the payment actions. Both are where
 an assistant that acts becomes genuinely dangerous, and both are things
 OpenDroid documents no confirmation step for.
 
+### 9. Design — say it, see it, point at it
+
+Ours. Inspired by a handful of open projects that prove an agent can make
+visual things; nothing taken from any of them. No components, no licences to
+worry about, no per-repo shopping list.
+
+**The bar, which is the spec:** a five-year-old and a ninety-seven-year-old can
+both use it. That rules out, before anything is designed: syntax, modes,
+timelines, node graphs, file names, panels, and every word a person would have
+to look up. What both of them do naturally is say what they want, look at it,
+and say "no, not like that". That is the entire interface.
+
+**Not in scope:** models. CircleAI handles that, and on the right device one
+model does everything. Nothing in this tranche is about inference, providers or
+prompts. It is about the surface — which is the product.
+
+- [ ] One surface: a canvas and the composer. No files, no timeline, no
+      properties panel, no code view
+- [ ] Describe → see → correct. Pointing at a thing and saying what is wrong
+      with it is a first-class way to edit, not a fallback
+- [ ] Undo that always works, shown as pictures of how it looked — not a list of
+      changes. Every state you have seen is one tap from coming back
+- [ ] Design acts freely. Being asked permission to try something is what makes a
+      tool unusable for the people this is for; the approvals that stay are the
+      ones that leave the canvas or leave the device
+- [ ] Look and feel chosen from pictures, never from a document
+- [ ] The plan in plain language, each step refusable before it happens — the
+      readable version of a node graph, and it already exists
+- [ ] Fits its window at every size, like every other panel. Scrollbars are hidden
+      app-wide, so a surface that overflows loses content silently
+- [ ] Degrades honestly: what a handheld shows, and what a watch shows instead
+- [ ] Verified on the running desktop app, not only in tests
+
+**The rule this surface must not break:** every defect worth fixing in Concierge
+so far has been the same one — a screen asserting something untrue. An approvals
+badge that always said two. A room listing tools that did not exist. "On device"
+under a cloud provider. A plan ticking off steps that failed. A flashlight
+offered on a desktop. A canvas has far more room to lie than a sidebar does, and
+the whole value of the product is that you can see what it did and stop it.
+
 ---
 
 ## Known gaps, not scheduled
