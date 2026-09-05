@@ -91,7 +91,8 @@ needs a cloud key — the wire shapes are tested, the round trip is not.
       the view building stays untested, because bUnit cannot render an Activity and never will
 - [ ] iOS and macOS heads have never been built or run (Windows machine)
 - [ ] Mobile and wearable are not release-gated, by decision
-- [ ] Notebook support
+- [x] Notebooks — `read_notebook` renders cells rather than JSON, `edit_notebook` changes one cell
+      and leaves the rest byte-for-byte. No kernel; running one stays `run_command`
 
 ---
 

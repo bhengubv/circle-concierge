@@ -9,9 +9,9 @@ public sealed class ToolRegistryTests
 {
     /// <summary>
     /// Renamed from "three harness adapters": the catalogue now also carries
-    /// the two web tools, which are not harness adapters at all. Counting is
-    /// still worth doing — a tool registered twice, or dropped by a DI change,
-    /// shows up here and nowhere else.
+    /// the two web tools and the two notebook tools. Counting is still worth
+    /// doing — a tool registered twice, or dropped by a DI change, shows up
+    /// here and nowhere else.
     /// </summary>
     [Fact]
     public void Add_concierge_tools_registers_the_whole_catalogue()
@@ -26,7 +26,7 @@ public sealed class ToolRegistryTests
 
         var registry = provider.GetRequiredService<IAgentToolRegistry>();
 
-        Assert.Equal(5, registry.Tools.Count);
+        Assert.Equal(7, registry.Tools.Count);
         Assert.Contains(registry.Tools, t => t.Name == "read_file" && t.IsReadOnly);
         Assert.Contains(registry.Tools, t => t.Name == "write_file" && !t.IsReadOnly);
         Assert.Contains(registry.Tools, t => t.Name == "run_command" && !t.IsReadOnly);
@@ -35,6 +35,11 @@ public sealed class ToolRegistryTests
         // still leave the device, which is the thing being consented to.
         Assert.Contains(registry.Tools, t => t.Name == "web_fetch" && !t.IsReadOnly);
         Assert.Contains(registry.Tools, t => t.Name == "web_search" && !t.IsReadOnly);
+
+        // Notebooks read like read_file and write like write_file, so they
+        // carry the same two answers to "does this need asking".
+        Assert.Contains(registry.Tools, t => t.Name == "read_notebook" && t.IsReadOnly);
+        Assert.Contains(registry.Tools, t => t.Name == "edit_notebook" && !t.IsReadOnly);
     }
 
     [Fact]

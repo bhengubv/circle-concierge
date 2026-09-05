@@ -7,13 +7,20 @@
     allowed to do.
 
     This is the room that earns trust, so it is written to be checked rather
-    than believed. Every tool states whether it only reads, whether it can
-    destroy something, and what risk it carries — read from the harness that
-    enforces those flags, not from a list maintained by hand.
+    than believed — which is exactly what it was not doing. It listed five
+    hand-written names from IAgentHarnessService.GetTools(), and the model was
+    given a different set: two of the five (list_files, grep) are not tools it
+    can call at all, one is under another name, and web_fetch, web_search and
+    both notebook tools were missing entirely. A room whose whole job is
+    telling you what can happen to your machine was answering from a list
+    nobody had updated since the catalogue grew.
+
+    It now reads the registry the model is actually handed. If a tool is here,
+    the model can call it; if it is not here, it cannot.
 *@
 
 @{
-    var tools = Harness.GetTools();
+    var tools = BuiltIn();
     var logs = Harness.GetRunLogs();
 }
 
@@ -52,7 +59,7 @@
                 {
                     <div class="row">
                         <span class="row-name">
-                            @tool.UserFacingName
+                            @tool.Name
                             <span class="row-sub">@tool.Description</span>
                         </span>
                         <span class="state"><span class="dot dot-done" aria-hidden="true"></span>Safe</span>
@@ -67,12 +74,12 @@
                 {
                     <div class="row">
                         <span class="row-name">
-                            @tool.UserFacingName
+                            @tool.Name
                             <span class="row-sub">@tool.Description</span>
                         </span>
                         <span class="state">
-                            <span class="dot @(tool.IsDestructive ? "dot-danger" : "dot-waiting")" aria-hidden="true"></span>
-                            @(tool.IsDestructive ? "Asks first — destructive" : "Asks first")
+                            <span class="dot dot-waiting" aria-hidden="true"></span>
+                            Asks first
                         </span>
                     </div>
                 }
@@ -159,11 +166,35 @@
     private Concierge.Shared.Rpc.Mcp.McpToolSource? _mcp;
     private IReadOnlyList<Concierge.Shared.Rpc.Mcp.McpServerStatus> _servers = [];
 
+    // Same reason: a host that wired no registry should render this room and
+    // say so, rather than fail to render at all.
+    private Concierge.Shared.Tools.IAgentToolRegistry? _registry;
+
     protected override void OnInitialized()
     {
         _mcp = Services.GetService(typeof(Concierge.Shared.Rpc.Mcp.McpToolSource))
             as Concierge.Shared.Rpc.Mcp.McpToolSource;
 
         _servers = _mcp?.Statuses ?? [];
+
+        _registry = Services.GetService(typeof(Concierge.Shared.Tools.IAgentToolRegistry))
+            as Concierge.Shared.Tools.IAgentToolRegistry;
+    }
+
+    /// <summary>
+    /// Everything the model is handed except what came over MCP, which has its
+    /// own section below — the trust is different and listing a remote tool
+    /// twice would suggest otherwise.
+    /// </summary>
+    private IReadOnlyList<Concierge.Shared.Tools.IAgentTool> BuiltIn()
+    {
+        if (_registry is null)
+        {
+            return [];
+        }
+
+        var remote = _mcp?.Tools.Select(t => t.Name).ToHashSet(StringComparer.Ordinal) ?? [];
+
+        return _registry.Tools.Where(t => !remote.Contains(t.Name)).ToList();
     }
 }

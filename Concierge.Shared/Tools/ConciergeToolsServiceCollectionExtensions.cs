@@ -27,6 +27,14 @@ public static class ConciergeToolsServiceCollectionExtensions
         services.AddSingleton<IAgentTool, AgentHarnessWriteTool>();
         services.AddSingleton<IAgentTool, AgentHarnessRunTool>();
 
+        // Notebooks. read_file and write_file already reach a .ipynb, which is
+        // the problem rather than the answer: reading one that way spends the
+        // context window on base64 outputs, and writing one that way means the
+        // whole document coming back from the model's memory. These two do the
+        // reading and the surgery; nothing here runs a kernel.
+        services.AddSingleton<IAgentTool, NotebookReadTool>();
+        services.AddSingleton<IAgentTool, NotebookEditTool>();
+
         // Reaching the network. Both ask before they run — Concierge's claim is
         // that it works on your own device, so a turn that leaves it is a turn
         // somebody should have agreed to. Search additionally needs a provider,

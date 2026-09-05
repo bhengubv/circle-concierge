@@ -56,6 +56,13 @@ public sealed class RoomTests : BunitContext
         // snapshot — which used to carry two hardcoded entries.
         Services.AddSingleton<Concierge.Shared.Tools.InteractiveToolApprovalService>(_ => _approver);
         Services.AddSingleton<Concierge.Shared.Tools.IToolApprovalService>(_ => _approver);
+
+        // The real catalogue. Engineering used to render five hand-written
+        // names that disagreed with what the model is handed, so this fixture
+        // did not need it; now the room reads the registry, and a test that
+        // stubbed one would be checking the wrong list.
+        Concierge.Shared.Tools.ConciergeToolsServiceCollectionExtensions.AddConciergeTools(Services);
+
         JSInterop.Mode = JSRuntimeMode.Loose;
     }
 
@@ -246,6 +253,37 @@ public sealed class RoomTests : BunitContext
 
         Assert.Contains(cut.FindAll(".room-sec-body .state").Select(e => e.TextContent),
                         t => t.Contains("Asks first"));
+    }
+
+    /// <summary>
+    /// And it names the tools the model is actually handed.
+    ///
+    /// This room listed five hand-written names — including two, list_files
+    /// and grep, that are not callable at all — while web_fetch, web_search
+    /// and both notebook tools were missing. A room whose entire job is
+    /// telling you what can happen to your machine was answering from a list
+    /// nobody had updated since the catalogue grew, which is the same fault as
+    /// the approvals queue that always showed two.
+    /// </summary>
+    [Fact]
+    public void Engineering_lists_the_tools_the_model_is_actually_given()
+    {
+        var cut = Open<Concierge.Shared.Components.Pages.Engineering>();
+
+        SectionHeader(cut, "Reads only").Click();
+        var reads = cut.Find(".room").TextContent;
+        Assert.Contains("read_file", reads);
+        Assert.Contains("read_notebook", reads);
+
+        SectionHeader(cut, "Can change things").Click();
+        var changes = cut.Find(".room").TextContent;
+        Assert.Contains("write_file", changes);
+        Assert.Contains("edit_notebook", changes);
+        Assert.Contains("web_fetch", changes);
+
+        // The two that were listed and never existed.
+        Assert.DoesNotContain("list_files", changes);
+        Assert.DoesNotContain("grep", changes);
     }
 
     /// <summary>
