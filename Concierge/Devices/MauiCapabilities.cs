@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Concierge.Shared;
+using Concierge.Shared.Chat;
 using Concierge.Shared.Devices;
 using Concierge.Shared.Tools;
 using Microsoft.Extensions.DependencyInjection;
@@ -44,6 +45,7 @@ public static class MauiDeviceCapabilities
         services.AddSingleton<IDeviceCapability, ConnectivityCapability>();
         services.AddSingleton<IDeviceCapability, OpenLinkCapability>();
         services.AddSingleton<IDeviceCapability, FlashlightCapability>();
+        services.AddSingleton<IDeviceCapability, ScreenshotCapability>();
 
         return services;
     }
@@ -337,5 +339,96 @@ internal sealed class FlashlightCapability : IDeviceCapability
         {
             return new AgentToolResult(false, string.Empty, "This device has no flashlight.");
         }
+    }
+}
+
+/// <summary>
+/// Taking a picture of Concierge's own window.
+///
+/// Concierge could already be shown a picture and could not take one — there was
+/// not a single reference to screen capture in the repository. That is the half
+/// of vision that makes it useful without a person going and finding a file:
+/// "what is wrong with this layout" should not require a detour through the
+/// snipping tool.
+///
+/// What it captures is this window, not the desktop and not other applications.
+/// That is MAUI's own boundary and it is the right one: OpenDroid reads the whole
+/// screen through an accessibility service, which is how an assistant ends up
+/// holding somebody's banking app, and it is one of the two ideas from there
+/// deliberately left alone.
+///
+/// It asks, and not because capturing changes anything — it does not. It asks
+/// because the picture goes into the conversation, and the conversation may be
+/// going to a cloud provider. A screenshot is the single richest thing on this
+/// list: whatever is on screen at that moment, including the parts of it nobody
+/// meant to send anywhere.
+/// </summary>
+internal sealed class ScreenshotCapability : IDeviceCapability
+{
+    private readonly CapturedImages _captured;
+
+    public ScreenshotCapability(CapturedImages captured)
+        => _captured = captured ?? throw new ArgumentNullException(nameof(captured));
+
+    public string Name => "screenshot";
+
+    public string Description =>
+        "Take a picture of the Concierge window and attach it to the conversation.";
+
+    public string Reach =>
+        "It captures what Concierge is showing right now and attaches it to this conversation.";
+
+    public JsonNode? ArgumentsSchema => null;
+
+    /// <summary>
+    /// Not read-only, though it changes nothing. What it produces goes to whatever
+    /// is answering, which may be somewhere else entirely.
+    /// </summary>
+    public bool IsReadOnly => false;
+
+    public ConciergeToolRisk Risk => ConciergeToolRisk.Medium;
+
+    public bool Available => Screenshot.Default.IsCaptureSupported;
+
+    public async Task<AgentToolResult> InvokeAsync(
+        JsonNode? arguments, CancellationToken cancellationToken = default)
+    {
+        IScreenshotResult? shot;
+
+        try
+        {
+            shot = await Screenshot.Default.CaptureAsync().ConfigureAwait(false);
+        }
+        catch (FeatureNotSupportedException)
+        {
+            return new AgentToolResult(false, string.Empty, "This device cannot capture its screen.");
+        }
+
+        if (shot is null)
+        {
+            return new AgentToolResult(false, string.Empty, "Nothing was captured.");
+        }
+
+        using var stream = await shot.OpenReadAsync(ScreenshotFormat.Png).ConfigureAwait(false);
+        using var memory = new MemoryStream();
+        await stream.CopyToAsync(memory, cancellationToken).ConfigureAwait(false);
+
+        var bytes = memory.ToArray();
+        if (bytes.Length == 0)
+        {
+            return new AgentToolResult(false, string.Empty, "The capture came back empty.");
+        }
+
+        _captured.Add(new ChatImage(
+            $"screen-{DateTimeOffset.Now:yyyyMMdd-HHmmss}.png", "image/png", bytes));
+
+        // The result is text, because a tool result is text. The picture itself
+        // rides on the next turn through the same channel a person attaching a
+        // file uses — which is also why this says "attached" rather than
+        // describing an image the model cannot see from here.
+        return new AgentToolResult(
+            true,
+            $"Captured the Concierge window ({shot.Width}x{shot.Height}) and attached it to this conversation.",
+            null);
     }
 }

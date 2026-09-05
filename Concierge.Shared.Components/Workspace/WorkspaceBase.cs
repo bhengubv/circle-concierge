@@ -137,6 +137,12 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     /// Separate from the text blocks because they travel beside the prompt
     /// rather than inside it.</summary>
     protected readonly List<ChatImage> _pendingImages = new();
+
+    /// <summary>
+    /// Pictures a device capability produced — a screenshot, today. Resolved
+    /// optionally so a head with no device layer still renders.
+    /// </summary>
+    [Inject] protected CapturedImages Captured { get; set; } = default!;
     protected bool _recording;
 
     /// <summary>
@@ -1052,6 +1058,15 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         // attached to. Done here rather than in the store because the
         // transcript keeps what was said, and an image is not a message — it
         // is something handed over with one.
+        // Anything a capability captured since the last turn joins what the person
+        // attached. Drained, not read: a picture rides on exactly one turn, and a
+        // screenshot from ten minutes ago silently attached to an unrelated
+        // question is worse than no screenshot at all.
+        foreach (var captured in Captured.TakeAll())
+        {
+            _pendingImages.Add(captured);
+        }
+
         if (_pendingImages.Count > 0)
         {
             var lastUser = turns.FindLastIndex(t =>

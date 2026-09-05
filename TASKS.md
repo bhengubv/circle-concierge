@@ -169,8 +169,11 @@ screen; there is not one reference to screen capture in the repository. It fits
 the capability layer exactly, works on the desktop today, and makes the vision
 work reachable without a person finding a file to attach.
 
-- [ ] `screenshot` as a device capability, approval-gated
-- [ ] Honest absence where a head cannot capture
+- [x] `screenshot` as a device capability, approval-gated — it changes nothing, and
+      what it produces goes to whatever is answering, which may be somewhere else
+- [x] `CapturedImages` — a tool result is a string, so the picture rides on the next
+      turn through the channel a person attaching a file already uses
+- [x] Absent where a head cannot capture, like every other capability
 
 Two ideas from OpenDroid are deliberately **not** on this list: driving other
 apps through an accessibility service, and the payment actions. Both are where
