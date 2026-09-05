@@ -26,7 +26,7 @@ public sealed class ToolRegistryTests
 
         var registry = provider.GetRequiredService<IAgentToolRegistry>();
 
-        Assert.Equal(7, registry.Tools.Count);
+        Assert.Equal(11, registry.Tools.Count);
         Assert.Contains(registry.Tools, t => t.Name == "read_file" && t.IsReadOnly);
         Assert.Contains(registry.Tools, t => t.Name == "write_file" && !t.IsReadOnly);
         Assert.Contains(registry.Tools, t => t.Name == "run_command" && !t.IsReadOnly);
@@ -40,6 +40,13 @@ public sealed class ToolRegistryTests
         // carry the same two answers to "does this need asking".
         Assert.Contains(registry.Tools, t => t.Name == "read_notebook" && t.IsReadOnly);
         Assert.Contains(registry.Tools, t => t.Name == "edit_notebook" && !t.IsReadOnly);
+
+        // Looking around costs nothing and must not interrupt anybody, or a
+        // repository walk becomes a queue of approval prompts.
+        Assert.Contains(registry.Tools, t => t.Name == "list_files" && t.IsReadOnly);
+        Assert.Contains(registry.Tools, t => t.Name == "search_text" && t.IsReadOnly);
+        Assert.Contains(registry.Tools, t => t.Name == "read_file_lines" && t.IsReadOnly);
+        Assert.Contains(registry.Tools, t => t.Name == "edit_file" && !t.IsReadOnly);
     }
 
     [Fact]

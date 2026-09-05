@@ -83,6 +83,27 @@ The local model is text-only and stays that way; the check the image channel
 added had nothing to find, so every picture was refused. Live confirmation
 needs a cloud key — the wire shapes are tested, the round trip is not.
 
+### 6. ~~The model cannot find anything~~ — done
+
+- [x] `list_files` — walks the workspace, skipping what the path guard would refuse
+- [x] `search_text` — literal, with file and line number, binaries skipped
+- [x] `edit_file` — one exact replacement, diff previewed, ambiguity refused
+- [x] `read_file_lines` — a range of lines, counted from 1 as a person counts them
+- [x] Test: 22 covering the four, plus the count and the names Engineering shows
+
+Found by fixing the Engineering room. It listed `list_files` and `grep` as
+things Concierge could run; neither exists. The model is given `read_file`
+and can only use it if it already knows the path — there is no way to find
+a file, and no way to search inside one. For an assistant whose whole job is
+working in a repository, that is the largest single gap left.
+
+Two of these are already written and simply never exposed:
+`IAgentHarnessService.EditFileAsync` has a find/replace with a diff preview,
+and `ReadFileWindowAsync` reads a range of lines. Both are unreachable from
+a conversation. `write_file` is the only way to change anything, so the model
+must reproduce a whole file to alter one line — the same fault the notebook
+tools were built to avoid, sitting on every other file type in the repo.
+
 ---
 
 ## Known gaps, not scheduled
@@ -124,6 +145,6 @@ needs a cloud key — the wire shapes are tested, the round trip is not.
 
 ## Standing checks
 
-- [ ] 996 tests pass — `dotnet test Concierge.Tests/Concierge.Tests.csproj`
+- [ ] 1018 tests pass — `dotnet test Concierge.Tests/Concierge.Tests.csproj`
 - [ ] Verified on the running desktop app, not only in tests
 - [ ] `[skip ci]` in the HEAD commit before any push

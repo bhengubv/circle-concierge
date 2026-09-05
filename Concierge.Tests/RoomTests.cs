@@ -281,9 +281,12 @@ public sealed class RoomTests : BunitContext
         Assert.Contains("edit_notebook", changes);
         Assert.Contains("web_fetch", changes);
 
-        // The two that were listed and never existed.
-        Assert.DoesNotContain("list_files", changes);
+        // list_files was one of the two names this room invented. It is real
+        // now and sits under Reads only, where a listing belongs; grep never
+        // existed and still does not — search_text is the tool with that job.
         Assert.DoesNotContain("grep", changes);
+        Assert.Contains("list_files", reads);
+        Assert.Contains("search_text", reads);
     }
 
     /// <summary>

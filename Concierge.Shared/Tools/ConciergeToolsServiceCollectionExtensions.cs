@@ -27,6 +27,15 @@ public static class ConciergeToolsServiceCollectionExtensions
         services.AddSingleton<IAgentTool, AgentHarnessWriteTool>();
         services.AddSingleton<IAgentTool, AgentHarnessRunTool>();
 
+        // Looking around. read_file could only open a path somebody had already
+        // named, and the two operations that would have helped — a line window
+        // and a find/replace edit — were on the harness the whole time and
+        // never reachable from a conversation.
+        services.AddSingleton<IAgentTool, ListFilesTool>();
+        services.AddSingleton<IAgentTool, SearchTextTool>();
+        services.AddSingleton<IAgentTool, ReadFileWindowTool>();
+        services.AddSingleton<IAgentTool, EditFileTool>();
+
         // Notebooks. read_file and write_file already reach a .ipynb, which is
         // the problem rather than the answer: reading one that way spends the
         // context window on base64 outputs, and writing one that way means the

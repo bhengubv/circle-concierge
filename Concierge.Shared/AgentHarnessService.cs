@@ -17,6 +17,10 @@ public interface IAgentHarnessService
 
     Task<ConciergeToolResult> ReadFileWindowAsync(string relativePath, int offsetLines, int maxLines, CancellationToken cancellationToken = default);
 
+    Task<ConciergeToolResult> ListFilesAsync(string? relativePath, string? pattern, CancellationToken cancellationToken = default);
+
+    Task<ConciergeToolResult> SearchTextAsync(string query, string? relativePath, string? pattern, CancellationToken cancellationToken = default);
+
     Task<FileWritePreview> PreviewWriteFileAsync(string relativePath, string content, CancellationToken cancellationToken = default);
 
     Task<FileWritePreview> PreviewEditFileAsync(string relativePath, string find, string replace, CancellationToken cancellationToken = default);
@@ -182,6 +186,261 @@ public sealed class AgentHarnessService : IAgentHarnessService
         var window = string.Join('\n', lines.Skip(offset).Take(take));
         var summary = $"Read lines {offset + 1}-{offset + take} of {lines.Length} in {relativePath}.";
         return Result("read_file_window", ConciergeToolOutcome.Succeeded, summary, window, started);
+    }
+
+    /// <summary>
+    /// How many files one listing may name, and how many matches one search may return.
+    ///
+    /// A repository this size answers "list everything" with tens of thousands of paths,
+    /// which is not an answer — it is a context window spent before the work starts. The
+    /// cap is stated in the result so a model narrowing its pattern knows it needs to.
+    /// </summary>
+    private const int MaxListed = 300;
+
+    private const int MaxMatches = 200;
+
+    /// <summary>
+    /// Names the files under a folder.
+    ///
+    /// The gap this closes: the model was given read_file and no way to discover a path,
+    /// so it could only open a file somebody had already named to it. The Engineering
+    /// room listed a list_files tool for months; there was never one behind it.
+    ///
+    /// Denied areas are skipped rather than refused. A listing of the repository root
+    /// that throws because .git exists is useless, and a person asking what is in a
+    /// folder is not asking to be told about the folder they cannot see.
+    /// </summary>
+    public Task<ConciergeToolResult> ListFilesAsync(
+        string? relativePath, string? pattern, CancellationToken cancellationToken = default)
+    {
+        var started = DateTimeOffset.UtcNow;
+        var folder = string.IsNullOrWhiteSpace(relativePath) ? "." : relativePath;
+
+        string root;
+        try
+        {
+            root = ResolveTrustedPath(folder);
+        }
+        catch (InvalidOperationException problem)
+        {
+            return Task.FromResult(Result("list_files", ConciergeToolOutcome.Failed, problem.Message, string.Empty, started));
+        }
+
+        if (!Directory.Exists(root))
+        {
+            return Task.FromResult(Result(
+                "list_files", ConciergeToolOutcome.Failed, $"Folder not found: {folder}", string.Empty, started));
+        }
+
+        var found = new List<string>();
+        var truncated = Walk(root, pattern, cancellationToken, MaxListed, path =>
+        {
+            found.Add(Relative(path));
+            return true;
+        });
+
+        var summary = truncated
+            ? $"First {found.Count} files under {folder} — there are more; narrow the pattern."
+            : found.Count == 1 ? $"1 file under {folder}." : $"{found.Count} files under {folder}.";
+
+        return Task.FromResult(Result(
+            "list_files", ConciergeToolOutcome.Succeeded, summary, string.Join('\n', found), started));
+    }
+
+    /// <summary>
+    /// Finds a string across files, with the path and line number of each hit.
+    ///
+    /// Plain text rather than a regular expression: a model searching a repository is
+    /// almost always looking for an identifier, and an accidental regex — a dot, a
+    /// bracket, a plus in a symbol name — either matches nothing or matches everything,
+    /// with no way to tell which from the result.
+    ///
+    /// Binary files are skipped by looking for a null byte in the first few kilobytes,
+    /// which is what every other tool does and is right often enough.
+    /// </summary>
+    public Task<ConciergeToolResult> SearchTextAsync(
+        string query, string? relativePath, string? pattern, CancellationToken cancellationToken = default)
+    {
+        var started = DateTimeOffset.UtcNow;
+
+        if (string.IsNullOrEmpty(query))
+        {
+            return Task.FromResult(Result(
+                "search_text", ConciergeToolOutcome.Failed, "Nothing to search for.", string.Empty, started));
+        }
+
+        var folder = string.IsNullOrWhiteSpace(relativePath) ? "." : relativePath;
+
+        string root;
+        try
+        {
+            root = ResolveTrustedPath(folder);
+        }
+        catch (InvalidOperationException problem)
+        {
+            return Task.FromResult(Result("search_text", ConciergeToolOutcome.Failed, problem.Message, string.Empty, started));
+        }
+
+        if (!Directory.Exists(root))
+        {
+            return Task.FromResult(Result(
+                "search_text", ConciergeToolOutcome.Failed, $"Folder not found: {folder}", string.Empty, started));
+        }
+
+        var hits = new List<string>();
+        var filesWithHits = 0;
+
+        var truncated = Walk(root, pattern, cancellationToken, int.MaxValue, path =>
+        {
+            if (hits.Count >= MaxMatches)
+            {
+                return false;
+            }
+
+            string[] lines;
+            try
+            {
+                if (LooksBinary(path))
+                {
+                    return true;
+                }
+
+                lines = File.ReadAllLines(path);
+            }
+            catch (IOException)
+            {
+                // Locked, or vanished between the walk and the read. One unreadable
+                // file is not a reason to fail a search across a thousand others.
+                return true;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                return true;
+            }
+
+            var any = false;
+
+            for (var i = 0; i < lines.Length && hits.Count < MaxMatches; i++)
+            {
+                if (lines[i].Contains(query, StringComparison.Ordinal))
+                {
+                    hits.Add($"{Relative(path)}:{i + 1}: {lines[i].Trim()}");
+                    any = true;
+                }
+            }
+
+            if (any)
+            {
+                filesWithHits++;
+            }
+
+            return true;
+        });
+
+        var summary = hits.Count == 0
+            ? $"No match for \"{query}\" under {folder}."
+            : truncated || hits.Count >= MaxMatches
+                ? $"First {hits.Count} matches for \"{query}\" in {filesWithHits} files — there are more."
+                : $"{hits.Count} matches for \"{query}\" in {filesWithHits} files.";
+
+        return Task.FromResult(Result(
+            "search_text", ConciergeToolOutcome.Succeeded, summary, string.Join('\n', hits), started));
+    }
+
+    /// <summary>
+    /// Walks files under a folder, skipping anything the path guard would refuse and
+    /// stopping when the visitor says to or the cap is reached. Returns whether it
+    /// stopped early, so the caller can say so rather than silently truncating.
+    /// </summary>
+    private bool Walk(
+        string root, string? pattern, CancellationToken cancellationToken, int cap, Func<string, bool> visit)
+    {
+        var glob = string.IsNullOrWhiteSpace(pattern) ? "*" : pattern;
+        var seen = 0;
+
+        IEnumerable<string> candidates;
+        try
+        {
+            candidates = Directory.EnumerateFiles(root, glob, new EnumerationOptions
+            {
+                RecurseSubdirectories = true,
+                IgnoreInaccessible = true,
+                // A symlinked folder can point anywhere, including outside the
+                // workspace, and following one would walk straight out of it.
+                AttributesToSkip = FileAttributes.ReparsePoint,
+            });
+        }
+        catch (ArgumentException)
+        {
+            // An unusable pattern. Nothing to walk, and the caller reports a count of 0.
+            return false;
+        }
+
+        foreach (var path in candidates)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (!IsReachable(path))
+            {
+                continue;
+            }
+
+            if (seen >= cap)
+            {
+                return true;
+            }
+
+            seen++;
+
+            if (!visit(path))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Whether a file is one the guard would let a tool open.
+    ///
+    /// The same rules read_file enforces, asked as a question rather than as an
+    /// exception — a listing skips what it cannot show, where a read refuses it. Both
+    /// go through <see cref="RejectProtectedPath"/> so there is one answer to "may this
+    /// be touched", not two that can drift apart.
+    /// </summary>
+    private bool IsReachable(string fullPath)
+    {
+        try
+        {
+            RejectProtectedPath(Path.GetFullPath(WorkspaceRoot), fullPath);
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+    }
+
+    private string Relative(string fullPath)
+        => Path.GetRelativePath(WorkspaceRoot, fullPath).Replace(Path.DirectorySeparatorChar, '/');
+
+    /// <summary>
+    /// A null byte in the first few kilobytes. Crude, and what every other search tool
+    /// does — the alternative is printing a page of a PNG into a conversation.
+    /// </summary>
+    private static bool LooksBinary(string path)
+    {
+        using var stream = File.OpenRead(path);
+
+        Span<byte> head = stackalloc byte[4096];
+        var read = stream.Read(head);
+
+        return head[..read].IndexOf((byte)0) >= 0;
     }
 
     /// <summary>
