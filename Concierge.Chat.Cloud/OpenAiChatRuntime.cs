@@ -22,7 +22,7 @@ public sealed class OpenAiChatOptions
 /// official OpenAI endpoint or any compatible self-hosted gateway (LM Studio, llama.cpp's
 /// HTTP server, vLLM, etc.) by repointing <see cref="OpenAiChatOptions.BaseAddress"/>.
 /// </summary>
-public sealed class OpenAiChatRuntime : IChatRuntime
+public sealed class OpenAiChatRuntime : IChatRuntime, IVisionCapableRuntime
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -55,6 +55,10 @@ public sealed class OpenAiChatRuntime : IChatRuntime
         ? $"Ready · {_options.Model}"
         : "OpenAI API key not configured — set OpenAI:ApiKey in IConfiguration to enable.";
 
+    /// <summary>It can look at pictures. See AnthropicChatRuntime for why this
+    /// is declared rather than assumed.</summary>
+    public IReadOnlyCollection<string> SupportedImageMediaTypes => VisionContent.Supported;
+
     public async IAsyncEnumerable<string> StreamAsync(
         IReadOnlyList<ChatTurn> messages,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
@@ -74,7 +78,7 @@ public sealed class OpenAiChatRuntime : IChatRuntime
             stream = true,
             temperature = _options.Temperature,
             max_tokens = _options.MaxTokens,
-            messages = messages.Select(t => new { role = t.Role, content = t.Content }).ToArray(),
+            messages = messages.Select(t => new { role = t.Role, content = VisionContent.OpenAiContent(t) }).ToArray(),
         };
         request.Content = new StringContent(JsonSerializer.Serialize(body, JsonOptions), Encoding.UTF8, "application/json");
 

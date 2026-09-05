@@ -74,9 +74,14 @@ Ordered. The first is a correctness problem; the rest are absences.
 - [x] A visible plan for multi-step work — stated up front, ticked off per round
 - [x] Permission modes set up front, not only per action — Plan only / Ask first / Act freely
 
-### 5. Vision has nothing to see with
-- [ ] A vision-capable runtime — the local model is text-only
-- [ ] End-to-end test once one exists
+### 5. ~~Vision has nothing to see with~~ — done
+- [x] A vision-capable runtime — the three cloud runtimes declare `IVisionCapableRuntime`
+- [x] Per-provider image encoding — Anthropic base64, OpenAI data URI, Gemini inline_data
+- [x] Test: all three shapes, and a text-only turn keeps its plain string content
+
+The local model is text-only and stays that way; the check the image channel
+added had nothing to find, so every picture was refused. Live confirmation
+needs a cloud key — the wire shapes are tested, the round trip is not.
 
 ---
 

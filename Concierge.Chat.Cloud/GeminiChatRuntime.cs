@@ -22,7 +22,7 @@ public sealed class GeminiChatOptions
 /// <c>assistant</c>, and the system prompt rides on a separate <c>systemInstruction</c>
 /// field with the same shape as a message content block.
 /// </summary>
-public sealed class GeminiChatRuntime : IChatRuntime
+public sealed class GeminiChatRuntime : IChatRuntime, IVisionCapableRuntime
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -55,6 +55,10 @@ public sealed class GeminiChatRuntime : IChatRuntime
         ? $"Ready · {_options.Model}"
         : "Gemini API key not configured — set Gemini:ApiKey in IConfiguration to enable.";
 
+    /// <summary>It can look at pictures. See AnthropicChatRuntime for why this
+    /// is declared rather than assumed.</summary>
+    public IReadOnlyCollection<string> SupportedImageMediaTypes => VisionContent.Supported;
+
     public async IAsyncEnumerable<string> StreamAsync(
         IReadOnlyList<ChatTurn> messages,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
@@ -75,7 +79,7 @@ public sealed class GeminiChatRuntime : IChatRuntime
             .Select(m => new
             {
                 role = string.Equals(m.Role, "assistant", StringComparison.OrdinalIgnoreCase) ? "model" : m.Role.ToLowerInvariant(),
-                parts = new[] { new { text = m.Content } },
+                parts = VisionContent.GeminiParts(m),
             })
             .ToArray();
 

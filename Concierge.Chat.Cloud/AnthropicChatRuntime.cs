@@ -28,7 +28,7 @@ public sealed class AnthropicChatOptions
 /// <c>role: "system"</c> entry in messages; (2) streamed deltas come back as
 /// <c>content_block_delta</c> events whose payload is <c>{ delta: { type, text } }</c>.
 /// </summary>
-public sealed class AnthropicChatRuntime : IChatRuntime
+public sealed class AnthropicChatRuntime : IChatRuntime, IVisionCapableRuntime
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -61,6 +61,13 @@ public sealed class AnthropicChatRuntime : IChatRuntime
         ? $"Ready · {_options.Model}"
         : "Anthropic API key not configured — set Anthropic:ApiKey in IConfiguration to enable.";
 
+    /// <summary>
+    /// It can look at pictures. Declared rather than assumed: the workspace
+    /// checks for this before attaching one, and tells the person plainly when
+    /// the answering model cannot see.
+    /// </summary>
+    public IReadOnlyCollection<string> SupportedImageMediaTypes => VisionContent.Supported;
+
     public async IAsyncEnumerable<string> StreamAsync(
         IReadOnlyList<ChatTurn> messages,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
@@ -79,7 +86,10 @@ public sealed class AnthropicChatRuntime : IChatRuntime
                 .Select(m => m.Content));
         var chat = messages
             .Where(m => !string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase))
-            .Select(m => new { role = m.Role.ToLowerInvariant(), content = m.Content })
+            // Content is the plain string unless the turn carries pictures, in
+            // which case it becomes a list of parts. Shapes differ per
+            // provider; see VisionContent.
+            .Select(m => new { role = m.Role.ToLowerInvariant(), content = VisionContent.AnthropicContent(m) })
             .ToArray();
 
         using var request = new HttpRequestMessage(HttpMethod.Post, "/v1/messages");
