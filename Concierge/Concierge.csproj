@@ -92,11 +92,52 @@
       <ProjectReference Include="..\Concierge.Shared\Concierge.Shared.csproj" />
       <ProjectReference Include="..\Concierge.Shared.Components\Concierge.Shared.Components.csproj" />
       <ProjectReference Include="..\Concierge.Ai\Concierge.Ai.csproj" />
+      <ProjectReference Include="..\Concierge.Ai.Isolated\Concierge.Ai.Isolated.csproj" />
+
+      <!--
+        The model host is deliberately NOT a ProjectReference. A reference makes
+        MSBuild build it for this project's target framework — net10.0-windows —
+        which it neither has nor wants: it is a plain console app this one
+        launches, not a library it links. CopyModelHost below builds it for its
+        own framework and puts the output beside the app.
+      -->
       <ProjectReference Include="..\Concierge.Chat.Cloud\Concierge.Chat.Cloud.csproj" />
       <ProjectReference Include="..\Concierge.Diagrams.Design\Concierge.Diagrams.Design.csproj" />
       <ProjectReference Include="..\Concierge.Mesh\Concierge.Mesh.csproj" />
       <ProjectReference Include="..\Concierge.Media\Concierge.Media.csproj" />
       <ProjectReference Include="..\Concierge.Media.Cloud\Concierge.Media.Cloud.csproj" />
     </ItemGroup>
+
+
+  <!--
+    Put the model host beside the app.
+
+    It is a whole output directory rather than one file: the host carries its
+    own runtimeconfig, its dependencies and the native inference libraries, and
+    an exe copied without them starts and immediately dies. Into a subfolder so
+    the two sets of dependencies cannot shadow each other — IsolatedRuntimeOptions
+    looks in "ModelHost" for exactly this reason.
+  -->
+  <Target Name="CopyModelHost" AfterTargets="Build" Condition="'$(TargetFramework)' != ''">
+    <!--
+      TargetFramework is set explicitly and RuntimeIdentifier removed: an MSBuild
+      task inherits this project's global properties, so without both the host is
+      asked to build for net10.0-windows and win-x64, which it neither has nor
+      wants.
+    -->
+    <MSBuild Projects="..\Concierge.Model.Host\Concierge.Model.Host.csproj"
+             Targets="Build"
+             Properties="Configuration=$(Configuration);TargetFramework=net10.0"
+             RemoveProperties="RuntimeIdentifier;RuntimeIdentifiers;Platform;PlatformTarget;SelfContained;TargetFrameworks" />
+
+    <ItemGroup>
+      <ModelHostFiles Include="..\Concierge.Model.Host\bin\$(Configuration)\net10.0\**\*" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(ModelHostFiles)"
+          DestinationFolder="$(OutDir)ModelHost\%(RecursiveDir)"
+          SkipUnchangedFiles="true"
+          Condition="'@(ModelHostFiles)' != ''" />
+  </Target>
 
 </Project>

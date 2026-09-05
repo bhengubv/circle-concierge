@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The process that owns the model, and is allowed to die.
+
+    Concierge is a Blazor Hybrid app; the on-device generator is native code
+    reached through P/Invoke, and it has been faulting with an access violation
+    inside mnn_llm_generate_stream_text. An access violation cannot be caught in
+    managed code — the process is already gone — so as long as the model runs
+    inside Concierge, the model taking a fault takes the whole application, the
+    conversation being typed, and everything else with it.
+
+    This executable exists so that stops being true. It references CircleAI;
+    Concierge itself does not. When the native code faults, this dies and the
+    parent sees a closed pipe.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Concierge.Model.Host</AssemblyName>
+    <RootNamespace>Concierge.Model.Host</RootNamespace>
+
+    <!-- A crash here is the design, not a bug report. Windows Error Reporting
+         dialogs would turn a handled failure into a modal the user has to
+         dismiss. -->
+    <NoWin32Manifest>true</NoWin32Manifest>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Concierge.Ai\Concierge.Ai.csproj" />
+    <ProjectReference Include="..\Concierge.Shared\Concierge.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.10" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+  </ItemGroup>
+
+</Project>

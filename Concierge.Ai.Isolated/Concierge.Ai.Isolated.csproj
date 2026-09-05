@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The model, from outside the process that runs it.
+
+    Note what this does NOT reference: CircleAI.Core, CircleAI.Inference, or
+    anything that loads native inference code. That absence is the whole point.
+    A parent that links the faulting library is a parent that can be taken down
+    by it, however careful the calling code is — an access violation is not
+    catchable, and a try/catch around the call is a comfort, not a guard.
+
+    Concierge.Model.Host owns those packages. This owns a Process and a pipe.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Description>Runs the on-device model in a child process, so a native fault cannot take Concierge with it.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Concierge.Shared\Concierge.Shared.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.2" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />
+  </ItemGroup>
+
+</Project>

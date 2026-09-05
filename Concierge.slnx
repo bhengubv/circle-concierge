@@ -11,6 +11,8 @@
   <Project Path="Concierge.Shared/Concierge.Shared.csproj" />
   <Project Path="Concierge.Shared.Components/Concierge.Shared.Components.csproj" />
   <Project Path="Concierge.Tests/Concierge.Tests.csproj" />
+  <Project Path="Concierge.Ai.Isolated/Concierge.Ai.Isolated.csproj" />
+  <Project Path="Concierge.Model.Host/Concierge.Model.Host.csproj" />
   <Project Path="Concierge.Wear/Concierge.Wear.csproj" />
   <Project Path="Concierge.Web/Concierge.Web.csproj" />
   <Project Path="Concierge.Web.Client/Concierge.Web.Client.csproj" />

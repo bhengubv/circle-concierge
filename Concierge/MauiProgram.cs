@@ -1,5 +1,6 @@
 using CircleAI.Core;
 using Concierge.Ai;
+using Concierge.Ai.Isolated;
 using MudBlazor.Services;
 using Concierge.Chat.Cloud;
 using Concierge.Diagrams.Design;
@@ -69,7 +70,17 @@ public static class MauiProgram
 			.AddConciergeDiagrams()
 			.AddConciergeMetrics()
 			.AddConciergeTools()
+			// AddConciergeAi() registers ILlmRuntimeService and the in-process
+			// chat runtime; AddConciergeAiIsolated() then replaces the chat
+			// runtime with one that talks to a child process.
+			//
+			// The generator is what faults — an access violation inside
+			// mnn_llm_generate_stream_text, which is unmanaged and therefore
+			// uncatchable — so that is what has been moved out. Answering now
+			// costs a process boundary and a JSON line per token; a fault costs
+			// the sentence rather than the application.
 			.AddConciergeAi()
+			.AddConciergeAiIsolated()
 			.AddConciergeMesh()
 			.AddConciergeMedia()
 			// Parental controls / content-filter pipeline. Wraps IChatRuntime
