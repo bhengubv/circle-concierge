@@ -52,8 +52,12 @@ public class MainActivity : Activity
 
     private readonly IConciergeStateService _state = new ConciergeStateService();
 
-    /// <summary>What has been decided this session, by approval id.</summary>
-    private readonly HashSet<string> _decided = new(StringComparer.Ordinal);
+    /// <summary>
+    /// Which screen, and what has been answered. Held apart from the drawing
+    /// because it is the only part of this file that decides anything — and
+    /// the only part that can be tested, since bUnit cannot render an Activity.
+    /// </summary>
+    private readonly WatchFace _face = new();
 
     /// <summary>The last thing said or heard — a watch reads one answer, not a
     /// transcript.</summary>
@@ -83,10 +87,11 @@ public class MainActivity : Activity
 
         _root.RemoveAllViews();
 
-        var waiting = _state.GetSnapshot().Approvals
-            .FirstOrDefault(a => !_decided.Contains(a.Id));
+        var view = _face.Next(_state.GetSnapshot().Approvals);
 
-        _root.AddView(waiting is not null ? BuildDecision(waiting) : BuildSpeak());
+        _root.AddView(view.Screen == WatchScreen.Decision
+            ? BuildDecision(view.Waiting!)
+            : BuildSpeak());
     }
 
     // ── A decision, and nothing else ──────────────────────────────────────
@@ -109,16 +114,18 @@ public class MainActivity : Activity
 
         // Two controls, side by side, each big enough to hit without looking.
         var actions = new LinearLayout(this) { Orientation = Orientation.Horizontal };
-        actions.AddView(Pill("Allow", Accent, Color.ParseColor("#0B1218"), () => Decide(approval.Id)), Weighted());
-        actions.AddView(Pill("Deny", Raised, Ink, () => Decide(approval.Id)), Weighted(leftMargin: Dp(6)));
+        actions.AddView(Pill("Allow", Accent, Color.ParseColor("#0B1218"),
+            () => Decide(approval.Id, allowed: true)), Weighted());
+        actions.AddView(Pill("Deny", Raised, Ink,
+            () => Decide(approval.Id, allowed: false)), Weighted(leftMargin: Dp(6)));
         column.AddView(actions, Spaced(12));
 
         return column;
     }
 
-    private void Decide(string approvalId)
+    private void Decide(string approvalId, bool allowed)
     {
-        _decided.Add(approvalId);
+        _face.Decide(approvalId, allowed);
         Render();
     }
 
@@ -205,6 +212,7 @@ public class MainActivity : Activity
     /// colour is this head's, because a watch has no stylesheet to name.
     /// </summary>
     private static string ReachOf(string? risk) => ApprovalRisk.ReachOf(risk);
+
 
     private static Color RiskColour(string? risk) => ApprovalRisk.SeverityOf(risk) switch
     {

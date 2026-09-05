@@ -309,10 +309,18 @@ public sealed class WorkspaceSidebarTests : BunitContext
     {
         var cut = RenderWorkspace();
 
-        var threads = cut.FindAll("section.ws-group")[0];
-        var labels = threads.QuerySelectorAll(".ws-item-label").Select(e => e.TextContent.Trim()).ToArray();
+        // Waited for rather than read once. The thread list is loaded in
+        // OnInitializedAsync, so the first render can carry an empty group and
+        // the row arrives on the render after it — which showed up exactly
+        // once in a hundred runs and then passed on its own, which is the
+        // worst way for a test to be wrong.
+        cut.WaitForAssertion(() =>
+        {
+            var threads = cut.FindAll("section.ws-group")[0];
+            var labels = threads.QuerySelectorAll(".ws-item-label").Select(e => e.TextContent.Trim()).ToArray();
 
-        Assert.Equal(new[] { "New thread" }, labels);
+            Assert.Equal(new[] { "New thread" }, labels);
+        });
     }
 
     [Fact]

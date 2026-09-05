@@ -87,7 +87,8 @@ needs a cloud key — the wire shapes are tested, the round trip is not.
 
 ## Known gaps, not scheduled
 
-- [ ] `Concierge.Wear` has no tests — bUnit cannot render an Android UI
+- [x] `Concierge.Wear` — the decision it makes is now `WatchFace` in Shared, and tested;
+      the view building stays untested, because bUnit cannot render an Activity and never will
 - [ ] iOS and macOS heads have never been built or run (Windows machine)
 - [ ] Mobile and wearable are not release-gated, by decision
 - [ ] Notebook support
