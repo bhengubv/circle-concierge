@@ -90,8 +90,18 @@
                         {
                             var conv = conversation;
                             <a class="ws-item @(conv.Id == _active?.Id ? "is-active" : null)" href="@($"/chat/{conv.Id}")">
+                                @*
+                                    A thread you have left can still be working.
+                                    Without this the run is invisible: leaving
+                                    used to stop it, so there was never anything
+                                    to show.
+                                *@
+                                @if (Runs.IsRunning(conv.Id))
+                                {
+                                    <span class="dot dot-waiting" aria-hidden="true"></span>
+                                }
                                 <span class="ws-item-label">@conv.Title</span>
-                                <span class="ws-item-meta">@Ago(conv.UpdatedAt)</span>
+                                <span class="ws-item-meta">@(Runs.IsRunning(conv.Id) ? "working" : Ago(conv.UpdatedAt))</span>
                             </a>
                         }
                         @if (!_allThreads && _conversations.Count > 3)
@@ -358,6 +368,34 @@
                     </div>
                 }
 
+
+                @*
+                    What it said it would do, while it is still doing it.
+                    Placed above the composer rather than in the thread: it is
+                    a live view of the run, not something that was said, and
+                    the moment to stop it is the moment you are reading it.
+                *@
+                @if (_planSteps.Count > 0)
+                {
+                    <div class="plan">
+                        <span class="plan-head">
+                            Plan
+                            <span class="plan-count">@_planDone of @_planSteps.Count</span>
+                        </span>
+                        <ol class="plan-steps">
+                            @for (var i = 0; i < _planSteps.Count; i++)
+                            {
+                                var done = i < _planDone;
+                                var current = i == _planDone && _streaming;
+
+                                <li class="plan-step @(done ? "is-done" : null) @(current ? "is-now" : null)">
+                                    <span class="dot @(done ? "dot-done" : current ? "dot-waiting" : "dot-idle")" aria-hidden="true"></span>
+                                    @_planSteps[i]
+                                </li>
+                            }
+                        </ol>
+                    </div>
+                }
                 <div class="comp-box">
                     <textarea class="comp-input"
                               rows="1"

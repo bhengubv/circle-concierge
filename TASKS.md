@@ -69,9 +69,9 @@ Ordered. The first is a correctness problem; the rest are absences.
 > 70 curated skills, and the only way to add your own is
 > `CONCIERGE_SKILLS_ROOT` before launch.
 
-### 4. Long work has no spine
-- [ ] Background tasks, so a long tool run does not block the thread
-- [ ] A visible plan for multi-step work — what it intends, what is done
+### 4. ~~Long work has no spine~~ — done
+- [x] Background tasks — a run outlives the screen that started it, and the sidebar says so
+- [x] A visible plan for multi-step work — stated up front, ticked off per round
 - [x] Permission modes set up front, not only per action — Plan only / Ask first / Act freely
 
 ### 5. Vision has nothing to see with

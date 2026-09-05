@@ -145,6 +145,11 @@ public static class ConciergeServiceCollectionExtensions
                 sp.GetService<IAgentRunLogPublisher>()));
         // Where you were: the thread, the skills that were on, and anything
         // typed and not sent. Local file, beside the drafts.
+        // Which conversations are still working. A register, not a scheduler:
+        // it exists so a thread you have left can still show as running and be
+        // stopped from somewhere else.
+        services.TryAddSingleton<Concierge.Shared.Chat.BackgroundRuns>();
+
         // Folders of your own skills. Registered here rather than only in
         // AddLocalSkillSources because the Skills panel offers to add one
         // whether or not any local source was configured.

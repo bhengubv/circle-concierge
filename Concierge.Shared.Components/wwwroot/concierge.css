@@ -1073,3 +1073,61 @@ button.row:hover { color: var(--ink); }
 /* The blank frame while the form factor is being measured. See Pages/Chat.razor:
    rendering a guess and correcting it would remount the workspace. */
 .ff-wait { height: 100dvh; background: var(--ground); }
+
+/* ── The plan ─────────────────────────────────────────────────────────────
+   What the assistant said it would do, shown while it is doing it. Above the
+   composer rather than in the thread: it is a live view of a run, not
+   something that was said, and it disappears when the run does.
+
+   Quiet on purpose. A run of six tool calls is already six chips; a loud
+   checklist above them would compete with the work rather than explain it. */
+
+.plan {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s1);
+    margin-bottom: var(--s2);
+    padding: var(--s2) var(--s3);
+    border: 1px solid var(--rule-soft);
+    border-radius: 10px;
+    background: var(--panel);
+}
+
+.plan-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--s2);
+    color: var(--ink-faint);
+    font-size: var(--t-xs);
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.plan-count { letter-spacing: 0; text-transform: none; }
+
+.plan-steps {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.plan-step {
+    display: flex;
+    align-items: baseline;
+    gap: var(--s2);
+    color: var(--ink-soft);
+    font-size: var(--t-sm);
+    line-height: 1.5;
+}
+
+/* Done is quieter, not struck through: a step that happened is still worth
+   reading when you are working out what it did. */
+.plan-step.is-done { color: var(--ink-faint); }
+.plan-step.is-now { color: var(--ink); }
+
+.dot-idle { background: var(--rule); }

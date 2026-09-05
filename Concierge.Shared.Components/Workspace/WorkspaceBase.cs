@@ -45,6 +45,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     [Inject] protected IJSRuntime JS { get; set; } = default!;
     [Inject] protected Concierge.Shared.Session.ISessionState SessionState { get; set; } = default!;
     [Inject] protected Concierge.Shared.Tools.IToolApprovalService Approval { get; set; } = default!;
+    [Inject] protected Concierge.Shared.Chat.BackgroundRuns Runs { get; set; } = default!;
 
 
     [Parameter] public Guid? ConversationId { get; set; }
@@ -63,6 +64,27 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     protected string _streamingBuffer = string.Empty;
     protected CancellationTokenSource? _streamCts;
     protected int _toolLoopIteration;
+
+    // ── What it said it would do ──────────────────────────────────────────
+
+    /// <summary>
+    /// The steps the assistant stated before starting, and how many rounds of
+    /// tool calls have finished since.
+    ///
+    /// Live state rather than a stored event: a plan describes a run in flight,
+    /// and a run does not survive a restart either. What it did is already in
+    /// the transcript as tool chips; this is what it said it would do, while it
+    /// is still doing it — which is the moment stopping is cheap.
+    /// </summary>
+    protected IReadOnlyList<string> _planSteps = [];
+
+    protected int _planDone;
+
+    protected void ClearPlan()
+    {
+        _planSteps = [];
+        _planDone = 0;
+    }
 
     protected List<IChatRuntime> _orderedRuntimes = new();
     protected IChatRuntime? _activeRuntime;
@@ -184,28 +206,24 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         _gone = true;
         Nav.LocationChanged -= OnLocationChanged;
         StopWatchingApprovals();
+        Runs.Changed -= OnRunsChanged;
         CancelDownload();
 
-        // A generation still streaming when the page goes away used to be left
-        // running: the component it wrote into is gone, and the native MNN call
-        // keeps going on a pool thread -- which faulted with an access violation
-        // in mnn_llm_generate_stream_text and took the process with it. Hard to
-        // reach while every destination sat behind a menu; with a tab bar,
-        // leaving mid-answer is one tap.
+        // A run in flight is deliberately NOT cancelled here any more.
         //
-        // Cancelling is the renderer's responsibility either way. It is not on
-        // its own a guarantee: the token is only observed between fragments, so
-        // a fault inside the blocking P/Invoke is still possible and the native
-        // handle's lifetime is CircleAI.Inference's to fix.
-        try
-        {
-            _streamCts?.Cancel();
-        }
-        catch (ObjectDisposedException)
-        {
-            // Already torn down by the streaming path. Nothing to stop.
-        }
-        finally
+        // It used to be, and the reason was sound at the time: the generator
+        // ran in this process, and a native fault while the component it wrote
+        // into was gone took the whole application down. The model runs in a
+        // child process now, so a fault costs the child — and a long run
+        // outliving the screen that started it is the point of background work.
+        //
+        // Safe because the loop writes its results to the store rather than to
+        // this component, and every redraw is already guarded by _gone.
+        // Stopping one is still possible from anywhere, through BackgroundRuns.
+        //
+        // The cancellation source is left alone for the same reason: disposing
+        // it here would break the run this is deliberately not cancelling.
+        if (!_streaming)
         {
             _streamCts?.Dispose();
             _streamCts = null;
@@ -257,6 +275,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         _session = await SessionState.LoadAsync();
 
         WatchApprovals();
+        WatchRuns();
 
         // Restored after the approver is known, so Act freely is applied to it
         // rather than only remembered. Not persisted: it came from the file.
@@ -663,6 +682,11 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
             return;
         }
 
+        // Last turn's plan belongs to last turn. Leaving it up while a new
+        // question is answered would show somebody a checklist for work that
+        // finished, ticking along to something unrelated.
+        ClearPlan();
+
         // First message on a fresh screen. Created here rather than by
         // StartNewAsync so there is no navigation in the middle of a send:
         // NavigateTo is unreliable from a touch handler in MAUI's WebView, and
@@ -817,6 +841,15 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
                     break;
                 }
 
+                // Stated before the work, so it can be read before anything
+                // has happened rather than reconstructed from what did.
+                if (Concierge.Shared.Tools.PlanProtocol.Extract(assistantText) is { Count: > 0 } stated)
+                {
+                    _planSteps = stated;
+                    _planDone = 0;
+                    StateHasChanged();
+                }
+
                 if (!_executeToolCalls || Tools.Tools.Count == 0)
                 {
                     break;
@@ -853,6 +886,15 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
                 var outcomes = await ToolScheduler.ExecuteAsync(planned, _streamCts.Token);
 
+                // One round of calls is one step done. Not exact — a model may
+                // take two rounds over a step, or one round over two — but it
+                // is honest about direction, which is what somebody watching
+                // needs in order to decide whether to let it carry on.
+                if (_planSteps.Count > 0 && _planDone < _planSteps.Count)
+                {
+                    _planDone++;
+                }
+
                 var results = new List<(string ToolName, AgentToolResult Result)>();
                 foreach (var outcome in outcomes)
                 {
@@ -885,6 +927,13 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         }
         finally
         {
+            // Cleared before anything that can throw or re-render, so a thread
+            // is never left showing as working after it has stopped.
+            if (_active is not null)
+            {
+                Runs.Finished(_active.Id);
+            }
+
             if (_active is not null)
             {
                 _active = await Store.GetAsync(_active.Id);
@@ -893,7 +942,14 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
             _streaming = false;
             _streamingBuffer = string.Empty;
             _toolLoopIteration = 0;
-            StateHasChanged();
+            ClearPlan();
+
+            // Guarded: this runs on the turn's own task, which by now may
+            // outlive the component that started it.
+            if (!_gone)
+            {
+                StateHasChanged();
+            }
         }
     }
 
@@ -950,6 +1006,13 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         {
             systemParts.Add(systemText);
         }
+        // Asking for a plan only makes sense when there is work to plan: with
+        // no tools, or in Plan only mode where nothing runs, it is noise.
+        if (_includeToolCatalog && Tools.Tools.Count > 0 && _permission.RunsTools())
+        {
+            systemParts.Add(Concierge.Shared.Tools.PlanProtocol.SystemPromptAddendum);
+        }
+
         if (_includeToolCatalog && Tools.Tools.Count > 0)
         {
             systemParts.Add(Tools.BuildSystemPromptAddendum());
@@ -977,6 +1040,13 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         var buffer = new StringBuilder();
         _streamingBuffer = string.Empty;
         var cancelled = false;
+
+        // Recorded so a thread you have left still shows as working, and so it
+        // can be stopped from somewhere other than here.
+        if (_active is not null && _streamCts is not null)
+        {
+            Runs.Started(_active.Id, _streamCts);
+        }
 
         // The reply was written down only after the last token arrived, so
         // anything that stopped the process mid-generation lost all of it. Not
@@ -1294,6 +1364,23 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     protected IReadOnlyList<Concierge.Shared.Tools.PendingApproval> _pendingApprovals = [];
 
     private Concierge.Shared.Tools.InteractiveToolApprovalService? _approver;
+
+    /// <summary>
+    /// Redraws when a run starts or ends anywhere, so a thread you are not
+    /// looking at can still show that it is working.
+    /// </summary>
+    private void WatchRuns()
+    {
+        Runs.Changed += OnRunsChanged;
+    }
+
+    private void OnRunsChanged(object? sender, EventArgs e)
+    {
+        if (!_gone)
+        {
+            _ = InvokeAsync(StateHasChanged);
+        }
+    }
 
     private void WatchApprovals()
     {
