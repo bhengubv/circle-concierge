@@ -89,7 +89,9 @@ needs a cloud key — the wire shapes are tested, the round trip is not.
 
 - [x] `Concierge.Wear` — the decision it makes is now `WatchFace` in Shared, and tested;
       the view building stays untested, because bUnit cannot render an Activity and never will
-- [ ] iOS and macOS heads have never been built or run (Windows machine)
+- [~] iOS and Mac Catalyst — both compile from this Windows machine
+      (`dotnet build -f net10.0-ios`, `-f net10.0-maccatalyst`, both clean). Neither has been
+      *run*: that needs Apple hardware, so nothing about how they look or fit is verified
 - [ ] Mobile and wearable are not release-gated, by decision
 - [x] Notebooks — `read_notebook` renders cells rather than JSON, `edit_notebook` changes one cell
       and leaves the rest byte-for-byte. No kernel; running one stays `run_command`
