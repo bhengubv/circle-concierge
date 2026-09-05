@@ -43,6 +43,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     [Inject] protected ILlmRuntimeService LlmRuntime { get; set; } = default!;
     [Inject] protected NavigationManager Nav { get; set; } = default!;
     [Inject] protected IJSRuntime JS { get; set; } = default!;
+    [Inject] protected Concierge.Shared.Session.ISessionState SessionState { get; set; } = default!;
 
 
     [Parameter] public Guid? ConversationId { get; set; }
@@ -222,7 +223,36 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
         _activeRuntime = await ChooseActiveRuntimeAsync();
 
+        // What you had, before anything is drawn.
+        //
+        // Skills matter most here and are the least visible: one composes into
+        // the system prompt before every turn, so losing it across a restart
+        // silently changes how the assistant answers with nothing on screen to
+        // explain why. The thread you were in and the text you had typed are
+        // restored for the ordinary reason.
+        //
+        // Not restored: an interrupted run. A partial reply is recovered into
+        // the thread by RecoverDraftAsync, and that is as far as it goes — a
+        // run that stopped while asking permission must not resume itself.
+        _session = await SessionState.LoadAsync();
+
+        foreach (var skillId in _session.Skills)
+        {
+            _activeSkillIds.Add(skillId);
+        }
+
         await RefreshSidebarAsync();
+
+        // Land where you left. Only from the bare workspace — an explicit
+        // /chat/{id} is a deliberate destination and must not be overridden —
+        // and only if that thread still exists, since it may have been deleted
+        // from History since.
+        if (ConversationId is null
+            && _session.LastConversationId is { } last
+            && _conversations.Any(c => c.Id == last))
+        {
+            Nav.NavigateTo($"chat/{last}");
+        }
 
         // Home → Chat handoff:
         //   ?q=...     — prefill the composer with the typed prompt and send.
@@ -347,6 +377,21 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
             _active = await Store.GetAsync(id);
             _systemPromptDraft = _active?.SystemPrompt ?? string.Empty;
+
+            // A half-typed question survives the app closing. Only restored
+            // into an empty composer: whatever is being typed now wins over
+            // what was typed before.
+            if (string.IsNullOrEmpty(_composerText))
+            {
+                _composerText = _session.UnsentFor(id);
+            }
+
+            // Not awaited, deliberately. Saving where you are is disk I/O in
+            // the middle of a render, and awaiting it here left the component
+            // unfinished when the next interaction arrived — the same
+            // async-in-render trap the handoff hit. Losing one save is
+            // nothing; a half-rendered workspace is not.
+            _ = RememberSessionAsync();
         }
         else
         {
@@ -397,9 +442,15 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         {
             _activeSkillIds.Remove(id);
         }
+
+        _ = RememberSessionAsync();
     }
 
-    protected void DeactivateSkill(string id) => _activeSkillIds.Remove(id);
+    protected void DeactivateSkill(string id)
+    {
+        _activeSkillIds.Remove(id);
+        _ = RememberSessionAsync();
+    }
 
     // The product's local-first identity: CircleAI is the default LLM.
     // Cloud providers exist as escape hatches when the user explicitly
@@ -1135,6 +1186,71 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     // because the thing being defended against is the process dying: a file
     // that has been written survives what an in-flight transaction does not,
     // and it needs no change to the event log's schema.
+
+    // ── Where you were ────────────────────────────────────────────────────
+
+    /// <summary>Last read from disk. Held so a restore does not have to re-read
+    /// the file every time a conversation opens.</summary>
+    protected Concierge.Shared.Session.SessionSnapshot _session =
+        Concierge.Shared.Session.SessionSnapshot.Empty;
+
+    /// <summary>
+    /// Saves the thread you are in, the skills you have on, and anything typed
+    /// and not sent.
+    ///
+    /// Unsent text is kept per conversation: two threads each holding a
+    /// half-written question must not overwrite each other. A thread whose
+    /// composer is empty is dropped from the map rather than stored blank, so
+    /// the file does not grow one entry per thread ever opened.
+    /// </summary>
+    /// <summary>When the composer last persisted. A file write per keystroke
+    /// is neither needed nor kind to a disk.</summary>
+    private DateTimeOffset _composerSavedAt = DateTimeOffset.MinValue;
+
+    private static readonly TimeSpan ComposerSaveInterval = TimeSpan.FromSeconds(2);
+
+    /// <summary>
+    /// Called after every keystroke in the composer, and saves at most every
+    /// couple of seconds. Losing the last two seconds of typing to a crash is
+    /// a fair trade for not writing a file on every character.
+    /// </summary>
+    protected async Task OnComposerChangedAsync()
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (now - _composerSavedAt < ComposerSaveInterval)
+        {
+            return;
+        }
+
+        _composerSavedAt = now;
+        await RememberSessionAsync();
+    }
+
+    protected async Task RememberSessionAsync()
+    {
+        var unsent = new Dictionary<string, string>(_session.Unsent, StringComparer.Ordinal);
+
+        if (_active is not null)
+        {
+            var key = _active.Id.ToString("N");
+
+            if (string.IsNullOrWhiteSpace(_composerText))
+            {
+                unsent.Remove(key);
+            }
+            else
+            {
+                unsent[key] = _composerText;
+            }
+        }
+
+        _session = new Concierge.Shared.Session.SessionSnapshot(
+            LastConversationId: _active?.Id,
+            ActiveSkillIds: _activeSkillIds.ToArray(),
+            UnsentText: unsent);
+
+        await SessionState.SaveAsync(_session);
+    }
 
     protected static string DraftDirectory => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),

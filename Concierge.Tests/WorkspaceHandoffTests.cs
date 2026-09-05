@@ -38,6 +38,13 @@ public sealed class WorkspaceHandoffTests : BunitContext
         var dbPath = Path.Combine(Path.GetTempPath(), $"handoff-{Guid.NewGuid():N}.db");
         Services.AddLogging();
         Services.AddConciergeCore();
+
+        // Session state defaults to the real per-user file. A test that reads
+        // it depends on whatever the app last did, and a test that writes it
+        // changes the user's app state — both happened before this line.
+        Services.AddSingleton<Concierge.Shared.Session.ISessionState>(
+            new Concierge.Shared.Session.FileSessionState(
+                Path.Combine(Path.GetTempPath(), $"session-{Guid.NewGuid():N}.json")));
         Services.AddConciergeChat(dbPath);
         Services.AddSingleton<IEnumerable<IChatRuntime>>(_ => Array.Empty<IChatRuntime>());
         Concierge.Shared.Tools.ConciergeToolsServiceCollectionExtensions.AddConciergeTools(Services);
@@ -86,6 +93,13 @@ public sealed class WorkspaceHandoffTests : BunitContext
         var dbPath = Path.Combine(Path.GetTempPath(), $"handoff-{Guid.NewGuid():N}.db");
         Services.AddLogging();
         Services.AddConciergeCore();
+
+        // Session state defaults to the real per-user file. A test that reads
+        // it depends on whatever the app last did, and a test that writes it
+        // changes the user's app state — both happened before this line.
+        Services.AddSingleton<Concierge.Shared.Session.ISessionState>(
+            new Concierge.Shared.Session.FileSessionState(
+                Path.Combine(Path.GetTempPath(), $"session-{Guid.NewGuid():N}.json")));
         Services.AddConciergeChat(dbPath);
         Services.AddSingleton<IEnumerable<IChatRuntime>>(_ => Array.Empty<IChatRuntime>());
         Concierge.Shared.Tools.ConciergeToolsServiceCollectionExtensions.AddConciergeTools(Services);
@@ -130,6 +144,13 @@ public sealed class WorkspaceHandoffTests : BunitContext
         var dbPath = Path.Combine(Path.GetTempPath(), $"handoff-{Guid.NewGuid():N}.db");
         Services.AddLogging();
         Services.AddConciergeCore();
+
+        // Session state defaults to the real per-user file. A test that reads
+        // it depends on whatever the app last did, and a test that writes it
+        // changes the user's app state — both happened before this line.
+        Services.AddSingleton<Concierge.Shared.Session.ISessionState>(
+            new Concierge.Shared.Session.FileSessionState(
+                Path.Combine(Path.GetTempPath(), $"session-{Guid.NewGuid():N}.json")));
         Services.AddConciergeChat(dbPath);
         Services.AddSingleton<IEnumerable<IChatRuntime>>(_ => Array.Empty<IChatRuntime>());
         Concierge.Shared.Tools.ConciergeToolsServiceCollectionExtensions.AddConciergeTools(Services);

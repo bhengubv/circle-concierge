@@ -136,6 +136,10 @@ public static class ConciergeServiceCollectionExtensions
             new AgentHarnessService(
                 AgentHarnessService.LocateDefaultWorkspaceRoot(),
                 sp.GetService<IAgentRunLogPublisher>()));
+        // Where you were: the thread, the skills that were on, and anything
+        // typed and not sent. Local file, beside the drafts.
+        services.AddSingleton<Concierge.Shared.Session.ISessionState>(
+            _ => new Concierge.Shared.Session.FileSessionState());
         services.AddSingleton<IBeyondClaudeService, BeyondClaudeService>();
         services.AddSingleton<IProductionReadinessService, ProductionReadinessService>();
         services.AddSingleton<IAppStatePersistenceService, AppStatePersistenceService>();
