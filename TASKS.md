@@ -103,6 +103,19 @@ needs a cloud key — the wire shapes are tested, the round trip is not.
 - **The native model crash.** `mnn_llm_generate_stream_text` faults with an
   access violation. It is in the `CircleAI.Inference` package, upgraded
   separately. Concierge now survives it; it does not fix it.
+
+  Checked again on 6 Sep 2026, twice in a row on the running desktop app.
+  Every turn ends the same way: *"The model stopped unexpectedly. Concierge is
+  still running — send the message again to try once more."* So **Concierge
+  cannot yet hold a conversation**, and no amount of work in this repo changes
+  that. What the run does confirm is the isolation: the parent process kept
+  its PID and its window across both crashes, the child was replaced each time
+  (9672 → 14260 → 5544), the thread was saved, and the composer came back
+  ready. Before isolation this was an application-wide crash.
+
+  Two smaller things it also showed: the send button is briefly disabled while
+  the replacement child starts, which is correct but undocumented; and the
+  retry the message invites does work — it fails the same way.
 - **`MainLayout`, `NavMenu`, `BottomNavLayout`, `AppMenu`, `Bell`.** These are
   the navigation model the redesign removed. Kept as shells for possible reuse
   rather than deleted.
