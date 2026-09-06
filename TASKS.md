@@ -332,6 +332,44 @@ answer to containment first.
 — collectible load context, cooperative unload — and "any DLL on disk can add
 tools" is a decision to make deliberately rather than by finishing a wiring job.
 
+### 14. Five renderers, one document
+
+Matching all six inspirations feature for feature, which is the strategy: parity
+is table stakes, and the UX is what wins on top of it — not instead of it.
+
+The six are six products, each hard-wiring its renderer into its document, which
+is why none of them can become another one. Here the document knows nothing about
+how it is drawn, so five media is five files.
+
+- [x] `DesignMedium` on the document, and frames — the sequence a deck, a video, a
+      space and a running order all are
+- [x] **Slides.** One filling the frame, arrow keys, and it prints one slide to a
+      sheet — so a deck becomes a handout with no export step
+- [x] **Video.** Shots with durations that play and loop, sound tied to its shot.
+      No timeline: a progress bar that says where you are and cannot be dragged
+- [x] **Space.** A room of solids on a floor, turned with arrow keys. CSS
+      transforms, so no dependency and nothing to install
+- [x] **Sound.** Tracks with real playback and a play-everything button. No
+      waveform, no faders, no stacked tracks
+- [x] Changing what you are making throws nothing away — the same words and
+      pictures, drawn differently
+- [x] The composer's invitation follows the medium: on the slide, in the shot,
+      in the room, to hear
+- [ ] Encoding. Video plays and does not produce an MP4; sound plays and does not
+      produce one file. Both need FFmpeg, which is a real dependency and a real
+      download — a decision to make deliberately
+- [ ] A real 3D engine. Space draws rooms and furniture and will not draw a mesh,
+      a light or a shadow
+- [ ] Antra's half of Sound: links in, tagged files out, artwork and lyrics. That
+      is a library, not a design surface — this draws from one
+
+**What every renderer refuses, because it is the whole point:** no timeline, no
+track stack, no waveform, no node graph, no orbit-by-dragging, no keyframes. Each
+is the thing that makes its category's software feel like a cockpit, and each is
+what a person who has never used one cannot get past.
+
+---
+
 ## What is actually next
 
 Everything above is done or done-bar-a-named-remainder. Nine items are open and
@@ -406,7 +444,7 @@ being explicit about rather than rediscovering.
 Boxes that are re-checked per change rather than ticked once. All four hold as
 of `a00191b`.
 
-- [x] 1169 tests pass — `dotnet test Concierge.Tests/Concierge.Tests.csproj`
+- [x] 1197 tests pass — `dotnet test Concierge.Tests/Concierge.Tests.csproj`
 - [x] Verified on the running desktop app, not only in tests — Engineering lists
       the real catalogue, `todo_read` and `todo_write` included, and says what
       confines a command
