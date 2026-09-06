@@ -51,6 +51,29 @@
                 </div>
             </div>
             <p class="room-note">Nothing outside that folder is reachable by a file tool.</p>
+
+            @*
+                What a command is confined by, in the platform's own words. The room
+                claims to say what Concierge can do to your machine, and until now
+                it said nothing at all about the one tool that starts processes.
+            *@
+            <div class="rows">
+                <div class="row">
+                    <span class="row-name">
+                        Commands run
+                        <span class="row-sub">@Harness.Confinement.Explanation</span>
+                    </span>
+                    <span class="state">
+                        <span class="dot @(Harness.Confinement.Strength == Concierge.Shared.Sandboxing.SandboxStrength.None ? "dot-danger" : "dot-waiting")" aria-hidden="true"></span>
+                        @(Harness.Confinement.Strength switch
+                        {
+                            Concierge.Shared.Sandboxing.SandboxStrength.Confined => "Confined",
+                            Concierge.Shared.Sandboxing.SandboxStrength.Process => "Capped and killed with the app",
+                            _ => "Not confined",
+                        })
+                    </span>
+                </div>
+            </div>
         </RoomSection>
 
         <RoomSection Title="Reads only" Count="@tools.Count(t => t.IsReadOnly)">

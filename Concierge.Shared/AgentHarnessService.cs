@@ -29,6 +29,13 @@ public interface IAgentHarnessService
 
     Task<ConciergeToolResult> WriteFileAsync(string relativePath, string content, bool approved, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// What confines a command on this machine. On the interface because a surface
+    /// that reports what Concierge can do needs to be able to ask, and because a
+    /// platform that can confine nothing has to be able to say so.
+    /// </summary>
+    Sandboxing.SandboxCapability Confinement { get; }
+
     Task<ConciergeToolResult> RunCommandAsync(string command, bool approved, CancellationToken cancellationToken = default);
 
     Task<ConciergeRunLog> RunGoalAsync(string goal, IReadOnlyList<string> commands, bool approved, CancellationToken cancellationToken = default);
@@ -126,6 +133,16 @@ public sealed class AgentHarnessService : IAgentHarnessService
     public static string LocateDefaultWorkspaceRoot() => LocateWorkspaceRoot();
 
     public string WorkspaceRoot { get; }
+
+    /// <summary>
+    /// A fresh boundary for the next command. A property rather than a field
+    /// because each command gets its own job object: the caps are per command, and
+    /// closing one must not kill another command's processes.
+    /// </summary>
+    private Sandboxing.ICodeSandbox _sandbox => Sandboxing.CodeSandbox.ForCurrentPlatform();
+
+    /// <summary>What a command is confined by on this machine, for Engineering to report.</summary>
+    public Sandboxing.SandboxCapability Confinement => Sandboxing.CodeSandbox.DescribeCurrentPlatform();
 
     private string LogDirectory => Path.Combine(WorkspaceRoot, ".concierge-artifacts", "agent-runs");
 
@@ -574,9 +591,50 @@ public sealed class AgentHarnessService : IAgentHarnessService
             process.StartInfo.ArgumentList.Add(argument);
         }
 
+        // A boundary around the command, built fresh for each one.
+        //
+        // This existed and was never used. Concierge.Shared.Sandboxing had a
+        // complete Windows job-object sandbox — memory cap, process cap, and
+        // KILL_ON_JOB_CLOSE — referenced nowhere, while the one method in the
+        // product that starts a process started it with nothing at all. The
+        // Engineering room says "what Concierge can do to your machine" above a
+        // list including run_command, and the answer was: whatever it likes.
+        //
+        // Three things it buys, in the order they matter:
+        //
+        //   A command that starts something and exits leaves nothing behind. That
+        //   is the failure nobody finds until a phone is warm in a pocket, and
+        //   killing the process tree on timeout does not cover it — a command that
+        //   exits cleanly was never timed out.
+        //
+        //   A runaway cannot take the machine with it. Capped memory, capped
+        //   process count, so a fork bomb from a model that has misunderstood
+        //   something costs one failed tool call.
+        //
+        //   Per command, not per app. One job shared across every command would
+        //   apply one process cap to all of them at once and would kill an
+        //   unrelated command when this one finished.
+        //
+        // Unconfined on platforms that cannot do it, which is a real answer rather
+        // than a silence: CodeSandbox.ForCurrentPlatform says what it can enforce,
+        // and Engineering reports it.
+        // Only some sandboxes hold anything to release — the unconfined one holds
+        // nothing, and the interface does not require IDisposable because most
+        // platforms will not need it. Disposing what does is what closes the job
+        // object, and closing the job object is what kills anything left in it.
+        var sandbox = _sandbox;
+
         try
         {
+            sandbox.Prepare(process.StartInfo, WorkspaceRoot);
+
+            // Redirection is set above and Prepare must not quietly undo it: the
+            // output of the command is the whole point of running it.
+            process.StartInfo.RedirectStandardOutput = true;
+            process.StartInfo.RedirectStandardError = true;
+
             process.Start();
+            sandbox.Confine(process);
             var outputTask = process.StandardOutput.ReadToEndAsync(timeout.Token);
             var errorTask = process.StandardError.ReadToEndAsync(timeout.Token);
             await process.WaitForExitAsync(timeout.Token);
@@ -588,6 +646,19 @@ public sealed class AgentHarnessService : IAgentHarnessService
         {
             TryKill(process);
             return Result("shell", ConciergeToolOutcome.Failed, "Command timed out or was cancelled.", string.Empty, started);
+        }
+        catch (InvalidOperationException problem)
+        {
+            // The sandbox refused to build or refused to confine. Failing the call
+            // is the only honest answer: the alternative is running the command
+            // unconfined after deciding it should not be, which is worse than not
+            // running it.
+            TryKill(process);
+            return Result("shell", ConciergeToolOutcome.Failed, problem.Message, string.Empty, started);
+        }
+        finally
+        {
+            (sandbox as IDisposable)?.Dispose();
         }
     }
 

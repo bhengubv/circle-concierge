@@ -259,6 +259,33 @@ checked — which is why the last two boxes are unticked rather than rushed.
 it is in the pipeline elsewhere. This implements the published `IMeshSender` and
 stops there.
 
+### 11. run_command had no boundary
+
+`Concierge.Shared.Sandboxing` held a complete Windows job-object sandbox — memory
+cap, process cap, and KILL_ON_JOB_CLOSE — referenced nowhere, while the one
+method in the product that starts a process started it with nothing at all. The
+Engineering room says "what Concierge can do to your machine" above a list that
+includes `run_command`, and the answer was: whatever it likes.
+
+- [x] Every command runs inside a fresh job object — capped memory, capped
+      process count, killed when the command ends
+- [x] Per command rather than per app, so one command finishing cannot kill
+      another command's processes
+- [x] A sandbox that refuses to build fails the call rather than running the
+      command unconfined after deciding it should not be
+- [x] Engineering reports what confines a command, in the platform's own words
+- [ ] Close the detach race — a command whose first act is to spawn a detached
+      child wins it, because the process is assigned to the job after it starts.
+      Fixing it means CreateProcess with CREATE_SUSPENDED and a resume after
+      assignment, which is real interop and is not half-done here
+- [ ] Confinement on the other platforms. Linux has Landlock, macOS has its own
+      sandbox, Android runs a child under the app's uid, iOS forbids children —
+      today all four report "not confined", honestly
+
+That last gap is a passing test rather than a failing one: it asserts the escape
+happens, so the day somebody closes the race the test goes red and says to assert
+containment instead. A limitation nobody can read is the same as silence.
+
 ---
 
 ## Known gaps, not scheduled
@@ -304,7 +331,7 @@ stops there.
 Boxes that are re-checked per change rather than ticked once. All three hold as
 of `80cda9c`.
 
-- [x] 1145 tests pass — `dotnet test Concierge.Tests/Concierge.Tests.csproj`
+- [x] 1153 tests pass — `dotnet test Concierge.Tests/Concierge.Tests.csproj`
 - [x] Verified on the running desktop app, not only in tests — Engineering shows
       11 tools under their real names, no page overflow
 - [x] `[skip ci]` in the HEAD commit before any push
