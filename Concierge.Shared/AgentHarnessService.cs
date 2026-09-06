@@ -626,6 +626,25 @@ public sealed class AgentHarnessService : IAgentHarnessService
 
         try
         {
+            // Born inside the job where the platform allows it. Assigning a running
+            // process to a job cannot contain what that process has already
+            // spawned, so a command whose first act was to detach a background
+            // child escaped every time — and the escapee outlived the app. Creating
+            // the process in the job removes the window rather than narrowing it.
+            if (sandbox is Sandboxing.WindowsJobObjectSandbox windows && OperatingSystem.IsWindows())
+            {
+                var confined = await Sandboxing.ConfinedProcess.RunAsync(
+                    windows.OpenJob(), executable, arguments, WorkspaceRoot, timeout.Token)
+                    .ConfigureAwait(false);
+
+                var confinedOutcome = confined.ExitCode == 0
+                    ? ConciergeToolOutcome.Succeeded
+                    : ConciergeToolOutcome.Failed;
+
+                return Result("shell", confinedOutcome, $"Command exited with {confined.ExitCode}.",
+                    RedactSecrets(confined.Output), started, confined.ExitCode);
+            }
+
             sandbox.Prepare(process.StartInfo, WorkspaceRoot);
 
             // Redirection is set above and Prepare must not quietly undo it: the

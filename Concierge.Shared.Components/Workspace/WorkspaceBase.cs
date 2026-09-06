@@ -610,6 +610,16 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
     protected async Task OnAttachmentSelected(InputFileChangeEventArgs args)
     {
+        // With the canvas open a picture belongs on the page, not on the next chat
+        // turn — there is no next chat turn. The paperclip was hidden in Design
+        // because it silently did nothing; this is what it should have done all
+        // along, and it is the only way to put a real picture into a design.
+        if (_designOpen)
+        {
+            await PutPicturesOnThePageAsync(args);
+            return;
+        }
+
         foreach (var file in args.GetMultipleFiles(8))
         {
             if (file.Size > MaxAttachmentBytes)
@@ -625,6 +635,93 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
             _composerHint = "Attachment ready. Text contents will quote into the next message.";
         }
     }
+
+    /// <summary>
+    /// Puts chosen pictures onto the canvas.
+    ///
+    /// As data URIs rather than paths. A design has to render inside a sandboxed
+    /// frame, be savable, and be openable somewhere else — and a file:// path
+    /// satisfies none of those, which is why the renderer refuses one. Carrying the
+    /// bytes means the picture is genuinely part of the design rather than a
+    /// reference to something on one machine.
+    ///
+    /// Which also sets the size limit honestly: a base64 picture is a third larger
+    /// than the file, and it lives in every render of the page from here on.
+    /// </summary>
+    protected async Task PutPicturesOnThePageAsync(InputFileChangeEventArgs args)
+    {
+        if (_design is null)
+        {
+            return;
+        }
+
+        var added = 0;
+
+        foreach (var file in args.GetMultipleFiles(4))
+        {
+            if (file.Size > MaxPictureBytes)
+            {
+                _composerHint = $"{file.Name} is too big — pictures up to {MaxPictureBytes / (1024 * 1024)} MB.";
+                continue;
+            }
+
+            using var stream = file.OpenReadStream(MaxPictureBytes);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+
+            var bytes = buffer.ToArray();
+
+            // Sniffed from the bytes rather than taken from the name, using the
+            // same helper the vision path already uses. A file called holiday.png
+            // that is not a PNG would otherwise become a data URI claiming to be
+            // one, and the design would carry a picture that renders nowhere.
+            var kind = Concierge.Shared.Attachments.AttachmentKind.ImageMediaType(bytes);
+
+            if (kind is null)
+            {
+                _composerHint = $"{file.Name} is not a picture.";
+                continue;
+            }
+
+            var source = $"data:{kind};base64,{Convert.ToBase64String(bytes)}";
+
+            // Onto whatever is being pointed at, if that is a picture — so
+            // "swap this one out" is choosing a file rather than deleting and
+            // re-adding. Otherwise a new picture at the end.
+            if (_design.Pointed is { Kind: Concierge.Shared.Design.DesignNodeKind.Image } chosen)
+            {
+                _design.Record(
+                    _design.Current.Set(chosen.Id, "src", source).Set(chosen.Id, "text", file.Name),
+                    "Changed the picture");
+            }
+            else
+            {
+                _design.Record(
+                    _design.Current.Add(Concierge.Shared.Design.DesignNode.New(
+                        Concierge.Shared.Design.DesignNodeKind.Image,
+                        null,
+                        ("src", source),
+                        ("text", file.Name))),
+                    "Added a picture");
+            }
+
+            added++;
+        }
+
+        if (added > 0)
+        {
+            _composerHint = added == 1 ? "Picture added." : $"{added} pictures added.";
+        }
+
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// How large a picture may be. Carried as base64 inside the design, so it is
+    /// paid for in every render — and a phone photograph straight off a camera is
+    /// several times this.
+    /// </summary>
+    protected const long MaxPictureBytes = 4 * 1024 * 1024;
 
     protected void RemoveAttachment(TextAttachment attachment)
     {
@@ -1437,6 +1534,17 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     protected void OpenDrawer() => _drawerOpen = true;
 
     protected void CloseDrawer() => _drawerOpen = false;
+
+    /// <summary>
+    /// Opens the canvas from the handheld drawer, and gets the drawer out of the
+    /// way. On a phone the drawer covers the whole screen, so leaving it up would
+    /// hide the thing somebody just asked to see.
+    /// </summary>
+    protected void OpenDesignFromDrawer()
+    {
+        ToggleDesign();
+        CloseDrawer();
+    }
 
     protected string? _openGroup = "threads";
 

@@ -218,12 +218,20 @@ prompts. It is about the surface — which is the product.
       modes, engine name and paperclip were all describing a conversation that was
       not happening
 - [x] Closing the canvas puts it away instead of throwing the design out
+- [x] The handheld can reach it. Every other piece was wired there — placeholder,
+      hidden paperclip, suppressed permission modes — and there was no control that
+      could ever open it, so all of it was dead code that looked finished
+- [x] Pictures on the page. The paperclip was hidden in Design because it silently
+      did nothing; it puts a picture on the canvas now, carried as a data URI so
+      the design is genuinely portable rather than a reference to one machine
+- [x] Verified on a handheld at 504px: canvas 393 of 680, nothing overflows,
+      drawer closes behind you
+- [ ] What a watch shows instead of a canvas. A 192dp face is not a design surface
+      and pretending otherwise would be the fourth-tab mistake in miniature
 - [ ] A model driving the canvas — the same edits as agent tools, so "make it feel
       like a school newsletter" reaches it
 - [ ] The plan in plain language for a multi-step design change. Nothing to plan
       until a model is driving it
-- [ ] Handheld verified, and what a watch shows instead. The CSS is written and
-      neither has been run
 
 **The rule this surface must not break:** every defect worth fixing in Concierge
 so far has been the same one — a screen asserting something untrue. An approvals
@@ -274,10 +282,14 @@ includes `run_command`, and the answer was: whatever it likes.
 - [x] A sandbox that refuses to build fails the call rather than running the
       command unconfined after deciding it should not be
 - [x] Engineering reports what confines a command, in the platform's own words
-- [ ] Close the detach race — a command whose first act is to spawn a detached
-      child wins it, because the process is assigned to the job after it starts.
-      Fixing it means CreateProcess with CREATE_SUSPENDED and a resume after
-      assignment, which is real interop and is not half-done here
+- [x] The process is created inside the job rather than assigned to one after it
+      starts — CreateProcess with PROC_THREAD_ATTRIBUTE_JOB_LIST, which removes the
+      window rather than narrowing it
+- [ ] Work out why `cmd`'s `start /b` still gets out. The race is gone and a
+      detached child escapes anyway, so the earlier explanation was wrong. Two
+      attempts to measure this drew confident conclusions from broken vehicles —
+      `timeout` fails instantly with redirected handles, and an unquoted `&` binds
+      to the outer shell — so read the test before trusting the next theory
 - [ ] Confinement on the other platforms. Linux has Landlock, macOS has its own
       sandbox, Android runs a child under the app's uid, iOS forbids children —
       today all four report "not confined", honestly
@@ -304,7 +316,9 @@ configuration. Same seam as MCP, `edit_file` and the sandbox.
 - [x] A broken hooks file runs nothing and says why. Failing closed matters more
       here than for MCP: half-running would give somebody a control they believe
       is in force and is not
-- [ ] Show registered hooks in Engineering, beside the MCP servers
+- [x] Registered hooks shown in Engineering, beside the MCP servers — including
+      when there are none, because "no hooks" and "hooks I have forgotten about"
+      look identical from outside and this is the room where you check which
 
 **Two deliberately left unwired, and why.**
 

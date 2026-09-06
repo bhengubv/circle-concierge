@@ -54,10 +54,50 @@ public sealed class WindowsJobObjectSandbox : ICodeSandbox, IDisposable
         startInfo.CreateNoWindow = true;
     }
 
+    /// <summary>
+    /// The job handle, so a caller can create a process directly inside it rather
+    /// than assigning one afterwards. Zero until <see cref="OpenJob"/> is called.
+    ///
+    /// Exposed because assigning after the fact is racy and creating inside is not:
+    /// a command whose first act is to detach a background child beat the
+    /// assignment every time, and the escapee outlived the app.
+    /// </summary>
+    public nint Job => _job;
+
+    /// <summary>
+    /// Creates the job and applies the limits, without a process to put in it yet.
+    /// </summary>
+    public nint OpenJob()
+    {
+        if (_job != nint.Zero)
+        {
+            return _job;
+        }
+
+        BuildJob();
+        return _job;
+    }
+
     /// <inheritdoc />
     public void Confine(Process process)
     {
         ArgumentNullException.ThrowIfNull(process);
+
+        BuildJob();
+
+        if (!AssignProcessToJobObject(_job, process.Handle))
+        {
+            throw new InvalidOperationException("The program could not be confined, so it was not run.");
+        }
+    }
+
+    /// <summary>The job and its limits, without anything in it.</summary>
+    private void BuildJob()
+    {
+        if (_job != nint.Zero)
+        {
+            return;
+        }
 
         _job = CreateJobObject(nint.Zero, null);
         if (_job == nint.Zero)
@@ -88,11 +128,6 @@ public sealed class WindowsJobObjectSandbox : ICodeSandbox, IDisposable
         finally
         {
             Marshal.FreeHGlobal(buffer);
-        }
-
-        if (!AssignProcessToJobObject(_job, process.Handle))
-        {
-            throw new InvalidOperationException("The program could not be confined, so it was not run.");
         }
     }
 

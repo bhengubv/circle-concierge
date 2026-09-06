@@ -57,7 +57,21 @@ public sealed class HandheldWorkspaceTests : BunitContext
             db.Database.EnsureCreated();
         }
 
-        return Render<Concierge.Shared.Components.Workspace.Handheld.Workspace>();
+        // Rendered, then waited for.
+        //
+        // Render returns after the first pass, and the workspace loads its threads
+        // in OnInitializedAsync — so on a loaded machine every assertion made
+        // straight afterwards is racing that load. Five tests were fixed one at a
+        // time before it was obvious that the fixture was the defect: each looked
+        // like an isolated flake, each passed on retry, and the sixth was always
+        // going to be somebody else's afternoon.
+        //
+        // The sidebar is the thing to wait on because every recipe has one and it
+        // is populated from the load. Anything asserted after this is looking at a
+        // workspace that has finished arriving.
+        var rendered = Render<Concierge.Shared.Components.Workspace.Handheld.Workspace>();
+        rendered.WaitForState(() => rendered.FindAll("section.ws-group").Count > 0);
+        return rendered;
     }
 
     private static IElement Header(IRenderedComponent<Concierge.Shared.Components.Workspace.Handheld.Workspace> cut, string name)

@@ -138,47 +138,63 @@ public sealed class SandboxedCommandTests : IDisposable
     // ── What the boundary is for ──────────────────────────────────────────
 
     /// <summary>
-    /// What the boundary does not catch, named so it is not mistaken for something
-    /// it does.
+    /// What still escapes, measured properly this time.
     ///
-    /// The job object is created and the process assigned to it *after* the process
-    /// has started, because System.Diagnostics.Process cannot start one suspended.
-    /// A command whose first act is to detach a background child wins that race:
-    /// the grandchild exists before the assignment lands, and a process outside the
-    /// job is not killed when the job closes.
+    /// The command is created inside the job now — CreateProcess with
+    /// PROC_THREAD_ATTRIBUTE_JOB_LIST rather than a job assigned to a process
+    /// already running — so the race that was blamed for this is gone. A child
+    /// `cmd` detaches through `start /b` anyway, and this test says so rather than
+    /// claiming a guarantee that does not hold.
     ///
-    /// Measured, not assumed — this test starts red against wishful thinking. The
-    /// marker file appearing means the detached child outlived the command that
-    /// started it, which is exactly what happens today.
+    /// Worth recording how much of the earlier version of this was wrong, because
+    /// two rounds of it produced confident conclusions from a broken measurement:
+    /// `timeout` fails instantly with redirected handles, so the marker was written
+    /// immediately; and unquoted, the `&amp;` bound to the outer `cmd`, so the marker
+    /// was written immediately again for a different reason. Both looked exactly
+    /// like an escape. The vehicle is two script files now, which have no quoting
+    /// or binding to get wrong.
     ///
-    /// Fixing it properly means starting the process suspended through CreateProcess
-    /// and resuming it after assignment, which is real interop and is on the list
-    /// rather than half-done here. Recording it as a passing test that documents a
-    /// limitation beats a failing one nobody reads, and beats silence.
+    /// It asserts the escape, so the day somebody works out why `start /b` gets
+    /// out, this goes red and says to assert containment instead.
     /// </summary>
     [Fact]
-    public async Task A_child_that_detaches_before_confinement_lands_still_escapes()
+    public async Task A_child_that_detaches_through_start_still_escapes()
     {
         if (!OperatingSystem.IsWindows())
         {
             return;
         }
 
-        var marker = Path.Combine(_root, $"escaped-{Guid.NewGuid():N}.txt");
+        var marker = Path.Combine(_root, "alive.txt");
 
-        // ping rather than timeout as the delay: timeout needs a console and fails
-        // instantly when its handles are redirected, which made an earlier version
-        // of this test fail against confinement that was working.
-        var command = $"cmd /c start /b cmd /c ping -n 7 127.0.0.1 > nul & echo alive > \"{marker}\"";
+        // Script files rather than a nested cmd line, because cmd's quoting is not
+        // a reliable test vehicle and every earlier version of this test measured
+        // it instead of the confinement. Unquoted, the & bound to the outer cmd and
+        // the echo ran immediately; quoted, the nesting became unpredictable. Two
+        // plain scripts have no ambiguity at all.
+        File.WriteAllText(Path.Combine(_root, "waiter.cmd"), string.Join(Environment.NewLine,
+            "@echo off",
+            "ping -n 7 127.0.0.1 > nul",
+            "echo alive > \"%~dp0alive.txt\""));
 
-        Assert.Equal(ConciergeToolOutcome.Succeeded,
-            (await Harness().RunCommandAsync(command, approved: true)).Outcome);
+        File.WriteAllText(Path.Combine(_root, "spawn.cmd"), string.Join(Environment.NewLine,
+            "@echo off",
+            "start /b cmd /c \"%~dp0waiter.cmd\""));
 
+        // The parent exits at once, so nothing times out and nothing is cancelled:
+        // exactly the case killing the process tree never covered.
+        var run = await Harness().RunCommandAsync(
+            $"cmd /c {Path.Combine(_root, "spawn.cmd")}", approved: true);
+        Assert.True(run.Outcome == ConciergeToolOutcome.Succeeded,
+            $"{run.Summary} :: {run.Output}");
+
+        // Long enough that the detached child would have written by now if it had
+        // been allowed to live.
         await Task.Delay(TimeSpan.FromSeconds(9));
 
         Assert.True(File.Exists(marker),
             "A detached child was contained. Good news, and this test is now out of date: "
-            + "the confinement got stronger, so assert containment instead of documenting the gap.");
+            + "assert containment instead of documenting the escape.");
     }
 
     /// <summary>

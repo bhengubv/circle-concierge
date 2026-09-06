@@ -142,6 +142,65 @@
         }
 
         @*
+            Programs the person registered to run in front of tool calls.
+
+            Beside the MCP servers because they are the same kind of thing — other
+            software this machine's owner chose to let in — and separate from the
+            tool list because a hook is not a tool: nothing calls it, it calls
+            nothing, and it can refuse things the rest of the list can do.
+
+            Shown even when empty. "No hooks" and "hooks I have forgotten about"
+            look identical from the outside, and this is the room where somebody
+            checks which they are in.
+        *@
+        <RoomSection Title="Hooks you registered" Count="@_hooks.Count">
+            @if (_hookStatus is null)
+            {
+                <p class="room-note">Not available in this build.</p>
+            }
+            else
+            {
+                @if (_hooks.Count == 0)
+                {
+                    <p class="room-note">
+                        None. Nothing runs in front of a tool call unless you write it here.
+                    </p>
+                }
+                else
+                {
+                    <div class="rows">
+                        @foreach (var hook in _hooks)
+                        {
+                            <div class="row">
+                                <span class="row-name">
+                                    @hook.Command
+                                    <span class="row-sub">@string.Join(' ', hook.Arguments)</span>
+                                </span>
+                                <span class="state">
+                                    <span class="dot dot-waiting" aria-hidden="true"></span>
+                                    @(hook.Event switch
+                                    {
+                                        Concierge.Shared.Hooks.HookEvent.PreToolUse => "Before a tool — can refuse it",
+                                        Concierge.Shared.Hooks.HookEvent.PostToolUse => "After a tool",
+                                        Concierge.Shared.Hooks.HookEvent.UserPromptSubmit => "When you send something",
+                                        _ => "When a turn finishes",
+                                    })
+                                </span>
+                            </div>
+                        }
+                    </div>
+                }
+
+                @if (!string.IsNullOrWhiteSpace(_hookStatus.Problem))
+                {
+                    <p class="room-note">@_hookStatus.Problem</p>
+                }
+
+                <p class="room-note">@_hookStatus.Path</p>
+            }
+        </RoomSection>
+
+        @*
             Tools from other software. Listed apart from the built-in ones
             because the trust is different: these arrive over a protocol that
             says nothing about what they do, so every one asks before it runs.
@@ -227,6 +286,15 @@
 
     private IReadOnlyList<Concierge.Shared.Devices.IDeviceCapability> _unavailable = [];
 
+    /// <summary>
+    /// What is registered to run in front of tool calls, and where the file is.
+    /// Resolved rather than injected, like the others: a host that has not called
+    /// AddConciergeHooks renders the room without the section.
+    /// </summary>
+    private Concierge.Shared.Hooks.HookStatus? _hookStatus;
+
+    private IReadOnlyList<Concierge.Shared.Hooks.HookRegistration> _hooks = [];
+
     protected override void OnInitialized()
     {
         _mcp = Services.GetService(typeof(Concierge.Shared.Rpc.Mcp.McpToolSource))
@@ -236,6 +304,11 @@
 
         _registry = Services.GetService(typeof(Concierge.Shared.Tools.IAgentToolRegistry))
             as Concierge.Shared.Tools.IAgentToolRegistry;
+
+        _hookStatus = Services.GetService(typeof(Concierge.Shared.Hooks.HookStatus))
+            as Concierge.Shared.Hooks.HookStatus;
+
+        _hooks = _hookStatus?.Hooks ?? [];
 
         // Every source this head wired, asked what it declared but cannot do.
         // Resolved rather than injected, like the others: a head with no device
