@@ -282,9 +282,14 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     // creates the conversation; requiring one to exist first is what forced a
     // separate "Start a chat" button into the design.
     protected bool CanSend
-        => !_streaming
-           && (!string.IsNullOrWhiteSpace(_composerText) || _pendingAttachments.Count > 0)
-           && (_activeRuntime?.IsReady ?? false);
+        // The canvas needs no engine. Gating it on IsReady would leave the design
+        // surface dead while the model loads — or, on a machine where the model is
+        // broken, dead permanently — for work that never needed one.
+        => _design is not null
+            ? !string.IsNullOrWhiteSpace(_composerText)
+            : !_streaming
+              && (!string.IsNullOrWhiteSpace(_composerText) || _pendingAttachments.Count > 0)
+              && (_activeRuntime?.IsReady ?? false);
 
     protected override async Task OnInitializedAsync()
     {
@@ -715,8 +720,72 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         }
     }
 
+    /// <summary>
+    /// The design being worked on, or null when the workspace is showing a thread.
+    ///
+    /// Held here rather than inside the Design component because the recipes are
+    /// rebuilt when the window is resized past a breakpoint, and losing an
+    /// afternoon's work to dragging a window narrower would be unforgivable.
+    /// </summary>
+    protected Concierge.Shared.Design.DesignSession? _design;
+
+    /// <summary>
+    /// Opens or closes the canvas. Not navigation — the sidebar stays, the
+    /// composer stays, and what you type goes somewhere else.
+    /// </summary>
+    /// <summary>
+    /// A sentence, applied to the design.
+    ///
+    /// Understood here rather than sent to a model, for the ordinary sentences.
+    /// Not a shortcut: the canvas has to work while the engine is loading, or
+    /// offline, or broken — on this machine currently all three — and "add a
+    /// title" landing instantly rather than in four seconds is the difference
+    /// between something that feels like a pen and something that feels like a
+    /// form. A model still handles everything this cannot.
+    /// </summary>
+    protected void SayToTheCanvas()
+    {
+        if (_design is null || string.IsNullOrWhiteSpace(_composerText))
+        {
+            return;
+        }
+
+        var said = _composerText;
+        var heard = Concierge.Shared.Design.DesignSpeech.Hear(_design.Current, said, _design.Selected);
+
+        if (heard.Understood)
+        {
+            _design.Record(heard.Document, heard.What);
+            _composerText = string.Empty;
+            _composerHint = heard.What;
+        }
+        else
+        {
+            // The words are left in the box. Somebody who was misunderstood wants
+            // to fix what they said, not type it again.
+            _composerHint = heard.Reply;
+        }
+
+        StateHasChanged();
+    }
+
+    protected void ToggleDesign()
+    {
+        _design = _design is null ? new Concierge.Shared.Design.DesignSession() : null;
+        _composerHint = _design is null ? null : "Say what you would like on the page.";
+        StateHasChanged();
+    }
+
     protected async Task SendAsync()
     {
+        // With the canvas open, a sentence is an instruction to it. The composer
+        // is the same composer; only where the words go changes.
+        if (_design is not null)
+        {
+            SayToTheCanvas();
+            return;
+        }
+
         if (!CanSend || _activeRuntime is null)
         {
             return;

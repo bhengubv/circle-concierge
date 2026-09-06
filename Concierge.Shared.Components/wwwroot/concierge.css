@@ -1131,3 +1131,158 @@ button.row:hover { color: var(--ink); }
 .plan-step.is-now { color: var(--ink); }
 
 .dot-idle { background: var(--rule); }
+
+/* ── Design: say it, see it, point at it ─────────────────────────────────────
+
+   One surface. A canvas, everything it has looked like, and six looks. No file
+   name, no layers, no properties panel, no timeline, no colour picker — every
+   one of those is a thing somebody would have to be taught, and the bar is that
+   a five-year-old and a ninety-seven-year-old both use it untaught.
+
+   The whole thing is a grid with one flexible row, so the canvas takes whatever
+   is left and the two strips keep their height. Scrollbars are hidden app-wide,
+   so nothing here may overflow: the strips scroll sideways inside themselves and
+   the canvas fits what it is given. */
+
+.dz {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  gap: var(--s2);
+  min-height: 0;
+  height: 100%;
+  padding: var(--s3) var(--s4) var(--s2);
+}
+
+.dz-top { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); min-height: 1.5rem; }
+.dz-what { color: var(--ink-faint); font-size: var(--t-sm); }
+.dz-back { display: flex; gap: var(--s1); }
+
+.dz-step {
+  display: grid; place-items: center;
+  width: 1.75rem; height: 1.75rem;
+  border: 0; border-radius: var(--r-sm);
+  background: var(--raised); color: var(--ink-soft);
+  cursor: pointer;
+}
+.dz-step:hover:not(:disabled) { color: var(--ink); }
+/* Dimmed rather than hidden: a control that vanishes moves everything beside
+   it, and a person reaching for it finds something else under their finger. */
+.dz-step:disabled { opacity: .3; cursor: default; }
+
+.dz-canvas { position: relative; min-height: 0; border-radius: var(--r-md); overflow: hidden; background: var(--raised); }
+.dz-frame { width: 100%; height: 100%; border: 0; display: block; background: #fff; }
+
+/* What you are pointing at, named in words. Sits over the canvas rather than
+   beside it, so nothing reflows when you touch something. */
+.dz-touched {
+  position: absolute; left: var(--s2); bottom: var(--s2);
+  display: flex; align-items: center; gap: var(--s2);
+  padding: .3rem .3rem .3rem .6rem;
+  border-radius: 999px;
+  background: rgba(20, 20, 20, .82);
+  color: var(--ink); font-size: var(--t-sm);
+  backdrop-filter: blur(6px);
+}
+.dz-untouch {
+  border: 0; border-radius: 999px; cursor: pointer;
+  background: var(--raised); color: var(--ink-soft);
+  font: inherit; font-size: var(--t-xs); padding: .2rem .55rem;
+}
+.dz-untouch:hover { color: var(--ink); }
+
+/* Everything it has looked like, as pictures rather than a list of changes.
+   Scrolls sideways within itself so the row never pushes the canvas out. */
+.dz-past {
+  display: flex; gap: var(--s2);
+  overflow-x: auto; scrollbar-width: none;
+  padding-bottom: 2px;
+}
+.dz-past::-webkit-scrollbar { display: none; }
+
+.dz-moment {
+  flex: 0 0 auto;
+  display: grid; gap: .25rem; justify-items: start;
+  border: 0; background: none; padding: 0; cursor: pointer;
+  color: var(--ink-faint); font: inherit; font-size: var(--t-xs);
+  text-align: left;
+}
+.dz-moment-what { max-width: 5.5rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dz-moment:hover { color: var(--ink-soft); }
+.dz-moment.is-now { color: var(--accent); }
+
+/* A live miniature of that state. Scaled rather than a screenshot: it is always
+   correct, costs nothing to keep, and needs no capture step. */
+.dz-thumb {
+  display: block; position: relative; overflow: hidden;
+  width: 5.5rem; height: 3.5rem;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line);
+  background: #fff;
+}
+.dz-moment.is-now .dz-thumb { border-color: var(--accent); }
+.dz-thumb-frame {
+  position: absolute; top: 0; left: 0;
+  width: 1100px; height: 700px;
+  border: 0;
+  transform: scale(.08);
+  transform-origin: top left;
+  pointer-events: none;
+}
+
+/* How it should look. Six, chosen by pointing at one — never a colour, never a
+   font name, never a file. */
+.dz-looks { display: flex; gap: var(--s2); overflow-x: auto; scrollbar-width: none; }
+.dz-looks::-webkit-scrollbar { display: none; }
+
+.dz-look {
+  flex: 0 0 auto;
+  display: flex; align-items: center; gap: .4rem;
+  border: 1px solid transparent; border-radius: 999px;
+  background: var(--raised); color: var(--ink-soft);
+  font: inherit; font-size: var(--t-xs);
+  padding: .25rem .6rem .25rem .3rem;
+  cursor: pointer;
+}
+.dz-look:hover { color: var(--ink); }
+.dz-look.is-on { border-color: var(--accent); color: var(--ink); }
+
+.dz-swatch {
+  display: grid; grid-auto-flow: column; gap: 2px; align-content: center; justify-content: center;
+  width: 1.4rem; height: 1.4rem; border-radius: 999px;
+  border: 1px solid; overflow: hidden;
+}
+.dz-swatch-ink, .dz-swatch-accent { width: 4px; height: .7rem; border-radius: 2px; }
+
+/* Handheld: the strips get smaller rather than disappearing. What a person can
+   do must not change with the width of the glass — only how much room it takes. */
+@media (max-width: 760px) {
+  .dz { padding: var(--s2) var(--s2) var(--s1); }
+  .dz-thumb { width: 4.25rem; height: 2.75rem; }
+  .dz-thumb-frame { transform: scale(.062); }
+  .dz-moment-what { display: none; }
+  .dz-look-name { display: none; }
+  .dz-look { padding: .25rem; }
+}
+
+/* A sidebar entry that switches a posture rather than travelling somewhere. It
+   looks exactly like the links beside it on purpose — the difference between
+   opening a page and changing what the middle of the window is for is not a
+   difference a person should have to hold in their head. */
+.ws-room-btn { border: 0; background: none; font: inherit; text-align: left; cursor: pointer; width: 100%; }
+.ws-room-btn.is-on { color: var(--accent); }
+
+/* A short window. Measured, not guessed: in a 479px-tall window the canvas was
+   getting 147px while the two strips took 111px between them — under half the
+   surface given to the thing you are actually looking at.
+
+   The strips get smaller rather than disappearing. What you can do must not
+   change with the height of the window; only how much room it takes to offer it.
+   Going back is the safety net that lets Design act freely, so hiding the
+   history on a laptop would remove the reason it is allowed to. */
+@media (max-height: 620px) {
+  .dz { gap: var(--s1); padding: var(--s2) var(--s3) var(--s1); }
+  .dz-thumb { width: 4rem; height: 2.5rem; }
+  .dz-thumb-frame { transform: scale(.058); }
+  .dz-moment-what { display: none; }
+  .dz-top { min-height: 1.25rem; }
+}

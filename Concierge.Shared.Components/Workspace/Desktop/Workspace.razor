@@ -215,11 +215,21 @@
                 <button class="ws-head" type="button" @onclick='@(() => ToggleGroup("tools"))'>
                     <svg class="ws-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
                     <span class="ws-head-name">Tools</span>
-                    <span class="ws-head-count">@ToolLinks.Length</span>
+                    <span class="ws-head-count">@(ToolLinks.Length + 1)</span>
                 </button>
                 @if (IsGroupOpen("tools"))
                 {
                     <div class="ws-group-body">
+                        @*
+                            A posture, not a place. It looks like the links beside
+                            it on purpose — the difference between opening a page
+                            and changing what the middle of the window is for is
+                            not one a person should have to hold in their head.
+                        *@
+                        <button class="ws-room ws-room-btn @(_design is not null ? "is-on" : null)"
+                                type="button" @onclick="ToggleDesign">
+                            @(_design is not null ? "Design — close" : "Design")
+                        </button>
                         @foreach (var tool in ToolLinks)
                         {
                             <a class="ws-room" href="@tool.Href">@tool.Name</a>
@@ -256,9 +266,20 @@
 
     <main class="ws-main">
         <header class="ws-top">
-            <h1 class="ws-title">@(_active?.Title ?? "Concierge")</h1>
+            @*
+                With the canvas open the header said the title of whatever thread
+                was last open — a heading describing something that is not on
+                screen, in the one place a person looks to know where they are.
+            *@
+            <h1 class="ws-title">@(_design is not null ? "Design" : _active?.Title ?? "Concierge")</h1>
             <span class="ws-top-meta">
-                @if (_streaming)
+                @if (_design is not null)
+                {
+                    @* No engine is answering, because none is needed. Naming one
+                       here would credit a model for work it did not do. *@
+                    <span>@(_design.Current.IsEmpty ? "an empty page" : _design.Moments[_design.Position].What.ToLowerInvariant())</span>
+                }
+                else if (_streaming)
                 {
                     <span class="dot dot-waiting" aria-hidden="true"></span>
                     <span>@(_toolLoopIteration > 0 ? $"working · step {_toolLoopIteration}" : "thinking")</span>
@@ -270,7 +291,19 @@
             </span>
         </header>
 
-        @if (_active is null)
+        @*
+            Design takes the middle of the workspace rather than opening a tab or
+            a page. That is the difference between a fourth posture and a fourth
+            app: the sidebar stays where it is, the composer underneath is the
+            same composer, and what you type goes to the canvas instead of the
+            thread. Nineteen routes and a tab bar were removed to get to one
+            workspace; adding a place to travel to would walk that back.
+        *@
+        @if (_design is not null)
+        {
+            <Design Session="_design" Changed="StateHasChanged" />
+        }
+        else if (_active is null)
         {
             @* Codex's empty panel is one glyph and one line. No tiles, no
                suggestions, no hero — the composer below is the invitation. *@

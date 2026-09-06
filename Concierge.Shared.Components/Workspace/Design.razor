@@ -1,0 +1,256 @@
+@using Concierge.Shared.Design
+@inject IJSRuntime JS
+@implements IDisposable
+
+@*
+    Design: say it, see it, point at it.
+
+    One surface. A canvas, a strip of everything it has looked like, and six looks
+    to choose between — and nothing else. No file name, no layers, no properties
+    panel, no timeline, no code view, no colour picker. Every one of those is a
+    thing somebody would have to be taught, and the bar this is built to is that a
+    five-year-old and a ninety-seven-year-old can both use it without being taught
+    anything.
+
+    The composer underneath is unchanged; it is the "say it" half. What you type
+    there while this is open goes to the canvas.
+
+    Three things this deliberately does not have:
+
+      A save button. The design is kept as you go and every state it has been in is
+      one tap away. Saving is a thing computers needed, not people.
+
+      An "are you sure". Design acts freely — asking permission to try something is
+      what makes a tool unusable for the people this is for, and it teaches somebody
+      to stop reading prompts, which ruins every approval elsewhere in Concierge.
+      What makes that safe is that going back is free and total.
+
+      Anything that scrolls out of sight. Scrollbars are hidden app-wide, so a
+      surface that overflows loses content silently.
+*@
+
+<div class="dz">
+    <div class="dz-top">
+        <span class="dz-what">@_session.Moments[_session.Position].What</span>
+
+        <div class="dz-back">
+            <button class="dz-step" type="button" disabled="@(!_session.CanGoBack)"
+                    @onclick="Back" title="Go back" aria-label="Go back">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+                     stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="15 6 9 12 15 18" />
+                </svg>
+            </button>
+            <button class="dz-step" type="button" disabled="@(!_session.CanGoForward)"
+                    @onclick="Forward" title="Go forward" aria-label="Go forward">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+                     stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <polyline points="9 6 15 12 9 18" />
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    @*
+        The canvas. An iframe rather than the design rendered inline, so a look
+        can bring its own background, fonts and spacing without any of it leaking
+        into Concierge's own stylesheet — or Concierge's leaking into the design,
+        which would make what you see here not what you get anywhere else.
+    *@
+    <div class="dz-canvas">
+        @*
+            sandbox="allow-same-origin" and nothing else, which is the opposite of
+            what it looks like. Same-origin is what lets the click listener be
+            attached inside the frame — without it contentDocument is null and
+            pointing cannot work at all, which is how this shipped for about ten
+            minutes. Leaving out allow-scripts means no script in a design ever
+            runs, which is a stronger position than the allow-scripts version it
+            replaced: the renderer escapes everything, and now nothing could
+            execute even if it did not.
+        *@
+        <iframe class="dz-frame" title="Your design" sandbox="allow-same-origin"
+                srcdoc="@_session.Html()" @ref="_frame"></iframe>
+
+        @if (_touched is not null)
+        {
+            <div class="dz-touched">
+                <span>@_touched</span>
+                <button class="dz-untouch" type="button" @onclick="() => Point(null)">Let go</button>
+            </div>
+        }
+    </div>
+
+    @*
+        Everything it has looked like, as pictures. Not a list of changes — "Set
+        node_4f2a text" is unreadable, and a person deciding which version they
+        liked is looking for the one that looked right, not the one described
+        correctly.
+    *@
+    <div class="dz-past" role="group" aria-label="How it looked before">
+        @for (var i = 0; i < _session.Moments.Count; i++)
+        {
+            var at = i;
+            var moment = _session.Moments[at];
+
+            <button class="dz-moment @(at == _session.Position ? "is-now" : string.Empty)"
+                    type="button" @onclick="() => GoTo(at)" title="@moment.What">
+                <span class="dz-thumb">
+                    <iframe class="dz-thumb-frame" tabindex="-1" aria-hidden="true"
+                            sandbox="" srcdoc="@_session.HtmlAt(at)"></iframe>
+                </span>
+                <span class="dz-moment-what">@moment.What</span>
+            </button>
+        }
+    </div>
+
+    @*
+        How it should look, chosen by pointing at one. Never a colour, never a
+        font name, never a file — six pictures and a word.
+    *@
+    <div class="dz-looks" role="group" aria-label="How it should look">
+        @foreach (var look in DesignLooks.All)
+        {
+            var name = look.Name;
+
+            <button class="dz-look @(string.Equals(_session.Current.Look, name, StringComparison.OrdinalIgnoreCase) ? "is-on" : string.Empty)"
+                    type="button" @onclick="() => Wear(name)" title="@look.Blurb">
+                <span class="dz-swatch" style="background:@look.Ground;border-color:@look.Raised">
+                    <span class="dz-swatch-ink" style="background:@look.Ink"></span>
+                    <span class="dz-swatch-accent" style="background:@look.Accent"></span>
+                </span>
+                <span class="dz-look-name">@name</span>
+            </button>
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>The design being worked on. Owned by the workspace, so it survives
+    /// this component being torn down and rebuilt by a resize.</summary>
+    [Parameter, EditorRequired] public DesignSession Session { get; set; } = default!;
+
+    /// <summary>Told when something changed, so the workspace can redraw around it.</summary>
+    [Parameter] public EventCallback Changed { get; set; }
+
+    private DesignSession _session = default!;
+    private ElementReference _frame;
+    private string? _touched;
+    private DotNetObjectReference<Design>? _self;
+    private bool _wired;
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(_session, Session))
+        {
+            return;
+        }
+
+        if (_session is not null)
+        {
+            _session.Changed -= OnSessionChanged;
+        }
+
+        _session = Session;
+        _session.Changed += OnSessionChanged;
+        Describe();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Clicks land inside the iframe, so the listener has to be attached in
+        // there. The document is same-origin (srcdoc), which is what makes this
+        // possible at all — and is why the canvas is srcdoc rather than a URL.
+        if (!_wired)
+        {
+            _self = DotNetObjectReference.Create(this);
+
+            try
+            {
+                await JS.InvokeVoidAsync("conciergeDesign.watch", _frame, _self);
+                _wired = true;
+            }
+            catch (JSException)
+            {
+                // Pointing is the better way to correct something and not the only
+                // one — every sentence still works. A canvas you cannot click is
+                // worse than one you can; a canvas that throws on load is useless.
+            }
+        }
+    }
+
+    /// <summary>
+    /// Something on the canvas was touched. Called from the page inside the frame.
+    /// </summary>
+    [JSInvokable]
+    public void Touched(string? nodeId)
+    {
+        Point(nodeId);
+    }
+
+    private void Point(string? nodeId)
+    {
+        _session.Point(nodeId);
+        Describe();
+        StateHasChanged();
+    }
+
+    private void Back()
+    {
+        _session.Back();
+        Describe();
+    }
+
+    private void Forward()
+    {
+        _session.Forward();
+        Describe();
+    }
+
+    private void GoTo(int position)
+    {
+        _session.GoTo(position);
+        Describe();
+    }
+
+    private void Wear(string look)
+    {
+        _session.Record(_session.Current.Wearing(look), $"Made it {look.ToLowerInvariant()}");
+    }
+
+    /// <summary>
+    /// What is being pointed at, in the words a person would use. "The title" and
+    /// not "heading#4f2a1c" — this is read at a glance while deciding what to say
+    /// next.
+    /// </summary>
+    private void Describe()
+    {
+        _touched = _session.Pointed is { } node
+            ? node.Kind switch
+            {
+                DesignNodeKind.Heading => "The title",
+                DesignNodeKind.Text => "These words",
+                DesignNodeKind.Button => "This button",
+                DesignNodeKind.Image => "This picture",
+                DesignNodeKind.Box => "This box",
+                _ => "The page",
+            }
+            : null;
+    }
+
+    private async void OnSessionChanged(object? sender, EventArgs e)
+    {
+        Describe();
+        await InvokeAsync(StateHasChanged);
+        await Changed.InvokeAsync();
+    }
+
+    public void Dispose()
+    {
+        if (_session is not null)
+        {
+            _session.Changed -= OnSessionChanged;
+        }
+
+        _self?.Dispose();
+    }
+}

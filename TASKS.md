@@ -199,22 +199,27 @@ and say "no, not like that". That is the entire interface.
 model does everything. Nothing in this tranche is about inference, providers or
 prompts. It is about the surface — which is the product.
 
-- [ ] One surface: a canvas and the composer. No files, no timeline, no
-      properties panel, no code view
-- [ ] Describe → see → correct. Pointing at a thing and saying what is wrong
-      with it is a first-class way to edit, not a fallback
-- [ ] Undo that always works, shown as pictures of how it looked — not a list of
-      changes. Every state you have seen is one tap from coming back
-- [ ] Design acts freely. Being asked permission to try something is what makes a
-      tool unusable for the people this is for; the approvals that stay are the
-      ones that leave the canvas or leave the device
-- [ ] Look and feel chosen from pictures, never from a document
-- [ ] The plan in plain language, each step refusable before it happens — the
-      readable version of a node graph, and it already exists
-- [ ] Fits its window at every size, like every other panel. Scrollbars are hidden
-      app-wide, so a surface that overflows loses content silently
-- [ ] Degrades honestly: what a handheld shows, and what a watch shows instead
-- [ ] Verified on the running desktop app, not only in tests
+- [x] One surface: a canvas and the composer. No files, no timeline, no
+      properties panel, no code view — and it takes the middle of the workspace
+      rather than opening a tab, so the sidebar and composer stay put
+- [x] Describe → see → correct. Clicking a thing on the canvas names it ("The
+      title"), and the next sentence has a subject
+- [x] Undo as pictures of how it looked. Every state is kept whole, so going back
+      is choosing one rather than reversing anything
+- [x] Design acts freely — no prompt, no "are you sure", no save button
+- [x] Look chosen from six pictures. No colour picker, no font name, no file
+- [x] Fits at every size. Measured: in a 479px window the canvas was getting 147px
+      against 111px of strips, so the strips shrink and the canvas keeps the room
+- [x] Works with no engine at all — the ordinary sentences are understood without
+      a model, which is what makes the surface usable on this machine today
+- [x] Verified on the running desktop app: said three things, pointed at the
+      title, made it bigger, changed the look, went back by picking a picture
+- [ ] A model driving the canvas — the same edits as agent tools, so "make it feel
+      like a school newsletter" reaches it
+- [ ] The plan in plain language for a multi-step design change. Nothing to plan
+      until a model is driving it
+- [ ] Handheld verified, and what a watch shows instead. The CSS is written and
+      neither has been run
 
 **The rule this surface must not break:** every defect worth fixing in Concierge
 so far has been the same one — a screen asserting something untrue. An approvals
@@ -295,7 +300,7 @@ stops there.
 Boxes that are re-checked per change rather than ticked once. All three hold as
 of `80cda9c`.
 
-- [x] 1089 tests pass — `dotnet test Concierge.Tests/Concierge.Tests.csproj`
+- [x] 1141 tests pass — `dotnet test Concierge.Tests/Concierge.Tests.csproj`
 - [x] Verified on the running desktop app, not only in tests — Engineering shows
       11 tools under their real names, no page overflow
 - [x] `[skip ci]` in the HEAD commit before any push

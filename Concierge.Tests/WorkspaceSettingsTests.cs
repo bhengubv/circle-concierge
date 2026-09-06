@@ -56,8 +56,21 @@ public sealed class WorkspaceSettingsTests : BunitContext
         return Render<Concierge.Shared.Components.Workspace.Desktop.Workspace>();
     }
 
+    /// <summary>
+    /// Opens Settings and waits for it to be there.
+    ///
+    /// The wait is the point. Settings loads in its own OnInitializedAsync — it
+    /// reads the safety audit log — so the render immediately after the click can
+    /// carry a sheet with nothing in it yet. Every test here that read the sheet
+    /// straight after opening it was racing that load, which is why one of them
+    /// failed about once in a hundred runs and passed on retry. Fixed once here
+    /// rather than in each test, since they all open it the same way.
+    /// </summary>
     private static void Open(IRenderedComponent<Concierge.Shared.Components.Workspace.Desktop.Workspace> cut)
-        => cut.Find("button.ws-runtime").Click();
+    {
+        cut.Find("button.ws-runtime").Click();
+        cut.WaitForState(() => cut.FindAll(".sheet .ws-chev").Count > 0);
+    }
 
     /// <summary>Unfolds a settings group by its label.</summary>
     private static void OpenGroup(IRenderedComponent<Concierge.Shared.Components.Workspace.Desktop.Workspace> cut, string label)

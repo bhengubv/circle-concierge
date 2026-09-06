@@ -140,7 +140,14 @@ public sealed class WorkspaceThreadTests : BunitContext
 
         var cut = Open(conversation.Id);
 
-        Assert.Equal("false", cut.Find("button.chip").GetAttribute("aria-expanded"));
+        // Waited for rather than read once. The thread is loaded in
+        // OnInitializedAsync, so on a loaded machine the first render can carry no
+        // chip at all — the third test in this suite to be wrong in exactly this
+        // way, each one passing on retry, which is the worst way for a test to be
+        // wrong.
+        cut.WaitForAssertion(() =>
+            Assert.Equal("false", cut.Find("button.chip").GetAttribute("aria-expanded")));
+
         Assert.Empty(cut.FindAll("pre.chip-out"));
 
         cut.Find("button.chip").Click();
