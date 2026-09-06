@@ -1286,3 +1286,15 @@ button.row:hover { color: var(--ink); }
   .dz-moment-what { display: none; }
   .dz-top { min-height: 1.25rem; }
 }
+
+/* What is being made — five, above the looks because it is the bigger question.
+   A glyph rather than a colour swatch: a medium has no colour, and borrowing the
+   look swatch for it would say the two rows do the same kind of thing. */
+.dz-mediums .dz-look { padding: .25rem .6rem .25rem .45rem; }
+.dz-kind {
+  display: grid; place-items: center;
+  width: 1.15rem; height: 1.15rem;
+  font-size: .95rem; line-height: 1;
+  opacity: .85;
+}
+.dz-look.is-on .dz-kind { opacity: 1; }

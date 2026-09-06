@@ -1,0 +1,215 @@
+using System.Net;
+using System.Text;
+
+namespace Concierge.Shared.Design;
+
+/// <summary>A medium, as a person meets it: a name and a sentence.</summary>
+/// <param name="Medium">Which one.</param>
+/// <param name="Name">What it is called. A word people already use.</param>
+/// <param name="Blurb">What you would make with it, in plain words.</param>
+/// <param name="Piece">What one of its frames is called — a slide, a shot, a room.</param>
+public sealed record DesignMediumInfo(DesignMedium Medium, string Name, string Blurb, string Piece);
+
+/// <summary>
+/// Drawing the four things that are sequences, and the one that is not.
+///
+/// The document model knows nothing about any of this. A poster and a film differ
+/// only in which function here is called, which is why matching five separate
+/// tools is five renderers rather than five products — the thing every project
+/// this took inspiration from ended up being.
+///
+/// All five produce a standalone HTML document, which sounds like a limitation
+/// and is mostly a choice. It is the one format Concierge can show inside its own
+/// window, screenshot, print and hand to somebody, on every head it ships on, with
+/// no dependency and no export step. Where that genuinely is a limitation — an MP4
+/// rather than something that plays, a real 3D engine rather than boxes in space —
+/// it is said out loud in the renderer that has it, rather than implied by
+/// silence.
+/// </summary>
+public static class DesignMediums
+{
+    /// <summary>The five, in the order they are offered.</summary>
+    public static readonly IReadOnlyList<DesignMediumInfo> All =
+    [
+        new(DesignMedium.Page, "Page", "A poster, a note, something to read.", "page"),
+        new(DesignMedium.Deck, "Slides", "Things to show one after another.", "slide"),
+        new(DesignMedium.Motion, "Video", "Shots that play, one after another.", "shot"),
+        new(DesignMedium.Scene, "Space", "A room you can look around.", "room"),
+        new(DesignMedium.Sound, "Sound", "Music, a voice, something to listen to.", "track"),
+    ];
+
+    public static DesignMediumInfo Of(DesignMedium medium)
+        => All.FirstOrDefault(m => m.Medium == medium) ?? All[0];
+
+    /// <summary>What one frame is called here — "slide", "shot", "room", "track".</summary>
+    public static string PieceOf(DesignMedium medium) => Of(medium).Piece;
+
+    /// <summary>
+    /// Draws whatever this is. The one place the medium decides anything.
+    /// </summary>
+    public static string Render(DesignDocument document, string? selectedId = null)
+        => document.Medium switch
+        {
+            DesignMedium.Deck => DeckRenderer.ToHtml(document, selectedId),
+            DesignMedium.Motion => MotionRenderer.ToHtml(document, selectedId),
+            DesignMedium.Scene => SceneRenderer.ToHtml(document, selectedId),
+            DesignMedium.Sound => SoundRenderer.ToHtml(document, selectedId),
+            _ => DesignRenderer.ToHtml(document, selectedId),
+        };
+
+    // ── Shared bits ───────────────────────────────────────────────────────
+
+    internal static string Escape(string? value) => WebUtility.HtmlEncode(value ?? string.Empty);
+
+    /// <summary>
+    /// The head every medium shares: the look's colours, and a page that fills its
+    /// frame. Written per document rather than linked, because a rendered design
+    /// has to stand alone in an iframe, a saved file, or a print dialog.
+    /// </summary>
+    internal static void OpenDocument(StringBuilder html, DesignLook look, string extra)
+    {
+        html.AppendLine("<!doctype html><html><head><meta charset=\"utf-8\">");
+        html.AppendLine("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">");
+        html.AppendLine("<style>");
+        html.AppendLine($$"""
+            :root {
+              --ink: {{look.Ink}};
+              --ground: {{look.Ground}};
+              --raised: {{look.Raised}};
+              --accent: {{look.Accent}};
+              --radius: {{look.Radius}};
+            }
+            * { box-sizing: border-box; }
+            html, body { height: 100%; }
+            body {
+              margin: 0;
+              background: var(--ground);
+              color: var(--ink);
+              font-family: {{look.Fonts}};
+              line-height: 1.5;
+            }
+            .picked { outline: 2px solid var(--accent); outline-offset: 3px; }
+            .nothing { opacity: .55; font-style: italic; }
+            """);
+        html.AppendLine(extra);
+        html.AppendLine("</style></head><body>");
+    }
+
+    /// <summary>The content of one frame, drawn the way a page draws things.</summary>
+    internal static void WriteContents(
+        StringBuilder html, DesignDocument document, DesignNode frame, string? selectedId)
+    {
+        var children = document.ChildrenOf(frame.Id);
+
+        if (children.Count == 0)
+        {
+            html.AppendLine($"<p class=\"nothing\">Nothing on this {Escape(PieceOf(document.Medium))} yet.</p>");
+            return;
+        }
+
+        foreach (var child in children)
+        {
+            var picked = string.Equals(child.Id, selectedId, StringComparison.Ordinal) ? " picked" : string.Empty;
+            var node = $" data-node=\"{Escape(child.Id)}\"";
+
+            switch (child.Kind)
+            {
+                case DesignNodeKind.Heading:
+                    html.AppendLine($"<h1 class=\"h{picked}\"{node}>{Escape(child.Text)}</h1>");
+                    break;
+
+                case DesignNodeKind.Text:
+                    html.AppendLine($"<p class=\"t{picked}\"{node}>{Escape(child.Text)}</p>");
+                    break;
+
+                case DesignNodeKind.Button:
+                    html.AppendLine($"<button type=\"button\" class=\"b{picked}\"{node}>{Escape(child.Text)}</button>");
+                    break;
+
+                case DesignNodeKind.Image:
+                    var src = child.Props.TryGetValue("src", out var s) ? s : null;
+                    html.AppendLine(string.IsNullOrWhiteSpace(src) || !DesignRenderer.IsSafeSource(src)
+                        ? $"<div class=\"ph{picked}\"{node}>{Escape(child.Text.Length > 0 ? child.Text : "A picture")}</div>"
+                        : $"<img class=\"im{picked}\" src=\"{Escape(src)}\" alt=\"{Escape(child.Text)}\"{node}>");
+                    break;
+
+                case DesignNodeKind.Sound:
+                    WriteSound(html, child, picked, node);
+                    break;
+
+                case DesignNodeKind.Solid:
+                    WriteSolid(html, child, picked, node);
+                    break;
+            }
+        }
+    }
+
+    /// <summary>
+    /// A sound, with controls. Real playback rather than an icon: a person adding a
+    /// piece of music to a slide wants to hear whether it is the right one, and a
+    /// picture of a speaker answers nothing.
+    /// </summary>
+    internal static void WriteSound(StringBuilder html, DesignNode node, string picked, string attr)
+    {
+        var src = node.Props.TryGetValue("src", out var s) ? s : null;
+        var name = node.Text.Length > 0 ? node.Text : "A sound";
+
+        if (string.IsNullOrWhiteSpace(src) || !IsSafeAudio(src))
+        {
+            html.AppendLine($"<div class=\"snd ph{picked}\"{attr}>{Escape(name)}</div>");
+            return;
+        }
+
+        html.AppendLine($"<figure class=\"snd{picked}\"{attr}>");
+        html.AppendLine($"<figcaption>{Escape(name)}</figcaption>");
+        html.AppendLine($"<audio controls preload=\"metadata\" src=\"{Escape(src)}\"></audio>");
+        html.AppendLine("</figure>");
+    }
+
+    /// <summary>
+    /// Something with three dimensions, positioned in space.
+    ///
+    /// CSS transforms rather than a 3D engine, and the trade is worth naming: no
+    /// dependency, no download, works offline on every head, and it will draw a
+    /// room with walls and furniture perfectly well. It will not draw a mesh, a
+    /// light, or a shadow. That is a real ceiling and is written down rather than
+    /// discovered.
+    /// </summary>
+    internal static void WriteSolid(StringBuilder html, DesignNode node, string picked, string attr)
+    {
+        var w = Number(node, "width", 120);
+        var d = Number(node, "depth", 120);
+        var h = Number(node, "height", 80);
+        var x = Number(node, "x", 0);
+        var y = Number(node, "y", 0);
+
+        var style =
+            $"--w:{w}px;--d:{d}px;--h:{h}px;transform:translate3d({x}px,0,{y}px)";
+
+        html.AppendLine($"<div class=\"solid{picked}\" style=\"{style}\"{attr}>");
+        html.AppendLine("<div class=\"face top\"></div><div class=\"face front\"></div><div class=\"face side\"></div>");
+
+        if (node.Text.Length > 0)
+        {
+            html.AppendLine($"<span class=\"label\">{Escape(node.Text)}</span>");
+        }
+
+        html.AppendLine("</div>");
+    }
+
+    internal static int Number(DesignNode node, string key, int fallback)
+        => node.Props.TryGetValue(key, out var raw) && int.TryParse(raw, out var value)
+            ? Math.Clamp(value, -4000, 4000)
+            : fallback;
+
+    /// <summary>
+    /// Audio that is already here or already public, for the reason pictures have
+    /// the same rule: a model can write any string into a source, and a file://
+    /// address would pull something off the machine into a document that might be
+    /// shared.
+    /// </summary>
+    internal static bool IsSafeAudio(string source)
+        => source.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+           || source.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+           || source.StartsWith("data:audio/", StringComparison.OrdinalIgnoreCase);
+}

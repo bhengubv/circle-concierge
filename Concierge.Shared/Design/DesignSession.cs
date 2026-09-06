@@ -46,9 +46,9 @@ public sealed class DesignSession
 
     private readonly List<DesignMoment> _moments = new();
 
-    public DesignSession(string look = DesignLooks.Default)
+    public DesignSession(string look = DesignLooks.Default, DesignMedium medium = DesignMedium.Page)
     {
-        _moments.Add(new DesignMoment(DesignDocument.Blank(look), "Started", DateTimeOffset.UtcNow));
+        _moments.Add(new DesignMoment(DesignDocument.Blank(look, medium), "Started", DateTimeOffset.UtcNow));
         Position = 0;
     }
 
@@ -171,8 +171,14 @@ public sealed class DesignSession
     /// <summary>What was pointed at, if it is still there.</summary>
     public DesignNode? Pointed => Current.Find(Selected);
 
-    /// <summary>The current state as HTML, with whatever is pointed at marked.</summary>
-    public string Html() => DesignRenderer.ToHtml(Current, Selected);
+    /// <summary>
+    /// The current state, drawn the way its medium is drawn.
+    ///
+    /// Through DesignMediums rather than a renderer named here, because which
+    /// renderer to use is the document's business — a session should not have to
+    /// learn a new branch every time a medium is added.
+    /// </summary>
+    public string Html() => DesignMediums.Render(Current, Selected);
 
     /// <summary>
     /// One past state as HTML, for the history strip.
@@ -182,6 +188,6 @@ public sealed class DesignSession
     /// </summary>
     public string HtmlAt(int position)
         => position >= 0 && position < _moments.Count
-            ? DesignRenderer.ToHtml(_moments[position].Document)
+            ? DesignMediums.Render(_moments[position].Document)
             : string.Empty;
 }

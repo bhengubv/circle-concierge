@@ -827,6 +827,24 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     protected Concierge.Shared.Design.DesignSession? _design;
 
     /// <summary>
+    /// The invitation under the composer, in the words of whatever is being made:
+    /// on the page, on the slide, in the shot. "On the page" while somebody is
+    /// making a video is the same small lie as the rest of this surface used to
+    /// tell, and it is the sentence they read before saying anything.
+    /// </summary>
+    protected string CanvasInvitation
+        => _design is null
+            ? "Ask me anything"
+            : _design.Current.Medium switch
+            {
+                Concierge.Shared.Design.DesignMedium.Deck => "Say what you would like on the slide",
+                Concierge.Shared.Design.DesignMedium.Motion => "Say what you would like in the shot",
+                Concierge.Shared.Design.DesignMedium.Scene => "Say what you would like in the room",
+                Concierge.Shared.Design.DesignMedium.Sound => "Say what you would like to hear",
+                _ => "Say what you would like on the page",
+            };
+
+    /// <summary>
     /// Whether the canvas is showing. Separate from whether a design exists,
     /// because closing the canvas used to throw the design away — one click and an
     /// afternoon was gone, with no warning and nothing to go back to. That is the

@@ -30,6 +30,49 @@ public enum DesignNodeKind
 
     /// <summary>A box that holds other things, so a group can be moved as one.</summary>
     Box,
+
+    /// <summary>
+    /// One of the things a document is a sequence of: a slide, a shot, a room, a
+    /// track. Never used on a page, which is a single surface.
+    ///
+    /// One kind rather than four, because a slide and a shot and a room differ in
+    /// how they are *drawn*, not in what they are — each holds content and comes
+    /// after the last one. Four node kinds would mean four sets of the same code
+    /// and four chances to get the ordering wrong.
+    /// </summary>
+    Frame,
+
+    /// <summary>A sound: a voice, a piece of music, a noise.</summary>
+    Sound,
+
+    /// <summary>Something with three dimensions — a wall, a floor, a block.</summary>
+    Solid,
+}
+
+/// <summary>
+/// What kind of thing is being made, which decides how it is drawn.
+///
+/// The whole point of the document being a tree of nodes is that this is the only
+/// thing that changes between a poster and a film. One model, five renderers —
+/// rather than five products, which is what every tool this took inspiration from
+/// ended up being.
+/// </summary>
+public enum DesignMedium
+{
+    /// <summary>One surface. A poster, a note, a web page.</summary>
+    Page = 0,
+
+    /// <summary>Slides, in order.</summary>
+    Deck = 1,
+
+    /// <summary>Shots, one after another, that play.</summary>
+    Motion = 2,
+
+    /// <summary>Space you can look around.</summary>
+    Scene = 3,
+
+    /// <summary>Sound, arranged in time.</summary>
+    Sound = 4,
 }
 
 /// <summary>
@@ -82,12 +125,28 @@ public sealed record DesignNode(
 /// </summary>
 public sealed record DesignDocument
 {
-    private DesignDocument(ImmutableDictionary<string, DesignNode> nodes, string rootId, string look)
+    private DesignDocument(
+        ImmutableDictionary<string, DesignNode> nodes, string rootId, string look, DesignMedium medium)
     {
         Nodes = nodes;
         RootId = rootId;
         Look = look;
+        Medium = medium;
     }
+
+    /// <summary>What is being made, which decides which renderer draws it.</summary>
+    public DesignMedium Medium { get; }
+
+    /// <summary>
+    /// The frames, in order — slides, shots, rooms, tracks.
+    ///
+    /// Empty on a page, which is a single surface and has none. A caller that
+    /// wants "the things in order" should ask for this rather than filtering the
+    /// root's children itself, because what counts as a frame is this class's
+    /// business and nobody else's.
+    /// </summary>
+    public IReadOnlyList<DesignNode> Frames
+        => ChildrenOf(RootId).Where(n => n.Kind == DesignNodeKind.Frame).ToList();
 
     /// <summary>Everything on the canvas, by id.</summary>
     public ImmutableDictionary<string, DesignNode> Nodes { get; }
@@ -105,7 +164,8 @@ public sealed record DesignDocument
     public string Look { get; }
 
     /// <summary>An empty page, wearing the first look.</summary>
-    public static DesignDocument Blank(string look = DesignLooks.Default)
+    public static DesignDocument Blank(
+        string look = DesignLooks.Default, DesignMedium medium = DesignMedium.Page)
     {
         var page = DesignNode.New(DesignNodeKind.Page, null);
 
@@ -113,8 +173,19 @@ public sealed record DesignDocument
             ImmutableDictionary<string, DesignNode>.Empty
                 .Add(page.Id, page).WithComparers(StringComparer.Ordinal),
             page.Id,
-            look);
+            look,
+            medium);
     }
+
+    /// <summary>
+    /// The same design, made as something else.
+    ///
+    /// Nothing is thrown away. A deck turned into a page is still the same words
+    /// and pictures, drawn differently — which is the point of separating what a
+    /// thing is from how it is drawn, and means changing your mind costs nothing.
+    /// </summary>
+    public DesignDocument As(DesignMedium medium)
+        => new(Nodes, RootId, Look, medium) { _order = _order };
 
     /// <summary>Nothing on it but the page.</summary>
     public bool IsEmpty => Nodes.Count <= 1;
@@ -153,7 +224,7 @@ public sealed record DesignDocument
 
         var placed = node with { ParentId = parent };
 
-        return new DesignDocument(Nodes.SetItem(placed.Id, placed), RootId, Look)
+        return new DesignDocument(Nodes.SetItem(placed.Id, placed), RootId, Look, Medium)
         {
             _order = _order.Add(placed.Id),
         };
@@ -167,7 +238,7 @@ public sealed record DesignDocument
             return this;
         }
 
-        return new DesignDocument(Nodes.SetItem(id, node.With(key, value)), RootId, Look)
+        return new DesignDocument(Nodes.SetItem(id, node.With(key, value)), RootId, Look, Medium)
         {
             _order = _order,
         };
@@ -203,7 +274,7 @@ public sealed record DesignDocument
             }
         }
 
-        return new DesignDocument(Nodes.RemoveRange(doomed), RootId, Look)
+        return new DesignDocument(Nodes.RemoveRange(doomed), RootId, Look, Medium)
         {
             _order = _order.RemoveAll(doomed.Contains),
         };
@@ -211,5 +282,5 @@ public sealed record DesignDocument
 
     /// <summary>Wears a different look. Nothing on the canvas moves.</summary>
     public DesignDocument Wearing(string look)
-        => new(Nodes, RootId, DesignLooks.Resolve(look)) { _order = _order };
+        => new(Nodes, RootId, DesignLooks.Resolve(look), Medium) { _order = _order };
 }

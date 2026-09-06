@@ -104,6 +104,27 @@
     </div>
 
     @*
+        What is being made. Five, chosen by pointing at one.
+
+        Above the looks rather than below, because it is the bigger question: what
+        this is decides what "add one" even means — a slide, a shot, a room, a
+        track. The word under each is the one a person would use, so nobody has to
+        learn that a deck is called a deck.
+    *@
+    <div class="dz-looks dz-mediums" role="group" aria-label="What you are making">
+        @foreach (var medium in DesignMediums.All)
+        {
+            var pick = medium;
+
+            <button class="dz-look @(_session.Current.Medium == pick.Medium ? "is-on" : string.Empty)"
+                    type="button" @onclick="() => Make(pick.Medium)" title="@pick.Blurb">
+                <span class="dz-kind" aria-hidden="true">@Glyph(pick.Medium)</span>
+                <span class="dz-look-name">@pick.Name</span>
+            </button>
+        }
+    </div>
+
+    @*
         How it should look, chosen by pointing at one. Never a colour, never a
         font name, never a file — six pictures and a word.
     *@
@@ -216,6 +237,36 @@
     {
         _session.Record(_session.Current.Wearing(look), $"Made it {look.ToLowerInvariant()}");
     }
+
+    /// <summary>
+    /// Changes what is being made. Nothing on the canvas is thrown away — the same
+    /// words and pictures, drawn a different way — so changing your mind costs
+    /// nothing and is one tap back regardless.
+    /// </summary>
+    private void Make(DesignMedium medium)
+    {
+        if (_session.Current.Medium == medium)
+        {
+            return;
+        }
+
+        _session.Record(
+            _session.Current.As(medium),
+            $"Made it {DesignMediums.Of(medium).Name.ToLowerInvariant()}");
+    }
+
+    /// <summary>
+    /// A shape for each medium. Drawn rather than named because the row has to
+    /// read at a glance on a phone, where the words are hidden.
+    /// </summary>
+    private static string Glyph(DesignMedium medium) => medium switch
+    {
+        DesignMedium.Deck => "▤",
+        DesignMedium.Motion => "▶",
+        DesignMedium.Scene => "◳",
+        DesignMedium.Sound => "♫",
+        _ => "▭",
+    };
 
     /// <summary>
     /// What is being pointed at, in the words a person would use. "The title" and

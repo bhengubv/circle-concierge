@@ -75,7 +75,9 @@ public static class DesignSpeech
         // otherwise be read as an instruction to add something.
         if (Match(said, @"^(start again|clear|empty|delete everything|start over)\b") is not null)
         {
-            return new DesignHeard(true, DesignDocument.Blank(design.Look), "Started again");
+            // Keeps the look and the medium. "Start again" means this page is
+            // wrong, not that you have changed your mind about making slides.
+            return new DesignHeard(true, DesignDocument.Blank(design.Look, design.Medium), "Started again");
         }
 
         // A look, by name — but only when the whole sentence is asking for one.
@@ -105,7 +107,7 @@ public static class DesignSpeech
                     "Touch the thing you want gone first, then say delete.");
             }
 
-            return new DesignHeard(true, design.Remove(doomed.Id), $"Removed the {Name(doomed.Kind)}");
+            return new DesignHeard(true, design.Remove(doomed.Id), $"Removed the {Name(doomed.Kind, design.Medium)}");
         }
 
         // Changing what something says, while pointing at it.
@@ -116,7 +118,7 @@ public static class DesignSpeech
         {
             var words = Clean(reword.Groups["words"].Value);
             return new DesignHeard(true, design.Set(target.Id, "text", words),
-                $"Changed the {Name(target.Kind)}");
+                $"Changed the {Name(target.Kind, design.Medium)}");
         }
 
         // Bigger and smaller, on the thing being pointed at.
@@ -130,7 +132,16 @@ public static class DesignSpeech
 
             var bigger = size.Value.StartsWith('b') || size.Value.StartsWith('l');
             return new DesignHeard(true, design.Set(sized.Id, "size", bigger ? "big" : "small"),
-                bigger ? $"Made the {Name(sized.Kind)} bigger" : $"Made the {Name(sized.Kind)} smaller");
+                bigger ? $"Made the {Name(sized.Kind, design.Medium)} bigger" : $"Made the {Name(sized.Kind, design.Medium)} smaller");
+        }
+
+        // Which kind of thing this is. "Slides", "make it a video", "space".
+        foreach (var medium in DesignMediums.All)
+        {
+            if (Match(said, $@"^(?:make it |turn it into |as )?(?:a |an |some )?{Regex.Escape(medium.Name)}[.!]?$") is not null)
+            {
+                return new DesignHeard(true, design.As(medium.Medium), $"Made it {medium.Name.ToLowerInvariant()}");
+            }
         }
 
         // Adding something. The workhorse, and the sentence everybody types first.
@@ -139,9 +150,17 @@ public static class DesignSpeech
             var kind = KindOf(add.Groups["thing"].Value);
             var words = Clean(add.Groups["words"].Value);
 
-            var node = DesignNode.New(kind, null, ("text", words));
+            // A page is one surface and has no sequence to add to. Saying so beats
+            // silently making a slide that nothing will ever draw.
+            if (kind == DesignNodeKind.Frame && design.Medium == DesignMedium.Page)
+            {
+                return new DesignHeard(false, design, string.Empty,
+                    "A page is one surface. Say 'slides' or 'video' first, then add one.");
+            }
 
-            return new DesignHeard(true, design.Add(node), $"Added a {Name(kind)}");
+            var node = DesignNode.New(kind, ParentFor(design, kind), ("text", words));
+
+            return new DesignHeard(true, design.Add(node), $"Added a {Name(kind, design.Medium)}");
         }
 
         return Puzzled(design);
@@ -156,7 +175,7 @@ public static class DesignSpeech
     /// syntax, which is the thing this surface exists to avoid.
     /// </summary>
     private const string Adding =
-        @"^(?:add|put|insert|make|create)\s+(?:a|an|some)?\s*(?<thing>title|heading|header|words|text|paragraph|sentence|button|picture|image|photo|box|group)\b(?:\s*(?:that\s+)?(?:saying|says|say|reading|reads|read|with|of|:)\s*(?<words>.+))?$";
+        @"^(?:add|put|insert|make|create)\s+(?:a|an|some)?\s*(?<thing>title|heading|header|words|text|paragraph|sentence|button|picture|image|photo|box|group|slide|shot|scene|room|track|section)\b(?:\s*(?:that\s+)?(?:saying|says|say|reading|reads|read|with|of|:)\s*(?<words>.+))?$";
 
     private static Match? Match(string input, string pattern)
     {
@@ -170,20 +189,38 @@ public static class DesignSpeech
         "button" => DesignNodeKind.Button,
         "picture" or "image" or "photo" => DesignNodeKind.Image,
         "box" or "group" => DesignNodeKind.Box,
+        "slide" or "shot" or "scene" or "room" or "track" or "section" => DesignNodeKind.Frame,
         _ => DesignNodeKind.Text,
     };
+
+    /// <summary>
+    /// Where a new thing goes.
+    ///
+    /// Onto the last frame when there is one. Somebody who has just made a slide
+    /// and then says "add a title" means on that slide — putting it beside the
+    /// slides instead would be technically defensible and obviously wrong.
+    /// </summary>
+    private static string? ParentFor(DesignDocument design, DesignNodeKind kind)
+        => kind == DesignNodeKind.Frame || design.Frames.Count == 0
+            ? null
+            : design.Frames[^1].Id;
 
     /// <summary>
     /// What to call a thing when telling somebody what just happened. The words
     /// under a picture in the history strip, so they are the ones a person uses.
     /// </summary>
-    private static string Name(DesignNodeKind kind) => kind switch
+    private static string Name(DesignNodeKind kind, DesignMedium medium = DesignMedium.Page) => kind switch
     {
         DesignNodeKind.Heading => "title",
         DesignNodeKind.Text => "words",
         DesignNodeKind.Button => "button",
         DesignNodeKind.Image => "picture",
         DesignNodeKind.Box => "box",
+        DesignNodeKind.Sound => "sound",
+        DesignNodeKind.Solid => "block",
+        // Named for what this document is: a slide in a deck, a shot in a video,
+        // a room in a space. One word, and it is the one the person just used.
+        DesignNodeKind.Frame => DesignMediums.PieceOf(medium),
         _ => "page",
     };
 
