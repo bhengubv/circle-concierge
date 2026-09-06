@@ -337,9 +337,18 @@ tools" is a decision to make deliberately rather than by finishing a wiring job.
 Matching all six inspirations feature for feature, which is the strategy: parity
 is table stakes, and the UX is what wins on top of it — not instead of it.
 
-The six are six products, each hard-wiring its renderer into its document, which
-is why none of them can become another one. Here the document knows nothing about
-how it is drawn, so five media is five files.
+The document knows nothing about how it is drawn, so five media is five files.
+
+**A correction.** This was justified by a claim that each inspiration welds its
+renderer to its document, so none can become another. Having since cloned and
+read them rather than their READMEs: false. Pascal's core carries an architecture
+test that fails the build on a runtime `three` import — "core is pure logic, no
+Three.js, no rendering". Diffusion Studio's runtime says of itself "headless, no
+DOM, no solid-js", with encoding and reconciling in separate packages. They do
+exactly what this does.
+
+So the separation is not a differentiator; it is the ordinary right answer, and
+the argument is the bar, not the architecture.
 
 - [x] `DesignMedium` on the document, and frames — the sequence a deck, a video, a
       space and a running order all are
@@ -444,7 +453,7 @@ being explicit about rather than rediscovering.
 Boxes that are re-checked per change rather than ticked once. All four hold as
 of `a00191b`.
 
-- [x] 1197 tests pass — `dotnet test Concierge.Tests/Concierge.Tests.csproj`
+- [x] 1201 tests pass — `dotnet test Concierge.Tests/Concierge.Tests.csproj`
 - [x] Verified on the running desktop app, not only in tests — Engineering lists
       the real catalogue, `todo_read` and `todo_write` included, and says what
       confines a command

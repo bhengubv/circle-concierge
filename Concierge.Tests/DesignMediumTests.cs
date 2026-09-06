@@ -5,13 +5,19 @@ namespace Concierge.Tests;
 /// <summary>
 /// One document model, five renderers.
 ///
-/// The six projects this took inspiration from are six products: a page tool, a
-/// deck tool, two video tools, a 3D tool, a music tool. Each hard-wires its
-/// renderer into its document, which is why none of them can become another one.
-///
-/// Here the document knows nothing about how it is drawn, so matching all five is
+/// The document knows nothing about how it is drawn, so matching five media is
 /// five files rather than five products — and changing your mind about what you
 /// are making throws nothing away.
+///
+/// An earlier version of this comment said the projects this took inspiration
+/// from each weld their renderer to their document, and that this is why none can
+/// become another. That was written from README summaries and is wrong: Pascal
+/// enforces "core is pure logic — no Three.js, no rendering" with a test that
+/// fails the build, and Diffusion Studio's runtime is explicitly headless. They
+/// separate the two exactly as this does.
+///
+/// The separation is therefore not the argument. It is the ordinary right answer,
+/// arrived at independently, and the argument is the bar below.
 ///
 /// What is deliberately absent from every one of them, because it is what makes
 /// this usable by the people it is for: no timeline, no track stack, no waveform,
@@ -59,6 +65,65 @@ public sealed class DesignMediumTests
         Assert.Equal(DesignMedium.Motion, video.Medium);
         Assert.Equal(deck.Nodes.Count, video.Nodes.Count);
         Assert.Single(video.Frames);
+    }
+
+    /// <summary>
+    /// The half of "throws nothing away" that was only true of the data.
+    ///
+    /// A page keeps its content loose on the root, so turning one into slides found
+    /// no frames and drew "No slides yet" over a design that was still entirely
+    /// there. The node count was right and the screen was empty, which is the worse
+    /// of the two to get wrong.
+    /// </summary>
+    [Fact]
+    public void A_page_turned_into_slides_still_shows_what_was_on_it()
+    {
+        var page = DesignDocument.Blank()
+            .Add(DesignNode.New(DesignNodeKind.Heading, null, ("text", "Sports Day")));
+
+        var html = DesignMediums.Render(page.As(DesignMedium.Deck));
+
+        Assert.Contains("Sports Day", html);
+        Assert.DoesNotContain("No slides yet", html);
+        Assert.Contains("1 of 1", html);
+    }
+
+    [Fact]
+    public void And_as_a_video_and_a_room_too()
+    {
+        var page = DesignDocument.Blank()
+            .Add(DesignNode.New(DesignNodeKind.Text, null, ("text", "Saturday at ten")));
+
+        Assert.Contains("Saturday at ten", DesignMediums.Render(page.As(DesignMedium.Motion)));
+        Assert.Contains("Saturday at ten", DesignMediums.Render(page.As(DesignMedium.Scene)));
+        Assert.Contains("Saturday at ten", DesignMediums.Render(page.As(DesignMedium.Sound)));
+    }
+
+    /// <summary>
+    /// Genuinely empty still says what to do. "Nothing here" and "your design
+    /// vanished" must not look the same.
+    /// </summary>
+    [Fact]
+    public void An_empty_design_still_says_what_to_do()
+        => Assert.Contains("add a slide",
+            DesignMediums.Render(DesignDocument.Blank(medium: DesignMedium.Deck)));
+
+    /// <summary>
+    /// A label in a room lies on the floor rather than standing up. Standing them
+    /// up was the obvious thing and the wrong one — the room is seen at a steep
+    /// tilt, so a vertical plane rendered 112 by 0: in the DOM, invisible on screen.
+    /// </summary>
+    [Fact]
+    public void Words_in_a_room_lie_on_the_floor_where_they_can_be_seen()
+    {
+        var scene = DesignDocument.Blank(medium: DesignMedium.Scene);
+        var room = DesignNode.New(DesignNodeKind.Frame, null, ("text", "Kitchen"));
+        scene = scene.Add(room).Add(DesignNode.New(DesignNodeKind.Text, room.Id, ("text", "Table goes here")));
+
+        var html = DesignMediums.Render(scene);
+
+        Assert.Contains("Table goes here", html);
+        Assert.DoesNotContain("rotateX(-90deg)", html);
     }
 
     [Fact]

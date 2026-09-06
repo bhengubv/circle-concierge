@@ -15,8 +15,21 @@ public sealed record DesignMediumInfo(DesignMedium Medium, string Name, string B
 ///
 /// The document model knows nothing about any of this. A poster and a film differ
 /// only in which function here is called, which is why matching five separate
-/// tools is five renderers rather than five products — the thing every project
-/// this took inspiration from ended up being.
+/// tools is five renderers rather than five products.
+///
+/// This was justified for a while by a claim about the projects it took
+/// inspiration from — that each welds its renderer to its document, so none can
+/// become another. Having since read them rather than their READMEs: that is
+/// false. Pascal's core carries an architecture *test* that fails the build on a
+/// runtime `three` import, with the rule written above it: "core is pure logic —
+/// no Three.js, no rendering." Diffusion Studio's runtime describes itself as
+/// "headless… No DOM, no solid-js", with encoding and reconciling as separate
+/// packages.
+///
+/// So the separation here is not a differentiator. It is what the serious
+/// projects in this space also do, which is evidence it is right rather than
+/// evidence anybody is clever. What actually differs is the bar the surface is
+/// held to, and that is where the argument belongs.
 ///
 /// All five produce a standalone HTML document, which sounds like a limitation
 /// and is mostly a choice. It is the one format Concierge can show inside its own
@@ -37,6 +50,32 @@ public static class DesignMediums
         new(DesignMedium.Scene, "Space", "A room you can look around.", "room"),
         new(DesignMedium.Sound, "Sound", "Music, a voice, something to listen to.", "track"),
     ];
+
+    /// <summary>
+    /// The frames to draw — including the one that is implied.
+    ///
+    /// A page keeps its content loose on the root, so turning a page into slides
+    /// found no frames and drew "No slides yet" over a design that was still all
+    /// there. `As` claimed changing your mind threw nothing away and that was true
+    /// of the data and false of the screen, which is the worse half.
+    ///
+    /// So loose content counts as one frame. A page becomes a one-slide deck, a
+    /// one-shot video, a one-room space — which is what somebody who just pressed
+    /// Slides expects to see, and they can add a second whenever they like.
+    /// </summary>
+    public static IReadOnlyList<DesignNode> FramesOf(DesignDocument document)
+    {
+        var frames = document.Frames;
+
+        if (frames.Count > 0)
+        {
+            return frames;
+        }
+
+        // The root itself, standing in for the frame nobody has made yet. Its
+        // children are the content, which is exactly what a frame's children are.
+        return document.IsEmpty ? [] : [document.Nodes[document.RootId]];
+    }
 
     public static DesignMediumInfo Of(DesignMedium medium)
         => All.FirstOrDefault(m => m.Medium == medium) ?? All[0];

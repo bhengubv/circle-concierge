@@ -33,7 +33,7 @@ public static class MotionRenderer
         var html = new StringBuilder();
         DesignMediums.OpenDocument(html, DesignLooks.Of(document.Look), Style);
 
-        var shots = document.Frames;
+        var shots = DesignMediums.FramesOf(document);
 
         if (shots.Count == 0)
         {

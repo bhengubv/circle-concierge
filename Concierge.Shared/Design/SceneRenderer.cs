@@ -31,7 +31,7 @@ public static class SceneRenderer
         var html = new StringBuilder();
         DesignMediums.OpenDocument(html, DesignLooks.Of(document.Look), Style);
 
-        var rooms = document.Frames;
+        var rooms = DesignMediums.FramesOf(document);
 
         if (rooms.Count == 0)
         {
@@ -65,14 +65,19 @@ public static class SceneRenderer
                 continue;
             }
 
-            // Anything that is not a solid stands up in the space like a sign, so
-            // words and pictures can be in a room without needing a second concept.
+            // Anything that is not a solid lies on the floor as a label, so words
+            // and pictures can be in a room without needing a second concept.
             if (thing.Kind is DesignNodeKind.Heading or DesignNodeKind.Text or DesignNodeKind.Image)
             {
                 var x = DesignMediums.Number(thing, "x", 0);
                 var y = DesignMediums.Number(thing, "y", 0);
 
-                html.AppendLine($"<div class=\"sign{picked}\" style=\"transform:translate3d({x}px,0,{y}px) rotateX(-90deg)\"{attr}>");
+                // Flat on the floor, like writing on a plan. Standing them up was
+                // the obvious thing and the wrong one: the room is seen at a steep
+                // tilt, so a vertical plane is nearly edge-on and rendered 112x0 —
+                // present in the DOM, invisible on screen. Words lying on the
+                // floor read from every angle and need no billboard maths.
+                html.AppendLine($"<div class=\"sign{picked}\" style=\"transform:translate3d({x}px,{y}px,1px)\"{attr}>");
                 html.AppendLine(DesignMediums.Escape(thing.Text.Length > 0 ? thing.Text : "A sign"));
                 html.AppendLine("</div>");
             }
@@ -88,7 +93,18 @@ public static class SceneRenderer
                 if (!world) { return; }
                 var turn = -24, tilt = 62;
                 function draw() {
-                  world.style.transform = 'rotateX(' + tilt + 'deg) rotateZ(' + turn + 'deg)';
+                  world.style.transform =
+                    'rotateX(' + tilt + 'deg) rotateZ(' + turn + 'deg) scale(' + fit() + ')';
+                }
+
+                // A room has to fit the view it is in, and the view is whatever
+                // size the canvas happens to be — 321px tall on a laptop with the
+                // strips showing. Measured each draw rather than assumed once,
+                // because the canvas resizes with the window.
+                function fit() {
+                  var room = 440 * Math.abs(Math.sin(tilt * Math.PI / 180)) + 160;
+                  var have = document.documentElement.clientHeight;
+                  return Math.min(1, Math.max(0.35, have / room));
                 }
                 document.addEventListener('keydown', function (e) {
                   if (e.key === 'ArrowLeft') { turn -= 6; }
@@ -109,11 +125,15 @@ public static class SceneRenderer
     }
 
     private const string Style = """
-        .stage { position: absolute; inset: 0; display: grid; place-items: center; perspective: 1200px; overflow: hidden; }
+        .stage { position: absolute; inset: 0; display: grid; place-items: center; perspective: 1100px; overflow: hidden; }
+
+        /* Scaled to fit. At a 62-degree tilt a 600px floor is taller than the
+           canvas it sits in, so a room ran off the top and the bottom of its own
+           view — measured, not guessed: floor 600 tall in a 321 viewport. */
         .world { transform-style: preserve-3d; transition: transform .18s ease-out; }
         .floor {
-          position: absolute; left: -300px; top: -300px;
-          width: 600px; height: 600px;
+          position: absolute; left: -220px; top: -220px;
+          width: 440px; height: 440px;
           background:
             repeating-linear-gradient(0deg, var(--raised) 0 1px, transparent 1px 60px),
             repeating-linear-gradient(90deg, var(--raised) 0 1px, transparent 1px 60px);
@@ -126,9 +146,10 @@ public static class SceneRenderer
         .side { left: 100%; top: 0; width: var(--h); height: var(--d); transform-origin: left; transform: rotateY(-90deg); opacity: .45; }
         .label { position: absolute; left: 0; top: 100%; transform: translateZ(var(--h)); font-size: .7rem; opacity: .8; white-space: nowrap; }
         .sign {
-          position: absolute; padding: .35rem .6rem;
+          position: absolute; padding: .3rem .55rem;
           background: var(--raised); border-radius: var(--radius);
-          font-size: .85rem; white-space: nowrap;
+          font-size: .8rem; white-space: nowrap;
+          transform-origin: center;
         }
         .hint { position: absolute; left: 0; right: 0; bottom: .75rem; text-align: center; font-size: .78rem; opacity: .5; }
         .pad { padding: 2rem; }

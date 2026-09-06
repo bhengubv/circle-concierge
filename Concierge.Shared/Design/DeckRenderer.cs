@@ -26,7 +26,7 @@ public static class DeckRenderer
         var html = new StringBuilder();
         DesignMediums.OpenDocument(html, DesignLooks.Of(document.Look), Style);
 
-        var slides = document.Frames;
+        var slides = DesignMediums.FramesOf(document);
 
         if (slides.Count == 0)
         {
