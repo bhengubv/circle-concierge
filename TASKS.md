@@ -286,6 +286,38 @@ That last gap is a passing test rather than a failing one: it asserts the escape
 happens, so the day somebody closes the race the test goes red and says to assert
 containment instead. A limitation nobody can read is the same as silence.
 
+### 12. Two more things written and never reached
+
+`FileTodoStore` was registered in DI and nothing resolved it. `ProcessHookBridge`
+was complete and never constructed, because what it was missing was
+configuration. Same seam as MCP, `edit_file` and the sandbox.
+
+- [x] `todo_read` and `todo_write` — a working list that outlives the turn. The
+      plan strip says what is happening now and is cleared when the turn ends;
+      this says what is still outstanding on Monday
+- [x] Neither interrupts. Reading your own notes is not an act, and writing them
+      changes nothing anybody else can see
+- [x] Hooks read from `%LOCALAPPDATA%/Concierge/hooks.json`, off unless somebody
+      wrote one. A `preToolUse` hook can refuse a call, which is a safety control
+      a person writes for themselves — they know what their machine holds and
+      Concierge does not
+- [x] A broken hooks file runs nothing and says why. Failing closed matters more
+      here than for MCP: half-running would give somebody a control they believe
+      is in force and is not
+- [ ] Show registered hooks in Engineering, beside the MCP servers
+
+**Two deliberately left unwired, and why.**
+
+`ITerminalRuntime` keeps a shell alive across calls, which is genuinely useful
+and directly undoes the confinement added in tranche 11: a long-lived shell is
+exactly the thing a per-command job object cannot contain. Wiring it the week
+after adding the boundary would be taking it away again quietly. It needs its own
+answer to containment first.
+
+`PluginHost` loads assemblies into the process with full trust. It is well built
+— collectible load context, cooperative unload — and "any DLL on disk can add
+tools" is a decision to make deliberately rather than by finishing a wiring job.
+
 ---
 
 ## Known gaps, not scheduled
@@ -331,7 +363,7 @@ containment instead. A limitation nobody can read is the same as silence.
 Boxes that are re-checked per change rather than ticked once. All three hold as
 of `80cda9c`.
 
-- [x] 1153 tests pass — `dotnet test Concierge.Tests/Concierge.Tests.csproj`
+- [x] 1169 tests pass — `dotnet test Concierge.Tests/Concierge.Tests.csproj`
 - [x] Verified on the running desktop app, not only in tests — Engineering shows
       11 tools under their real names, no page overflow
 - [x] `[skip ci]` in the HEAD commit before any push

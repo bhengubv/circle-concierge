@@ -71,10 +71,23 @@ public sealed class WorkspaceHandoffTests : BunitContext
         // Then navigate to the SAME component with a handoff on the query string.
         // This is the move that used to do nothing at all.
         nav.NavigateTo("/chat?q=Handoff%20regression%20check");
-        Thread.Sleep(700);
-        cut.Render();
 
         var store = Services.GetRequiredService<IConversationStore>();
+
+        // Waited for rather than slept through. A fixed 700ms is either longer than
+        // it needs to be or shorter than a loaded machine needs, and usually both
+        // on different days — this failed about once in a hundred runs and passed
+        // on retry, which is the worst way for a test to be wrong. The fifth of
+        // this shape in the suite, and the only one that hid behind a sleep.
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (DateTime.UtcNow < deadline
+               && store.ListAsync("local").GetAwaiter().GetResult().Count == 0)
+        {
+            Thread.Sleep(25);
+        }
+
+        cut.Render();
+
         var listed = Assert.Single(store.ListAsync("local").GetAwaiter().GetResult());
 
         // ListAsync returns conversations without their messages — it feeds the

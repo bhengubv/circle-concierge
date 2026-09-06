@@ -71,7 +71,12 @@ public static class ConciergeToolsServiceCollectionExtensions
         services.TryAddSingleton<ConciergeToolLoopOptions>();
 
         services.TryAddSingleton<IToolCallScheduler>(provider =>
-            new ToolCallScheduler(provider.GetRequiredService<IAgentToolRegistry>()));
+            new ToolCallScheduler(
+                provider.GetRequiredService<IAgentToolRegistry>(),
+                maxParallel: 4,
+                // Resolved rather than required: a host that has not called
+                // AddConciergeHooks runs every call exactly as it did before.
+                hooks: provider.GetService<Concierge.Shared.Hooks.IHookBridge>()));
 
         // Per-conversation state, so one runaway loop is not remembered against the next.
         services.TryAddScoped<IRepeatToolReminder>(_ => new RepeatToolReminder());
@@ -114,6 +119,18 @@ public static class ConciergeToolsServiceCollectionExtensions
         ArgumentException.ThrowIfNullOrWhiteSpace(dataRoot);
 
         services.TryAddSingleton<ITodoStore>(_ => new FileTodoStore(Path.Combine(dataRoot, "todo.json")));
+
+        // The way into that list. Registered here rather than with the rest of the
+        // catalogue because this is where the store exists: putting them in
+        // AddConciergeTools gave every host that called it and not this one a
+        // container that threw on the first resolve, which is the same fault as
+        // the device source registered by factory — a registration that compiles
+        // and fails when something asks for it.
+        //
+        // A host without state therefore has no todo tools, and that is the right
+        // answer rather than a gap: the catalogue says what can actually be done.
+        services.AddSingleton<IAgentTool, TodoReadTool>();
+        services.AddSingleton<IAgentTool, TodoWriteTool>();
         services.TryAddSingleton<IGoalStore>(_ => new FileGoalStore(Path.Combine(dataRoot, "goals.json")));
         services.TryAddSingleton<Settings.IScheduledTaskStore>(_ =>
             new Settings.FileScheduledTaskStore(Path.Combine(dataRoot, "schedule.json")));

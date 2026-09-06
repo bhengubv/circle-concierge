@@ -13,6 +13,7 @@ using Concierge.Shared.Media;
 using Concierge.Devices;
 using Concierge.Shared;
 using Concierge.Shared.Devices;
+using Concierge.Shared.Hooks;
 using Concierge.Shared.Chat;
 using Concierge.Shared.Safety;
 using Concierge.Shared.Diagrams;
@@ -82,6 +83,10 @@ public static class MauiProgram
 			// true on Windows, Android, iOS and Mac Catalyst — and each one
 			// answers for itself whether this particular device can do it, so a
 			// desktop is never offered a flashlight.
+			// Programs the person has registered to run in front of tool calls.
+			// Reads %LOCALAPPDATA%/Concierge/hooks.json; with no file, no bridge
+			// is constructed and the scheduler behaves exactly as before.
+			.AddConciergeHooks()
 			.AddConciergeDeviceCapabilities()
 			.AddMauiDeviceCapabilities()
 			// AddConciergeAi() registers ILlmRuntimeService and the in-process

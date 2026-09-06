@@ -61,14 +61,29 @@ public sealed class ToolCallScheduler : IToolCallScheduler
     private readonly IAgentToolRegistry _registry;
     private readonly int _maxParallel;
 
-    public ToolCallScheduler(IAgentToolRegistry registry, int maxParallel = 4)
+    /// <param name="hooks">
+    /// Programs the person has registered to run in front of every tool call, or
+    /// null for none — which is the default and what almost everybody has.
+    ///
+    /// This is where a hook earns its place: a preToolUse hook can refuse a call,
+    /// which is a safety control somebody can write for themselves and is worth
+    /// more than any list of rules shipped in the box, because they know what
+    /// their machine holds and Concierge does not.
+    /// </param>
+    public ToolCallScheduler(
+        IAgentToolRegistry registry,
+        int maxParallel = 4,
+        Concierge.Shared.Hooks.IHookBridge? hooks = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentOutOfRangeException.ThrowIfLessThan(maxParallel, 1);
 
         _registry = registry;
         _maxParallel = maxParallel;
+        _hooks = hooks;
     }
+
+    private readonly Concierge.Shared.Hooks.IHookBridge? _hooks;
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<ToolCallOutcome>> ExecuteAsync(
@@ -168,6 +183,33 @@ public sealed class ToolCallScheduler : IToolCallScheduler
 
         try
         {
+            // Asked before the tool runs, and obeyed when it refuses. A hook that
+            // fails or times out is no opinion rather than a refusal — a broken
+            // script in somebody's configuration must not make the assistant
+            // unusable — but one that says no is the whole reason to run it.
+            if (_hooks is not null)
+            {
+                var payload = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["tool_name"] = call.ToolName,
+                    ["tool_input"] = call.Arguments?.DeepClone(),
+                };
+
+                var decision = await _hooks
+                    .RunAsync(Concierge.Shared.Hooks.HookEvent.PreToolUse, payload, cancellationToken)
+                    .ConfigureAwait(false);
+
+                if (!decision.Allowed)
+                {
+                    outcomes[position] = new ToolCallOutcome(
+                        call.ToolName,
+                        new AgentToolResult(false, string.Empty,
+                            decision.Reason ?? "A hook on this machine refused the call."),
+                        ToolCallDisposition.Skipped);
+                    return;
+                }
+            }
+
             var result = await tool.InvokeAsync(call.Arguments, cancellationToken).ConfigureAwait(false);
             outcomes[position] = new ToolCallOutcome(call.ToolName, result, ToolCallDisposition.Executed);
         }
