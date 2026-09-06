@@ -264,4 +264,95 @@ public sealed class WorkspaceComposerTests : BunitContext
             Assert.Empty(cut.FindAll(".ws-thread"));
         });
     }
+
+    // ── The composer while a canvas is open ───────────────────────────────
+
+    /// <summary>
+    /// Opens the design canvas the way a person does — the sidebar entry.
+    /// </summary>
+    private static void OpenDesign(
+        IRenderedComponent<Concierge.Shared.Components.Workspace.Desktop.Workspace> cut)
+    {
+        var tools = cut.FindAll("button.ws-head")
+            .First(b => b.QuerySelector(".ws-head-name")!.TextContent.Trim() == "Tools");
+        tools.Click();
+
+        cut.WaitForState(() => cut.FindAll("button.ws-room-btn").Count > 0);
+        cut.FindAll("button.ws-room-btn").First(b => b.TextContent.Contains("Design")).Click();
+        cut.WaitForState(() => cut.FindAll(".dz").Count > 0);
+    }
+
+    /// <summary>
+    /// The worst of them. Closing the canvas threw the whole design away — one
+    /// click, an afternoon gone, no warning and nothing to go back to. The surface
+    /// is built on the promise that every state you have seen is one tap away, and
+    /// its own close button was breaking it.
+    /// </summary>
+    [Fact]
+    public void Closing_the_canvas_puts_it_away_rather_than_throwing_it_out()
+    {
+        var cut = RenderWith(runtimeReady: true);
+        OpenDesign(cut);
+
+        cut.Find("textarea.comp-input").Input("add a title that says Sports Day");
+        cut.Find("button.icon-btn-send").Click();
+        cut.WaitForState(() => cut.FindAll(".dz-moment").Count > 1);
+
+        var moments = cut.FindAll(".dz-moment").Count;
+
+        // Away, and back again.
+        cut.FindAll("button.ws-room-btn").First(b => b.TextContent.Contains("Design")).Click();
+        cut.WaitForState(() => cut.FindAll(".dz").Count == 0);
+        cut.FindAll("button.ws-room-btn").First(b => b.TextContent.Contains("Design")).Click();
+        cut.WaitForState(() => cut.FindAll(".dz").Count > 0);
+
+        Assert.Equal(moments, cut.FindAll(".dz-moment").Count);
+    }
+
+    /// <summary>
+    /// "Ask me anything" while a canvas is open asks for something that is not
+    /// going to happen: nothing is being asked and no model is answering.
+    /// </summary>
+    [Fact]
+    public void The_composer_stops_asking_you_to_ask_it_anything()
+    {
+        var cut = RenderWith(runtimeReady: true);
+        OpenDesign(cut);
+
+        Assert.Contains("on the page", cut.Find("textarea.comp-input").GetAttribute("placeholder"));
+    }
+
+    /// <summary>
+    /// The permission modes and the engine name are both about a model answering,
+    /// and with a canvas open none is. Worse than useless: the row said "Ask first"
+    /// while Design deliberately acts without asking, advertising the opposite of
+    /// what was happening.
+    /// </summary>
+    [Fact]
+    public void The_permission_modes_are_not_offered_where_they_do_not_apply()
+    {
+        var cut = RenderWith(runtimeReady: true);
+
+        Assert.NotEmpty(cut.FindAll(".seg-opt"));
+
+        OpenDesign(cut);
+
+        Assert.Empty(cut.FindAll(".seg-opt"));
+    }
+
+    /// <summary>
+    /// The canvas needs no engine, so gating it on one would leave Design dead
+    /// while a model loads — or permanently, on a machine where the model is
+    /// broken, which is this one.
+    /// </summary>
+    [Fact]
+    public void The_canvas_works_with_no_engine_at_all()
+    {
+        var cut = RenderWith(runtimeReady: false);
+        OpenDesign(cut);
+
+        cut.Find("textarea.comp-input").Input("add a title that says It works");
+
+        Assert.False(cut.Find("button.icon-btn-send").HasAttribute("disabled"));
+    }
 }

@@ -214,6 +214,10 @@ prompts. It is about the surface — which is the product.
       a model, which is what makes the surface usable on this machine today
 - [x] Verified on the running desktop app: said three things, pointed at the
       title, made it bigger, changed the look, went back by picking a picture
+- [x] The composer stops lying while the canvas is open — placeholder, permission
+      modes, engine name and paperclip were all describing a conversation that was
+      not happening
+- [x] Closing the canvas puts it away instead of throwing the design out
 - [ ] A model driving the canvas — the same edits as agent tools, so "make it feel
       like a school newsletter" reaches it
 - [ ] The plan in plain language for a multi-step design change. Nothing to plan
@@ -300,7 +304,7 @@ stops there.
 Boxes that are re-checked per change rather than ticked once. All three hold as
 of `80cda9c`.
 
-- [x] 1141 tests pass — `dotnet test Concierge.Tests/Concierge.Tests.csproj`
+- [x] 1145 tests pass — `dotnet test Concierge.Tests/Concierge.Tests.csproj`
 - [x] Verified on the running desktop app, not only in tests — Engineering shows
       11 tools under their real names, no page overflow
 - [x] `[skip ci]` in the HEAD commit before any push

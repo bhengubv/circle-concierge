@@ -285,7 +285,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         // The canvas needs no engine. Gating it on IsReady would leave the design
         // surface dead while the model loads — or, on a machine where the model is
         // broken, dead permanently — for work that never needed one.
-        => _design is not null
+        => _designOpen
             ? !string.IsNullOrWhiteSpace(_composerText)
             : !_streaming
               && (!string.IsNullOrWhiteSpace(_composerText) || _pendingAttachments.Count > 0)
@@ -730,6 +730,14 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     protected Concierge.Shared.Design.DesignSession? _design;
 
     /// <summary>
+    /// Whether the canvas is showing. Separate from whether a design exists,
+    /// because closing the canvas used to throw the design away — one click and an
+    /// afternoon was gone, with no warning and nothing to go back to. That is the
+    /// exact promise this surface is built on, broken by its own close button.
+    /// </summary>
+    protected bool _designOpen;
+
+    /// <summary>
     /// Opens or closes the canvas. Not navigation — the sidebar stays, the
     /// composer stays, and what you type goes somewhere else.
     /// </summary>
@@ -745,7 +753,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     /// </summary>
     protected void SayToTheCanvas()
     {
-        if (_design is null || string.IsNullOrWhiteSpace(_composerText))
+        if (!_designOpen || _design is null || string.IsNullOrWhiteSpace(_composerText))
         {
             return;
         }
@@ -771,8 +779,16 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
     protected void ToggleDesign()
     {
-        _design = _design is null ? new Concierge.Shared.Design.DesignSession() : null;
-        _composerHint = _design is null ? null : "Say what you would like on the page.";
+        _designOpen = !_designOpen;
+
+        // Made on first opening and kept for the life of the workspace. Closing
+        // puts the canvas away; it does not throw away what is on it.
+        _design ??= new Concierge.Shared.Design.DesignSession();
+
+        // The invitation lives in the placeholder now, so repeating it here would
+        // say the same sentence twice under one box. The hint is for what just
+        // happened — "Added a title" — which is a different job.
+        _composerHint = null;
         StateHasChanged();
     }
 
@@ -780,7 +796,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     {
         // With the canvas open, a sentence is an instruction to it. The composer
         // is the same composer; only where the words go changes.
-        if (_design is not null)
+        if (_designOpen)
         {
             SayToTheCanvas();
             return;

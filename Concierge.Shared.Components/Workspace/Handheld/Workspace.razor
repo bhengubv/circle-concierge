@@ -407,15 +407,24 @@
                         </ol>
                     </div>
                 }
+                @* "Ask me anything" while a canvas is open asks for something that
+                   is not going to happen — nothing is being asked and no model is
+                   answering. *@
                 <div class="comp-box">
                     <textarea class="comp-input"
                               rows="1"
-                              placeholder="Ask me anything"
+                              placeholder="@(_designOpen ? "Say what you would like on the page" : "Ask me anything")"
                               @bind="_composerText"
                               @bind:event="oninput"
                               @bind:after="OnComposerChangedAsync"></textarea>
 
-                    <label class="icon-btn" title="Attach a file or a picture">
+                    @*
+                        Hidden while the canvas is open. Attaching goes to the next
+                        chat turn, and with Design open there is no next chat turn —
+                        the paperclip looked like it worked and did nothing. Putting a
+                        picture into a design is a real feature and is not this one.
+                    *@
+                    <label class="icon-btn" title="Attach a file or a picture" hidden="@(_designOpen)">
                         <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11l-8.5 8.5a5 5 0 0 1-7-7L14 4a3.5 3.5 0 0 1 5 5l-8.5 8.5a2 2 0 0 1-3-3L16 6"/></svg>
                         <span class="sr">Attach a file or a picture</span>
                         <InputFile OnChange="OnAttachmentSelected" class="file-over"
@@ -475,6 +484,14 @@
                         mislabelled: off meant tools never ran rather than that
                         it asked, and on still asked before every write.
                     *@
+                    @*
+                        The permission modes and the engine name are both about a model
+                        answering, and with the canvas open none is. Worse than useless:
+                        the row said "Ask first" while Design deliberately acts without
+                        asking, so it advertised the opposite of what was happening.
+                    *@
+                    @if (!_designOpen)
+                    {
                     <div class="seg" role="group" aria-label="What it may do">
                         @foreach (var mode in new[]
                         {
@@ -494,6 +511,7 @@
                     </div>
                     <span class="comp-sep">·</span>
                     <span>@(_activeRuntime?.EngineLabel ?? runtime.Engine)</span>
+                    }
                     @if (!string.IsNullOrWhiteSpace(_composerHint))
                     {
                         <span class="comp-sep">·</span>
