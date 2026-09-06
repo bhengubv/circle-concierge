@@ -104,7 +104,7 @@ a conversation. `write_file` is the only way to change anything, so the model
 must reproduce a whole file to alter one line — the same fault the notebook
 tools were built to avoid, sitting on every other file type in the repo.
 
-### 7. The device is not something Concierge can act on
+### 7. ~~The device is not something Concierge can act on~~ — done bar the phone actions
 
 Every tool it has works on files, the web, or a notebook. Nothing reaches the
 machine it is running on — no clipboard, no notification, no "open this", no
@@ -183,7 +183,7 @@ apps through an accessibility service, and the payment actions. Both are where
 an assistant that acts becomes genuinely dangerous, and both are things
 OpenDroid documents no confirmation step for.
 
-### 9. Design — say it, see it, point at it
+### 9. ~~Design — say it, see it, point at it~~ — built; three open, two need a model
 
 Ours. Inspired by a handful of open projects that prove an agent can make
 visual things; nothing taken from any of them. No components, no licences to
@@ -232,7 +232,7 @@ under a cloud provider. A plan ticking off steps that failed. A flashlight
 offered on a desktop. A canvas has far more room to lie than a sidebar does, and
 the whole value of the product is that you can see what it did and stop it.
 
-### 10. The mesh had no radio
+### 10. ~~The mesh had no radio~~ — radio attached; approvals still cannot ride it
 
 `NullMeshSender` reports no peers and refuses every send. Everything above it —
 Aether identity, route store, DTN bundles with custody transfer, opportunistic
@@ -259,7 +259,7 @@ checked — which is why the last two boxes are unticked rather than rushed.
 it is in the pipeline elsewhere. This implements the published `IMeshSender` and
 stops there.
 
-### 11. run_command had no boundary
+### 11. ~~run_command had no boundary~~ — confined on Windows, with one named gap
 
 `Concierge.Shared.Sandboxing` held a complete Windows job-object sandbox — memory
 cap, process cap, and KILL_ON_JOB_CLOSE — referenced nowhere, while the one
@@ -286,7 +286,7 @@ That last gap is a passing test rather than a failing one: it asserts the escape
 happens, so the day somebody closes the race the test goes red and says to assert
 containment instead. A limitation nobody can read is the same as silence.
 
-### 12. Two more things written and never reached
+### 12. ~~Two more things written and never reached~~ — done bar showing hooks
 
 `FileTodoStore` was registered in DI and nothing resolved it. `ProcessHookBridge`
 was complete and never constructed, because what it was missing was
@@ -317,6 +317,35 @@ answer to containment first.
 `PluginHost` loads assemblies into the process with full trust. It is well built
 — collectible load context, cooperative unload — and "any DLL on disk can add
 tools" is a decision to make deliberately rather than by finishing a wiring job.
+
+## What is actually next
+
+Everything above is done or done-bar-a-named-remainder. Nine items are open and
+they are not equal: three can be done today, and six cannot, for reasons worth
+being explicit about rather than rediscovering.
+
+**Can be done now, and needs no model.**
+
+1. **Show registered hooks in Engineering**, beside the MCP servers. `HookStatus`
+   is already in the container with the list, the problem and the file path — the
+   room simply does not read it. Small, and the room is the place somebody checks
+   what runs on their machine.
+2. **Verify Design on a handheld**, and decide what a watch shows instead. The CSS
+   is written and neither has been run, so today the claim rests on a media query
+   nobody has looked at.
+3. **Close the detach race** in the command sandbox. Real interop —
+   `CreateProcess` with `CREATE_SUSPENDED`, assign to the job, resume — and the
+   test that documents the gap goes red when it lands, which is the point.
+
+**Blocked, and by what.**
+
+- **Android actions; BLE or Wi-Fi Direct** — need a second device in the room.
+- **Confinement on Linux, macOS, Android, iOS** — need those platforms.
+- **Approvals over the mesh** — needs packet signatures verified, and the mesh
+  upgrade is in the pipeline elsewhere. Putting approvals on an unauthenticated
+  channel would hand anyone on the café wifi the ability to say "allowed".
+- **A model driving the canvas; a plan for a multi-step design change** — need a
+  working runtime. Deliberately last.
 
 ---
 
@@ -360,10 +389,14 @@ tools" is a decision to make deliberately rather than by finishing a wiring job.
 
 ## Standing checks
 
-Boxes that are re-checked per change rather than ticked once. All three hold as
-of `80cda9c`.
+Boxes that are re-checked per change rather than ticked once. All four hold as
+of `a00191b`.
 
 - [x] 1169 tests pass — `dotnet test Concierge.Tests/Concierge.Tests.csproj`
-- [x] Verified on the running desktop app, not only in tests — Engineering shows
-      11 tools under their real names, no page overflow
+- [x] Verified on the running desktop app, not only in tests — Engineering lists
+      the real catalogue, `todo_read` and `todo_write` included, and says what
+      confines a command
 - [x] `[skip ci]` in the HEAD commit before any push
+- [x] The app actually starts. Added after a Razor comment inside an element's
+      attribute list compiled, passed 1141 tests, and threw on every render in
+      the real host — the whole sidebar went dead and no test noticed
