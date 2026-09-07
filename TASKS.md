@@ -379,6 +379,62 @@ what a person who has never used one cannot get past.
 
 ---
 
+### 15. What reading the six actually showed
+
+Cloned and read, after asserting things about them from summaries of their
+READMEs. Coverage stated honestly: their architecture-defining code, not all
+248,000 lines — Pascal's `core` schema and its architecture test, Diffusion
+Studio's runtime traits, OpenMontage's pipeline manifests and checkpoint layer,
+Antra's source adapters and resolver, AniGen's representations and licences,
+open-design's packages and design systems.
+
+**Two claims of mine were wrong.**
+
+The renderer-is-welded-to-the-document claim is false. Pascal's `core` has a
+test that fails the build on a runtime `three` import; Diffusion Studio's
+`runtime` is "headless… No DOM, no solid-js" with encoding and reconciling in
+separate packages. Both separate exactly as we do. Corrected in the code.
+
+open-design has **no document model at all** — it is an agent harness (daemon,
+desktop shell, launcher, plugin runtime) driving coding agents with 154 prose
+design-system briefs. So it genuinely cannot become Pascal, but not for the
+reason I gave.
+
+**And a licence I never checked:** Antra is Elastic License 2.0 — source
+available, not open source. It forbids offering the software as a managed
+service. It is yours, so it changes nothing here, but it does not meet the
+"MIT/Apache/BSD/OFL/PD only" rule the rest of this repo is held to.
+
+**Four things worth taking, each better than what we have.**
+
+- [ ] **Schema-validated stage artifacts** (OpenMontage). Every stage writes a
+      checkpoint whose output is validated against a JSON schema before the
+      pipeline may advance, with `checkpoint_required` and
+      `human_approval_default` per stage, and caps on budget, revisions,
+      send-backs and wall time. `PlanProgress` counts successes and failures and
+      knows nothing about what a step was supposed to produce.
+- [ ] **A resolver, not a list** (Antra). Fifteen source adapters in priority
+      tiers, rotated within a tier to spread load, rate-limited ones demoted to
+      the back rather than dropped, per-adapter accept thresholds, and hooks for
+      "do not retry this" and "exclude this adapter". `RuntimeFailover` tries
+      them in order.
+- [ ] **Schema migrations** (Pascal — seven migration test files). Our design
+      documents have no version and no migration path. Nothing has broken because
+      nothing is persisted yet; the day a design is saved, that becomes a
+      data-loss bug rather than a gap.
+- [ ] **Timing that means something** (Diffusion Studio). Delay, Trim,
+      SourceFrameRate, PlaybackRate and Workarea as separate traits. A shot here
+      has one `seconds` property.
+
+**And a convergence worth noting rather than claiming credit for.** Pascal's
+`BaseNode` is `id / type / parentId / visible / metadata` — the shape we arrived
+at independently. Diffusion Studio's `Scene` trait is "a clipped, playable
+frame", which is our `Frame`. Where two serious projects and this one land in the
+same place without conferring, the shape is probably right and nobody involved
+was being clever.
+
+---
+
 ## What is actually next
 
 Everything above is done or done-bar-a-named-remainder. Nine items are open and
