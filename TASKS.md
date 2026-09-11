@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **151 boxes ticked, 11 open, eleven
+`main`. What replaces it is the working list: **154 boxes ticked, 6 open, thirteen
 partial**, ordered so the next person can pick one up.
 
 **Thirty-six of those forty arrived at once**, on 2026-09-11, when the six
@@ -1380,9 +1380,27 @@ hole. The rest is a video editor.
 Sound today is a running order that exports one file, with tags, artwork and
 lyrics, and one approval-gated fetch from a link. Antra is a library.
 
-- [ ] Pull from the seven music services it supports
-- [ ] Match the exact recording rather than the right title
-- [ ] Choose between clean and explicit versions
+- [~] Pull from the seven music services it supports — **everything except the pulling.**
+      What those seven are *for* here is identifying a recording, and that is a lookup that
+      needs no account: `music_find` asks Deezer and Apple, `music_discography` asks
+      MusicBrainz, and all three are open to anybody.
+
+      **The download itself is a line rather than an omission.** Getting the audio out of
+      Spotify, Tidal or Apple Music means working around the thing that stops people doing
+      it, and that is not a feature this will grow. Everything up to the download is here;
+      the file comes from somewhere somebody is allowed to take it from — including
+      `podcast_keep` and `stock_footage`, which are both complete.
+- [x] Match the exact recording rather than the right title — `music_identify` reads a
+      file's own tags and its real length, asks the catalogues, and reports **how confident
+      it is** rather than presenting a guess as a fact. **A title is not an identity**:
+      "Sinnerman" is a studio take, a live take, a remix and forty compilations, and Antra's
+      insight is that the ISRC settles it. A file whose length agrees with a catalogue that
+      also gave a number is exact; one that differs is said to be probably another take; one
+      with no tags at all is **not guessed at from its filename**.
+- [x] Choose between clean and explicit versions — `music_versions` puts them side by side
+      so one is chosen deliberately. **A catalogue that says nothing about explicitness is
+      not evidence that a version is clean**, so those come back as "not said" — treating
+      silence as clean is how somebody plays the wrong thing to a room.
 - [~] Notice high-quality audio and prefer it — **the noticing is done; the preferring is
       about services nobody here has an account for.** `music_quality` measures a file: how
       long, how loud, the loudest moment, how often and how finely it was sampled, whether it
@@ -1411,11 +1429,33 @@ lyrics, and one approval-gated fetch from a link. Antra is a library.
       **Nothing deletes a duplicate.** The bigger copy is named first because that is usually
       the better one, and choosing which to lose is somebody's decision about their own
       music. 19 tests, the moving ones against real files the encoder made.
-- [ ] Download an artist's whole catalogue
-- [ ] Downloads on a schedule
-- [~] An audio analyser, podcasts, and peer-to-peer — **the analyser is done**
-      (`music_quality`, above). Podcasts and peer-to-peer are not started, and neither is
-      blocked by anything except nobody having asked for them yet.
+- [~] Download an artist's whole catalogue — the **catalogue** is here
+      (`music_discography`, oldest first, from MusicBrainz, with the ones that have no date
+      last rather than first). The downloading is the line above.
+- [x] On a schedule — **the checking, never the downloading, and that is a decision.**
+      `upkeep` watches the followed shows for new episodes and a music folder for duplicates,
+      on an interval somebody sets, and writes what it found. Everything in this product that
+      reaches the network or writes a file asks first, and **a scheduled task runs at three in
+      the morning with nobody there to ask** — a background job that downloaded would be the
+      one thing here acting without anybody agreeing to it. Off until it is turned on, like
+      the mesh radio and for the same reason. 17 tests.
+- [~] An audio analyser, podcasts, and peer-to-peer — **the analyser and podcasts are
+      done.** `music_quality` measures a file; `podcast_follow`, `podcast_episodes` and
+      `podcast_keep` follow a show, list what is in it and keep an episode.
+
+      **Podcasts are the one part of this list that works end to end with nothing**: a feed
+      is RSS on somebody's own server, published so anybody may read it and download the
+      audio — that is what the format is for. No account, no key, nothing to work around.
+      Read with a real XML parser rather than pattern-matching, because feeds are somebody
+      else's output and are full of namespaces, CDATA and items with no audio on them. 23
+      tests.
+
+      **Peer-to-peer is declined, and by me rather than by circumstance**, which is worth
+      saying plainly rather than leaving as an empty box: what "peer-to-peer" means in a
+      music downloader is fetching copyrighted recordings from strangers' machines. Concierge
+      already has a mesh for sharing things somebody owns between their own devices. Say the
+      word if that is what was meant and it is a small piece of work; what is not going in is
+      a client for the other thing.
 
 #### AniGen — research
 

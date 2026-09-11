@@ -319,6 +319,9 @@ public sealed class ContainerResolutionTests : IDisposable
             .AddConciergeMusicLibrary()
             .AddConciergeStockFootage()
             .AddConciergeImageTools()
+            .AddConciergeMusicCatalogue()
+            .AddConciergePodcasts(_dataRoot)
+            .AddConciergeUpkeep(_dataRoot)
             .AddConciergeRoutines(_dataRoot)
             .BuildServiceProvider();
 }
