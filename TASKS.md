@@ -1163,6 +1163,22 @@ whatever is read next.
 
 ### 17. Feature parity with the six, listed out
 
+> **What is needed and not here.** Asked directly on 2026-09-11 — *"do you have
+> everything you need?"* — and the answer is no. Four things, and nothing else on
+> this list waits on them. Everything else is being built.
+>
+> | Missing | Blocks | What it would take |
+> | --- | --- | --- |
+> | **Speech model files** | Transcription, narration, and stripping "um" | `CircleAI.Voice` ships the code — `WhisperTranscriber`, `OnnxTtsEngine` — and the models folder holds only the three Qwen language models. Whisper weights and a TTS voice need to arrive. |
+> | **Image generation** | open-design's generated images | No CircleAI package does it. `mnn_llm_image_*` is images going *in*, not pictures coming out. Either a cloud key on the `IImageRuntime` seam that already exists, or a local model. |
+> | **Music service credentials** | Antra's seven sources | Spotify, Tidal, Qobuz, Deezer, Apple, Amazon and YouTube Music each need an account and a key. |
+> | **A trained model for AniGen** | Photo to rigged 3D asset | Plus a Python machine-learning stack and a GPU. It is a research pipeline, not a feature. |
+>
+> **Everything is here for the rest**: ffmpeg, three.js, the CircleAI packages
+> including image *input* on Inference 3.3.0, the six repos cloned and readable,
+> and the desktop head verified. Roughly four to six of the thirty-six wait; the
+> other thirty do not.
+
 Asked for in full on 2026-09-11, after the six were cloned again and read rather
 than remembered. Everything below is **theirs**, taken from their own feature
 lists and READMEs, written as what Concierge would have to build to match it.
