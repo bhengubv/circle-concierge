@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **160 boxes ticked, 5 open, fourteen
+`main`. What replaces it is the working list: **162 boxes ticked, 5 open, fourteen
 partial**, ordered so the next person can pick one up.
 
 **Thirty-six of those forty arrived at once**, on 2026-09-11, when the six
@@ -1698,7 +1698,7 @@ commit it was last actually checked at, because "all four hold as of `<ref>`"
 was one date covering four checks made at different times — and it had drifted
 two commits behind `HEAD` before anyone noticed.
 
-- [x] **1917 tests pass, and the suite is deterministic.** It was not: four
+- [x] **1923 tests pass, and the suite is deterministic.** It was not: four
       consecutive runs each failed *one different test*, which meant it could not
       tell a regression from noise — the same defect as a screen asserting
       something untrue, sitting on the check everything else is measured by.
@@ -1878,6 +1878,29 @@ two commits behind `HEAD` before anyone noticed.
       "Bring one in" is shown only where a runtime fills it. 4 tests.
 - [x] Walls with a door and a window cut into them, and floors that stack, looked at on the
       desktop head. Real holes in a real wall, no CSG library, exactly as the entry claims.
+- [x] **Arrow keys turn the room from anywhere on screen.** The caption says "arrow keys to
+      look around" and that was true only while the canvas frame happened to hold the
+      keyboard — so somebody who had just opened Design, or typed a sentence, pressed an
+      arrow and nothing moved. **An instruction printed on the screen that works only after
+      an undocumented click is an instruction that is wrong.** The page forwards arrow keys
+      into the room now, both rooms answer at the same door so the page never has to know
+      which is drawing, and keys are left alone while anybody is typing. Verified on the
+      running app without touching the canvas first: it turns.
+- [x] **Nothing it draws with is fetched from the internet.** three.js was carried in the
+      repository for a stated reason — a design surface that needs a connection to draw a box
+      is not a local-first product — and **diagrams quietly needed one anyway**, pulling
+      mermaid from a CDN every time. Offline, the screen said "watch it draw" and then
+      printed a module-import error.
+
+      Mermaid is carried now, MIT, licence beside it, standalone build because the ES module
+      entry is a loader that pulls a few dozen chunks at run time. 5 tests hold the rule
+      rather than the one file that broke it: no script this product ships reaches a CDN to
+      do its job, both drawers are present, and both are MIT.
+
+      A test went red on the way and is worth recording: it pinned the exact characters of a
+      line in the room's script, and failed the moment that line was rewritten while keeping
+      its meaning exactly. **A test that fails when the wording changes and passes when the
+      behaviour changes is the wrong way round**; it asserts the rule now.
 - [x] `[skip ci]` in the HEAD commit before any push — a rule, not a check
 - [x] The app actually starts. Added after a Razor comment inside an element's
       attribute list compiled, passed 1141 tests, and threw on every render in

@@ -271,13 +271,49 @@ public sealed class SceneEngineTests
     }
 
     /// <summary>
-    /// Only one of the two rooms takes the arrow keys, or turning left turns a
-    /// room nobody is looking at.
+    /// Only one of the two rooms takes the arrow keys, or turning left turns a room nobody is
+    /// looking at.
+    ///
+    /// Asserted on the rule rather than on one line of it. This test used to pin the exact
+    /// characters `if (window.__deep) { return; }`, and went red the day the flat room's
+    /// turning became a function the page could call — a change that kept the rule exactly.
+    /// A test that fails when the wording changes and passes when the behaviour changes is
+    /// the wrong way round.
     /// </summary>
     [Fact]
     public void The_hidden_room_stops_listening_when_the_engine_takes_over()
-        => Assert.Contains("if (window.__deep) { return; }",
-            DesignMediums.Render(Room(Solid("Table"))), StringComparison.Ordinal);
+    {
+        var html = DesignMediums.Render(Room(Solid("Table")));
+
+        Assert.Contains("window.__deep", html, StringComparison.Ordinal);
+
+        // The flat room's own turning bails out when the engine has taken over, whatever it
+        // bails out with.
+        var at = html.IndexOf("window.__deep)", StringComparison.Ordinal);
+
+        Assert.True(at > 0, "the flat room no longer checks whether the engine took over");
+        Assert.Contains("return", html[at..(at + 40)], StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Looking around is reachable from outside the frame.
+    ///
+    /// **The screen says "arrow keys to look around" and that was only true while the frame
+    /// had keyboard focus** — so somebody who had just opened Design, or typed a sentence,
+    /// pressed an arrow and nothing turned. The page forwards the key in; this is the door it
+    /// comes through, and both rooms answer at it so the page never has to know which one is
+    /// drawing.
+    /// </summary>
+    [Fact]
+    public void Both_rooms_can_be_turned_from_outside_the_frame()
+    {
+        var html = DesignMediums.Render(Room(Solid("Table")));
+
+        // Twice: the flat room defines it, and the engine replaces it once it has taken over.
+        Assert.Equal(
+            2,
+            html.Split("window.__conciergeLook = function", StringSplitOptions.None).Length - 1);
+    }
 
     /// <summary>
     /// The scene is one element, so picking has to end up somewhere the existing

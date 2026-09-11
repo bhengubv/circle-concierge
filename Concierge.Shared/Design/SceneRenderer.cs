@@ -127,17 +127,29 @@ public static class SceneRenderer
                   var have = document.documentElement.clientHeight;
                   return Math.min(1, Math.max(0.35, have / room));
                 }
-                document.addEventListener('keydown', function (e) {
-                  // The engine took over, so this room is off screen and turning
-                  // it would only fight the one somebody is looking at.
-                  if (window.__deep) { return; }
-                  if (e.key === 'ArrowLeft') { turn -= 6; }
-                  else if (e.key === 'ArrowRight') { turn += 6; }
-                  else if (e.key === 'ArrowUp') { tilt = Math.min(88, tilt + 4); }
-                  else if (e.key === 'ArrowDown') { tilt = Math.max(8, tilt - 4); }
-                  else { return; }
-                  e.preventDefault();
+                // Looking around, as a function rather than only as a key handler.
+                //
+                // **The screen says "arrow keys to look around" and that was only true
+                // while this frame had keyboard focus.** Somebody who has just opened
+                // Design, or typed a sentence, is focused on the page outside it, so the
+                // key never arrived and nothing turned. The page forwards arrow keys in
+                // here now, and this is what it calls. Returns whether it turned, so the
+                // page knows whether to keep the key.
+                window.__conciergeLook = function (key) {
+                  // The engine took over, so this room is off screen and turning it
+                  // would only fight the one somebody is looking at.
+                  if (window.__deep) { return false; }
+                  if (key === 'ArrowLeft') { turn -= 6; }
+                  else if (key === 'ArrowRight') { turn += 6; }
+                  else if (key === 'ArrowUp') { tilt = Math.min(88, tilt + 4); }
+                  else if (key === 'ArrowDown') { tilt = Math.max(8, tilt - 4); }
+                  else { return false; }
                   draw();
+                  return true;
+                };
+
+                document.addEventListener('keydown', function (e) {
+                  if (window.__conciergeLook(e.key)) { e.preventDefault(); }
                 });
                 draw();
               })();
@@ -713,15 +725,22 @@ public static class SceneRenderer
                     place();
                   }
 
-                  document.addEventListener('keydown', function (e) {
-                    if (e.key === 'ArrowLeft') { turn -= 6 * Math.PI / 180; }
-                    else if (e.key === 'ArrowRight') { turn += 6 * Math.PI / 180; }
-                    else if (e.key === 'ArrowUp') { tilt = Math.min(1.53, tilt + 0.07); }
-                    else if (e.key === 'ArrowDown') { tilt = Math.max(0.12, tilt - 0.07); }
-                    else { return; }
-                    e.preventDefault();
+                  // Replaces the flat room's version once the engine has taken over, so
+                  // the page forwards arrow keys to whichever room is actually on screen
+                  // without having to know which one that is.
+                  window.__conciergeLook = function (key) {
+                    if (key === 'ArrowLeft') { turn -= 6 * Math.PI / 180; }
+                    else if (key === 'ArrowRight') { turn += 6 * Math.PI / 180; }
+                    else if (key === 'ArrowUp') { tilt = Math.min(1.53, tilt + 0.07); }
+                    else if (key === 'ArrowDown') { tilt = Math.max(0.12, tilt - 0.07); }
+                    else { return false; }
                     place();
                     draw();
+                    return true;
+                  };
+
+                  document.addEventListener('keydown', function (e) {
+                    if (window.__conciergeLook(e.key)) { e.preventDefault(); }
                   });
 
                   // The whole scene is one element, so there is nothing for the

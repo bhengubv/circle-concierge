@@ -82,6 +82,46 @@
             }
         };
 
+        // Arrow keys, forwarded from the page into the room.
+        //
+        // **The screen says "arrow keys to look around" and that was only true if the
+        // frame happened to have keyboard focus.** The listener lives inside the frame,
+        // because that is where the scene is; a person who has just opened Design, or
+        // typed a sentence, or clicked anything outside the canvas, is focused on the
+        // page — so they press an arrow and nothing turns. An instruction printed on
+        // the screen that works only after an undocumented click is an instruction that
+        // is wrong.
+        //
+        // Attached once, to the page, and only acted on when nobody is typing: the
+        // composer is a textarea and arrow keys belong to whoever is writing in it.
+        if (!frame.__conciergeKeys) {
+            frame.__conciergeKeys = true;
+
+            document.addEventListener('keydown', function (event) {
+                if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight'
+                    && event.key !== 'ArrowUp' && event.key !== 'ArrowDown') {
+                    return;
+                }
+
+                var on = document.activeElement;
+                var name = on && on.tagName ? on.tagName.toLowerCase() : '';
+
+                if (name === 'input' || name === 'textarea' || name === 'select'
+                    || (on && on.isContentEditable)) {
+                    return;
+                }
+
+                var look = frame.contentWindow && frame.contentWindow.__conciergeLook;
+
+                if (typeof look === 'function' && look(event.key)) {
+                    // Only when the room actually turned. A page or a deck has nothing
+                    // to look around, and swallowing the key there would break scrolling
+                    // for the sake of a medium that is not open.
+                    event.preventDefault();
+                }
+            });
+        }
+
         frame.addEventListener('load', attach);
 
         // Already loaded by the time this runs, which happens on a redraw.
