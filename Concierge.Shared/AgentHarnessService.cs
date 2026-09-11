@@ -995,12 +995,43 @@ public sealed class AgentHarnessService : IAgentHarnessService
         return new ConciergeToolResult(tool, outcome, summary, output, started, DateTimeOffset.UtcNow, exitCode);
     }
 
+    /// <summary>
+    /// How many runs are kept. Everything older is dropped when the next run is written.
+    ///
+    /// There was no limit. `runs.json` on this machine held **669 runs going back to the
+    /// first of September**, and the whole list was serialised and rewritten on every single
+    /// run — so the cost of running one command grew with the number of commands ever run,
+    /// forever. Each entry carries the full output of every tool call in it, so one
+    /// `read_file` of something large is in that file permanently and is rewritten by every
+    /// run after it.
+    ///
+    /// This is diagnostics, not somebody's work: the room shows the last eight, and nothing
+    /// else reads further back. Two hundred is generous against a surface that displays
+    /// eight, and it is a number somebody can change here rather than a property of having
+    /// never thought about it.
+    /// </summary>
+    private const int RunsKept = 200;
+
     private void AddLog(ConciergeRunLog log)
     {
         lock (_gate)
         {
             _logs.Add(log);
-            File.WriteAllText(LogPath, JsonSerializer.Serialize(_logs, JsonOptions));
+
+            if (_logs.Count > RunsKept)
+            {
+                _logs.RemoveRange(0, _logs.Count - RunsKept);
+            }
+
+            // Written beside and moved into place, which `DesignStore` learned the hard way
+            // and this never got. `File.WriteAllText` straight over the top means a write
+            // interrupted by the app closing leaves truncated JSON — and `LoadLogs` catches
+            // the parse failure and returns an empty list, so the failure is silent and it
+            // takes **every** run with it rather than the last one.
+            var staging = LogPath + ".writing";
+
+            File.WriteAllText(staging, JsonSerializer.Serialize(_logs, JsonOptions));
+            File.Move(staging, LogPath, overwrite: true);
         }
     }
 

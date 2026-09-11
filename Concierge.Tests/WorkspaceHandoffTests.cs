@@ -85,10 +85,16 @@ public sealed class WorkspaceHandoffTests : BunitContext
         // render then started the work, and the assertion read the store before it
         // had finished — so it passed on a quiet machine and failed on a busy one,
         // which is the worst way for a test to be wrong.
+        //
+        // And it waits for the **message**, not for the conversation. Waiting for the
+        // conversation to exist stopped one step too early: the conversation is created first
+        // and the turn appended after it, so on a loaded machine the loop finished, the
+        // assertion ran, and `conversation.Messages` was empty. That is the same defect the
+        // paragraph above describes, one layer in — waiting for a thing that happens near
+        // what you care about rather than for what you care about.
         var deadline = DateTime.UtcNow.AddSeconds(30);
 
-        while (DateTime.UtcNow < deadline
-               && store.ListAsync("local").GetAwaiter().GetResult().Count == 0)
+        while (DateTime.UtcNow < deadline && !HasATurn(store))
         {
             cut.Render();
             Thread.Sleep(25);
@@ -199,4 +205,21 @@ public sealed class WorkspaceHandoffTests : BunitContext
         Assert.Empty(store.ListAsync("local").GetAwaiter().GetResult());
     }
 
+    /// <summary>
+    /// Whether the handoff has actually landed: a conversation with a turn in it. The whole
+    /// point is that a conversation on its own is not the thing being waited for.
+    /// </summary>
+    private static bool HasATurn(IConversationStore store)
+    {
+        var listed = store.ListAsync("local").GetAwaiter().GetResult();
+
+        if (listed.Count == 0)
+        {
+            return false;
+        }
+
+        var conversation = store.GetAsync(listed[0].Id).GetAwaiter().GetResult();
+
+        return conversation is { Messages.Count: > 0 };
+    }
 }

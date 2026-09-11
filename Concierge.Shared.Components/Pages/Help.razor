@@ -26,14 +26,18 @@
             <div class="rows">
                 <div class="row"><span class="row-name">Ask<span class="row-sub">Type in the box at the bottom, or press the microphone and talk.</span></span></div>
                 <div class="row"><span class="row-name">A new line<span class="row-sub">Shift + Enter. Enter on its own sends.</span></span></div>
-                <div class="row"><span class="row-name">Attach a file<span class="row-sub">The paperclip takes a text file up to 256 KB.</span></span></div>
+                <div class="row"><span class="row-name">Attach a file<span class="row-sub">The paperclip takes a picture up to 4 MB, or a text file up to 256 KB.</span></span></div>
             </div>
         </RoomSection>
 
         <RoomSection Title="When it wants to do something">
             <div class="rows">
                 <div class="row"><span class="row-name">It asks first<span class="row-sub">Anything that changes or deletes stops and waits, in the thread, where the run stopped.</span></span></div>
-                <div class="row"><span class="row-name">Or it does not<span class="row-sub">The switch under the composer is "May act on its own". Off means it asks every time.</span></span></div>
+                @* Named "May act on its own" and called a switch. There is no switch and nothing
+                   anywhere in the app carries that name: the composer has three buttons, and
+                   they are the three below. Help is the one room whose whole job is telling
+                   somebody where to look. *@
+                <div class="row"><span class="row-name">Or it does not<span class="row-sub">The three buttons under the composer: Plan only runs nothing, Ask first asks every time, Act freely does not.</span></span></div>
                 <div class="row"><span class="row-name">Seeing the work<span class="row-sub">Each tool it ran is a chip in the thread. Press one to read the output.</span></span></div>
             </div>
             <p class="room-note">Engineering lists every tool and what each is allowed to do.</p>
@@ -49,7 +53,7 @@
         <RoomSection Title="If something is wrong">
             <div class="rows">
                 <a class="row" href="about"><span class="row-name">About<span class="row-sub">The version and build to quote when reporting it</span></span></a>
-                <a class="row" href="release"><span class="row-name">Release<span class="row-sub">What has to be true before a build ships, and how each was checked</span></span></a>
+                <a class="row" href="release"><span class="row-name">Release<span class="row-sub">What has to be true before a build ships, and whether anything has checked it</span></span></a>
             </div>
         </RoomSection>
     </div>

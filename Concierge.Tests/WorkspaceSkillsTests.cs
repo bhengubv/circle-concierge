@@ -202,10 +202,21 @@ public sealed class WorkspaceSkillsTests : BunitContext
         OpenPicker(cut);
 
         cut.FindAll(".skills-list .skill-row")[0].Click();
+
+        // Waited for, both times. Blazor re-renders after the event; reading the list on the
+        // line after a Click gets there first on a loaded machine — so the search for a
+        // pressed row found none and threw, three lines before the assertion this test is
+        // about. The file already has the right idiom a few tests further down; this pair had
+        // been left reading once.
+        cut.WaitForAssertion(() => Assert.Contains(
+            cut.FindAll(".skills-list .skill-row"),
+            row => row.GetAttribute("aria-pressed") == "true"));
+
         cut.FindAll(".skills-list .skill-row").First(r => r.GetAttribute("aria-pressed") == "true").Click();
 
-        Assert.DoesNotContain(cut.FindAll(".skills-list .skill-row"),
-                              r => r.GetAttribute("aria-pressed") == "true");
+        cut.WaitForAssertion(() => Assert.DoesNotContain(
+            cut.FindAll(".skills-list .skill-row"),
+            row => row.GetAttribute("aria-pressed") == "true"));
     }
 
     [Fact]

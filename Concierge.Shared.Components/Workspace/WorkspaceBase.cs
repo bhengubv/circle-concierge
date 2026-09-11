@@ -657,19 +657,46 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
             return;
         }
 
+        // A picture gets the picture limit, and the same picture gets it in both places.
+        //
+        // This capped everything at 256 KB and said "Text attachments only in v1" to anything
+        // over it. Three things were wrong with that at once. The file picker offers .png,
+        // .jpg, .gif and .webp, so it invites a picture. The send path handles pictures
+        // properly — it sniffs the bytes, builds a ChatImage, and tells you outright when the
+        // model cannot see one. And the canvas takes pictures up to 4 MB through this same
+        // paperclip. So the same button, in the same app, accepted a 3 MB photo onto a design
+        // and refused it in a conversation, with a sentence saying pictures were not
+        // supported at all. Almost every real photograph is over 256 KB.
+        //
+        // The kind is read from the bytes rather than the name, the way the send path already
+        // does it: a PNG called notes.txt is still a PNG, and a text file called photo.png is
+        // still text and still gets the text limit.
         foreach (var file in args.GetMultipleFiles(8))
         {
-            if (file.Size > MaxAttachmentBytes)
+            if (file.Size > MaxPictureBytes)
             {
-                _composerHint = $"{file.Name} skipped — over {MaxAttachmentBytes / 1024} KB. Text attachments only in v1.";
+                _composerHint = $"{file.Name} skipped — over {MaxPictureBytes / (1024 * 1024)} MB.";
                 continue;
             }
 
-            using var stream = file.OpenReadStream(MaxAttachmentBytes);
+            using var stream = file.OpenReadStream(MaxPictureBytes);
             using var ms = new MemoryStream();
             await stream.CopyToAsync(ms);
-            _pendingAttachments.Add(new TextAttachment(file.Name, ms.ToArray()));
-            _composerHint = "Attachment ready. Text contents will quote into the next message.";
+
+            var bytes = ms.ToArray();
+            var isPicture = Concierge.Shared.Attachments.AttachmentKind.ImageMediaType(bytes) is not null;
+
+            if (!isPicture && bytes.Length > MaxAttachmentBytes)
+            {
+                _composerHint =
+                    $"{file.Name} skipped — files that are not pictures are limited to {MaxAttachmentBytes / 1024} KB.";
+                continue;
+            }
+
+            _pendingAttachments.Add(new TextAttachment(file.Name, bytes));
+            _composerHint = isPicture
+                ? "Picture ready. It goes with the next message."
+                : "Attachment ready. Text contents will quote into the next message.";
         }
     }
 
