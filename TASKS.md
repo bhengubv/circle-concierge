@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **148 boxes ticked, 13 open, ten
+`main`. What replaces it is the working list: **149 boxes ticked, 13 open, ten
 partial**, ordered so the next person can pick one up.
 
 **Thirty-six of those forty arrived at once**, on 2026-09-11, when the six
@@ -1599,7 +1599,7 @@ commit it was last actually checked at, because "all four hold as of `<ref>`"
 was one date covering four checks made at different times — and it had drifted
 two commits behind `HEAD` before anyone noticed.
 
-- [x] **1599 tests pass, and the suite is deterministic again.** It was not: four
+- [x] **1786 tests pass, and the suite is deterministic.** It was not: four
       consecutive runs each failed *one different test*, which meant it could not
       tell a regression from noise — the same defect as a screen asserting
       something untrue, sitting on the check everything else is measured by.
@@ -1685,6 +1685,13 @@ two commits behind `HEAD` before anyone noticed.
       desktop head could have been falling back for weeks with every test passing.
       To check: open Design, choose **Space**, say "add a room", then open
       Engineering. 10 tests.
+- [x] **Every tool source registers without taking the app down at start-up.** Caught by
+      the container-resolution tests rather than by anybody opening the app: three of the
+      later sources were registered with `TryAddEnumerable` and a bare factory, which has no
+      implementation type to deduplicate on and throws "indistinguishable from other services
+      registered for IAgentToolSource" **while the container is being built**. Every head
+      would have failed to start. The typed overload fixes it, and the test that found it now
+      resolves the registry with every later source registered.
 - [x] `[skip ci]` in the HEAD commit before any push — a rule, not a check
 - [x] The app actually starts. Added after a Razor comment inside an element's
       attribute list compiled, passed 1141 tests, and threw on every render in

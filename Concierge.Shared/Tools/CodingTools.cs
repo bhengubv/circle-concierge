@@ -279,7 +279,12 @@ public static class CodingToolsRegistration
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IAgentToolSource>(sp =>
+        // Typed rather than a bare factory. TryAddEnumerable deduplicates on the
+        // implementation type and refuses a descriptor that has none — "indistinguishable
+        // from other services registered for IAgentToolSource" — which throws while the
+        // container is being built and takes the whole app down at start-up. Caught by the
+        // container-resolution tests rather than by anybody opening the app.
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IAgentToolSource, CodingToolSource>(sp =>
             new CodingToolSource(
                 (sp.GetService<IAgentHarnessService>()?.WorkspaceRoot) ?? Directory.GetCurrentDirectory(),
                 sp.GetService<IToolApprovalService>())));

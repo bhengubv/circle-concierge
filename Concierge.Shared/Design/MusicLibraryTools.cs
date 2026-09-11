@@ -407,7 +407,8 @@ public static class MusicLibraryRegistration
             return services;
         }
 
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IAgentToolSource>(sp =>
+        // Typed, so TryAddEnumerable has an implementation type to deduplicate on.
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IAgentToolSource, MusicLibraryToolSource>(sp =>
             new MusicLibraryToolSource(
                 new MusicLibrary(),
                 sp.GetService<IToolApprovalService>())));

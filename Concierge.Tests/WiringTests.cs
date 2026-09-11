@@ -2,6 +2,7 @@ using Concierge.CodeMode;
 using Concierge.Shared;
 using Concierge.Shared.Chat;
 using Concierge.Shared.Context;
+using Concierge.Shared.Design;
 using Concierge.Shared.Diagnostics;
 using Concierge.Shared.Jobs;
 using Concierge.Shared.Planning;
@@ -270,6 +271,53 @@ public sealed class ContainerResolutionTests : IDisposable
             .AddConciergeRuntime()
             .AddConciergeState(_dataRoot)
             .AddConciergeCodeMode(AppContext.BaseDirectory)
+            .BuildServiceProvider();
+
+    /// <summary>
+    /// Everything the desktop head registers, resolved together.
+    ///
+    /// Written when routines were added, because that is the same shape as the deadlock this
+    /// class exists for: `ProductionRoutines` needs the tool registry, the registry is built
+    /// from every tool source, and routines publish two of them. It takes a function rather
+    /// than the registry for exactly that reason, and this is what says so out loud.
+    /// </summary>
+    [Fact]
+    public async Task The_registry_resolves_with_every_later_tool_source_registered()
+    {
+        await WithinBudget(() =>
+        {
+            using var provider = HostWithEverything();
+            return provider.GetRequiredService<IAgentToolRegistry>().Tools.Count;
+        });
+    }
+
+    [Fact]
+    public async Task And_a_routine_can_reach_the_registry_while_it_runs()
+    {
+        await WithinBudget(() =>
+        {
+            using var provider = HostWithEverything();
+
+            // Asked for late, which is the whole point: this is the call that would have
+            // recursed if the registry had been held.
+            return provider.GetRequiredService<Concierge.Shared.Tools.ProductionRoutines>().All.Count;
+        });
+    }
+
+    private ServiceProvider HostWithEverything()
+        => new ServiceCollection()
+            .AddConciergeCore()
+            .AddConciergeChat(Path.Combine(_dataRoot, "chat.db"))
+            .AddConciergeTools()
+            .AddConciergeRuntime()
+            .AddConciergeState(_dataRoot)
+            .AddConciergeCodeMode(AppContext.BaseDirectory)
+            .AddConciergeMediaLook()
+            .AddConciergeTranscription()
+            .AddConciergeCodingTools()
+            .AddConciergeMusicLibrary()
+            .AddConciergeStockFootage()
+            .AddConciergeRoutines(_dataRoot)
             .BuildServiceProvider();
 }
 

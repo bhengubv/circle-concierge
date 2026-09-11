@@ -318,7 +318,9 @@ public static class StockFootageRegistration
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        services.TryAddEnumerable(ServiceDescriptor.Singleton<IAgentToolSource>(sp =>
+        // Typed, so TryAddEnumerable has an implementation type to deduplicate on. A bare
+        // factory throws while the container is being built.
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<IAgentToolSource, StockFootageToolSource>(sp =>
             new StockFootageToolSource(
                 sp.GetService<IWebAccess>(),
                 sp.GetService<IToolApprovalService>())));
