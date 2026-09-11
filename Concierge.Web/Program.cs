@@ -71,6 +71,9 @@ builder.Services.AddSingleton<IToolApprovalService>(sp =>
 builder.Services.AddConciergeRuntime();
 builder.Services.AddConciergeState(
     Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Concierge", "web"));
+// Work that runs end to end, keeping its place on disk.
+builder.Services.AddConciergeRoutines(
+    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Concierge", "web"));
 builder.Services.AddConciergeCodeMode(AppContext.BaseDirectory);
 builder.Services.AddSingleton<PrometheusMetricSnapshot>();
 

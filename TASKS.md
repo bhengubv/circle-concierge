@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **144 boxes ticked, 19 open, eight
+`main`. What replaces it is the working list: **145 boxes ticked, 18 open, eight
 partial**, ordered so the next person can pick one up.
 
 **Thirty-six of those forty arrived at once**, on 2026-09-11, when the six
@@ -1309,7 +1309,26 @@ hole. The rest is a video editor.
 
 #### OpenMontage — video production
 
-- [ ] Production routines that run end to end, rather than one tool at a time
+- [x] Production routines that run end to end. A production is a dozen steps in a fixed
+      order, and doing them one call at a time is where a model loses its place, repeats a
+      step, or stops halfway and reports success. **That is not a model problem to be
+      prompted away — it is an absence of anywhere to keep the place.**
+
+      `routines` says what there is and what each needs; `run_routine` runs one. **The place
+      is kept on disk**, so an interrupted run carries on rather than starting again, which
+      is the half of OpenMontage's checkpointing that matters here — and a resumed run keeps
+      what it was given the first time, so the two halves of one production cannot disagree
+      about which file they are working on.
+
+      It **stops at the first step that does not work**, because carrying on would be
+      building on something that is not there, and what comes back says what was done before
+      it stopped rather than only "failed". A blank nobody filled in stops the run and names
+      itself instead of being handed to a tool as six literal characters.
+
+      **Every step goes through the ordinary tool registry, so every approval still
+      happens**: a step that fetches a track still asks. It is a way of not losing count,
+      never a way around anything. Three routines ship rather than twelve, for the same
+      reason there are six looks and not a colour picker. 16 tests.
 - [~] Computer-generated narration — **wired, waiting on a voice model.** `design_narrate`
       says written words out loud and adds them to the running order as a track, carried
       inside the design as a data URI the way a picture already is, so the design still

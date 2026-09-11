@@ -145,6 +145,10 @@ public static class MauiProgram
 		builder.Services.AddConciergeRuntime();
 		builder.Services.AddConciergeState(Path.Combine(FileSystem.AppDataDirectory, "state"));
 
+		// Work that runs end to end, keeping its place on disk so an interrupted run
+		// carries on rather than starting again.
+		builder.Services.AddConciergeRoutines(Path.Combine(FileSystem.AppDataDirectory, "state"));
+
 		// BYO API-key cloud runtimes + cloud design adapters. The factories read from MAUI's
 		// IConfiguration when present (env vars / appsettings.json bundled as MauiAsset);
 		// missing keys leave the runtime in the "needs key" state without breaking startup.
