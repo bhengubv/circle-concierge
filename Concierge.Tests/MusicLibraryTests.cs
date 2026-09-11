@@ -401,4 +401,96 @@ public sealed class MusicLibraryTests : IDisposable
         Assert.True(File.Exists(Path.Combine(
             _folder, "Nina Simone", "Pastel Blues", "Sinnerman (2).m4a")));
     }
+
+    // ── How good a file is ────────────────────────────────────────────────
+
+    /// <summary>
+    /// A track whose peak sits at the ceiling has been squashed somewhere in its history, and
+    /// it is the commonest thing wrong with a file that otherwise looks perfect. Measured
+    /// against files the encoder made loud and quiet on purpose.
+    /// </summary>
+    [Fact]
+    public async Task A_squashed_file_is_noticed_and_an_ordinary_one_is_not()
+    {
+        if (!EncoderHere)
+        {
+            return;
+        }
+
+        Directory.CreateDirectory(_folder);
+
+        var loud = Path.Combine(_folder, "loud.wav");
+        var quiet = Path.Combine(_folder, "quiet.wav");
+
+        // ffmpeg's sine comes out at an eighth of full scale — measured, because the first
+        // version of this test assumed 0dB meant "as loud as it goes" and got -18.
+        await Encode("sine=frequency=440:duration=1", "volume=18dB", loud);
+        await Encode("sine=frequency=440:duration=1", "volume=-20dB", quiet);
+
+        var squashed = await new MediaLook().QualityAsync(loud);
+        var ordinary = await new MediaLook().QualityAsync(quiet);
+
+        Assert.True(squashed.Ok, squashed.Problem);
+        Assert.True(squashed.Clipped, $"peak was {squashed.Peak}");
+        Assert.False(ordinary.Clipped, $"peak was {ordinary.Peak}");
+        Assert.True(ordinary.Loudness < squashed.Loudness);
+    }
+
+    /// <summary>
+    /// "Hi-res" is anybody's definition and this is the usual one: better than a CD in how
+    /// often it was sampled or how finely. Read from the encoder's own line rather than the
+    /// file extension, because a .flac can hold anything.
+    /// </summary>
+    [Fact]
+    public async Task Better_than_a_cd_is_read_off_the_file_rather_than_its_name()
+    {
+        if (!EncoderHere)
+        {
+            return;
+        }
+
+        Directory.CreateDirectory(_folder);
+
+        var cd = Path.Combine(_folder, "cd.wav");
+        var better = Path.Combine(_folder, "better.flac");
+
+        await Encode("sine=frequency=440:duration=1", "aresample=44100", cd, "-c:a", "pcm_s16le");
+        await Encode("sine=frequency=440:duration=1", "aresample=96000", better, "-c:a", "flac", "-sample_fmt", "s32");
+
+        Assert.False((await new MediaLook().QualityAsync(cd)).BetterThanCd);
+
+        var hires = await new MediaLook().QualityAsync(better);
+
+        Assert.True(hires.BetterThanCd, $"{hires.SampleRate}Hz at {hires.Bits} bits");
+        Assert.Equal(96000, hires.SampleRate);
+    }
+
+    [Fact]
+    public async Task A_file_that_is_not_there_cannot_be_measured()
+        => Assert.False((await new MediaLook().QualityAsync(Path.Combine(_folder, "nothing.wav"))).Ok);
+
+    private static async Task Encode(string source, string filter, string path, params string[] extra)
+    {
+        var run = new System.Diagnostics.ProcessStartInfo(FfmpegMediaExport.Find())
+        {
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+
+        foreach (var argument in new[] { "-y", "-f", "lavfi", "-i", source, "-af", filter })
+        {
+            run.ArgumentList.Add(argument);
+        }
+
+        foreach (var argument in extra)
+        {
+            run.ArgumentList.Add(argument);
+        }
+
+        run.ArgumentList.Add(path);
+
+        var made = System.Diagnostics.Process.Start(run)!;
+        await made.WaitForExitAsync();
+    }
 }

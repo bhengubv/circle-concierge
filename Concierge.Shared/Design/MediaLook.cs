@@ -21,6 +21,20 @@ public sealed record MediaFacts(bool Ok, double Seconds, string Description, str
 public sealed record MediaTags(
     bool Ok, string Title, string Artist, string Album, string Genre, int Year);
 
+/// <summary>How loud a file is, how finely it was recorded, and whether it was squashed.</summary>
+/// <param name="Ok">Whether anything could be measured.</param>
+/// <param name="Seconds">How long it runs.</param>
+/// <param name="Loudness">Average loudness in decibels, which is a negative number.</param>
+/// <param name="Peak">The loudest moment, in decibels. Nought is the ceiling.</param>
+/// <param name="SampleRate">How often it was sampled, in hertz.</param>
+/// <param name="Bits">How finely each sample was recorded, when the encoder says.</param>
+/// <param name="BetterThanCd">Sampled more often or more finely than a CD.</param>
+/// <param name="Clipped">Its peak is at the ceiling, so it has been squashed flat.</param>
+/// <param name="Problem">Why nothing could be measured, when nothing could.</param>
+public sealed record AudioQuality(
+    bool Ok, double Seconds, double Loudness, double Peak,
+    int SampleRate, int Bits, bool BetterThanCd, bool Clipped, string? Problem);
+
 /// <summary>
 /// Letting a model look inside a media file.
 ///
@@ -309,6 +323,121 @@ public sealed class MediaLook
         }
 
         return (false, 0, "That file has no sound in it to measure.");
+    }
+
+    /// <summary>
+    /// How loud it is, how good it is, and whether it is clipped.
+    ///
+    /// Antra ships an audio analyser and prefers high-quality files. The preferring half is
+    /// about choosing between downloads from services nobody here has an account for; the
+    /// noticing half is a property of a file on the disk and needs nothing but the encoder.
+    ///
+    /// **Clipping is the one worth having.** A track whose peak sits at 0dB has been squashed
+    /// flat somewhere in its history, and it is the commonest thing wrong with a file that
+    /// otherwise looks perfect — the right length, the right tags, the right size.
+    /// </summary>
+    public async Task<AudioQuality> QualityAsync(string path, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+
+        if (!File.Exists(path))
+        {
+            return new AudioQuality(false, 0, 0, 0, 0, 0, false, false, $"There is no file at {path}.");
+        }
+
+        var (_, said) = await RunAsync(
+            ["-hide_banner", "-i", path, "-af", "volumedetect", "-f", "null", "-"],
+            cancellationToken).ConfigureAwait(false);
+
+        var mean = After(said, "mean_volume:");
+        var peak = After(said, "max_volume:");
+
+        var rate = 0;
+        var bits = 0;
+        var channels = 0;
+
+        foreach (var line in said.Split('\n'))
+        {
+            if (!line.Contains("Audio:", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            // "Stream #0:0: Audio: flac, 96000 Hz, stereo, s32 (24 bit)". Read from the
+            // encoder's own line rather than from the file extension: a .flac can hold
+            // anything, and the extension is what somebody renamed it to.
+            foreach (var part in line.Split(','))
+            {
+                var bit = part.Trim();
+
+                if (bit.EndsWith(" Hz", StringComparison.Ordinal)
+                    && int.TryParse(bit[..^3].Trim(), out var hz))
+                {
+                    rate = hz;
+                }
+
+                channels = bit switch
+                {
+                    "mono" => 1,
+                    "stereo" => 2,
+                    _ => channels,
+                };
+
+                var deep = bit.IndexOf(" bit)", StringComparison.Ordinal);
+
+                if (deep > 0)
+                {
+                    var open = bit.LastIndexOf('(', deep);
+
+                    if (open >= 0 && int.TryParse(bit[(open + 1)..deep].Trim(), out var depth))
+                    {
+                        bits = depth;
+                    }
+                }
+            }
+
+            break;
+        }
+
+        if (rate == 0 && mean == 0 && peak == 0)
+        {
+            return new AudioQuality(false, 0, 0, 0, 0, 0, false, false, "Nothing in that file could be measured.");
+        }
+
+        var facts = await FactsAsync(path, cancellationToken).ConfigureAwait(false);
+
+        // "Hi-res" is anybody's definition, and this is the usual one: better than a CD in
+        // either how often it was sampled or how finely. Stated rather than implied so nobody
+        // has to guess what the word meant here.
+        var better = rate > 44_100 || bits > 16;
+
+        // Within a tenth of a decibel of the ceiling. Not "at 0" exactly: a peak of -0.04 is
+        // the same event, and asking for exactly zero finds almost none of them.
+        var clipped = peak >= -0.1 && peak != 0;
+
+        return new AudioQuality(true, facts.Seconds, mean, peak, rate, bits, better, clipped, null);
+    }
+
+    private static double After(string said, string label)
+    {
+        foreach (var line in said.Split('\n'))
+        {
+            var at = line.IndexOf(label, StringComparison.Ordinal);
+
+            if (at < 0)
+            {
+                continue;
+            }
+
+            var rest = line[(at + label.Length)..].Replace("dB", string.Empty, StringComparison.Ordinal);
+
+            if (double.TryParse(rest.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
+            {
+                return value;
+            }
+        }
+
+        return 0;
     }
 
     /// <summary>

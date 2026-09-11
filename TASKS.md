@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **147 boxes ticked, 16 open, eight
+`main`. What replaces it is the working list: **147 boxes ticked, 14 open, ten
 partial**, ordered so the next person can pick one up.
 
 **Thirty-six of those forty arrived at once**, on 2026-09-11, when the six
@@ -1361,7 +1361,15 @@ lyrics, and one approval-gated fetch from a link. Antra is a library.
 - [ ] Pull from the seven music services it supports
 - [ ] Match the exact recording rather than the right title
 - [ ] Choose between clean and explicit versions
-- [ ] Notice high-quality audio and prefer it
+- [~] Notice high-quality audio and prefer it — **the noticing is done; the preferring is
+      about services nobody here has an account for.** `music_quality` measures a file: how
+      long, how loud, the loudest moment, how often and how finely it was sampled, whether it
+      is better than a CD, and **whether it has been squashed flat**. Clipping is the one
+      worth having — a track whose peak sits at the ceiling has been squashed somewhere in
+      its history, and it is the commonest thing wrong with a file that otherwise looks
+      perfect. What "better than a CD" means is stated rather than implied, and it is read
+      from the encoder's own line rather than the file extension, because a .flac can hold
+      anything.
 - [x] File everything into artist and album folders — `music_filing` says where every track
       belongs and moves nothing; `music_file` moves them, and asks first with the count and
       the destination on the card. **Nothing is ever overwritten**: a name already taken gets
@@ -1383,7 +1391,9 @@ lyrics, and one approval-gated fetch from a link. Antra is a library.
       music. 19 tests, the moving ones against real files the encoder made.
 - [ ] Download an artist's whole catalogue
 - [ ] Downloads on a schedule
-- [ ] An audio analyser, podcasts, and peer-to-peer
+- [~] An audio analyser, podcasts, and peer-to-peer — **the analyser is done**
+      (`music_quality`, above). Podcasts and peer-to-peer are not started, and neither is
+      blocked by anything except nobody having asked for them yet.
 
 #### AniGen — research
 

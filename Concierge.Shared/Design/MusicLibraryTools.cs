@@ -35,6 +35,7 @@ public sealed class MusicLibraryToolSource : IAgentToolSource
             ? []
             : [
                 new WhatIsTwiceOver(_library),
+                new HowGoodIsIt(),
                 new WhereItAllBelongs(_library),
                 .. _approval is null ? Array.Empty<IAgentTool>() : [new PutItThere(_library, _approval)],
             ];
@@ -97,6 +98,84 @@ public sealed class MusicLibraryToolSource : IAgentToolSource
                 $"{same.Count} recordings are in there more than once, largest copy first. "
                 + $"Nothing has been removed.{Environment.NewLine}"
                 + string.Join(Environment.NewLine, lines));
+        }
+    }
+
+    /// <summary>
+    /// How loud a file is, how finely it was recorded, and whether it has been squashed flat.
+    ///
+    /// Antra ships an audio analyser and prefers high-quality files. **The preferring half is
+    /// about choosing between downloads from services nobody here has an account for; the
+    /// noticing half is a property of a file on the disk** and needs nothing but the encoder.
+    ///
+    /// Clipping is the one worth having: a track whose peak sits at the ceiling has been
+    /// squashed somewhere in its history, and it is the commonest thing wrong with a file
+    /// that otherwise looks perfect — right length, right tags, right size.
+    /// </summary>
+    private sealed class HowGoodIsIt : IAgentTool
+    {
+        public string Name => "music_quality";
+
+        public string Description =>
+            "Measure an audio file: how long, how loud, how finely it was recorded, whether "
+            + "it is better than a CD, and whether it has been squashed flat.";
+
+        public JsonNode? ArgumentsSchema => new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject
+            {
+                ["path"] = new JsonObject { ["type"] = "string", ["description"] = "The file." },
+            },
+            ["required"] = new JsonArray("path"),
+        };
+
+        public bool IsReadOnly => true;
+
+        public async Task<AgentToolResult> InvokeAsync(
+            JsonNode? arguments, CancellationToken cancellationToken = default)
+        {
+            var path = Folder(arguments, "path");
+
+            if (path.Length == 0)
+            {
+                return new AgentToolResult(false, string.Empty, "Give the path of the file.");
+            }
+
+            var quality = await new MediaLook().QualityAsync(path, cancellationToken).ConfigureAwait(false);
+
+            if (!quality.Ok)
+            {
+                return new AgentToolResult(false, string.Empty, quality.Problem ?? "It could not be measured.");
+            }
+
+            var said = new List<string>
+            {
+                $"{Math.Round(quality.Seconds, 1)} seconds.",
+                $"Average loudness {Math.Round(quality.Loudness, 1)}dB, loudest moment "
+                + $"{Math.Round(quality.Peak, 1)}dB.",
+            };
+
+            if (quality.SampleRate > 0)
+            {
+                said.Add(quality.Bits > 0
+                    ? $"Sampled {quality.SampleRate}Hz at {quality.Bits} bits."
+                    : $"Sampled {quality.SampleRate}Hz.");
+            }
+
+            // Stated rather than implied, because "hi-res" is anybody's definition and this
+            // is the usual one.
+            said.Add(quality.BetterThanCd
+                ? "Better than a CD — sampled more often or more finely."
+                : "CD quality or below.");
+
+            if (quality.Clipped)
+            {
+                said.Add("**It is clipped** — the loudest moment is at the ceiling, so it has "
+                         + "been squashed. Nothing here can undo that; a different copy can.");
+            }
+
+            return new AgentToolResult(true, string.Join(Environment.NewLine, said));
         }
     }
 
