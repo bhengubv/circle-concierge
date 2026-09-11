@@ -118,6 +118,18 @@ public sealed class ConciergeStateService : IConciergeStateService
         return GetSnapshot().Diagnostics;
     }
 
+    /// <summary>
+    /// One piece of work, in its place in the order.
+    ///
+    /// **The status is a literal and is not shown anywhere any more.** Every task here was
+    /// born `Ready`, and the Roadmap room printed that beside all fifteen — telling anybody
+    /// who opened it that the hardening work was finished, on a day three platforms were
+    /// unconfined. A status nobody derives is the approvals badge that always said two.
+    ///
+    /// Left on the record rather than removed from the type, because `ProductionTask` is a
+    /// shape other things read, and deleting a field to hide a lie is not the same as not
+    /// telling it. Whoever gives these a real status can start here.
+    /// </summary>
     private static ProductionTask Task(int priority, string title, string summary)
     {
         return new ProductionTask(priority, title, HardeningStatus.Ready, summary);

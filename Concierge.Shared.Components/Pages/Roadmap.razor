@@ -24,7 +24,8 @@
 
     <p class="room-lede">
         What is being worked on and in what order. No dates — the order is the
-        commitment, and a date nobody can keep is worse than none.
+        commitment, and a date nobody can keep is worse than none. This is the
+        order, not a progress board: nothing here claims to be finished.
     </p>
 
     <div class="room-body">
@@ -41,10 +42,19 @@
                             @task.Priority. @task.Title
                             <span class="row-sub">@task.Summary</span>
                         </span>
-                        <span class="state">
-                            <span class="dot @Rooms.Dot(task.Status)" aria-hidden="true"></span>
-                            @Rooms.Word(task.Status)
-                        </span>
+                        @*
+                            No status here, and that is the fix rather than the omission.
+                            Every one of these fifteen was born `HardeningStatus.Ready` in
+                            `ConciergeStateService.Task(...)` — a literal, not a measurement —
+                            so the screen that exists to say where things stand told anybody
+                            who opened it that all of the hardening work was done. "File
+                            sandbox hardening" said Ready on a day macOS, Android and iOS are
+                            unconfined and Windows has no route to cap what a command writes.
+
+                            It is the approvals badge that always said two, in the room where
+                            it costs the most. A list of work in order does not need a status
+                            beside it; a status nobody derives is worse than none.
+                        *@
                     </div>
                 }
             </div>

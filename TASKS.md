@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **162 boxes ticked, 5 open, fourteen
+`main`. What replaces it is the working list: **164 boxes ticked, 5 open, fourteen
 partial**, ordered so the next person can pick one up.
 
 **Thirty-six of those forty arrived at once**, on 2026-09-11, when the six
@@ -1698,7 +1698,7 @@ commit it was last actually checked at, because "all four hold as of `<ref>`"
 was one date covering four checks made at different times — and it had drifted
 two commits behind `HEAD` before anyone noticed.
 
-- [x] **1923 tests pass, and the suite is deterministic.** It was not: four
+- [x] **1928 tests pass, and the suite is deterministic.** It was not: four
       consecutive runs each failed *one different test*, which meant it could not
       tell a regression from noise — the same defect as a screen asserting
       something untrue, sitting on the check everything else is measured by.
@@ -1901,6 +1901,29 @@ two commits behind `HEAD` before anyone noticed.
       line in the room's script, and failed the moment that line was rewritten while keeping
       its meaning exactly. **A test that fails when the wording changes and passes when the
       behaviour changes is the wrong way round**; it asserts the rule now.
+- [x] **The Roadmap stopped telling everybody the work was finished.** Fifteen pieces of
+      hardening work, every one marked **Ready**, because `ConciergeStateService.Task(...)`
+      writes `HardeningStatus.Ready` into every one of them as a literal. Not derived from
+      anything. It said *"File sandbox hardening — Ready"* on a day macOS, Android and iOS
+      are unconfined and Windows has no route to cap what a command writes.
+
+      **This is the approvals badge that always said two, in the room where it costs the
+      most** — the one screen whose whole job is saying where things stand. The status is off
+      the rows; the order stays, and the page says plainly that it is an order rather than a
+      progress board.
+
+      Where a status is *measured* it is untouched: source control asks the machine whether
+      there is a repository and answers Blocked when there is not, and a test now pins that
+      too so nobody reads this as "statuses are bad".
+
+      And a smaller one caught in the same look: the sentence explaining it was written with
+      asterisks round the important half, and the screen printed the asterisks. A room is
+      Razor, not a README. 5 tests.
+- [x] Pointing at a thing on the canvas names it — "This title", with a way to let go — and
+      stepping back through the strip returns the canvas to that moment. Both looked at on
+      the running app. Settings, the skills picker (switching one on and off, with the chip
+      under the composer and the sidebar count), History, Product and Business APIs all check
+      out.
 - [x] `[skip ci]` in the HEAD commit before any push — a rule, not a check
 - [x] The app actually starts. Added after a Razor comment inside an element's
       attribute list compiled, passed 1141 tests, and threw on every render in
