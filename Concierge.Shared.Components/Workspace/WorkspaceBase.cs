@@ -1478,9 +1478,24 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         // attached. Drained, not read: a picture rides on exactly one turn, and a
         // screenshot from ten minutes ago silently attached to an unrelated
         // question is worse than no screenshot at all.
-        foreach (var captured in Captured.TakeAll())
+        var caught = Captured.TakeAll();
+
+        // Drained either way, and only carried to something that can look. A model that
+        // cannot see is told a picture was taken rather than handed one it ignores — the
+        // filmstrip a tool just produced would otherwise be reported as looked at by a model
+        // that never saw it, which is this repository's signature defect on the one surface
+        // whose whole job is showing what happened.
+        if (caught.Count > 0
+            && _activeRuntime is IVisionCapableRuntime { SupportedImageMediaTypes.Count: > 0 })
         {
-            _pendingImages.Add(captured);
+            _pendingImages.AddRange(caught);
+        }
+        else if (caught.Count > 0)
+        {
+            turns.Add(new ChatTurn(
+                "user",
+                $"[{string.Join(", ", caught.Select(picture => picture.FileName))} was produced, "
+                + $"but {_activeRuntime?.EngineLabel ?? "this model"} cannot look at pictures.]"));
         }
 
         if (_pendingImages.Count > 0)

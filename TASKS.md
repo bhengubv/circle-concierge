@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **139 boxes ticked, 27 open, five
+`main`. What replaces it is the working list: **140 boxes ticked, 26 open, five
 partial**, ordered so the next person can pick one up.
 
 **Thirty-six of those forty arrived at once**, on 2026-09-11, when the six
@@ -1279,7 +1279,13 @@ own comment says so. Diffusion Studio edits video.
       **The model files are not here and nobody is pretending otherwise.** That is one of the
       four things named as missing at the top of this section. 26 tests, none of which need a
       model, because what they check is that the absence is honest.
-- [ ] Watch footage and answer questions about it
+- [x] Watch footage and answer questions about it. Every piece existed separately and
+      the join was missing: `media_frames` hands a strip to `CapturedImages`, a turn can
+      carry pictures, and the runtimes can look at them. A strip a tool produced now
+      reaches a model that can see, rides exactly one turn, and — the half that matters
+      more — **a model that cannot see is told a picture was produced rather than handed
+      one it will ignore and then be asked about.** That case was silent before. 3 tests,
+      driven through the real workspace rather than around it.
 
 The inspection half of this is **done** — `media_facts`, `media_is_silent` and
 `media_frames`, in item 14. That was the piece that cost little and closed a real
