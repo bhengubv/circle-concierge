@@ -98,6 +98,8 @@ public static class MauiProgram
 			.AddConciergeCodingTools()
 			.AddConciergeMusicLibrary()
 			.AddConciergeStockFootage()
+			.AddConciergeImageTools()
+			.AddConciergeMusicCatalogue()
 			.AddMauiDeviceCapabilities()
 			// AddConciergeAi() registers ILlmRuntimeService and the in-process
 			// chat runtime; AddConciergeAiIsolated() then replaces the chat
@@ -150,6 +152,13 @@ public static class MauiProgram
 		// Work that runs end to end, keeping its place on disk so an interrupted run
 		// carries on rather than starting again.
 		builder.Services.AddConciergeRoutines(Path.Combine(FileSystem.AppDataDirectory, "state"));
+
+		// Podcasts, which need no account at all: a feed is published for anybody to read.
+		builder.Services.AddConciergePodcasts(Path.Combine(FileSystem.AppDataDirectory, "state"));
+
+		// Looking after a library on a schedule. Off until somebody turns it on, and it
+		// only ever looks — a scheduled task runs with nobody there to ask.
+		builder.Services.AddConciergeUpkeep(Path.Combine(FileSystem.AppDataDirectory, "state"));
 
 		// BYO API-key cloud runtimes + cloud design adapters. The factories read from MAUI's
 		// IConfiguration when present (env vars / appsettings.json bundled as MauiAsset);

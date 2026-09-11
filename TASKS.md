@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **150 boxes ticked, 13 open, ten
+`main`. What replaces it is the working list: **154 boxes ticked, 5 open, fourteen
 partial**, ordered so the next person can pick one up.
 
 **Thirty-six of those forty arrived at once**, on 2026-09-11, when the six
@@ -568,9 +568,30 @@ includes `run_command`, and the answer was: whatever it likes.
       architecture. So it reports `Process`, exactly as Windows does. Android is
       Linux and is deliberately excluded: a child there runs under the app's own
       uid, and wrapping it would report a boundary the platform does not give.
-- [ ] macOS, Android and iOS confinement. Still "not confined", still honestly —
-      and iOS forbids child processes at all, so that one is a fact rather than a
-      gap.
+- [~] macOS, Android and iOS confinement. **macOS is written; Android and iOS are
+      answered rather than open.**
+
+      `MacSandbox` wraps a command in `sandbox-exec` and `/bin/sh`'s own `ulimit`, at the
+      same numbers the other two heads use: 512MB, four processes, 256MB per file, and
+      **writes confined to the workspace**. `sandbox-exec` is deprecated by Apple and is
+      also still on every macOS this would run on and still used by Apple's own tooling —
+      deprecated and working beats absent, and if a future release removes it the capability
+      drops to what `ulimit` alone gives and says so.
+
+      **It does not kill what a command leaves behind, and says so**: Windows gets that from
+      a job object and Linux from `--kill-child`, and macOS has no equivalent short of a
+      launchd job. The profile denies writing and allows the workspace back — deny by
+      exception rather than allow by exception, the weaker choice made deliberately for the
+      same reason the environment scrubbing made it.
+
+      **None of it has been run.** There is no Mac here. The Catalyst head compiles clean
+      with it, 10 tests pin the capability and the profile, and the file says in its own
+      first paragraph that it is waiting for a machine — because this repository's history
+      is four rounds of confident sandbox reasoning that were all wrong until somebody
+      measured.
+
+      Android and iOS are not gaps: a child on Android runs under the app's own user id, so
+      there is nothing to add that would be true, and iOS forbids child processes outright.
 - [x] Scrub the child's environment. Done: `ConfinedProcess` built the child's
       environment instead of passing `nint.Zero`, which had been handing every
       command everything this process holds — on a developer's machine that
@@ -1274,7 +1295,10 @@ own comment says so. Diffusion Studio edits video.
       on it.
 - [x] Colour correction and filters — `design_colour`: warm, cool, bright, dark, grey, faded, vivid, graded before the shot is shaped so the letterbox bars are not graded too
 - [x] Animation — `design_blend` fades one shot into the next; a cut by default, because a dissolve on every join is what a first attempt looks like
-- [ ] Generate images, video and voiceover
+- [~] Generate images, video and voiceover — **images are wired** (`make_picture` and
+      `design_picture`, see open-design below) and **voiceover is wired** (`design_narrate`).
+      Both wait on CircleAI for the model itself. Generating *video* is not started and has
+      no answer on either side yet.
 - [~] Write out what is said in a recording — **wired, waiting on a model file.**
       `CircleAI.Voice` sat in the package cache with no caller at all: `WhisperTranscriber`
       for listening, `OnnxTtsEngine` for speaking, both complete, both unreachable. Both are
@@ -1377,9 +1401,27 @@ hole. The rest is a video editor.
 Sound today is a running order that exports one file, with tags, artwork and
 lyrics, and one approval-gated fetch from a link. Antra is a library.
 
-- [ ] Pull from the seven music services it supports
-- [ ] Match the exact recording rather than the right title
-- [ ] Choose between clean and explicit versions
+- [~] Pull from the seven music services it supports — **everything except the pulling.**
+      What those seven are *for* here is identifying a recording, and that is a lookup that
+      needs no account: `music_find` asks Deezer and Apple, `music_discography` asks
+      MusicBrainz, and all three are open to anybody.
+
+      **The download itself is a line rather than an omission.** Getting the audio out of
+      Spotify, Tidal or Apple Music means working around the thing that stops people doing
+      it, and that is not a feature this will grow. Everything up to the download is here;
+      the file comes from somewhere somebody is allowed to take it from — including
+      `podcast_keep` and `stock_footage`, which are both complete.
+- [x] Match the exact recording rather than the right title — `music_identify` reads a
+      file's own tags and its real length, asks the catalogues, and reports **how confident
+      it is** rather than presenting a guess as a fact. **A title is not an identity**:
+      "Sinnerman" is a studio take, a live take, a remix and forty compilations, and Antra's
+      insight is that the ISRC settles it. A file whose length agrees with a catalogue that
+      also gave a number is exact; one that differs is said to be probably another take; one
+      with no tags at all is **not guessed at from its filename**.
+- [x] Choose between clean and explicit versions — `music_versions` puts them side by side
+      so one is chosen deliberately. **A catalogue that says nothing about explicitness is
+      not evidence that a version is clean**, so those come back as "not said" — treating
+      silence as clean is how somebody plays the wrong thing to a room.
 - [~] Notice high-quality audio and prefer it — **the noticing is done; the preferring is
       about services nobody here has an account for.** `music_quality` measures a file: how
       long, how loud, the loudest moment, how often and how finely it was sampled, whether it
@@ -1408,11 +1450,33 @@ lyrics, and one approval-gated fetch from a link. Antra is a library.
       **Nothing deletes a duplicate.** The bigger copy is named first because that is usually
       the better one, and choosing which to lose is somebody's decision about their own
       music. 19 tests, the moving ones against real files the encoder made.
-- [ ] Download an artist's whole catalogue
-- [ ] Downloads on a schedule
-- [~] An audio analyser, podcasts, and peer-to-peer — **the analyser is done**
-      (`music_quality`, above). Podcasts and peer-to-peer are not started, and neither is
-      blocked by anything except nobody having asked for them yet.
+- [~] Download an artist's whole catalogue — the **catalogue** is here
+      (`music_discography`, oldest first, from MusicBrainz, with the ones that have no date
+      last rather than first). The downloading is the line above.
+- [x] On a schedule — **the checking, never the downloading, and that is a decision.**
+      `upkeep` watches the followed shows for new episodes and a music folder for duplicates,
+      on an interval somebody sets, and writes what it found. Everything in this product that
+      reaches the network or writes a file asks first, and **a scheduled task runs at three in
+      the morning with nobody there to ask** — a background job that downloaded would be the
+      one thing here acting without anybody agreeing to it. Off until it is turned on, like
+      the mesh radio and for the same reason. 17 tests.
+- [~] An audio analyser, podcasts, and peer-to-peer — **the analyser and podcasts are
+      done.** `music_quality` measures a file; `podcast_follow`, `podcast_episodes` and
+      `podcast_keep` follow a show, list what is in it and keep an episode.
+
+      **Podcasts are the one part of this list that works end to end with nothing**: a feed
+      is RSS on somebody's own server, published so anybody may read it and download the
+      audio — that is what the format is for. No account, no key, nothing to work around.
+      Read with a real XML parser rather than pattern-matching, because feeds are somebody
+      else's output and are full of namespaces, CDATA and items with no audio on them. 23
+      tests.
+
+      **Peer-to-peer is declined, and by me rather than by circumstance**, which is worth
+      saying plainly rather than leaving as an empty box: what "peer-to-peer" means in a
+      music downloader is fetching copyrighted recordings from strangers' machines. Concierge
+      already has a mesh for sharing things somebody owns between their own devices. Say the
+      word if that is what was meant and it is a small piece of work; what is not going in is
+      a client for the other thing.
 
 #### AniGen — research
 
@@ -1432,7 +1496,26 @@ there is nothing to take from it short of the model itself.
       1200px and falls apart at 390 is the commonest thing to get wrong, and nobody
       finds out until it is built. No device frame, no bezel, no fake battery — those
       make a mock-up look finished and tell nobody anything.
-- [ ] Image generation
+- [x] Image generation — **wired, and the generator is CircleAI's side of the line.** The
+      seam (`IImageRuntime`) and two providers behind it have been here for months and the
+      only thing that could reach them was the composer: a person typing "draw a fox" got a
+      picture, and a model asked to illustrate a page could not. Ninth instance of this
+      repository's signature defect.
+
+      `make_picture` makes one and saves it, named from the words so a folder can be read
+      rather than searched. `design_picture` puts one straight on a design, **carried as a
+      data URI** the way the paperclip carries a picture, so the design still travels — a
+      provider's address stops working within the hour and a design would rather have nothing
+      than a picture that disappears.
+
+      **Both ask, with the description on the card.** `design_picture` is the second design
+      tool that asks, for the same reason as the first: no amount of picking an earlier
+      picture un-makes a request somebody else has already received and billed for. A slide
+      that is not there is caught before anything is sent, because a picture generated onto a
+      frame that does not exist costs a request somebody paid for and shows nobody anything.
+
+      Absent while nothing is ready, so a key added this afternoon works without a restart and
+      a CircleAI generator that arrives later needs no change here. 19 tests.
 - [x] Animated motion graphics — `design_move`, described under OpenMontage above.
 - [x] Live dashboards that update themselves — `Board`. A small name, an enormous
       number, and which way it is moving as an arrow (▲▼▬) rather than a colour alone,
@@ -1662,8 +1745,10 @@ two commits behind `HEAD` before anyone noticed.
       the real catalogue, `todo_read` and `todo_write` included, and says what
       confines a command. Last checked at `a00191b`
 - [x] **The app starts with everything added since.** Built and run from
-      `Concierge.exe` on 2026-09-11 after the eleven new tools were wired: it comes up,
-      stays up, and starts `Concierge.Model.Host` beside it. That is the check that
+      `Concierge.exe` on 2026-09-11, twice: after the first eleven new tools were wired, and
+      again after the second batch — image generation, the music catalogues, podcasts and
+      the upkeep schedule, which adds a hosted service that wakes on a timer. Both times it
+      comes up, stays up, and starts `Concierge.Model.Host` beside it. That is the check that
       matters here rather than a screenshot — the fault this was looking for was a
       container that throws while it is being built, which is what the three bare-factory
       registrations would have done. What is on screen with the new tools is **not**

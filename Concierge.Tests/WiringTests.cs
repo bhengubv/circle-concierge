@@ -3,6 +3,7 @@ using Concierge.Shared;
 using Concierge.Shared.Chat;
 using Concierge.Shared.Context;
 using Concierge.Shared.Design;
+using Concierge.Shared.Media;
 using Concierge.Shared.Diagnostics;
 using Concierge.Shared.Jobs;
 using Concierge.Shared.Planning;
@@ -317,6 +318,10 @@ public sealed class ContainerResolutionTests : IDisposable
             .AddConciergeCodingTools()
             .AddConciergeMusicLibrary()
             .AddConciergeStockFootage()
+            .AddConciergeImageTools()
+            .AddConciergeMusicCatalogue()
+            .AddConciergePodcasts(_dataRoot)
+            .AddConciergeUpkeep(_dataRoot)
             .AddConciergeRoutines(_dataRoot)
             .BuildServiceProvider();
 }

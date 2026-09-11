@@ -89,6 +89,20 @@ public sealed class WatchFootageTests : BunitContext
         cut.Find("button.icon-btn-send").Click();
     }
 
+    /// <summary>
+    /// Waiting with room to spare.
+    ///
+    /// bUnit's default wait is a second, which is plenty on its own and not always plenty
+    /// inside the full suite — a turn has to reach the store, the runtime and back while
+    /// everything else in the run is competing for the machine. The third test here passed
+    /// alone and failed in the suite exactly once, which is the shape this repository has
+    /// recorded four times: **an assertion racing a render is a flake, and the fix is to wait
+    /// for the thing rather than to hope.**
+    /// </summary>
+    private static void Eventually(
+        IRenderedComponent<Concierge.Shared.Components.Workspace.Desktop.Workspace> cut, Action assertion)
+        => cut.WaitForAssertion(assertion, TimeSpan.FromSeconds(10));
+
     [Fact]
     public void A_strip_a_tool_produced_reaches_a_model_that_can_look_at_it()
     {
@@ -101,7 +115,7 @@ public sealed class WatchFootageTests : BunitContext
         // Asserted through WaitForAssertion rather than on the line after the click:
         // Blazor re-renders after the event and a loaded machine gets there second. Three
         // tests in this suite were flaky for exactly that.
-        cut.WaitForAssertion(() =>
+        Eventually(cut, () =>
         {
             var carried = model.Saw.LastOrDefault(turn => turn.Images is { Count: > 0 });
 
@@ -123,7 +137,7 @@ public sealed class WatchFootageTests : BunitContext
         AFilmstrip();
         Ask(cut, "What happens in the second shot?");
 
-        cut.WaitForAssertion(() =>
+        Eventually(cut, () =>
         {
             Assert.NotEmpty(model.Saw);
             Assert.DoesNotContain(model.Saw, turn => turn.Images is { Count: > 0 });
@@ -148,11 +162,11 @@ public sealed class WatchFootageTests : BunitContext
         AFilmstrip();
         Ask(cut, "What happens in the second shot?");
 
-        cut.WaitForAssertion(() => Assert.Contains(model.Saw, turn => turn.Images is { Count: > 0 }));
+        Eventually(cut, () => Assert.Contains(model.Saw, turn => turn.Images is { Count: > 0 }));
 
         Ask(cut, "And what about the music?");
 
-        cut.WaitForAssertion(() =>
+        Eventually(cut, () =>
         {
             Assert.Contains(model.Saw, turn => turn.Content.Contains("the music", StringComparison.Ordinal));
             Assert.DoesNotContain(model.Saw, turn => turn.Images is { Count: > 0 });

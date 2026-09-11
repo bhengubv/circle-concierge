@@ -61,6 +61,8 @@ builder.Services
     .AddConciergeCodingTools()
     .AddConciergeMusicLibrary()
     .AddConciergeStockFootage()
+    .AddConciergeImageTools()
+    .AddConciergeMusicCatalogue()
     // Parental controls / content-filter pipeline. Wraps the IChatRuntime
     // registered above so every chat call routes through the filter when
     // Family Mode is on. Off-mode is a zero-cost pass-through.
@@ -75,6 +77,14 @@ builder.Services.AddConciergeState(
     Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Concierge", "web"));
 // Work that runs end to end, keeping its place on disk.
 builder.Services.AddConciergeRoutines(
+    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Concierge", "web"));
+
+// Podcasts, which need no account at all.
+builder.Services.AddConciergePodcasts(
+    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Concierge", "web"));
+
+// Looking after a library on a schedule. Off until somebody turns it on.
+builder.Services.AddConciergeUpkeep(
     Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Concierge", "web"));
 builder.Services.AddConciergeCodeMode(AppContext.BaseDirectory);
 builder.Services.AddSingleton<PrometheusMetricSnapshot>();
