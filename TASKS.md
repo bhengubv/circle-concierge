@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **140 boxes ticked, 26 open, five
+`main`. What replaces it is the working list: **140 boxes ticked, 23 open, eight
 partial**, ordered so the next person can pick one up.
 
 **Thirty-six of those forty arrived at once**, on 2026-09-11, when the six
@@ -1254,8 +1254,24 @@ Motion today is shots held for a length, exported as a slideshow of cards. Its
 own comment says so. Diffusion Studio edits video.
 
 - [x] Cut and join real video clips — `design_add_footage`, `design_cut`, and an export that normalises every shot then joins by copying
-- [ ] Strip out "um" and "er"
-- [ ] Subtitles timed to each word
+- [~] Strip out "um" and "er" — **same blocker, and it is the timings rather than the
+      words.** Finding a filler word in a transcript is easy; cutting it needs to know
+      where it is in the file, and the package hands back no timings at all. `design_cut`
+      can already cut to a start and a length, so the cutting half is done and waiting on
+      something that can say where.
+- [~] Subtitles timed to each word — **blocked in the package, measured rather than
+      assumed.** `CircleAI.Voice` 1.2.0's `TranscriptionResult` carries the text, a
+      confidence and a language code, and nothing about *when* anything was said.
+      Whisper itself has the timings — `whisper_full_get_segment_t0` / `_t1` — but
+      `WhisperInterop` is **internal**, checked by compiling against it rather than
+      guessed at: "'WhisperInterop' is inaccessible due to its protection level".
+
+      So the honest position is that this needs segment timings out of the package, and
+      the only way to have them today is to reimplement whisper's interop here — which
+      is duplicating a NuGet package's internals, the thing the mesh entry refuses for
+      the same reason. Spreading the words evenly across the running time would produce
+      subtitles that look right and drift, which is an invented metric with a timestamp
+      on it.
 - [x] Colour correction and filters — `design_colour`: warm, cool, bright, dark, grey, faded, vivid, graded before the shot is shaped so the letterbox bars are not graded too
 - [x] Animation — `design_blend` fades one shot into the next; a cut by default, because a dissolve on every join is what a first attempt looks like
 - [ ] Generate images, video and voiceover
@@ -1302,7 +1318,7 @@ hole. The rest is a video editor.
       silent track — a silent track looks exactly like one that worked.
 - [ ] Built-in free stock footage
 - [ ] A composition engine for motion graphics
-- [ ] Automatic captions
+- [~] Automatic captions — waits on the same timings as word-timed subtitles above.
 
 #### Antra — a music library
 
