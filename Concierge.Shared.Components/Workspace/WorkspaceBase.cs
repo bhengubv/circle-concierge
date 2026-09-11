@@ -962,6 +962,32 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     }
 
     /// <summary>
+    /// What to say under the canvas when a turn that went to the model has finished.
+    ///
+    /// The canvas shows the design and nothing else, so this line is the only place a reply
+    /// can appear. It is deliberately one line: a canvas is for looking at, and a paragraph
+    /// of prose under it would be a thread by another name. What matters is that the three
+    /// outcomes are told apart — it changed something, it said something, or it did neither.
+    /// </summary>
+    private string TheAnswerInAWord()
+    {
+        var said = _streamingBuffer.Trim();
+
+        if (said.Length > 0)
+        {
+            // Read with a StringReader rather than split on a newline character: the
+            // reader handles both line endings and needs no escape to say so.
+            var firstLine = new StringReader(said).ReadLine()?.Trim() ?? said;
+
+            return firstLine.Length > 160 ? firstLine[..160] + "…" : firstLine;
+        }
+
+        // Nothing came back. Said plainly rather than left as silence, because silence here
+        // is indistinguishable from the canvas having quietly done the thing.
+        return $"{_activeRuntime?.EngineLabel ?? "The model"} had no answer for that.";
+    }
+
+    /// <summary>
     /// Puts back whatever was on the canvas when it was last closed.
     ///
     /// Only the design comes back, not the thirty moments of history behind it —
@@ -1442,6 +1468,21 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
                 _active = await Store.GetAsync(_active.Id);
                 await RefreshSidebarAsync();
             }
+
+            // With the canvas open there is no thread on screen, so whatever the model said
+            // has nowhere to go. Found by typing "add a wall" into a room and watching
+            // nothing happen: the sentence is not in the canvas vocabulary, so it fell
+            // through to the model exactly as intended, the model answered with nothing at
+            // all, and the canvas showed no reply, no error, and not even that a turn had
+            // run. The thread behind it held "YOU: add a wall" and an empty Concierge turn.
+            //
+            // A surface whose whole promise is "say what you want and look" cannot be the one
+            // surface that cannot report failure.
+            if (_designOpen)
+            {
+                _composerHint = TheAnswerInAWord();
+            }
+
             _streaming = false;
             _streamingBuffer = string.Empty;
             _toolLoopIteration = 0;

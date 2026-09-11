@@ -292,7 +292,16 @@
             *@
             <h1 class="ws-title">@(_designOpen ? "Design" : _active?.Title ?? "Concierge")</h1>
             <span class="ws-top-meta">
-                @if (_designOpen)
+                @if (_designOpen && _streaming)
+                {
+                    @* A turn that fell through to the model ran with no sign of it at all:
+                       this line showed the last design moment, so the screen looked idle
+                       while something was happening. An ordinary sentence is still answered
+                       locally and never gets here. *@
+                    <span class="dot dot-waiting" aria-hidden="true"></span>
+                    <span>@(_toolLoopIteration > 0 ? $"working · step {_toolLoopIteration}" : "thinking")</span>
+                }
+                else if (_designOpen)
                 {
                     <span>@(_design!.Current.IsEmpty ? "an empty page" : _design.Moments[_design.Position].What.ToLowerInvariant())</span>
                 }
