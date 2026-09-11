@@ -57,6 +57,7 @@ builder.Services
     .AddConciergeDesignTools()
     // Looking inside a media file, where there is an encoder to look with.
     .AddConciergeMediaLook()
+    .AddConciergeTranscription()
     // Parental controls / content-filter pipeline. Wraps the IChatRuntime
     // registered above so every chat call routes through the filter when
     // Family Mode is on. Off-mode is a zero-cost pass-through.
@@ -125,6 +126,8 @@ builder.Services.AddConciergeFigmaDiagrams(sp => sp.GetRequiredService<IConfigur
 builder.Services.AddOpenAiImages(sp => sp.GetRequiredService<IConfiguration>().GetSection("OpenAIImages").Get<OpenAiImageOptions>() ?? new OpenAiImageOptions());
 builder.Services.AddStabilityImages(sp => sp.GetRequiredService<IConfiguration>().GetSection("Stability").Get<StabilityImageOptions>() ?? new StabilityImageOptions());
 builder.Services.AddOpenAiVoice(sp => sp.GetRequiredService<IConfiguration>().GetSection("OpenAIVoice").Get<OpenAiVoiceOptions>() ?? new OpenAiVoiceOptions());
+// Speech on the device, beside the cloud one.
+builder.Services.AddConciergeLocalVoice();
 builder.Services.AddConciergeMediaCloudDefaults();
 
 // Replace the NullDeviceContext registered by AddConciergeAi with the request-aware one.

@@ -35,4 +35,24 @@ public static class ConciergeAiServiceCollectionExtensions
 
         return services;
     }
+
+    /// <summary>
+    /// Registers speech on the device — whisper for listening, onnx for speaking — behind the
+    /// same <see cref="IVoiceRuntime"/> seam a cloud provider sits behind.
+    ///
+    /// Always registered, never conditionally: the runtime itself reports what it can do, and
+    /// it can do nothing until the model files are in its folder. A host that registered it
+    /// only when the files happened to be there at start-up would silently have no voice for
+    /// somebody who put them in afterwards, and no screen anywhere would say why.
+    /// </summary>
+    public static IServiceCollection AddConciergeLocalVoice(
+        this IServiceCollection services, LocalVoiceOptions? options = null)
+    {
+        services.AddSingleton(options ?? new LocalVoiceOptions());
+        services.AddSingleton<CircleAiVoiceRuntime>();
+        services.AddSingleton<Concierge.Shared.Media.IVoiceRuntime>(
+            sp => sp.GetRequiredService<CircleAiVoiceRuntime>());
+
+        return services;
+    }
 }

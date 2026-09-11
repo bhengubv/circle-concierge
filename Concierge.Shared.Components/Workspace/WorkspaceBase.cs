@@ -1047,6 +1047,15 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
                 Workbench.Approval = Services.GetService(typeof(Concierge.Shared.Tools.IToolApprovalService))
                     as Concierge.Shared.Tools.IToolApprovalService;
 
+                // Something that can speak, for turning written words into a track.
+                // Whichever registered runtime can, preferring the one that works on
+                // the device — asked through the collection rather than for a single
+                // one, because several are registered and the last to be registered
+                // is not the one anybody meant.
+                Workbench.Speech = Concierge.Shared.Media.VoiceChoice.Mouth(
+                    Services.GetService(typeof(IEnumerable<Concierge.Shared.Media.IVoiceRuntime>))
+                        as IEnumerable<Concierge.Shared.Media.IVoiceRuntime> ?? []);
+
                 // What a room can be furnished with, including anything somebody
                 // added themselves.
                 Workbench.Catalogue = Services.GetService(typeof(Concierge.Shared.Design.RoomCatalogue))

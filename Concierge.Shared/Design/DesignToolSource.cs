@@ -58,6 +58,13 @@ public sealed class DesignWorkbench
     public Concierge.Shared.Web.IWebAccess? Web { get; set; }
 
     /// <summary>
+    /// Something that can speak, for turning written words into a track. Null when nothing
+    /// on this machine can — no voice model and no cloud key — and `design_narrate` is then
+    /// not offered rather than offered and always failing.
+    /// </summary>
+    public Concierge.Shared.Media.IVoiceRuntime? Speech { get; set; }
+
+    /// <summary>
     /// Asking first. Required for the one design tool that leaves the device —
     /// without it that tool is not offered at all, because the alternative is a
     /// tool that reaches the internet without anybody agreeing to it.
@@ -126,6 +133,9 @@ public sealed class DesignToolSource : IAgentToolSource
                 new LayAPlan(_workbench),
                 new FurnishTheRoom(_workbench),
                 new SetAPanel(_workbench),
+                .. _workbench.Speech is null || !_workbench.Speech.SupportsSynthesis
+                    ? Array.Empty<IAgentTool>()
+                    : [new NarrateTheWords(_workbench)],
                 .. _workbench.Web is null || _workbench.Approval is null
                     ? Array.Empty<IAgentTool>()
                     : [new BringASoundIn(_workbench)],
@@ -1946,6 +1956,113 @@ public sealed class DesignToolSource : IAgentToolSource
             session.Back();
 
             return Task.FromResult(new AgentToolResult(true, "Went back one step."));
+        }
+    }
+
+    /// <summary>
+    /// Written words, spoken, added to the running order.
+    ///
+    /// This is the piece that makes a sound design something a person can actually finish.
+    /// A running order could hold music and a track brought in from a link, and the one
+    /// thing almost every one of them needs — somebody saying the words — could only come
+    /// from a microphone and a person willing to use it.
+    ///
+    /// **It does not ask, and that is the same rule the rest of this canvas follows.** It
+    /// writes no file anybody else can see, reaches nothing, and going back is free. The
+    /// one design tool that asks is the one that leaves the device, and this one does not:
+    /// with the local voice in place, nothing about the words goes anywhere.
+    ///
+    /// The audio is carried inside the design as a data URI, the way a picture and a fetched
+    /// track already are, so the design still travels rather than pointing at a file on this
+    /// machine.
+    /// </summary>
+    private sealed class NarrateTheWords(DesignWorkbench workbench) : IAgentTool
+    {
+        public string Name => "design_narrate";
+
+        public string Description =>
+            "Say some written words out loud and add them to the running order as a track. "
+            + "Use this for narration over a video or a spoken line in a sound design.";
+
+        public JsonNode? ArgumentsSchema => new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject
+            {
+                ["words"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["description"] = "What to say.",
+                },
+                ["name"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["description"] = "What to call the track on the canvas. Optional.",
+                },
+            },
+            ["required"] = new JsonArray("words"),
+        };
+
+        public bool IsReadOnly => false;
+
+        public async Task<AgentToolResult> InvokeAsync(
+            JsonNode? arguments, CancellationToken cancellationToken = default)
+        {
+            if (workbench.Session is not { } session)
+            {
+                return NoCanvas();
+            }
+
+            if (workbench.Speech is not { } speech || !speech.SupportsSynthesis)
+            {
+                return new AgentToolResult(
+                    false, string.Empty, "Nothing on this machine can speak, so there is nothing to add.");
+            }
+
+            var words = Text(arguments, "words");
+
+            if (words.Length == 0)
+            {
+                return new AgentToolResult(false, string.Empty, "Give the words to say.");
+            }
+
+            var said = await speech.SynthesizeAsync(words, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            // Nothing back is a failure rather than an empty track. A silent track on the
+            // canvas looks exactly like one that worked, which is the defect this repository
+            // keeps finding: a surface asserting something untrue.
+            if (said.Audio.Length == 0)
+            {
+                return new AgentToolResult(
+                    false, string.Empty, "Those words came back as nothing, so no track was added.");
+            }
+
+            var asked = Text(arguments, "name");
+            var called = asked.Length > 0 ? asked : FirstFewWords(words);
+
+            var track = DesignNode.New(
+                DesignNodeKind.Sound,
+                null,
+                ("text", called),
+                ("src", $"data:{said.MimeType};base64,{Convert.ToBase64String(said.Audio)}"),
+                ("words", words));
+
+            session.Record(session.Current.Add(track), $"Narrated {called}");
+
+            return new AgentToolResult(
+                true, $"Added {called} to the running order, {said.Audio.Length / 1024}KB of {said.MimeType}.");
+        }
+
+        /// <summary>
+        /// A name out of the words, when nobody gave one. A whole paragraph as a caption is
+        /// a running order nobody can read.
+        /// </summary>
+        private static string FirstFewWords(string words)
+        {
+            var flat = string.Join(' ', words.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+            return flat.Length <= 40 ? flat : flat[..40].TrimEnd() + "…";
         }
     }
 

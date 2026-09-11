@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **136 boxes ticked, 29 open, three
+`main`. What replaces it is the working list: **136 boxes ticked, 27 open, five
 partial**, ordered so the next person can pick one up.
 
 **Thirty-six of those forty arrived at once**, on 2026-09-11, when the six
@@ -1238,7 +1238,26 @@ own comment says so. Diffusion Studio edits video.
 - [x] Colour correction and filters — `design_colour`: warm, cool, bright, dark, grey, faded, vivid, graded before the shot is shaped so the letterbox bars are not graded too
 - [x] Animation — `design_blend` fades one shot into the next; a cut by default, because a dissolve on every join is what a first attempt looks like
 - [ ] Generate images, video and voiceover
-- [ ] Write out what is said in a recording
+- [~] Write out what is said in a recording — **wired, waiting on a model file.**
+      `CircleAI.Voice` sat in the package cache with no caller at all: `WhisperTranscriber`
+      for listening, `OnnxTtsEngine` for speaking, both complete, both unreachable. Both are
+      now behind the `IVoiceRuntime` seam the cloud runtime already sits behind, so whatever
+      uses voice does not care which answered, and `media_transcribe` is a read-only tool
+      beside `media_facts`.
+
+      **Present when the model files are, absent otherwise** — the rule every device
+      capability follows. No key, no account, nothing to configure: a whisper model (.bin)
+      and a voice model (.onnx) in the models folder, and it works on the device. With
+      neither there the tool is not offered at all rather than offered and always failing,
+      and the status says which half is missing and names the folder.
+
+      Listening needs the encoder too, and says so: whisper wants 16kHz mono samples and a
+      person has an .m4a, so the file goes through ffmpeg first. A model file with no encoder
+      is speaking only, stated rather than discovered.
+
+      **The model files are not here and nobody is pretending otherwise.** That is one of the
+      four things named as missing at the top of this section. 26 tests, none of which need a
+      model, because what they check is that the absence is honest.
 - [ ] Watch footage and answer questions about it
 
 The inspection half of this is **done** — `media_facts`, `media_is_silent` and
@@ -1248,7 +1267,12 @@ hole. The rest is a video editor.
 #### OpenMontage — video production
 
 - [ ] Production routines that run end to end, rather than one tool at a time
-- [ ] Computer-generated narration
+- [~] Computer-generated narration — **wired, waiting on a voice model.** `design_narrate`
+      says written words out loud and adds them to the running order as a track, carried
+      inside the design as a data URI the way a picture already is, so the design still
+      travels. It does not ask, like everything else on this canvas: nothing about it leaves
+      the device, and going back is free. Nothing coming back is a failure rather than a
+      silent track — a silent track looks exactly like one that worked.
 - [ ] Built-in free stock footage
 - [ ] A composition engine for motion graphics
 - [ ] Automatic captions

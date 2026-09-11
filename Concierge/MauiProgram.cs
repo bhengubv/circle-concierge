@@ -94,6 +94,7 @@ public static class MauiProgram
 			// encoder to look with, so a machine without one is never offered
 			// tools that would always fail.
 			.AddConciergeMediaLook()
+			.AddConciergeTranscription()
 			.AddMauiDeviceCapabilities()
 			// AddConciergeAi() registers ILlmRuntimeService and the in-process
 			// chat runtime; AddConciergeAiIsolated() then replaces the chat
@@ -154,6 +155,9 @@ public static class MauiProgram
 		builder.Services.AddOpenAiImages(sp => sp.GetService<IConfiguration>()?.GetSection("OpenAIImages").Get<OpenAiImageOptions>() ?? new OpenAiImageOptions());
 		builder.Services.AddStabilityImages(sp => sp.GetService<IConfiguration>()?.GetSection("Stability").Get<StabilityImageOptions>() ?? new StabilityImageOptions());
 		builder.Services.AddOpenAiVoice(sp => sp.GetService<IConfiguration>()?.GetSection("OpenAIVoice").Get<OpenAiVoiceOptions>() ?? new OpenAiVoiceOptions());
+		// Speech on the device, beside the cloud one. Both sit behind IVoiceRuntime; the
+		// local one reports what it can do, which is nothing until its model files are here.
+		builder.Services.AddConciergeLocalVoice();
 		builder.Services.AddConciergeMediaCloudDefaults();
 
 		// Replace the NullDeviceContext registered by AddConciergeAi with the MAUI-aware one.
