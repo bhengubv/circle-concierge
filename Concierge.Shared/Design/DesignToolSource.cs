@@ -108,6 +108,8 @@ public sealed class DesignToolSource : IAgentToolSource
                 new ChooseMedium(_workbench),
                 new GoBackOnCanvas(_workbench),
                 .. _workbench.Export is null ? Array.Empty<IAgentTool>() : [new SaveTheDesign(_workbench)],
+                new AddFootage(_workbench),
+                new CutTheShot(_workbench),
                 .. _workbench.Web is null || _workbench.Approval is null
                     ? Array.Empty<IAgentTool>()
                     : [new BringASoundIn(_workbench)],
@@ -758,6 +760,217 @@ public sealed class DesignToolSource : IAgentToolSource
         }
     }
 
+    /// <summary>
+    /// A shot that is real footage rather than a drawn card.
+    ///
+    /// This is the line between a slideshow and a film. Every shot until now was
+    /// something the encoder drew — a colour and some words — because that is all
+    /// a `Frame` could hold. A shot can point at a video file now, and the export
+    /// cuts it rather than rebuilding it.
+    ///
+    /// **The footage stays where it is.** A picture and a track are carried inside
+    /// the design as data so it travels; a clip is not, because a four-minute file
+    /// is hundreds of megabytes and the design is rewritten to disk every time
+    /// anybody edits a heading. A design with footage in it points at this machine,
+    /// and `design_describe` says so rather than leaving it to be discovered when
+    /// somebody sends it on.
+    ///
+    /// Read-only in the sense that matters: it reads a file that is already there
+    /// and changes nothing outside the canvas, so it does not ask. Adding a shot is
+    /// as undoable as everything else here.
+    /// </summary>
+    private sealed class AddFootage(DesignWorkbench workbench) : IAgentTool
+    {
+        public string Name => "design_add_footage";
+
+        public string Description =>
+            "Add a shot that plays real video from a file on this machine. "
+            + "Optionally start it partway in and give it a length.";
+
+        public JsonNode? ArgumentsSchema => new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject
+            {
+                ["path"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["description"] = "The video file.",
+                },
+                ["text"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["description"] = "What to call the shot. Optional.",
+                },
+                ["from"] = new JsonObject
+                {
+                    ["type"] = "number",
+                    ["description"] = "Seconds into the file to start. Optional.",
+                },
+                ["seconds"] = new JsonObject
+                {
+                    ["type"] = "number",
+                    ["description"] = "How long the shot runs. Optional.",
+                },
+            },
+            ["required"] = new JsonArray("path"),
+        };
+
+        public bool IsReadOnly => false;
+
+        public Task<AgentToolResult> InvokeAsync(
+            JsonNode? arguments, CancellationToken cancellationToken = default)
+        {
+            if (workbench.Session is not { } session)
+            {
+                return Task.FromResult(NoCanvas());
+            }
+
+            var path = Text(arguments, "path");
+
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return Task.FromResult(
+                    new AgentToolResult(false, string.Empty, "Give the path of the video file."));
+            }
+
+            bool there;
+
+            try
+            {
+                there = File.Exists(path);
+            }
+            catch (ArgumentException)
+            {
+                there = false;
+            }
+
+            if (!there)
+            {
+                // Checked now rather than at export. A shot pointing at nothing
+                // looks exactly like a shot pointing at something until somebody
+                // presses save, which is the worst moment to find out.
+                return Task.FromResult(new AgentToolResult(
+                    false, string.Empty, $"There is no file at {path}."));
+            }
+
+            var props = new List<(string Key, string Value)>
+            {
+                ("src", path),
+                ("text", Text(arguments, "text") is { Length: > 0 } named
+                    ? named
+                    : Path.GetFileNameWithoutExtension(path)),
+            };
+
+            if (Amount(arguments, "from") is > 0 and var from)
+            {
+                props.Add(("trim", Number(from)));
+            }
+
+            if (Amount(arguments, "seconds") is > 0 and var seconds)
+            {
+                props.Add(("seconds", Number(seconds)));
+            }
+
+            var shot = DesignNode.New(DesignNodeKind.Frame, null, [.. props]);
+            var made = session.Current.Medium == DesignMedium.Motion
+                ? session.Current
+                : session.Current.As(DesignMedium.Motion);
+
+            session.Record(made.Add(shot), $"Added {shot.Text}");
+
+            return Task.FromResult(new AgentToolResult(
+                true, $"Added a shot playing {Path.GetFileName(path)}."));
+        }
+    }
+
+    /// <summary>
+    /// Where a shot starts and how long it runs, in the words somebody uses.
+    ///
+    /// `design_change` can already set `trim` and `seconds` by name, and that is
+    /// the wrong shape for this: it asks a model to know two property names and
+    /// what they do to a file. "Cut the first four seconds" is the sentence, so
+    /// this is the tool.
+    /// </summary>
+    private sealed class CutTheShot(DesignWorkbench workbench) : IAgentTool
+    {
+        public string Name => "design_cut";
+
+        public string Description =>
+            "Change where a shot starts inside its footage and how long it runs. "
+            + "Use this for things like cutting the first few seconds off a shot.";
+
+        public JsonNode? ArgumentsSchema => new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject
+            {
+                ["id"] = new JsonObject { ["type"] = "string", ["description"] = "Which shot." },
+                ["from"] = new JsonObject
+                {
+                    ["type"] = "number",
+                    ["description"] = "Seconds into the footage to start.",
+                },
+                ["seconds"] = new JsonObject
+                {
+                    ["type"] = "number",
+                    ["description"] = "How long the shot runs.",
+                },
+            },
+            ["required"] = new JsonArray("id"),
+        };
+
+        public bool IsReadOnly => false;
+
+        public Task<AgentToolResult> InvokeAsync(
+            JsonNode? arguments, CancellationToken cancellationToken = default)
+        {
+            if (workbench.Session is not { } session)
+            {
+                return Task.FromResult(NoCanvas());
+            }
+
+            var id = Text(arguments, "id");
+
+            if (session.Current.Find(id) is null)
+            {
+                return Task.FromResult(new AgentToolResult(
+                    false, string.Empty, $"There is nothing called {id} on the canvas."));
+            }
+
+            var from = Amount(arguments, "from");
+            var seconds = Amount(arguments, "seconds");
+
+            if (from is null && seconds is null)
+            {
+                return Task.FromResult(new AgentToolResult(
+                    false, string.Empty, "Say where it should start, how long it should run, or both."));
+            }
+
+            var document = session.Current;
+            var said = new List<string>();
+
+            if (from is { } start)
+            {
+                document = document.Set(id, "trim", Number(Math.Max(0, start)));
+                said.Add($"starting {Number(Math.Max(0, start))}s in");
+            }
+
+            if (seconds is { } length)
+            {
+                document = document.Set(id, "seconds", Number(Math.Max(0.1, length)));
+                said.Add($"running {Number(Math.Max(0.1, length))}s");
+            }
+
+            session.Record(document, $"Cut {id}");
+
+            return Task.FromResult(new AgentToolResult(true, $"That shot is now {string.Join(", ", said)}."));
+        }
+    }
+
+    private static string Number(double value)
+        => value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+
     /// <summary>Changes what is being made.</summary>
     private sealed class ChooseMedium(DesignWorkbench workbench) : IAgentTool
     {
@@ -845,6 +1058,38 @@ public sealed class DesignToolSource : IAgentToolSource
     /// </summary>
     private static AgentToolResult NoCanvas()
         => new(false, string.Empty, "There is no design canvas open.");
+
+    /// <summary>
+    /// A number from the arguments, however it was written.
+    ///
+    /// `GetValue&lt;double&gt;()` throws on a JSON integer — and a model asked for
+    /// seconds writes `4`, not `4.0`, nearly every time. Reading the raw value and
+    /// parsing it takes both, and takes `"4"` as well, which is what a model that
+    /// has decided every argument is a string will send.
+    /// </summary>
+    private static double? Amount(JsonNode? arguments, string key)
+    {
+        if (arguments?[key] is not JsonValue value)
+        {
+            return null;
+        }
+
+        if (value.TryGetValue<double>(out var number))
+        {
+            return number;
+        }
+
+        if (value.TryGetValue<int>(out var whole))
+        {
+            return whole;
+        }
+
+        return value.TryGetValue<string>(out var written)
+            && double.TryParse(written, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : null;
+    }
 
     private static string Text(JsonNode? arguments, string key)
         => arguments?[key]?.GetValue<string>()?.Trim() ?? string.Empty;

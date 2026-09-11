@@ -284,43 +284,62 @@ public sealed class FfmpegMediaExport : IMediaExport
 
         try
         {
-            var lines = new StringBuilder();
-            var used = 0;
+            // Every shot becomes one finished piece at the same size, frame rate
+            // and codecs, and the pieces are then joined without re-encoding.
+            //
+            // The older version built a list of stills and let the concat demuxer
+            // hold each for a duration, which cannot work once a shot is real
+            // footage: a clip has its own length, its own frame rate and its own
+            // audio. Normalising first is the standard answer and the only one
+            // that lets a drawn card and a filmed clip sit next to each other.
+            var pieces = new List<string>();
 
-            foreach (var shot in shots)
+            for (var at = 0; at < shots.Count; at++)
             {
+                var shot = shots[at];
                 var timing = DesignTiming.Of(shot, defaultSeconds: 4);
-                var still = await StillOf(shot, look, workspace, used, cancellationToken).ConfigureAwait(false);
 
                 // A shot that waits shows its ground for the wait, so the delay is
                 // in the file rather than only in the preview.
                 if (timing.DelaySeconds > 0)
                 {
-                    var blank = await BlankOf(look, workspace, used, cancellationToken).ConfigureAwait(false);
-                    lines.AppendLine(Entry(blank, timing.DelaySeconds));
+                    var blank = await BlankOf(look, workspace, at, cancellationToken).ConfigureAwait(false);
+
+                    pieces.Add(await PieceFromCardAsync(
+                        blank, timing.DelaySeconds, workspace, $"wait{at:D3}", cancellationToken)
+                        .ConfigureAwait(false));
                 }
 
-                lines.AppendLine(Entry(still, Math.Max(1, (int)Math.Ceiling(timing.Seconds / timing.Rate))));
-                used++;
+                var held = Math.Max(0.1, timing.Seconds / timing.Rate);
+
+                if (FootageIn(shot) is { } footage)
+                {
+                    pieces.Add(await PieceFromFootageAsync(
+                        footage, timing, held, workspace, $"shot{at:D3}", cancellationToken)
+                        .ConfigureAwait(false));
+
+                    continue;
+                }
+
+                var card = await StillOf(shot, look, workspace, at, cancellationToken).ConfigureAwait(false);
+
+                pieces.Add(await PieceFromCardAsync(
+                    card, held, workspace, $"shot{at:D3}", cancellationToken).ConfigureAwait(false));
             }
 
-            // concat's image demuxer needs the last file repeated without a
-            // duration, or the final shot is dropped from the output entirely.
-            var lastStill = await StillOf(shots[^1], look, workspace, used, cancellationToken).ConfigureAwait(false);
-            lines.AppendLine($"file '{lastStill.Replace("'", @"'\''")}'");
-
             var list = System.IO.Path.Combine(workspace, "shots.txt");
-            await File.WriteAllTextAsync(list, lines.ToString(), cancellationToken).ConfigureAwait(false);
+
+            await File.WriteAllTextAsync(
+                list,
+                string.Join(Environment.NewLine, pieces.Select(Quoted)),
+                cancellationToken).ConfigureAwait(false);
 
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(outputPath)!);
 
+            // Copied rather than re-encoded: every piece already matches, so this
+            // is a join and costs nothing but the write.
             var ran = await RunAsync(
-                [
-                    "-y", "-f", "concat", "-safe", "0", "-i", list,
-                    "-vf", "scale=1280:720:force_original_aspect_ratio=decrease,"
-                           + "pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p",
-                    "-r", "30", outputPath,
-                ],
+                ["-y", "-f", "concat", "-safe", "0", "-i", list, "-c", "copy", outputPath],
                 cancellationToken).ConfigureAwait(false);
 
             return ran.Ok && File.Exists(outputPath)
@@ -329,9 +348,10 @@ public sealed class FfmpegMediaExport : IMediaExport
         }
         catch (InvalidOperationException problem)
         {
-            // A card that could not be drawn. Answered rather than thrown, because
-            // every other way this fails comes back as a sentence and a caller that
-            // has to handle both is a caller that will handle one.
+            // A card that could not be drawn, or footage that could not be cut.
+            // Answered rather than thrown, because every other way this fails comes
+            // back as a sentence and a caller that has to handle both is a caller
+            // that will handle one.
             return ExportResult.Failed(problem.Message);
         }
         finally
@@ -339,6 +359,140 @@ public sealed class FfmpegMediaExport : IMediaExport
             Sweep(workspace);
         }
     }
+
+    /// <summary>
+    /// How every piece is shaped, so they can be joined without re-encoding.
+    /// </summary>
+    private const string Shape =
+        "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p";
+
+    /// <summary>
+    /// The footage a shot points at, or null.
+    ///
+    /// A path on disk rather than a data URI, and that is a deliberate difference
+    /// from how a picture or a track is carried. A four-minute clip is hundreds of
+    /// megabytes; as base64 inside `design.json` it would be rewritten every time
+    /// anybody edited a heading.
+    ///
+    /// **So a design holding footage is not portable the way the others are** — it
+    /// points at files on this machine. Saying that here is better than somebody
+    /// discovering it when they send the design to someone else.
+    /// </summary>
+    private static string? FootageIn(DesignNode shot)
+    {
+        if (!shot.Props.TryGetValue("src", out var src) || string.IsNullOrWhiteSpace(src))
+        {
+            return null;
+        }
+
+        // A data URI on a shot is a picture, which the still path already handles.
+        if (src.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        try
+        {
+            return File.Exists(src) ? src : null;
+        }
+        catch (ArgumentException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// A cut out of real footage: seek to the in point, keep the length asked for.
+    ///
+    /// The seek goes **before** the input rather than after it, which is what makes
+    /// it jump straight to that point instead of decoding everything up to it. On a
+    /// long clip that is the difference between instant and a minute.
+    /// </summary>
+    private async Task<string> PieceFromFootageAsync(
+        string footage, DesignTiming timing, double held, string workspace, string name,
+        CancellationToken cancellationToken)
+    {
+        var piece = System.IO.Path.Combine(workspace, $"{name}.mp4");
+
+        var arguments = new List<string> { "-y" };
+
+        if (timing.TrimSeconds > 0)
+        {
+            arguments.AddRange(["-ss", Number(timing.TrimSeconds)]);
+        }
+
+        // Both inputs first, then everything about the output. ffmpeg reads its
+        // arguments in that order and nothing else — putting the silent track
+        // after `-vf` produced "Error opening input files: Invalid argument",
+        // which names the inputs and says nothing about the ordering that caused
+        // it.
+        arguments.AddRange([
+            "-i", footage,
+
+            // Every piece carries sound, even when the footage has none, because
+            // the join refuses a run of pieces that disagree about whether audio
+            // exists at all.
+            "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
+
+            "-map", "0:v:0", "-map", "1:a:0",
+            "-t", Number(held),
+            "-vf", timing.Rate == 1 ? Shape : $"setpts={Number(1 / timing.Rate)}*PTS,{Shape}",
+            "-r", "30",
+            "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-ar", "44100", "-ac", "2",
+            piece,
+        ]);
+
+        var ran = await RunAsync(arguments, cancellationToken).ConfigureAwait(false);
+
+        if (!ran.Ok || !File.Exists(piece))
+        {
+            throw new InvalidOperationException(
+                ran.Problem ?? $"The footage at {System.IO.Path.GetFileName(footage)} could not be cut.");
+        }
+
+        return piece;
+    }
+
+    /// <summary>A drawn card held for a length, made to match the footage pieces.</summary>
+    private async Task<string> PieceFromCardAsync(
+        string card, double held, string workspace, string name, CancellationToken cancellationToken)
+    {
+        var piece = System.IO.Path.Combine(workspace, $"{name}.mp4");
+
+        var ran = await RunAsync(
+            [
+                "-y",
+                "-loop", "1", "-i", card,
+                "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
+                "-t", Number(held),
+                "-vf", Shape,
+                "-r", "30",
+                "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+                "-c:a", "aac", "-ar", "44100", "-ac", "2",
+                "-shortest",
+                piece,
+            ],
+            cancellationToken).ConfigureAwait(false);
+
+        if (!ran.Ok || !File.Exists(piece))
+        {
+            throw new InvalidOperationException(ran.Problem ?? "A shot could not be made.");
+        }
+
+        return piece;
+    }
+
+    /// <summary>
+    /// One line of the join list. Its own helper rather than reusing the still
+    /// version, because a finished piece carries its own length — saying a
+    /// duration here would override the clip and cut it twice.
+    /// </summary>
+    private static string Quoted(string path)
+        => $"file '{path.Replace("'", @"'''")}'";
+
+    private static string Number(double value)
+        => value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
 
     /// <summary>
     /// A picture as a JPEG, or null.

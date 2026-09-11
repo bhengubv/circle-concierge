@@ -175,7 +175,15 @@ public sealed class MediaLookToolSource : IAgentToolSource
 
             // Bounded rather than trusted. A model asking for two hundred frames
             // gets a strip too wide to read and a context window spent on it.
-            var across = Math.Clamp(arguments?["frames"]?.GetValue<int>() ?? 6, 1, 12);
+            // Read tolerantly: GetValue<int>() throws when a model writes 6.0, and
+            // a model writing a number writes whichever it feels like.
+            var asked = arguments?["frames"] is JsonValue value
+                ? value.TryGetValue<int>(out var whole) ? whole
+                    : value.TryGetValue<double>(out var number) ? (int)number
+                    : 6
+                : 6;
+
+            var across = Math.Clamp(asked, 1, 12);
 
             var (png, problem) = await look.FilmstripAsync(path, across, cancellationToken).ConfigureAwait(false);
 

@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **125 boxes ticked, 40 open, three
+`main`. What replaces it is the working list: **126 boxes ticked, 39 open, three
 partial**, ordered so the next person can pick one up.
 
 **Thirty-six of those forty arrived at once**, on 2026-09-11, when the six
@@ -1223,7 +1223,7 @@ architecture.
 Motion today is shots held for a length, exported as a slideshow of cards. Its
 own comment says so. Diffusion Studio edits video.
 
-- [ ] Cut and join real video clips
+- [x] Cut and join real video clips — `design_add_footage`, `design_cut`, and an export that normalises every shot then joins by copying
 - [ ] Strip out "um" and "er"
 - [ ] Subtitles timed to each word
 - [ ] Colour correction and filters
@@ -1386,7 +1386,7 @@ commit it was last actually checked at, because "all four hold as of `<ref>`"
 was one date covering four checks made at different times — and it had drifted
 two commits behind `HEAD` before anyone noticed.
 
-- [x] **1518 tests pass, and the suite is deterministic again.** It was not: four
+- [x] **1533 tests pass, and the suite is deterministic again.** It was not: four
       consecutive runs each failed *one different test*, which meant it could not
       tell a regression from noise — the same defect as a screen asserting
       something untrue, sitting on the check everything else is measured by.
