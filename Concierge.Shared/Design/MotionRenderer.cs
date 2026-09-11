@@ -56,8 +56,14 @@ public static class MotionRenderer
 
             var picked = string.Equals(shots[i].Id, selectedId, StringComparison.Ordinal) ? " picked" : string.Empty;
 
+            // How it moves while it is up. A still picture held for four seconds looks
+            // like a fault, and the preview has to show that it will not be one — a
+            // movement that only appears in the exported file is a movement nobody can
+            // judge until it is too late to change it.
+            var moving = Moving(shots[i]);
+
             html.AppendLine(
-                $"<div class=\"shot{(i == 0 ? " on" : string.Empty)}{picked}\" data-node=\"{DesignMediums.Escape(shots[i].Id)}\" data-seconds=\"{length}\" data-delay=\"{timing.DelaySeconds}\" data-rate=\"{timing.Rate.ToString(System.Globalization.CultureInfo.InvariantCulture)}\">");
+                $"<div class=\"shot{(i == 0 ? " on" : string.Empty)}{picked}{moving}\" data-node=\"{DesignMediums.Escape(shots[i].Id)}\" data-seconds=\"{length}\" data-delay=\"{timing.DelaySeconds}\" data-rate=\"{timing.Rate.ToString(System.Globalization.CultureInfo.InvariantCulture)}\" style=\"--held:{length}s\">");
 
             if (shots[i].Text.Length > 0)
             {
@@ -114,6 +120,23 @@ public static class MotionRenderer
         return html.ToString();
     }
 
+    /// <summary>
+    /// The class for how this shot moves, matching what the export will do.
+    ///
+    /// Two places knowing the same words is how they drift, so the words themselves live in
+    /// `MediaExport.Moves` and a test holds the two together.
+    /// </summary>
+    private static string Moving(DesignNode shot)
+        => shot.Props.TryGetValue("move", out var said) && !string.IsNullOrWhiteSpace(said)
+            ? said.Trim().ToLowerInvariant() switch
+            {
+                "fade" or "fade in" or "in" => " moves fade",
+                "grow" or "push" or "zoom" or "closer" => " moves grow",
+                "drift" or "pan" or "across" => " moves drift",
+                _ => string.Empty,
+            }
+            : string.Empty;
+
     private const string Style = """
         .shot {
           display: none;
@@ -124,6 +147,17 @@ public static class MotionRenderer
         }
         .shot.on { display: flex; }
         @keyframes in { from { opacity: 0; transform: scale(1.02); } to { opacity: 1; transform: none; } }
+        /* How a shot moves while it is up, matching what the export does to it. The
+           length is the shot's own, so what is on screen is what will be in the file. */
+        .shot.moves.fade { animation: fadein .5s ease both; }
+        .shot.moves.grow { animation: in .45s ease both, grow var(--held, 3s) linear both; }
+        .shot.moves.drift { animation: in .45s ease both, drift var(--held, 3s) linear both; }
+
+        @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes grow { from { transform: scale(1); } to { transform: scale(1.10); } }
+        @keyframes drift { from { transform: scale(1.10) translateX(2.5%); }
+                             to { transform: scale(1.10) translateX(-2.5%); } }
+
         .h { font-size: clamp(1.6rem, 5.5vw, 3rem); margin: 0; line-height: 1.12; }
         .t { font-size: clamp(1rem, 2.5vw, 1.25rem); margin: 0; }
         .im, .ph { max-width: 100%; max-height: 50vh; object-fit: contain; border-radius: var(--radius); }

@@ -57,6 +57,10 @@ builder.Services
     .AddConciergeDesignTools()
     // Looking inside a media file, where there is an encoder to look with.
     .AddConciergeMediaLook()
+    .AddConciergeTranscription()
+    .AddConciergeCodingTools()
+    .AddConciergeMusicLibrary()
+    .AddConciergeStockFootage()
     // Parental controls / content-filter pipeline. Wraps the IChatRuntime
     // registered above so every chat call routes through the filter when
     // Family Mode is on. Off-mode is a zero-cost pass-through.
@@ -68,6 +72,9 @@ builder.Services.AddSingleton<IToolApprovalService>(sp =>
         sp.GetRequiredService<IToolApprovalAuditLog>()));
 builder.Services.AddConciergeRuntime();
 builder.Services.AddConciergeState(
+    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Concierge", "web"));
+// Work that runs end to end, keeping its place on disk.
+builder.Services.AddConciergeRoutines(
     Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Concierge", "web"));
 builder.Services.AddConciergeCodeMode(AppContext.BaseDirectory);
 builder.Services.AddSingleton<PrometheusMetricSnapshot>();
@@ -125,6 +132,8 @@ builder.Services.AddConciergeFigmaDiagrams(sp => sp.GetRequiredService<IConfigur
 builder.Services.AddOpenAiImages(sp => sp.GetRequiredService<IConfiguration>().GetSection("OpenAIImages").Get<OpenAiImageOptions>() ?? new OpenAiImageOptions());
 builder.Services.AddStabilityImages(sp => sp.GetRequiredService<IConfiguration>().GetSection("Stability").Get<StabilityImageOptions>() ?? new StabilityImageOptions());
 builder.Services.AddOpenAiVoice(sp => sp.GetRequiredService<IConfiguration>().GetSection("OpenAIVoice").Get<OpenAiVoiceOptions>() ?? new OpenAiVoiceOptions());
+// Speech on the device, beside the cloud one.
+builder.Services.AddConciergeLocalVoice();
 builder.Services.AddConciergeMediaCloudDefaults();
 
 // Replace the NullDeviceContext registered by AddConciergeAi with the request-aware one.

@@ -46,6 +46,12 @@ public sealed class DesignWorkbench
     public IMediaExport? Export { get; set; }
 
     /// <summary>
+    /// What to make, rather than what colour to make it. Null on a head that keeps no file
+    /// of its own, and the built-in guides are used instead — the advice is never absent.
+    /// </summary>
+    public DesignGuides? Guides { get; set; }
+
+    /// <summary>
     /// The things a room can be furnished with, and the file anybody can add to.
     /// Null on a head that keeps none, and the built-ins are used instead.
     /// </summary>
@@ -56,6 +62,13 @@ public sealed class DesignWorkbench
     /// that has no web access, and the tool is then absent.
     /// </summary>
     public Concierge.Shared.Web.IWebAccess? Web { get; set; }
+
+    /// <summary>
+    /// Something that can speak, for turning written words into a track. Null when nothing
+    /// on this machine can — no voice model and no cloud key — and `design_narrate` is then
+    /// not offered rather than offered and always failing.
+    /// </summary>
+    public Concierge.Shared.Media.IVoiceRuntime? Speech { get; set; }
 
     /// <summary>
     /// Asking first. Required for the one design tool that leaves the device —
@@ -118,6 +131,7 @@ public sealed class DesignToolSource : IAgentToolSource
                 new CutTheShot(_workbench),
                 new ColourTheShot(_workbench),
                 new BlendTheShots(_workbench),
+                new MoveTheShot(_workbench),
                 new BuildTheRoom(_workbench),
                 new CutAnOpening(_workbench),
                 new LookAtTheFloors(_workbench),
@@ -125,6 +139,11 @@ public sealed class DesignToolSource : IAgentToolSource
                 new HangItOn(_workbench),
                 new LayAPlan(_workbench),
                 new FurnishTheRoom(_workbench),
+                new SetAPanel(_workbench),
+                new ReadTheGuide(_workbench),
+                .. _workbench.Speech is null || !_workbench.Speech.SupportsSynthesis
+                    ? Array.Empty<IAgentTool>()
+                    : [new NarrateTheWords(_workbench)],
                 .. _workbench.Web is null || _workbench.Approval is null
                     ? Array.Empty<IAgentTool>()
                     : [new BringASoundIn(_workbench)],
@@ -1782,6 +1801,95 @@ public sealed class DesignToolSource : IAgentToolSource
         }
     }
 
+    /// <summary>
+    /// What a panel on a board says.
+    ///
+    /// A number, which way it is moving, and a line of context. **The blank is the
+    /// point when there is no number** — open-design's own rule, adopted here
+    /// unchanged: an invented metric is slop the moment it is invented, and "10×
+    /// faster" or "99.9% uptime" with nothing behind it is the same defect as an
+    /// approvals badge that always said two.
+    ///
+    /// What makes a board *live* is where the numbers come from, which is the
+    /// agent's job: it reads a file, runs a command, fetches a page, and sets the
+    /// panel. This is the setting.
+    /// </summary>
+    private sealed class SetAPanel(DesignWorkbench workbench) : IAgentTool
+    {
+        public string Name => "design_panel";
+
+        public string Description =>
+            "Set what a panel on a board shows: the number, which way it is moving, and a note. "
+            + "Leave the number out and it shows a blank rather than something made up.";
+
+        public JsonNode? ArgumentsSchema => new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject
+            {
+                ["id"] = new JsonObject { ["type"] = "string", ["description"] = "Which panel." },
+                ["value"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["description"] = "The number, as it should read. Leave out for a blank.",
+                },
+                ["change"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["description"] = "Which way it is moving — \"+12%\", \"-3\", \"steady\".",
+                },
+                ["note"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["description"] = "A line of context under it.",
+                },
+            },
+            ["required"] = new JsonArray("id"),
+        };
+
+        public bool IsReadOnly => false;
+
+        public Task<AgentToolResult> InvokeAsync(
+            JsonNode? arguments, CancellationToken cancellationToken = default)
+        {
+            if (workbench.Session is not { } session)
+            {
+                return Task.FromResult(NoCanvas());
+            }
+
+            var id = Text(arguments, "id");
+
+            if (session.Current.Find(id) is null)
+            {
+                return Task.FromResult(new AgentToolResult(
+                    false, string.Empty, $"There is nothing called {id} on the canvas."));
+            }
+
+            var document = session.Current;
+
+            foreach (var field in new[] { "value", "change", "note" })
+            {
+                // Only what was actually said. Writing an empty string for a field
+                // nobody mentioned would quietly wipe the note every time somebody
+                // updated the number.
+                if (arguments?[field] is not null)
+                {
+                    document = document.Set(id, field, Text(arguments, field));
+                }
+            }
+
+            session.Record(document, "Set the panel");
+
+            var value = Text(arguments, "value");
+
+            return Task.FromResult(new AgentToolResult(
+                true,
+                value.Length > 0
+                    ? $"That panel reads {value}."
+                    : "That panel shows a blank, which is right when there is no number."));
+        }
+    }
+
     /// <summary>Changes what is being made.</summary>
     private sealed class ChooseMedium(DesignWorkbench workbench) : IAgentTool
     {
@@ -1856,6 +1964,279 @@ public sealed class DesignToolSource : IAgentToolSource
             session.Back();
 
             return Task.FromResult(new AgentToolResult(true, "Went back one step."));
+        }
+    }
+
+    /// <summary>
+    /// Written words, spoken, added to the running order.
+    ///
+    /// This is the piece that makes a sound design something a person can actually finish.
+    /// A running order could hold music and a track brought in from a link, and the one
+    /// thing almost every one of them needs — somebody saying the words — could only come
+    /// from a microphone and a person willing to use it.
+    ///
+    /// **It does not ask, and that is the same rule the rest of this canvas follows.** It
+    /// writes no file anybody else can see, reaches nothing, and going back is free. The
+    /// one design tool that asks is the one that leaves the device, and this one does not:
+    /// with the local voice in place, nothing about the words goes anywhere.
+    ///
+    /// The audio is carried inside the design as a data URI, the way a picture and a fetched
+    /// track already are, so the design still travels rather than pointing at a file on this
+    /// machine.
+    /// </summary>
+    private sealed class NarrateTheWords(DesignWorkbench workbench) : IAgentTool
+    {
+        public string Name => "design_narrate";
+
+        public string Description =>
+            "Say some written words out loud and add them to the running order as a track. "
+            + "Use this for narration over a video or a spoken line in a sound design.";
+
+        public JsonNode? ArgumentsSchema => new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject
+            {
+                ["words"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["description"] = "What to say.",
+                },
+                ["name"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["description"] = "What to call the track on the canvas. Optional.",
+                },
+            },
+            ["required"] = new JsonArray("words"),
+        };
+
+        public bool IsReadOnly => false;
+
+        public async Task<AgentToolResult> InvokeAsync(
+            JsonNode? arguments, CancellationToken cancellationToken = default)
+        {
+            if (workbench.Session is not { } session)
+            {
+                return NoCanvas();
+            }
+
+            if (workbench.Speech is not { } speech || !speech.SupportsSynthesis)
+            {
+                return new AgentToolResult(
+                    false, string.Empty, "Nothing on this machine can speak, so there is nothing to add.");
+            }
+
+            var words = Text(arguments, "words");
+
+            if (words.Length == 0)
+            {
+                return new AgentToolResult(false, string.Empty, "Give the words to say.");
+            }
+
+            var said = await speech.SynthesizeAsync(words, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            // Nothing back is a failure rather than an empty track. A silent track on the
+            // canvas looks exactly like one that worked, which is the defect this repository
+            // keeps finding: a surface asserting something untrue.
+            if (said.Audio.Length == 0)
+            {
+                return new AgentToolResult(
+                    false, string.Empty, "Those words came back as nothing, so no track was added.");
+            }
+
+            var asked = Text(arguments, "name");
+            var called = asked.Length > 0 ? asked : FirstFewWords(words);
+
+            var track = DesignNode.New(
+                DesignNodeKind.Sound,
+                null,
+                ("text", called),
+                ("src", $"data:{said.MimeType};base64,{Convert.ToBase64String(said.Audio)}"),
+                ("words", words));
+
+            session.Record(session.Current.Add(track), $"Narrated {called}");
+
+            return new AgentToolResult(
+                true, $"Added {called} to the running order, {said.Audio.Length / 1024}KB of {said.MimeType}.");
+        }
+
+        /// <summary>
+        /// A name out of the words, when nobody gave one. A whole paragraph as a caption is
+        /// a running order nobody can read.
+        /// </summary>
+        private static string FirstFewWords(string words)
+        {
+            var flat = string.Join(' ', words.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+            return flat.Length <= 40 ? flat : flat[..40].TrimEnd() + "…";
+        }
+    }
+
+    /// <summary>
+    /// What actually goes on the thing being made, and in what order.
+    ///
+    /// The looks answer how something appears. This answers what goes on it — the part
+    /// somebody who is not a designer has no way to know, and the part a model gets wrong by
+    /// producing something competently laid out that says nothing. A poster with the date in
+    /// body copy is a poster nobody can read from the corridor, and no palette fixes it.
+    ///
+    /// Read-only: it produces advice and changes nothing, so it does not ask.
+    ///
+    /// **It is not offered a category to pick from.** Nobody says "artifact type:
+    /// presentation"; they say "a deck for Thursday". So it takes what somebody said in their
+    /// own words and finds the guide that fits, and with nothing said it lists what there is.
+    /// </summary>
+    private sealed class ReadTheGuide(DesignWorkbench workbench) : IAgentTool
+    {
+        public string Name => "design_guide";
+
+        public string Description =>
+            "Read the guide for the kind of thing being made — what goes on a poster, a pitch "
+            + "deck, a dashboard, a room — before making it. Say what it is in ordinary words.";
+
+        public JsonNode? ArgumentsSchema => new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject
+            {
+                ["about"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["description"] =
+                        "What is being made, in ordinary words — \"a poster for a school fair\". "
+                        + "Leave it out to see what guides there are.",
+                },
+            },
+        };
+
+        public bool IsReadOnly => true;
+
+        public Task<AgentToolResult> InvokeAsync(
+            JsonNode? arguments, CancellationToken cancellationToken = default)
+        {
+            var guides = workbench.Guides ?? new DesignGuides();
+            var about = Text(arguments, "about");
+
+            if (about.Length == 0)
+            {
+                var lines = guides.All.Select(guide => $"{guide.Name} — {guide.When}");
+
+                return Task.FromResult(new AgentToolResult(
+                    true, "There are guides for:" + Environment.NewLine + string.Join(Environment.NewLine, lines)));
+            }
+
+            if (guides.For(about) is not { } found)
+            {
+                // Named rather than silent: a model told "no guide" has no idea whether it
+                // asked the wrong way or there is nothing for this at all.
+                return Task.FromResult(new AgentToolResult(
+                    true,
+                    $"There is no guide for {about}. There are guides for: "
+                    + string.Join(", ", guides.All.Select(guide => guide.Name))
+                    + ". Make it well anyway — the guides are advice, not a gate."));
+            }
+
+            return Task.FromResult(new AgentToolResult(
+                true, $"{found.Name} — {found.When}{Environment.NewLine}{Environment.NewLine}{found.Guide}"));
+        }
+    }
+
+    /// <summary>
+    /// How a shot moves while it is on screen.
+    ///
+    /// **A still picture held for four seconds looks like a fault**, and that is the whole
+    /// of what a motion-graphics engine is wanted for here. A slow push in or a slow drift
+    /// across turns a card or a photograph into a shot, and both are ordinary filters the
+    /// encoder already has — no composition engine, no keyframes, no curve editor, which are
+    /// the three things that make this category's software unusable for the people this is
+    /// for.
+    ///
+    /// Four words: still, fade, grow, drift. Grow and drift need a still to work on; on real
+    /// footage they fight a picture that is already moving, and the tool says so rather than
+    /// accepting the word and quietly doing nothing.
+    /// </summary>
+    private sealed class MoveTheShot(DesignWorkbench workbench) : IAgentTool
+    {
+        public string Name => "design_move";
+
+        public string Description =>
+            "Say how a shot moves while it is on screen: still, fade, grow (a slow push in) "
+            + "or drift (a slow pan across). Use it so a held picture does not look frozen.";
+
+        public JsonNode? ArgumentsSchema => new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject
+            {
+                ["id"] = new JsonObject { ["type"] = "string", ["description"] = "Which shot." },
+                ["move"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["description"] = "still, fade, grow or drift.",
+                },
+            },
+            ["required"] = new JsonArray("id", "move"),
+        };
+
+        public bool IsReadOnly => false;
+
+        public Task<AgentToolResult> InvokeAsync(
+            JsonNode? arguments, CancellationToken cancellationToken = default)
+        {
+            if (workbench.Session is not { } session)
+            {
+                return Task.FromResult(NoCanvas());
+            }
+
+            var id = Text(arguments, "id");
+
+            if (session.Current.Find(id) is not { } shot)
+            {
+                return Task.FromResult(new AgentToolResult(
+                    false, string.Empty, $"There is nothing called {id} on the canvas."));
+            }
+
+            var asked = Text(arguments, "move").ToLowerInvariant();
+
+            if (asked is "still" or "none" or "off")
+            {
+                session.Record(session.Current.Set(id, "move", string.Empty), $"Stilled {id}");
+                return Task.FromResult(new AgentToolResult(true, "That shot holds still."));
+            }
+
+            // Checked here rather than swallowed at export, for the same reason grading is:
+            // a movement that does nothing because nobody knows the word is a shot that looks
+            // unchanged and a person who believes it worked.
+            var asFilter = FfmpegMediaExport.MoveOf(
+                DesignNode.New(DesignNodeKind.Frame, null, ("move", asked)), seconds: 3, still: true);
+
+            if (asFilter.Length == 0)
+            {
+                return Task.FromResult(new AgentToolResult(
+                    false,
+                    string.Empty,
+                    $"There is no movement called {asked}. Try: {string.Join(", ", FfmpegMediaExport.Moves)}."));
+            }
+
+            // A word that only works on a still is refused on footage rather than accepted
+            // and quietly dropped. Told "done", nobody looks at that shot again.
+            var onFootage = shot.Props.TryGetValue("src", out var src) && !string.IsNullOrWhiteSpace(src);
+
+            if (onFootage && FfmpegMediaExport.MoveOf(
+                    DesignNode.New(DesignNodeKind.Frame, null, ("move", asked)), seconds: 3, still: false).Length == 0)
+            {
+                return Task.FromResult(new AgentToolResult(
+                    false,
+                    string.Empty,
+                    $"{asked} needs a still to work on — that shot is filmed, and it is already "
+                    + "moving. A fade works on either."));
+            }
+
+            session.Record(session.Current.Set(id, "move", asked), $"Moved {id}");
+
+            return Task.FromResult(new AgentToolResult(true, $"That shot {asked}s while it is on screen."));
         }
     }
 

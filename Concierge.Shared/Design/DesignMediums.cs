@@ -49,6 +49,8 @@ public static class DesignMediums
         new(DesignMedium.Motion, "Video", "Shots that play, one after another.", "shot"),
         new(DesignMedium.Scene, "Space", "A room you can look around.", "room"),
         new(DesignMedium.Sound, "Sound", "Music, a voice, something to listen to.", "track"),
+        new(DesignMedium.Handheld, "Phone", "A screen, drawn the size of a phone.", "screen"),
+        new(DesignMedium.Board, "Board", "Numbers to glance at.", "panel"),
     ];
 
     /// <summary>
@@ -93,6 +95,8 @@ public static class DesignMediums
             DesignMedium.Motion => MotionRenderer.ToHtml(document, selectedId),
             DesignMedium.Scene => SceneRenderer.ToHtml(document, selectedId),
             DesignMedium.Sound => SoundRenderer.ToHtml(document, selectedId),
+            DesignMedium.Handheld => HandheldRenderer.ToHtml(document, selectedId),
+            DesignMedium.Board => BoardRenderer.ToHtml(document, selectedId),
             _ => DesignRenderer.ToHtml(document, selectedId),
         };
 

@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **134 boxes ticked, 31 open, three
+`main`. What replaces it is the working list: **150 boxes ticked, 13 open, ten
 partial**, ordered so the next person can pick one up.
 
 **Thirty-six of those forty arrived at once**, on 2026-09-11, when the six
@@ -116,9 +116,30 @@ Ordered. The first is a correctness problem; the rest are absences.
 - [x] Per-provider image encoding — Anthropic base64, OpenAI data URI, Gemini inline_data
 - [x] Test: all three shapes, and a text-only turn keeps its plain string content
 
-The local model is text-only and stays that way; the check the image channel
-added had nothing to find, so every picture was refused. Live confirmation
-needs a cloud key — the wire shapes are tested, the round trip is not.
+**"The local model is text-only and stays that way" was the sentence here, and it
+is now out of date rather than wrong-at-the-time.** `CircleAI.Inference` 3.3.0
+carries an image channel: `ChatMessage.ImageBytes`, fed through
+`mnn_llm_generate_with_image_stream_ex` by `KimiVlGenerator`. Concierge used none
+of it, so the image channel on `ChatTurn` reached the cloud runtimes only and
+every picture on the device was refused with "this model cannot look at
+pictures".
+
+- [x] Pictures reach the local model. A turn's first image is carried through to
+      `ChatMessage.ImageBytes`, and a vision family is loaded through the generator
+      that can see rather than the text one.
+- [x] **Whether it can see is read off the model, never off its filename.** The name
+      only decides which generator to build; `KimiVlGenerator.IsVisionCapable` is
+      the native runtime's own answer, and that is what fills
+      `SupportedImageMediaTypes`. A file named like a vision model that is not one
+      is never advertised as one.
+- [x] The composer reads the list, not only the interface. The local runtime
+      declares `IVisionCapableRuntime` because it *can* see, and lists nothing while
+      a text model is loaded — so checking the interface alone would have sent a
+      picture to a Qwen model and said nothing about it.
+
+**No vision model is on this machine**, so the round trip is still unconfirmed,
+exactly as it is for the cloud runtimes with no key. The wiring is tested; the
+looking is not. Live confirmation needs a cloud key or a vision model.
 
 ### 6. ~~The model cannot find anything~~ — done
 
@@ -1233,13 +1254,54 @@ Motion today is shots held for a length, exported as a slideshow of cards. Its
 own comment says so. Diffusion Studio edits video.
 
 - [x] Cut and join real video clips — `design_add_footage`, `design_cut`, and an export that normalises every shot then joins by copying
-- [ ] Strip out "um" and "er"
-- [ ] Subtitles timed to each word
+- [~] Strip out "um" and "er" — **same blocker, and it is the timings rather than the
+      words.** Finding a filler word in a transcript is easy; cutting it needs to know
+      where it is in the file, and the package hands back no timings at all. `design_cut`
+      can already cut to a start and a length, so the cutting half is done and waiting on
+      something that can say where.
+- [~] Subtitles timed to each word — **blocked in the package, measured rather than
+      assumed.** `CircleAI.Voice` 1.2.0's `TranscriptionResult` carries the text, a
+      confidence and a language code, and nothing about *when* anything was said.
+      Whisper itself has the timings — `whisper_full_get_segment_t0` / `_t1` — but
+      `WhisperInterop` is **internal**, checked by compiling against it rather than
+      guessed at: "'WhisperInterop' is inaccessible due to its protection level".
+
+      So the honest position is that this needs segment timings out of the package, and
+      the only way to have them today is to reimplement whisper's interop here — which
+      is duplicating a NuGet package's internals, the thing the mesh entry refuses for
+      the same reason. Spreading the words evenly across the running time would produce
+      subtitles that look right and drift, which is an invented metric with a timestamp
+      on it.
 - [x] Colour correction and filters — `design_colour`: warm, cool, bright, dark, grey, faded, vivid, graded before the shot is shaped so the letterbox bars are not graded too
 - [x] Animation — `design_blend` fades one shot into the next; a cut by default, because a dissolve on every join is what a first attempt looks like
 - [ ] Generate images, video and voiceover
-- [ ] Write out what is said in a recording
-- [ ] Watch footage and answer questions about it
+- [~] Write out what is said in a recording — **wired, waiting on a model file.**
+      `CircleAI.Voice` sat in the package cache with no caller at all: `WhisperTranscriber`
+      for listening, `OnnxTtsEngine` for speaking, both complete, both unreachable. Both are
+      now behind the `IVoiceRuntime` seam the cloud runtime already sits behind, so whatever
+      uses voice does not care which answered, and `media_transcribe` is a read-only tool
+      beside `media_facts`.
+
+      **Present when the model files are, absent otherwise** — the rule every device
+      capability follows. No key, no account, nothing to configure: a whisper model (.bin)
+      and a voice model (.onnx) in the models folder, and it works on the device. With
+      neither there the tool is not offered at all rather than offered and always failing,
+      and the status says which half is missing and names the folder.
+
+      Listening needs the encoder too, and says so: whisper wants 16kHz mono samples and a
+      person has an .m4a, so the file goes through ffmpeg first. A model file with no encoder
+      is speaking only, stated rather than discovered.
+
+      **The model files are not here and nobody is pretending otherwise.** That is one of the
+      four things named as missing at the top of this section. 26 tests, none of which need a
+      model, because what they check is that the absence is honest.
+- [x] Watch footage and answer questions about it. Every piece existed separately and
+      the join was missing: `media_frames` hands a strip to `CapturedImages`, a turn can
+      carry pictures, and the runtimes can look at them. A strip a tool produced now
+      reaches a model that can see, rides exactly one turn, and — the half that matters
+      more — **a model that cannot see is told a picture was produced rather than handed
+      one it will ignore and then be asked about.** That case was silent before. 3 tests,
+      driven through the real workspace rather than around it.
 
 The inspection half of this is **done** — `media_facts`, `media_is_silent` and
 `media_frames`, in item 14. That was the piece that cost little and closed a real
@@ -1247,11 +1309,68 @@ hole. The rest is a video editor.
 
 #### OpenMontage — video production
 
-- [ ] Production routines that run end to end, rather than one tool at a time
-- [ ] Computer-generated narration
-- [ ] Built-in free stock footage
-- [ ] A composition engine for motion graphics
-- [ ] Automatic captions
+- [x] Production routines that run end to end. A production is a dozen steps in a fixed
+      order, and doing them one call at a time is where a model loses its place, repeats a
+      step, or stops halfway and reports success. **That is not a model problem to be
+      prompted away — it is an absence of anywhere to keep the place.**
+
+      `routines` says what there is and what each needs; `run_routine` runs one. **The place
+      is kept on disk**, so an interrupted run carries on rather than starting again, which
+      is the half of OpenMontage's checkpointing that matters here — and a resumed run keeps
+      what it was given the first time, so the two halves of one production cannot disagree
+      about which file they are working on.
+
+      It **stops at the first step that does not work**, because carrying on would be
+      building on something that is not there, and what comes back says what was done before
+      it stopped rather than only "failed". A blank nobody filled in stops the run and names
+      itself instead of being handed to a tool as six literal characters.
+
+      **Every step goes through the ordinary tool registry, so every approval still
+      happens**: a step that fetches a track still asks. It is a way of not losing count,
+      never a way around anything. Three routines ship rather than twelve, for the same
+      reason there are six looks and not a colour picker. 16 tests.
+- [~] Computer-generated narration — **wired, waiting on a voice model.** `design_narrate`
+      says written words out loud and adds them to the running order as a track, carried
+      inside the design as a data URI the way a picture already is, so the design still
+      travels. It does not ask, like everything else on this canvas: nothing about it leaves
+      the device, and going back is free. Nothing coming back is a failure rather than a
+      silent track — a silent track looks exactly like one that worked.
+- [x] Built-in free stock footage — **from an archive that asks for nothing.** Every one
+      people reach for first (Pexels, Pixabay, Storyblocks) wants an account and a key, which
+      is one of the four things recorded as missing at the top of this section. Wikimedia
+      Commons wants neither and writes a licence beside everything in it.
+
+      `stock_footage` searches it and `stock_fetch` brings one clip down. **A clip with no
+      free licence is never offered** — anything marked non-commercial or no-derivatives is
+      dropped rather than returned with a warning nobody reads, because a clip somebody puts
+      in a film and then cannot show is worse than no clip at all. "cc-by-nc-4.0" starts with
+      "cc-by" and is checked for first, which is the trap in this.
+
+      **Who made it comes back with it**, without the markup the archive wraps it in: nearly
+      every free licence here requires attribution, and a result that omits the author quietly
+      sets somebody up to breach it. The licence is written down beside the downloaded file,
+      because a clip on a disk six months later says nothing about what may be done with it,
+      and the moment somebody needs that is the moment they publish.
+
+      Both ask first, because both leave the device. The licence is checked again at the
+      download, since a model can write any string into it. Parsed against the archive's real
+      answer rather than an imagined one. 22 tests.
+- [x] Motion graphics — **the useful half, without the half that makes the category
+      unusable.** A still picture held for four seconds looks like a fault, and that is
+      what a composition engine is actually wanted for here. `design_move` gives a shot a
+      slow push in, a slow drift across, or a fade: four words — still, fade, grow, drift —
+      instead of keyframes, a curve editor and a layer stack, which are the three things
+      somebody who has never used one cannot get past.
+
+      Grow and drift need a still to work on, and are **refused on filmed footage rather
+      than accepted and quietly dropped** — told "done", nobody looks at that shot again.
+      The preview animates over the shot's own length, so what is on screen is what will be
+      in the file rather than an impression of it.
+
+      Run for real through the encoder, both expressions: `zoompan` takes frames rather than
+      seconds and its position as expressions, and a wrong one is not a worse-looking shot,
+      it is no file at all. 21 tests.
+- [~] Automatic captions — waits on the same timings as word-timed subtitles above.
 
 #### Antra — a music library
 
@@ -1261,12 +1380,39 @@ lyrics, and one approval-gated fetch from a link. Antra is a library.
 - [ ] Pull from the seven music services it supports
 - [ ] Match the exact recording rather than the right title
 - [ ] Choose between clean and explicit versions
-- [ ] Notice high-quality audio and prefer it
-- [ ] File everything into artist and album folders
-- [ ] Spot duplicates already in the library
+- [~] Notice high-quality audio and prefer it — **the noticing is done; the preferring is
+      about services nobody here has an account for.** `music_quality` measures a file: how
+      long, how loud, the loudest moment, how often and how finely it was sampled, whether it
+      is better than a CD, and **whether it has been squashed flat**. Clipping is the one
+      worth having — a track whose peak sits at the ceiling has been squashed somewhere in
+      its history, and it is the commonest thing wrong with a file that otherwise looks
+      perfect. What "better than a CD" means is stated rather than implied, and it is read
+      from the encoder's own line rather than the file extension, because a .flac can hold
+      anything.
+- [x] File everything into artist and album folders — `music_filing` says where every track
+      belongs and moves nothing; `music_file` moves them, and asks first with the count and
+      the destination on the card. **Nothing is ever overwritten**: a name already taken gets
+      a number, because two different recordings can genuinely share an artist, an album and
+      a title, and replacing one with the other loses music somebody cannot get back. A track
+      that does not know who made it **stays where it is** rather than going into "Unknown
+      Artist", which is where music goes to be lost.
+- [x] Spot duplicates already in the library — `music_duplicates`, matched on who made it
+      and what it is called rather than on the filename: the same track downloaded twice is
+      "05 Wild Is The Wind.mp3" and "Nina Simone - Wild Is The Wind.m4a", and nothing about
+      those two strings says they are the same thing. A track with no artist or title is
+      **never** called a duplicate — two untagged files would otherwise match each other and
+      the answer would be "everything untagged in your library is the same song", which is
+      the kind of wrong somebody acts on. Antra matches on ISRC, which is exact where it
+      exists, is not in most files, and is not invented here.
+
+      **Nothing deletes a duplicate.** The bigger copy is named first because that is usually
+      the better one, and choosing which to lose is somebody's decision about their own
+      music. 19 tests, the moving ones against real files the encoder made.
 - [ ] Download an artist's whole catalogue
 - [ ] Downloads on a schedule
-- [ ] An audio analyser, podcasts, and peer-to-peer
+- [~] An audio analyser, podcasts, and peer-to-peer — **the analyser is done**
+      (`music_quality`, above). Podcasts and peer-to-peer are not started, and neither is
+      blocked by anything except nobody having asked for them yet.
 
 #### AniGen — research
 
@@ -1279,12 +1425,70 @@ there is nothing to take from it short of the model itself.
 
 #### open-design
 
-- [ ] Mobile app designs as their own medium
+- [x] Mobile app designs as their own medium — `Handheld`. A phone screen at 390×844
+      with the two strips nothing may go under drawn as hatched bands, and the line a
+      thumb reaches drawn across it. **Its own medium rather than a page drawn narrow**,
+      because the difference that matters is not the width: a design that looks fine at
+      1200px and falls apart at 390 is the commonest thing to get wrong, and nobody
+      finds out until it is built. No device frame, no bezel, no fake battery — those
+      make a mock-up look finished and tell nobody anything.
 - [ ] Image generation
-- [ ] Animated motion graphics
-- [ ] Live dashboards that update themselves
-- [ ] 298 design guides. Concierge has six looks with briefs.
-- [ ] Plug into the other coding tools, the way it reaches sixteen of them
+- [x] Animated motion graphics — `design_move`, described under OpenMontage above.
+- [x] Live dashboards that update themselves — `Board`. A small name, an enormous
+      number, and which way it is moving as an arrow (▲▼▬) rather than a colour alone,
+      because a board is read at a glance by whoever is walking past and colour says
+      nothing to somebody who cannot tell red from green. **No chart, and that is the
+      decision this renderer turns on**: a line going up is what every dashboard reaches
+      for and almost nobody reads. A panel with no number shows a labelled blank —
+      open-design's own rule, adopted unchanged, that an invented metric is slop the
+      moment it is invented.
+
+      What makes it *live* is where the numbers come from, which is the agent's job and
+      not the renderer's: `design_panel` sets a panel, and writes only the fields
+      actually given, so updating the number does not wipe the note.
+- [x] Design guides. **The count is not matched and saying so is the point.** open-design
+      ships 298; this ships 21 that were written rather than counted, plus `guides.json` —
+      a file anybody can add to with no code, which is the answer `shapes.json` already
+      gives for furniture. Claiming a number would be claiming something nobody has
+      written.
+
+      What they are is the half the six looks do not answer: the looks say how a thing
+      appears, a guide says **what goes on it and in what order** — a poster read from a
+      corridor, a deck whose slide titles are sentences, a dashboard read in two seconds,
+      a form where every field is a reason to give up. That is the part somebody who is not
+      a designer has no way to know, and the part a model gets wrong by producing something
+      competently laid out that says nothing.
+
+      Prose with the reason beside every rule, which is open-design's own shape: a rule
+      with no reason gets applied where it does not belong, and a rule nobody understands
+      gets ignored the first time it is inconvenient. `design_guide` is read-only and takes
+      what somebody said in their own words — nobody says "artifact type: presentation",
+      they say "a deck for Thursday". A guide somebody wrote wins over one of ours with the
+      same name; a broken file costs the file and never the built-ins. 22 tests.
+- [x] Plug into the other coding tools. **Their shape inverted, which is the honest
+      version of it.** open-design is a harness that drives sixteen coding assistants;
+      Concierge *is* the assistant. The useful half survives the inversion: somebody with
+      Claude Code, Codex or Aider already installed has already chosen their tool for large
+      code changes, and an assistant that cannot acknowledge that is one they leave in
+      order to go and use it.
+
+      `coding_tools` says which of nine are actually on this machine — claude, codex,
+      gemini, cursor-agent, aider, opencode, crush, goose, qwen — and nothing is installed,
+      downloaded or mentioned when it is not there. `ask_coding_tool` hands one a job.
+
+      **It asks every time and the card carries the tool and the job in full**, because
+      this is further from reversible than anything else here: it starts another agent, in
+      the workspace, that edits files on its own judgement and not ours. Nobody can decide
+      about "run a coding tool"; everybody can decide about "aider — rewrite the export to
+      stream". With no way to ask, the listing is still offered and the handing over is
+      not.
+
+      Confined like every other command — job object on Windows, `unshare` and `prlimit` on
+      Linux — and given twenty minutes, because an agent that has misunderstood its job can
+      run for an afternoon. Each entry carries the way that tool takes a job with nobody
+      watching, and one whose non-interactive form nobody here is sure of is **left out
+      rather than guessed at**: a wrong flag opens an interactive session nothing is
+      sitting in front of and hangs until the time limit. 13 tests.
 
 **What Concierge has that none of the six has**, kept here so the list above is
 not read as a scoreboard: one document across five media on one agent loop, with
@@ -1298,38 +1502,54 @@ ninety-seven-year-old — rules several of the lines above out on purpose.
 
 ## What is actually next
 
-Everything above is done or done-bar-a-named-remainder. Nine items are open and
-they are not equal: three can be done today, and six cannot, for reasons worth
-being explicit about rather than rediscovering.
+**Everything buildable on this machine is built.** Thirteen items are open and
+every one of them waits on something that is not here: a device, a platform, an
+account, or a trained model. That is a different statement from "we are finished",
+and it is the honest one — the list below names what each waits for so nobody has
+to rediscover it.
 
-**This list had gone stale, and two of its three items were already done.** Worth
-saying rather than quietly deleting: a next-actions list that disagrees with the
-ticked list above it is the same defect as a badge that always says two.
+This section had gone stale twice. The first time, two of its three items were
+already done; the second, it still said "three can be done today" after all three
+had been. A next-actions list that disagrees with the ticked list above it is the
+same defect as a badge that always says two, so this is re-derived rather than
+edited.
 
-- ~~Show registered hooks in Engineering~~ — **done.** `Engineering.razor:156–199`
-  reads `HookStatus` and renders the list, the empty state, the problem and the
-  file path. Item 12 had it ticked; only this section still asked for it.
-- ~~Verify Design on a handheld~~ — **done**, at 504px, per item 9. What is still
-  open is the other half of that line: **what a watch shows instead of a canvas.**
+**What each open item waits for.**
 
-**Can be done now, and needs no model.**
+| Waiting on | Items |
+| --- | --- |
+| A toggle on the handset (Developer options → Install via USB) | Running the device actions on the Redmi 12 |
+| A second device in the room | BLE or Wi-Fi Direct |
+| macOS, Android and iOS to run on | Confinement on those three — iOS forbids child processes at all, so that one is a fact rather than a gap |
+| Packet signing upstream in Aether | Approvals over the mesh. `Aether.Core` 1.0.1 has fields for a signature and a nonce and **no public API that writes or checks one** |
+| Accounts and keys for seven music services | Pulling from them, exact matching, clean-or-explicit, whole discographies, downloads on a schedule |
+| A model that makes pictures | Image generation, and the generated half of "images, video and voiceover" |
+| A trained model, a Python stack and a GPU | AniGen, both lines. It is a research pipeline, not a feature |
 
-1. **Decide what a watch shows instead of a canvas.** A 192dp face is not a design
-   surface and pretending otherwise would be the fourth-tab mistake in miniature.
-   The decision is the work; the rendering is small.
-2. **Close the sandbox escape**, now that the failing half is known rather than
-   guessed — see item 11. The measurement is done; the fix is not.
+**Two things that are not blocked and are not scheduled**, said plainly rather
+than left in a list that implies they are next:
 
-**Blocked, and by what.**
+- **What a watch shows instead of a canvas.** Decided and written down as
+  `WatchSurfaces.Design` with a test, so building it is a deliberate act. It needs
+  approvals to ride the mesh, which is the row above.
+- **Podcasts and peer-to-peer** from Antra's list. Nothing blocks them; nobody has
+  asked for them.
 
-- **Android actions; BLE or Wi-Fi Direct** — need a second device in the room.
-- **Confinement on Linux, macOS, Android, iOS** — need those platforms.
-- **Approvals over the mesh** — needs packet signatures verified, and the mesh
-  upgrade is in the pipeline elsewhere. Putting approvals on an unauthenticated
-  channel would hand anyone on the café wifi the ability to say "allowed".
-- **A plan for a multi-step design change** — the canvas is on the agent loop now,
-  so this is no longer blocked on a runtime; it is blocked on wanting it. Nothing
-  to plan until somebody asks for a change big enough to need one.
+**And one that closed itself.** "Close the sandbox escape" sat here for weeks and
+there was no escape — four rounds of measurement, and the fault was in the
+measuring every time. See item 11.
+
+---
+
+## What is left over, in one paragraph
+
+Speech works both ways on the device and has **no model files**. The local model
+can be shown a picture and there is **no vision model**. Seven music services are
+wired to nothing because there are **no accounts**. Image generation has **no
+answer at all** — CircleAI does not make pictures, and a cloud provider or a local
+model is a decision nobody has taken. Everything else on the thirty-six-item list
+is built, and the four of those sentences are the same four things this file named
+as missing before any of it started.
 
 ---
 
@@ -1395,7 +1615,7 @@ commit it was last actually checked at, because "all four hold as of `<ref>`"
 was one date covering four checks made at different times — and it had drifted
 two commits behind `HEAD` before anyone noticed.
 
-- [x] **1599 tests pass, and the suite is deterministic again.** It was not: four
+- [x] **1786 tests pass, and the suite is deterministic.** It was not: four
       consecutive runs each failed *one different test*, which meant it could not
       tell a regression from noise — the same defect as a screen asserting
       something untrue, sitting on the check everything else is measured by.
@@ -1440,7 +1660,14 @@ two commits behind `HEAD` before anyone noticed.
       and a filtered pipe reports that as success
 - [x] Verified on the running desktop app, not only in tests — Engineering lists
       the real catalogue, `todo_read` and `todo_write` included, and says what
-      confines a command. Last checked at `a00191b`; **not re-run since**
+      confines a command. Last checked at `a00191b`
+- [x] **The app starts with everything added since.** Built and run from
+      `Concierge.exe` on 2026-09-11 after the eleven new tools were wired: it comes up,
+      stays up, and starts `Concierge.Model.Host` beside it. That is the check that
+      matters here rather than a screenshot — the fault this was looking for was a
+      container that throws while it is being built, which is what the three bare-factory
+      registrations would have done. What is on screen with the new tools is **not**
+      checked: Engineering has not been opened since
 - [x] **The 3D engine works on the desktop head. Measured, not assumed.**
 
       The only genuinely head-specific thing about it was whether WebView2 loads an
@@ -1481,6 +1708,13 @@ two commits behind `HEAD` before anyone noticed.
       desktop head could have been falling back for weeks with every test passing.
       To check: open Design, choose **Space**, say "add a room", then open
       Engineering. 10 tests.
+- [x] **Every tool source registers without taking the app down at start-up.** Caught by
+      the container-resolution tests rather than by anybody opening the app: three of the
+      later sources were registered with `TryAddEnumerable` and a bare factory, which has no
+      implementation type to deduplicate on and throws "indistinguishable from other services
+      registered for IAgentToolSource" **while the container is being built**. Every head
+      would have failed to start. The typed overload fixes it, and the test that found it now
+      resolves the registry with every later source registered.
 - [x] `[skip ci]` in the HEAD commit before any push — a rule, not a check
 - [x] The app actually starts. Added after a Razor comment inside an element's
       attribute list compiled, passed 1141 tests, and threw on every render in

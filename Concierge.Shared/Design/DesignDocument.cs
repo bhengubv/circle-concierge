@@ -73,6 +73,26 @@ public enum DesignMedium
 
     /// <summary>Sound, arranged in time.</summary>
     Sound = 4,
+
+    /// <summary>
+    /// A phone screen, drawn at the size of one.
+    ///
+    /// Its own medium rather than a narrow page, because the difference that
+    /// matters is not the width. A phone screen has a top edge you must not put
+    /// anything under, a bottom edge the same, a thumb that reaches two thirds of
+    /// the way up, and a person holding it in one hand on a bus. A page drawn
+    /// narrow is a page; this is a screen.
+    /// </summary>
+    Handheld = 5,
+
+    /// <summary>
+    /// Numbers that change, laid out to be glanced at.
+    ///
+    /// The thing a dashboard is for is being read in two seconds from across a
+    /// room, which is a different job from a page even when the shapes look
+    /// similar.
+    /// </summary>
+    Board = 6,
 }
 
 /// <summary>

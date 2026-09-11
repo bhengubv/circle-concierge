@@ -140,14 +140,31 @@ public sealed class DesignMediumTests
         Assert.Equal("track", DesignMediums.PieceOf(DesignMedium.Sound));
     }
 
+    /// <summary>
+    /// Every medium is offered, named in a word somebody would say, and every one
+    /// says what it is for. The count is asserted against the enum rather than a
+    /// number typed here, because a number typed here is a number that goes stale
+    /// the moment a medium is added — which is exactly what happened when Phone
+    /// and Board arrived.
+    /// </summary>
     [Fact]
-    public void The_five_are_named_in_words_people_use()
+    public void Every_medium_is_named_in_words_people_use()
     {
-        Assert.Equal(5, DesignMediums.All.Count);
+        Assert.Equal(Enum.GetValues<DesignMedium>().Length, DesignMediums.All.Count);
+
+        foreach (var medium in Enum.GetValues<DesignMedium>())
+        {
+            Assert.Contains(DesignMediums.All, m => m.Medium == medium);
+        }
+
         Assert.Contains(DesignMediums.All, m => m.Name == "Slides");
         Assert.Contains(DesignMediums.All, m => m.Name == "Video");
         Assert.Contains(DesignMediums.All, m => m.Name == "Sound");
+        Assert.Contains(DesignMediums.All, m => m.Name == "Phone");
+        Assert.Contains(DesignMediums.All, m => m.Name == "Board");
+
         Assert.All(DesignMediums.All, m => Assert.False(string.IsNullOrWhiteSpace(m.Blurb)));
+        Assert.All(DesignMediums.All, m => Assert.False(string.IsNullOrWhiteSpace(m.Piece)));
     }
 
     // ── Slides ────────────────────────────────────────────────────────────

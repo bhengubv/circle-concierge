@@ -1047,6 +1047,20 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
                 Workbench.Approval = Services.GetService(typeof(Concierge.Shared.Tools.IToolApprovalService))
                     as Concierge.Shared.Tools.IToolApprovalService;
 
+                // Something that can speak, for turning written words into a track.
+                // Whichever registered runtime can, preferring the one that works on
+                // the device — asked through the collection rather than for a single
+                // one, because several are registered and the last to be registered
+                // is not the one anybody meant.
+                Workbench.Speech = Concierge.Shared.Media.VoiceChoice.Mouth(
+                    Services.GetService(typeof(IEnumerable<Concierge.Shared.Media.IVoiceRuntime>))
+                        as IEnumerable<Concierge.Shared.Media.IVoiceRuntime> ?? []);
+
+                // What to make, rather than what colour to make it — including any
+                // guides somebody wrote themselves.
+                Workbench.Guides = Services.GetService(typeof(Concierge.Shared.Design.DesignGuides))
+                    as Concierge.Shared.Design.DesignGuides;
+
                 // What a room can be furnished with, including anything somebody
                 // added themselves.
                 Workbench.Catalogue = Services.GetService(typeof(Concierge.Shared.Design.RoomCatalogue))
@@ -1186,8 +1200,14 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
         // A runtime that cannot see is told so, rather than handed pictures it
         // will ignore. The model that ships with Concierge runs on the device
-        // and is text-only, so this is the common case, not the edge one.
-        if (_pendingImages.Count > 0 && _activeRuntime is not IVisionCapableRuntime)
+        // and is usually text-only, so this is the common case, not the edge one.
+        //
+        // The list is read, not only the interface. The local runtime declares the
+        // capability because it *can* see — with a vision model loaded — and lists
+        // nothing while the model loaded is text-only. Checking only the interface
+        // would send a picture to a Qwen model and say nothing about it.
+        if (_pendingImages.Count > 0
+            && _activeRuntime is not IVisionCapableRuntime { SupportedImageMediaTypes.Count: > 0 })
         {
             var names = string.Join(", ", _pendingImages.Select(i => i.FileName));
             attachmentBlocks.Add($"[{names} attached, but {_activeRuntime?.EngineLabel ?? "this model"} cannot look at pictures.]");
@@ -1463,9 +1483,24 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         // attached. Drained, not read: a picture rides on exactly one turn, and a
         // screenshot from ten minutes ago silently attached to an unrelated
         // question is worse than no screenshot at all.
-        foreach (var captured in Captured.TakeAll())
+        var caught = Captured.TakeAll();
+
+        // Drained either way, and only carried to something that can look. A model that
+        // cannot see is told a picture was taken rather than handed one it ignores — the
+        // filmstrip a tool just produced would otherwise be reported as looked at by a model
+        // that never saw it, which is this repository's signature defect on the one surface
+        // whose whole job is showing what happened.
+        if (caught.Count > 0
+            && _activeRuntime is IVisionCapableRuntime { SupportedImageMediaTypes.Count: > 0 })
         {
-            _pendingImages.Add(captured);
+            _pendingImages.AddRange(caught);
+        }
+        else if (caught.Count > 0)
+        {
+            turns.Add(new ChatTurn(
+                "user",
+                $"[{string.Join(", ", caught.Select(picture => picture.FileName))} was produced, "
+                + $"but {_activeRuntime?.EngineLabel ?? "this model"} cannot look at pictures.]"));
         }
 
         if (_pendingImages.Count > 0)

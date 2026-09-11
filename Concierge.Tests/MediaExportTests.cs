@@ -256,4 +256,35 @@ public sealed class MediaExportTests : IDisposable
 
         Assert.True(new FileInfo(slow).Length > new FileInfo(quick).Length);
     }
+
+    /// <summary>
+    /// A movement the encoder refuses is a film that does not export, so both of the ones
+    /// that only work on a still are run for real rather than checked as strings.
+    ///
+    /// This is the test the filter expressions needed: `zoompan` takes its length in frames
+    /// and its position as expressions, and a wrong one is not a worse-looking shot — it is
+    /// "Error while filtering" and no file at all.
+    /// </summary>
+    [Theory]
+    [InlineData("grow")]
+    [InlineData("drift")]
+    [InlineData("fade")]
+    public async Task A_shot_that_moves_still_produces_a_film(string move)
+    {
+        if (!EncoderHere)
+        {
+            return;
+        }
+
+        var path = Out($"moving-{move}.mp4");
+
+        var moving = DesignDocument.Blank(medium: DesignMedium.Motion)
+            .Add(DesignNode.New(DesignNodeKind.Frame, null,
+                ("text", "A held picture"), ("seconds", "2"), ("move", move)));
+
+        var result = await new FfmpegMediaExport().VideoAsync(moving, path);
+
+        Assert.True(result.Ok, result.Problem);
+        Assert.True(new FileInfo(path).Length > 0);
+    }
 }
