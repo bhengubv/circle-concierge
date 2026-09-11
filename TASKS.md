@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **124 boxes ticked, 4 open, three
+`main`. What replaces it is the working list: **125 boxes ticked, 4 open, three
 partial**, ordered so the next person can pick one up.
 
 That count is counted, not remembered — `grep -c '^- \[x\]'` and `'^- \[ \]'`
@@ -1287,7 +1287,26 @@ two commits behind `HEAD` before anyone noticed.
 - [x] Verified on the running desktop app, not only in tests — Engineering lists
       the real catalogue, `todo_read` and `todo_write` included, and says what
       confines a command. Last checked at `a00191b`; **not re-run since**
-- [~] **The 3D engine on the desktop head: unverified, and now self-reporting.**
+- [x] **The 3D engine works on the desktop head. Measured, not assumed.**
+
+      The only genuinely head-specific thing about it was whether WebView2 loads an
+      ES module by absolute path from inside a srcdoc frame, on the origin MAUI
+      serves the app from. Everything else is shared code.
+
+      Settled by reproducing exactly those conditions rather than by reasoning about
+      them: a WebView2 host with `SetVirtualHostNameToFolderMapping("0.0.0.0", ...)`
+      — which is what `BlazorWebView` does on Windows — serving the real
+      `SceneRenderer` output inside a srcdoc iframe with the same sandbox
+      attributes, on WebView2 runtime 152.0.4191.66.
+
+      The answer: `deep: true`, `report: {drew: true}`, `canvasHidden: false`,
+      `stageHidden: true`. The engine loaded, drew, and put the flat room away.
+
+      The self-report built for this stays, and earns its place either way: it is
+      what tells somebody on a machine that *cannot* run it why their room looks
+      flat, which is a question a person actually has.
+- [~] **Superseded — kept for the reasoning.** The entry below said this was
+      unverified and explained why that mattered.
       Everything about it is shared code — one `SceneRenderer`, one set of
       components — so there is nothing to port. What is genuinely head-specific is
       whether the WebView loads an ES module by absolute path from inside a srcdoc
