@@ -994,26 +994,39 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         }
     }
 
-    protected void ToggleDesign()
+    protected async Task ToggleDesign()
     {
-        _designOpen = !_designOpen;
-
         // Made on first opening and kept for the life of the workspace. Closing
         // puts the canvas away; it does not throw away what is on it.
+        //
+        // **Built and restored before the canvas is shown, and that ordering is the
+        // whole point.** It used to be fire-and-forget, with a comment saying the
+        // canvas had to appear instantly and a design arriving a moment later was
+        // better than a surface that hesitates. What actually happened is that the
+        // design arrived a moment later and **was never drawn**: the restore landed
+        // while the canvas iframe was still loading its first (empty) document, the
+        // in-flight load finished last, and the srcdoc that carried somebody's work
+        // was thrown away. The strip showed the restored moment; the canvas showed
+        // "Nothing here yet". Two documents on one screen.
+        //
+        // The hesitation it was avoiding is a local file read. What it cost was
+        // every design anybody had ever saved, on the one screen built to show them.
         if (_design is null)
         {
             _design = new Concierge.Shared.Design.DesignSession();
 
-            // Whatever was on it last time. Fire-and-forget rather than awaited:
-            // the canvas has to appear the instant it is asked for, and a design
-            // arriving a moment later is better than a surface that hesitates.
-            _ = RestoreTheCanvasAsync();
+            await RestoreTheCanvasAsync();
 
             // Saved as it changes. Subscribed once, here, rather than at each
             // place that records a change — there are three of those now (typed
             // sentences, the tools, going back) and a fourth would forget.
+            //
+            // Subscribed after the restore so that putting the design back does not
+            // immediately write it out again.
             _design.Changed += (_, _) => _ = KeepTheCanvasAsync();
         }
+
+        _designOpen = !_designOpen;
 
         // Hand the canvas to the tool source, or take it back. This is what makes
         // the design tools appear in the catalogue while a canvas is open and
@@ -1795,9 +1808,9 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     /// way. On a phone the drawer covers the whole screen, so leaving it up would
     /// hide the thing somebody just asked to see.
     /// </summary>
-    protected void OpenDesignFromDrawer()
+    protected async Task OpenDesignFromDrawer()
     {
-        ToggleDesign();
+        await ToggleDesign();
         CloseDrawer();
     }
 

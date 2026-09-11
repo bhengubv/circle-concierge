@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **156 boxes ticked, 5 open, fourteen
+`main`. What replaces it is the working list: **158 boxes ticked, 5 open, fourteen
 partial**, ordered so the next person can pick one up.
 
 **Thirty-six of those forty arrived at once**, on 2026-09-11, when the six
@@ -1698,7 +1698,7 @@ commit it was last actually checked at, because "all four hold as of `<ref>`"
 was one date covering four checks made at different times — and it had drifted
 two commits behind `HEAD` before anyone noticed.
 
-- [x] **1908 tests pass, and the suite is deterministic.** It was not: four
+- [x] **1913 tests pass, and the suite is deterministic.** It was not: four
       consecutive runs each failed *one different test*, which meant it could not
       tell a regression from noise — the same defect as a screen asserting
       something untrue, sitting on the check everything else is measured by.
@@ -1845,6 +1845,25 @@ two commits behind `HEAD` before anyone noticed.
       Space appeared to do nothing, and the same synthetic clicks were being ignored by the
       **Windows maximize button**, which is not Blazor at all. All seven pass, so the product
       was fine and the measurement was not — the sixth time in this file's history.
+- [x] **A saved design opens onto the canvas, checked on the running app.** The restore was
+      fire-and-forget, defended by a comment saying the canvas had to appear instantly and a
+      design arriving a moment later was better than a surface that hesitates. What happened
+      is that it arrived a moment later and **was never drawn**: it landed while the canvas
+      iframe was still loading its first, empty document, the in-flight load finished last,
+      and the restored work was thrown away. The strip showed the design; the canvas beside
+      it said "Nothing here yet" — two documents on one screen.
+
+      The hesitation being avoided is a local file read. What it cost was every design
+      anybody had saved. It is restored before the canvas is shown now.
+
+      **Five tests pin the contract and none of them can catch that race** — bUnit has no
+      browser, so there is no real iframe and nothing to lose — which is written into the
+      test file rather than left to be discovered. The app is what proved it, before and
+      after.
+- [x] **All seven media looked at with real content on them, on the desktop head.** A page, a
+      deck, a video, a room, a running order, a phone screen and a board, each carrying the
+      same heading, paragraph, picture and sound, each drawn correctly, and the medium switch
+      keeping all of it in every direction. This is the pass that found both defects above.
 - [x] `[skip ci]` in the HEAD commit before any push — a rule, not a check
 - [x] The app actually starts. Added after a Razor comment inside an element's
       attribute list compiled, passed 1141 tests, and threw on every render in
