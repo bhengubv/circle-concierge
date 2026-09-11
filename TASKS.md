@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **158 boxes ticked, 5 open, fourteen
+`main`. What replaces it is the working list: **160 boxes ticked, 5 open, fourteen
 partial**, ordered so the next person can pick one up.
 
 **Thirty-six of those forty arrived at once**, on 2026-09-11, when the six
@@ -1698,7 +1698,7 @@ commit it was last actually checked at, because "all four hold as of `<ref>`"
 was one date covering four checks made at different times — and it had drifted
 two commits behind `HEAD` before anyone noticed.
 
-- [x] **1913 tests pass, and the suite is deterministic.** It was not: four
+- [x] **1917 tests pass, and the suite is deterministic.** It was not: four
       consecutive runs each failed *one different test*, which meant it could not
       tell a regression from noise — the same defect as a screen asserting
       something untrue, sitting on the check everything else is measured by.
@@ -1864,6 +1864,20 @@ two commits behind `HEAD` before anyone noticed.
       deck, a video, a room, a running order, a phone screen and a board, each carrying the
       same heading, paragraph, picture and sound, each drawn correctly, and the medium switch
       keeping all of it in every direction. This is the pass that found both defects above.
+- [x] **The Diagrams room draws, and stopped saying "0 parts".** Two defects on one screen,
+      both the signature one.
+
+      It printed the source into a `<pre>` under a comment reading *"rendered by the same
+      mechanism the thread uses"* — which it was not; the thread uses `MermaidBlock`, which
+      calls the renderer. **Sixth comment in this repository found describing behaviour that
+      did not exist.** The page says "watch it draw" above the box, and now it does.
+
+      And it read `Elements.Count` from a runtime that returns an empty list on purpose, so
+      every diagram anybody ever typed was labelled **0 parts**. It says what the runtime
+      actually knows — "Mermaid flowchart block with 6 declared lines" — and the same count in
+      "Bring one in" is shown only where a runtime fills it. 4 tests.
+- [x] Walls with a door and a window cut into them, and floors that stack, looked at on the
+      desktop head. Real holes in a real wall, no CSG library, exactly as the entry claims.
 - [x] `[skip ci]` in the HEAD commit before any push — a rule, not a check
 - [x] The app actually starts. Added after a Razor comment inside an element's
       attribute list compiled, passed 1141 tests, and threw on every render in

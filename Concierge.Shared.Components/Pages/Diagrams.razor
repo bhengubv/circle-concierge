@@ -36,11 +36,27 @@
             {
                 <div class="row">
                     <span class="row-name">@_mermaidArtifact.Title</span>
-                    <span class="row-val">@_mermaidArtifact.Elements.Count parts</span>
+
+                    @*
+                        What this runtime actually knows, rather than a field it never fills.
+                        It said "0 parts" for every diagram ever typed here, because the
+                        mermaid runtime hands back an empty element list on purpose — it
+                        counts declared lines instead. A number that is always nought is the
+                        approvals badge that always said two.
+                    *@
+                    <span class="row-val">
+                        @(_mermaidArtifact.Elements.Count > 0
+                            ? $"{_mermaidArtifact.Elements.Count} parts"
+                            : _mermaidArtifact.Summary)
+                    </span>
                 </div>
 
-                @* Rendered by the same mechanism the thread uses. *@
-                <pre class="diagram mermaid">@_mermaidArtifact.Source</pre>
+                @*
+                    The same component the thread uses, which is what the comment here used
+                    to claim while this drew a `<pre>` of the source. The page says "watch it
+                    draw" above the box; it now does.
+                *@
+                <MermaidBlock Source="@_mermaidArtifact.Source" />
             }
         </RoomSection>
 
@@ -80,7 +96,16 @@
                 <div class="rows">
                     <div class="row"><span class="row-name">Title</span><span class="row-val">@_fetchedArtifact.Title</span></div>
                     <div class="row"><span class="row-name">Kind</span><span class="row-val">@_fetchedArtifact.Kind</span></div>
-                    <div class="row"><span class="row-name">Parts</span><span class="row-val">@_fetchedArtifact.Elements.Count</span></div>
+                    @*
+                        Shown only where the runtime fills it. Some do — a runtime that reads
+                        a real design file knows what is in it — and the mermaid one does not,
+                        so a nought here would say the file was empty rather than that nobody
+                        counted.
+                    *@
+                    @if (_fetchedArtifact.Elements.Count > 0)
+                    {
+                        <div class="row"><span class="row-name">Parts</span><span class="row-val">@_fetchedArtifact.Elements.Count</span></div>
+                    }
                 </div>
                 <p class="room-note">@_fetchedArtifact.Summary</p>
             }
