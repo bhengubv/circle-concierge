@@ -17,6 +17,9 @@ public static class Rooms
     {
         HardeningStatus.Ready => "dot-done",
         HardeningStatus.NeedsOwner => "dot-waiting",
+        // A hollow ring rather than a colour: nothing has been measured, so there
+        // is no good or bad news to report.
+        HardeningStatus.NotChecked => "dot-idle",
         _ => "dot-danger"
     };
 
@@ -29,6 +32,7 @@ public static class Rooms
     {
         HardeningStatus.Ready => "Ready",
         HardeningStatus.NeedsOwner => "Needs an owner",
+        HardeningStatus.NotChecked => "Not checked",
         _ => "Blocked"
     };
 }

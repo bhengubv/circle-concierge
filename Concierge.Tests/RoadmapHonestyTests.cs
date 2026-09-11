@@ -69,15 +69,33 @@ public sealed class RoadmapHonestyTests : BunitContext
     }
 
     /// <summary>
-    /// Where a status is real, it is kept. Source control asks the machine whether there is a
-    /// repository and answers Blocked when there is not — that one is a measurement, and this
-    /// test is here so nobody reads the change above as "statuses are bad".
+    /// Where a status is real, it is kept — so nobody reads the change above as "statuses are
+    /// bad". The example this test cited was wrong, and correcting it is the point.
+    ///
+    /// It said source control "asks the machine whether there is a repository and answers
+    /// Blocked when there is not — that one is a measurement". It was not. It was a second
+    /// literal, sitting two lines below the fifteen this file was written about, and it
+    /// passed this test for the same reason the fifteen would have: the assertion only ever
+    /// checked that *something* was not Ready, which a typed word satisfies perfectly.
+    ///
+    /// It is a measurement now (see <c>ReleaseGateTests</c>), so the example is real and the
+    /// assertion is the one that could tell the difference: the gate gives a different answer
+    /// in a folder with a repository and a folder without one.
     /// </summary>
     [Fact]
     public void A_status_that_is_measured_is_still_a_status()
     {
-        var gates = new ConciergeStateService().GetSnapshot().ProductionGates;
+        var withGit = Path.Combine(Path.GetTempPath(), $"roadmap-{Guid.NewGuid():N}");
+        var without = Path.Combine(Path.GetTempPath(), $"roadmap-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(Path.Combine(withGit, ".git"));
+        Directory.CreateDirectory(without);
 
-        Assert.Contains(gates, gate => gate.Status != HardeningStatus.Ready);
+        static ProductionGate Gate(string root)
+            => new ConciergeStateService(new SkillCatalogService(), new SourceControlService(), root)
+                .GetSnapshot()
+                .ProductionGates
+                .Single(gate => gate.Id == "source-control");
+
+        Assert.NotEqual(Gate(withGit).Status, Gate(without).Status);
     }
 }

@@ -31,8 +31,14 @@ public sealed class ConciergeRecoverySmokeTests
         var snapshot = service.GetSnapshot();
 
         Assert.Contains(snapshot.Diagnostics, check => check.Id == "dotnet" && check.Status == HardeningStatus.Ready);
-        Assert.Contains(snapshot.ProductionGates, gate => gate.Id == "source-control" && gate.Status == HardeningStatus.Blocked);
         Assert.Contains(snapshot.ProductionGates, gate => gate.Id == "owner-credentials" && gate.Status == HardeningStatus.NeedsOwner);
+
+        // The source-control gate used to be asserted here as Blocked, which held for as long
+        // as it was a typed word and stopped holding the moment it started asking the machine:
+        // this suite runs inside a repository, so the honest answer here is Ready. What the
+        // gate must do is *reflect the folder*, and that is checked against both kinds of
+        // folder in ReleaseGateTests rather than against whichever one the test host is in.
+        Assert.Contains(snapshot.ProductionGates, gate => gate.Id == "source-control");
     }
 
     [Theory]

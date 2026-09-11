@@ -56,7 +56,13 @@ public sealed class BeyondClaudeServiceTests
 
         Assert.Contains("defensive", security.SafetyBoundary, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("approved assets", security.SafetyBoundary, StringComparison.OrdinalIgnoreCase);
-        Assert.Equal(HardeningStatus.Ready, security.Status);
+
+        // This line asserted `Ready`, which is how a test comes to hold a claim in place
+        // rather than check it: there is no security lab, no defensive check, no threat
+        // model and no dependency review anywhere in the tree. The boundary above is worth
+        // pinning — it is what the thing would work inside if it existed — and the state is
+        // now the true one.
+        Assert.Equal(BeyondState.NotBuilt, security.State);
     }
 
     [Fact]

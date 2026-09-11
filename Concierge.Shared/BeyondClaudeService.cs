@@ -26,7 +26,7 @@ public sealed class BeyondClaudeService : IBeyondClaudeService
             "Keep local, searchable memory rooms for decisions, evidence, notes, and reusable context.",
             "Users stop repeating themselves, and the app can explain why a decision was made.",
             "Local first, user-owned, exportable, and never a hidden cloud dependency.",
-            HardeningStatus.Ready),
+            BeyondState.NotBuilt),
         new(
             "workforce-mode",
             "Workforce Mode",
@@ -35,7 +35,7 @@ public sealed class BeyondClaudeService : IBeyondClaudeService
             "Route work to small specialist teams for product, engineering, finance, growth, support, and compliance.",
             "Concierge becomes useful to a whole business, not only developers.",
             "Every helper has scoped tools, visible work, and approval gates before risky actions.",
-            HardeningStatus.Ready),
+            BeyondState.NotBuilt),
         new(
             "simulation-room",
             "Simulation Room",
@@ -44,7 +44,7 @@ public sealed class BeyondClaudeService : IBeyondClaudeService
             "Compare likely outcomes before hiring, launching, pricing, buying tools, or changing a process.",
             "One-person teams can think through consequences without needing a strategy department.",
             "Simulations are labelled as forecasts, not facts, and must show the evidence they used.",
-            HardeningStatus.Ready),
+            BeyondState.NotBuilt),
         new(
             "infrastructure-room",
             "Infrastructure Room",
@@ -53,7 +53,7 @@ public sealed class BeyondClaudeService : IBeyondClaudeService
             "Track environments, SSH-style access, deployment steps, and operational checks in a safety-first way.",
             "Small teams get infrastructure confidence without exposing raw credentials everywhere.",
             "No secret display, no uncontrolled shell access, and owner approval for remote changes.",
-            HardeningStatus.Ready),
+            BeyondState.NotBuilt),
         new(
             "diagram-evidence",
             "Diagram Evidence",
@@ -62,7 +62,8 @@ public sealed class BeyondClaudeService : IBeyondClaudeService
             "Generate simple diagrams for systems, business processes, release evidence, and support handovers.",
             "People understand the work faster when the app can show flows instead of only text.",
             "Diagrams are generated from reviewable project facts and can be exported as evidence.",
-            HardeningStatus.Ready),
+            BeyondState.InTheApp,
+            "The Diagrams room, which draws with a renderer carried in the app."),
         new(
             "safe-auto-resume",
             "Safe Auto-Resume",
@@ -71,7 +72,8 @@ public sealed class BeyondClaudeService : IBeyondClaudeService
             "Resume interrupted work while preserving approvals, sandbox boundaries, and user control.",
             "Long work should survive disconnects without holding the machine hostage.",
             "No permission bypass, no silent destructive action, and stop if the workspace changed.",
-            HardeningStatus.Ready),
+            BeyondState.InTheApp,
+            "The thread, unsent text and switched-on skills survive a restart."),
         new(
             "lightweight-mode",
             "Lightweight Mode",
@@ -80,7 +82,7 @@ public sealed class BeyondClaudeService : IBeyondClaudeService
             "Offer small-machine profiles with lower concurrency, shorter jobs, and gentler background work.",
             "Concierge should respect laptops, phones, and older hardware.",
             "Resource caps are visible and can be tightened by the user.",
-            HardeningStatus.Ready),
+            BeyondState.NotBuilt),
         new(
             "security-lab",
             "Security Lab",
@@ -89,7 +91,7 @@ public sealed class BeyondClaudeService : IBeyondClaudeService
             "Run defensive checks, threat models, dependency reviews, and evidence capture in a scoped lab.",
             "Security becomes part of ordinary work instead of a scary final step.",
             "Defensive-only by default, disabled for offensive actions, and always scoped to approved assets.",
-            HardeningStatus.Ready),
+            BeyondState.NotBuilt),
         new(
             "media-generation",
             "Media Studio",
@@ -98,7 +100,8 @@ public sealed class BeyondClaudeService : IBeyondClaudeService
             "Connect low-friction image, audio, and creative generation providers through normal provider policy.",
             "Business users can make launch assets, mockups, and learning material without leaving the app.",
             "Provider-neutral, opt-in, labelled AI output, and subject to content and credential policy.",
-            HardeningStatus.Ready),
+            BeyondState.NeedsAKey,
+            "The Images room, and make_picture on the canvas. Both need a provider key."),
         new(
             "api-room",
             "API Room",
@@ -107,7 +110,7 @@ public sealed class BeyondClaudeService : IBeyondClaudeService
             "Render OpenAPI references, test requests, validate contracts, generate examples, mock APIs, and let an agent explain API workflows.",
             "Concierge becomes stronger for business integrations because every API can be documented, tested, mocked, and explained in one safe workspace.",
             "Scalar-style tools are optional adapters; live requests still follow endpoint allowlists, credential policy, approvals, and audit logging.",
-            HardeningStatus.Ready),
+            BeyondState.NotBuilt),
         new(
             "cross-platform-release",
             "Cross-Platform Release",
@@ -116,7 +119,7 @@ public sealed class BeyondClaudeService : IBeyondClaudeService
             "Track Apple, Android, Windows, Linux, and web packaging readiness from one release cockpit.",
             "The same idea can become a web app, desktop app, and mobile app without splitting the team.",
             "Signing credentials stay owner-controlled and platform checks remain explicit.",
-            HardeningStatus.Ready)
+            BeyondState.NotBuilt)
     ];
 
     private static readonly IReadOnlyList<MemoryRoom> MemoryRooms =

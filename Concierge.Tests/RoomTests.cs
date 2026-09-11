@@ -195,8 +195,17 @@ public sealed class RoomTests : BunitContext
     {
         var cut = Open<Concierge.Shared.Components.Pages.Beyond>();
 
+        // Two lists now — what is in the app, and what is only a direction — so "at most
+        // three cards in the room" describes neither of them. What still has to hold is the
+        // reason the fold exists: eleven cards ran the room 495px past the bottom of the
+        // window, so the long list is cut short and offers the rest.
+        // The long list lives in a folded section, so it has to be opened before there is
+        // anything to cut short.
+        cut.FindAll("button.room-sec-head")
+            .Single(head => head.TextContent.Contains("Not built yet", StringComparison.Ordinal))
+            .Click();
+
         var shown = cut.FindAll(".room-grid .room-card");
-        Assert.True(shown.Count <= 3, $"expected at most 3 cards, found {shown.Count}");
 
         cut.Find("button.ws-more").Click();
 

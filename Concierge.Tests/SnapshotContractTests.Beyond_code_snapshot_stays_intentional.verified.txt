@@ -7,7 +7,9 @@
       InspiredBy: mempalace,
       Summary: Keep local, searchable memory rooms for decisions, evidence, notes, and reusable context.,
       WhyItMatters: Users stop repeating themselves, and the app can explain why a decision was made.,
-      SafetyBoundary: Local first, user-owned, exportable, and never a hidden cloud dependency.
+      SafetyBoundary: Local first, user-owned, exportable, and never a hidden cloud dependency.,
+      State: NotBuilt,
+      Where: 
     },
     {
       Id: workforce-mode,
@@ -16,7 +18,9 @@
       InspiredBy: loki-mode and eigent,
       Summary: Route work to small specialist teams for product, engineering, finance, growth, support, and compliance.,
       WhyItMatters: Concierge becomes useful to a whole business, not only developers.,
-      SafetyBoundary: Every helper has scoped tools, visible work, and approval gates before risky actions.
+      SafetyBoundary: Every helper has scoped tools, visible work, and approval gates before risky actions.,
+      State: NotBuilt,
+      Where: 
     },
     {
       Id: simulation-room,
@@ -25,7 +29,9 @@
       InspiredBy: MiroFish,
       Summary: Compare likely outcomes before hiring, launching, pricing, buying tools, or changing a process.,
       WhyItMatters: One-person teams can think through consequences without needing a strategy department.,
-      SafetyBoundary: Simulations are labelled as forecasts, not facts, and must show the evidence they used.
+      SafetyBoundary: Simulations are labelled as forecasts, not facts, and must show the evidence they used.,
+      State: NotBuilt,
+      Where: 
     },
     {
       Id: infrastructure-room,
@@ -34,7 +40,9 @@
       InspiredBy: LazySSH,
       Summary: Track environments, SSH-style access, deployment steps, and operational checks in a safety-first way.,
       WhyItMatters: Small teams get infrastructure confidence without exposing raw credentials everywhere.,
-      SafetyBoundary: No secret display, no uncontrolled shell access, and owner approval for remote changes.
+      SafetyBoundary: No secret display, no uncontrolled shell access, and owner approval for remote changes.,
+      State: NotBuilt,
+      Where: 
     },
     {
       Id: diagram-evidence,
@@ -43,7 +51,8 @@
       InspiredBy: mermaid,
       Summary: Generate simple diagrams for systems, business processes, release evidence, and support handovers.,
       WhyItMatters: People understand the work faster when the app can show flows instead of only text.,
-      SafetyBoundary: Diagrams are generated from reviewable project facts and can be exported as evidence.
+      SafetyBoundary: Diagrams are generated from reviewable project facts and can be exported as evidence.,
+      Where: The Diagrams room, which draws with a renderer carried in the app.
     },
     {
       Id: safe-auto-resume,
@@ -52,7 +61,8 @@
       InspiredBy: claude-auto-resume,
       Summary: Resume interrupted work while preserving approvals, sandbox boundaries, and user control.,
       WhyItMatters: Long work should survive disconnects without holding the machine hostage.,
-      SafetyBoundary: No permission bypass, no silent destructive action, and stop if the workspace changed.
+      SafetyBoundary: No permission bypass, no silent destructive action, and stop if the workspace changed.,
+      Where: The thread, unsent text and switched-on skills survive a restart.
     },
     {
       Id: lightweight-mode,
@@ -61,7 +71,9 @@
       InspiredBy: PicoClaw,
       Summary: Offer small-machine profiles with lower concurrency, shorter jobs, and gentler background work.,
       WhyItMatters: Concierge should respect laptops, phones, and older hardware.,
-      SafetyBoundary: Resource caps are visible and can be tightened by the user.
+      SafetyBoundary: Resource caps are visible and can be tightened by the user.,
+      State: NotBuilt,
+      Where: 
     },
     {
       Id: security-lab,
@@ -70,7 +82,9 @@
       InspiredBy: Claude-BugHunter and beheader,
       Summary: Run defensive checks, threat models, dependency reviews, and evidence capture in a scoped lab.,
       WhyItMatters: Security becomes part of ordinary work instead of a scary final step.,
-      SafetyBoundary: Defensive-only by default, disabled for offensive actions, and always scoped to approved assets.
+      SafetyBoundary: Defensive-only by default, disabled for offensive actions, and always scoped to approved assets.,
+      State: NotBuilt,
+      Where: 
     },
     {
       Id: media-generation,
@@ -79,7 +93,9 @@
       InspiredBy: pollinations,
       Summary: Connect low-friction image, audio, and creative generation providers through normal provider policy.,
       WhyItMatters: Business users can make launch assets, mockups, and learning material without leaving the app.,
-      SafetyBoundary: Provider-neutral, opt-in, labelled AI output, and subject to content and credential policy.
+      SafetyBoundary: Provider-neutral, opt-in, labelled AI output, and subject to content and credential policy.,
+      State: NeedsAKey,
+      Where: The Images room, and make_picture on the canvas. Both need a provider key.
     },
     {
       Id: api-room,
@@ -88,7 +104,9 @@
       InspiredBy: Scalar,
       Summary: Render OpenAPI references, test requests, validate contracts, generate examples, mock APIs, and let an agent explain API workflows.,
       WhyItMatters: Concierge becomes stronger for business integrations because every API can be documented, tested, mocked, and explained in one safe workspace.,
-      SafetyBoundary: Scalar-style tools are optional adapters; live requests still follow endpoint allowlists, credential policy, approvals, and audit logging.
+      SafetyBoundary: Scalar-style tools are optional adapters; live requests still follow endpoint allowlists, credential policy, approvals, and audit logging.,
+      State: NotBuilt,
+      Where: 
     },
     {
       Id: cross-platform-release,
@@ -97,7 +115,9 @@
       InspiredBy: CrossCode,
       Summary: Track Apple, Android, Windows, Linux, and web packaging readiness from one release cockpit.,
       WhyItMatters: The same idea can become a web app, desktop app, and mobile app without splitting the team.,
-      SafetyBoundary: Signing credentials stay owner-controlled and platform checks remain explicit.
+      SafetyBoundary: Signing credentials stay owner-controlled and platform checks remain explicit.,
+      State: NotBuilt,
+      Where: 
     }
   ],
   MemoryRooms: [

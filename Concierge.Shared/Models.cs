@@ -4,7 +4,18 @@ public enum HardeningStatus
 {
     Ready,
     NeedsOwner,
-    Blocked
+    Blocked,
+
+    /// <summary>
+    /// Nobody asked. Added because the three above have no way to say "this was
+    /// never measured", so anything unmeasured was being written down as `Ready` —
+    /// which is how the Release room came to say two gates out of four were
+    /// passing on the strength of two literals in a list.
+    ///
+    /// Not checked and passing are different facts, and a room that cannot tell
+    /// them apart will always choose the flattering one.
+    /// </summary>
+    NotChecked
 }
 
 public enum ProviderAccessKind

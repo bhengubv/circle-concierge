@@ -17,6 +17,8 @@ public interface IConciergeStateService
 public sealed class ConciergeStateService : IConciergeStateService
 {
     private readonly ISkillCatalogService _skillCatalog;
+    private readonly ISourceControlService _sourceControl;
+    private readonly string _workspaceRoot;
 
     public ConciergeStateService()
         : this(new SkillCatalogService())
@@ -24,8 +26,23 @@ public sealed class ConciergeStateService : IConciergeStateService
     }
 
     public ConciergeStateService(ISkillCatalogService skillCatalog)
+        : this(skillCatalog, new SourceControlService(), AgentHarnessService.LocateDefaultWorkspaceRoot())
+    {
+    }
+
+    /// <summary>
+    /// The workspace root is passed in rather than found here so a test can point this at a
+    /// folder it made, which is the only way to check both answers of the source-control
+    /// gate. A gate that can only ever give one answer is not a gate.
+    /// </summary>
+    public ConciergeStateService(
+        ISkillCatalogService skillCatalog,
+        ISourceControlService sourceControl,
+        string workspaceRoot)
     {
         _skillCatalog = skillCatalog;
+        _sourceControl = sourceControl;
+        _workspaceRoot = workspaceRoot;
     }
 
     private static readonly IReadOnlyList<ProviderInfo> Providers =
@@ -61,13 +78,60 @@ public sealed class ConciergeStateService : IConciergeStateService
         Task(15, "Performance and resource tests", "Concurrency caps, cancellation, cleanup, resource warnings, and emergency stop.")
     ];
 
-    private static readonly IReadOnlyList<ProductionGate> Gates =
-    [
-        new("build-tests", "Build and tests", HardeningStatus.Ready, ".NET 10 solution builds and tests are expected to pass.", "Recreated solution and test project."),
-        new("agent-harness", "Agent harness", HardeningStatus.Ready, "Core agent safety surfaces are represented in the rebuilt app.", "Production tasklist and diagnostics."),
-        new("source-control", "Source control", HardeningStatus.Blocked, "This rebuilt folder still needs Git history before release tagging.", "No .git repository detected by the app yet."),
-        new("owner-credentials", "Signing and store credentials", HardeningStatus.NeedsOwner, "Owner-controlled credentials are not stored in source.", "Release cockpit tracks them without exposing secrets.")
-    ];
+    /// <summary>
+    /// What has to be true before a build ships — asked, where there is something to ask.
+    ///
+    /// **All four of these were literals**, and the Release room printed "Passing 2 of 4"
+    /// over them under a closing line promising that each one names how it was checked.
+    /// Two said `Ready` because somebody typed `Ready`. The source-control gate said
+    /// "No .git repository detected by the app yet" in a repository with a full history,
+    /// and went on saying it after a commit and a push — because nothing was detecting
+    /// anything.
+    ///
+    /// `SourceControlService` had been in the tree the whole time, registered in the
+    /// container, doing exactly this check properly, and **resolved by nothing outside its
+    /// own tests** — the tenth thing in this repository written and never reached. It is
+    /// reached now, and it is the only one of the four that can be settled from inside a
+    /// running app: whether a build compiles and whether a suite passes are facts about a
+    /// build machine, and an app cannot learn them by looking at itself.
+    ///
+    /// So those two say **Not checked** rather than Ready. That is a worse-looking room and
+    /// a true one, and the count above it drops from two to one.
+    /// </summary>
+    private IReadOnlyList<ProductionGate> BuildGates()
+    {
+        var git = _sourceControl.GetStatus(_workspaceRoot);
+
+        return
+        [
+            new(
+                "build-tests",
+                "Build and tests",
+                HardeningStatus.NotChecked,
+                "Nothing inside the app runs the build or the suite, so it cannot say whether they pass.",
+                "Checked on a build machine, not from here."),
+            new(
+                "agent-harness",
+                "Agent harness",
+                HardeningStatus.NotChecked,
+                "No check stands behind this. It said Ready because the word was typed into a list.",
+                "Engineering lists the tools that are actually registered; that room measures, this line did not."),
+            new(
+                "source-control",
+                "Source control",
+                git.GateStatus,
+                git.IsGitRepository
+                    ? "There is a repository here, so releases can be tagged against a history."
+                    : "Without a repository there is no history to tag a release against.",
+                $"{git.Evidence} Looked in {git.WorkspaceRoot}."),
+            new(
+                "owner-credentials",
+                "Signing and store credentials",
+                HardeningStatus.NeedsOwner,
+                "Owner-controlled credentials are not stored in source.",
+                "Release cockpit tracks them without exposing secrets.")
+        ];
+    }
 
     public ConciergeSnapshot GetSnapshot()
     {
@@ -77,7 +141,7 @@ public sealed class ConciergeStateService : IConciergeStateService
             Providers,
             skills,
             Tasks,
-            Gates,
+            BuildGates(),
             // Nothing. Approvals are not state this service knows about: they
             // are tool calls blocked on a person, held by
             // InteractiveToolApprovalService until answered.

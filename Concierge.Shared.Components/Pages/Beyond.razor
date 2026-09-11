@@ -5,11 +5,16 @@
 @*
     Beyond Code: what Concierge is for once it stops being a coding tool.
 
-    This was a marketing page. It is now a room, which is a different thing:
-    every capability below is read from IBeyondClaudeService and carries the
-    boundary that constrains it, because a capability without its boundary is
-    a claim rather than a description. The status is a dot and a word, like
-    everywhere else.
+    This was a marketing page, and the comment that used to sit here said it
+    had stopped being one. It had not. Eleven capabilities were listed under
+    "What it can do", each with a green Ready beside it, and six of them did not
+    exist in any form — no memory store, no helper teams, no simulations, no
+    server access, no small-machine profiles, no security checks. Reading the
+    room, you would believe the product did all eleven today.
+
+    Two lists now. What is here names the thing in the app that delivers it, so
+    anybody can go and check. What is not built has no badge at all, because a
+    direction wearing a status is how the first version of this page happened.
 *@
 
 @{
@@ -27,39 +32,79 @@
     </div>
 
     <p class="room-lede">
-        Concierge started as something that writes code. These are the things it does
-        that are not that — each one with the limit it works inside.
+        Concierge started as something that writes code. These are the directions it
+        goes in beyond that — what is here today, what is not yet, and the limit each
+        one works inside.
     </p>
 
     <div class="room-body">
-        <RoomSection Title="What it can do" Count="@snapshot.Capabilities.Count" Open="true">
-            @* Three, then the rest on request. Eleven cards ran the room 495px
-               past the bottom of the window. *@
+        @{
+            var here = snapshot.Capabilities.Where(c => c.State != BeyondState.NotBuilt).ToList();
+            var ahead = snapshot.Capabilities.Where(c => c.State == BeyondState.NotBuilt).ToList();
+        }
+
+        <RoomSection Title="Here now" Count="@here.Count" Open="true">
             <div class="room-grid">
-                @foreach (var capability in (_allCapabilities ? snapshot.Capabilities : snapshot.Capabilities.Take(3)))
+                @foreach (var capability in here)
                 {
                     <article class="room-card">
                         <div class="room-card-top">
                             <span class="room-card-name">@capability.PlainEnglishName</span>
                             <span class="state">
-                                <span class="dot @Rooms.Dot(capability.Status)" aria-hidden="true"></span>
-                                @Rooms.Word(capability.Status)
+                                <span class="dot @(capability.State == BeyondState.InTheApp ? "dot-done" : "dot-waiting")" aria-hidden="true"></span>
+                                @(capability.State == BeyondState.InTheApp ? "In the app" : "Needs a key")
                             </span>
                         </div>
                         <p>@capability.Summary</p>
+                        @* Where to go and look. A claim nobody can check is the
+                           thing this room was made of. *@
+                        <p class="room-note">Where: @capability.Where</p>
                         <p class="room-note">Limit: @capability.SafetyBoundary</p>
                     </article>
                 }
             </div>
-            @if (!_allCapabilities && snapshot.Capabilities.Count > 3)
+        </RoomSection>
+
+        @* Three, then the rest on request. Eleven cards ran the room 495px past
+           the bottom of the window. *@
+        <RoomSection Title="Not built yet" Count="@ahead.Count">
+            <p class="room-note">
+                Directions, not features. Nothing below is in the app, and none of it is
+                scheduled — it is written down so the list is honest about its own size
+                rather than quietly shorter than the ambition.
+            </p>
+            <div class="room-grid">
+                @foreach (var capability in (_allCapabilities ? ahead : ahead.Take(3)))
+                {
+                    <article class="room-card">
+                        <div class="room-card-top">
+                            <span class="room-card-name">@capability.PlainEnglishName</span>
+                        </div>
+                        <p>@capability.Summary</p>
+                        <p class="room-note">Limit it would work inside: @capability.SafetyBoundary</p>
+                    </article>
+                }
+            </div>
+            @if (!_allCapabilities && ahead.Count > 3)
             {
                 <button class="ws-more" type="button" @onclick="@(() => _allCapabilities = true)">
-                    Show all @snapshot.Capabilities.Count
+                    Show all @ahead.Count
                 </button>
             }
         </RoomSection>
 
-        <RoomSection Title="Where it remembers things" Count="@snapshot.MemoryRooms.Count">
+        @* Titled "Where it remembers things", with "Follows you" beside every row —
+           a statement about storage, for a store that does not exist. There is no
+           memory service, no file, nothing written and nothing read; the four below
+           are a shape somebody sketched. "Follows you" in particular is a promise
+           about a device somebody else is holding.
+
+           The rows stay, because the shape is worth keeping. The tense does not. *@
+        <RoomSection Title="What it would remember" Count="@snapshot.MemoryRooms.Count">
+            <p class="room-note">
+                Part of "Remember useful work", which is not built. Nothing is stored in
+                these yet — they are what the rooms would be for.
+            </p>
             <div class="rows">
                 @foreach (var room in snapshot.MemoryRooms)
                 {
@@ -68,7 +113,7 @@
                             @room.Name
                             <span class="row-sub">@room.Purpose</span>
                         </span>
-                        <span class="row-val">@(room.PortableAcrossDevices ? "Follows you" : "This device")</span>
+                        <span class="row-val">@(room.PortableAcrossDevices ? "Would follow you" : "Would stay on this device")</span>
                     </div>
                 }
             </div>

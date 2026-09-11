@@ -26,7 +26,8 @@
     </div>
 
     <p class="room-lede">
-        What has to be true before a build ships, and how each one was checked.
+        What has to be true before a build ships, and whether anything here has
+        actually checked it.
     </p>
 
     <div class="room-body">
@@ -67,9 +68,14 @@
                     </div>
                 }
             </div>
+            @* This used to promise that every line named how its gate was checked,
+               above four gates that were not checked at all. It says what is true
+               now: one of them asks the machine, and the two marked "Not checked"
+               say so instead of borrowing the word Ready. *@
             <p class="room-note">
-                Each line names how the gate was checked, so a claim here can be
-                repeated by somebody who does not trust it.
+                A line that names a check can be repeated by somebody who does not
+                trust it. A gate marked "Not checked" is not a failure — it means
+                nothing in the app has asked, and it is not counted as passing.
             </p>
         </RoomSection>
     </div>
