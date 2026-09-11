@@ -391,4 +391,78 @@ public sealed class RoomBuildingTests
         Assert.Contains("thing.on === 'ceiling'", html, StringComparison.Ordinal);
         Assert.Contains("wall.thickness", html, StringComparison.Ordinal);
     }
+
+    // ── A plan to build on top of ─────────────────────────────────────────
+
+    private const string Dot =
+        "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+    /// <summary>
+    /// How somebody with a drawing on paper starts: photograph it, say how wide
+    /// the building really is, and put walls up over it. Not by typing
+    /// coordinates.
+    /// </summary>
+    [Fact]
+    public async Task A_plan_can_be_laid_on_the_floor_at_its_real_size()
+    {
+        var bench = Open();
+
+        var result = await Tool(bench, "design_plan").InvokeAsync(new JsonObject
+        {
+            ["picture"] = Dot,
+            ["width"] = 900,
+            ["depth"] = 600,
+        });
+
+        Assert.True(result.Success, result.FailureMessage);
+
+        var plan = Only(bench.Session!.Current, "plan");
+
+        Assert.Equal(900, plan.GetProperty("width").GetInt32());
+        Assert.Equal(600, plan.GetProperty("depth").GetInt32());
+        Assert.StartsWith("data:image/", plan.GetProperty("src").GetString()!, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The rule the paperclip follows everywhere else. A plan living on somebody's
+    /// machine makes a design that looks complete here and arrives somewhere else
+    /// with nothing to trace.
+    /// </summary>
+    [Theory]
+    [InlineData("https://example.com/plan.png")]
+    [InlineData("C:/plans/ground-floor.png")]
+    [InlineData("")]
+    public async Task A_plan_that_does_not_travel_with_the_design_is_refused(string picture)
+    {
+        var result = await Tool(Open(), "design_plan")
+            .InvokeAsync(new JsonObject { ["picture"] = picture });
+
+        Assert.False(result.Success);
+    }
+
+    [Fact]
+    public async Task Laying_a_plan_on_an_empty_canvas_makes_a_room_for_it()
+    {
+        var bench = Open();
+
+        await Tool(bench, "design_plan").InvokeAsync(new JsonObject { ["picture"] = Dot });
+
+        Assert.Equal(DesignMedium.Scene, bench.Session!.Current.Medium);
+        Assert.Single(DesignMediums.FramesOf(bench.Session.Current));
+    }
+
+    /// <summary>
+    /// Laid under everything by a hair, so a wall drawn on the line covers it
+    /// rather than fighting it for the same pixels.
+    /// </summary>
+    [Fact]
+    public void The_engine_lays_the_plan_under_what_is_built_on_it()
+    {
+        var html = DesignMediums.Render(DesignDocument.Blank(medium: DesignMedium.Scene)
+            .Add(DesignNode.New(DesignNodeKind.Frame, null, ("text", "A room"))));
+
+        Assert.Contains("function guideOf(thing)", html, StringComparison.Ordinal);
+        Assert.Contains("renderOrder = -1", html, StringComparison.Ordinal);
+        Assert.Contains("depthWrite: false", html, StringComparison.Ordinal);
+    }
 }

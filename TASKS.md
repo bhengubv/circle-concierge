@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **132 boxes ticked, 33 open, three
+`main`. What replaces it is the working list: **134 boxes ticked, 31 open, three
 partial**, ordered so the next person can pick one up.
 
 **Thirty-six of those forty arrived at once**, on 2026-09-11, when the six
@@ -1215,8 +1215,17 @@ architecture.
 - [x] Doors and windows cut into walls properly, so a wall has a hole in it — `design_opening`; **no CSG library**, because a rectangle can be left rather than cut
 - [x] Building levels that stack, pull apart, or show one at a time — `design_floors` and `design_floor_of`; pulled apart is the view no physical model gives you
 - [x] Furniture that attaches to a wall or a ceiling and sits at the right height — `design_hang`; the pushing-out is worked out from the wall's thickness rather than asked for
-- [ ] Trace over a photo, or bring in a 3D scan of a real room
-- [ ] Add-ons other people can write
+- [x] Trace over a photo — `design_plan` lays a floor plan flat at its real size to
+      build over, laid under everything by a hair so a wall drawn on the line covers
+      it rather than fighting it. **Bringing in a 3D scan is not done**: that is a
+      mesh format reader and a real decision, not a line of this.
+- [x] Add-ons other people can write — `shapes.json` names new things a room can be
+      furnished with, and `design_furnish` puts them in. **Pascal's plugin idea with
+      the dangerous half left out**: theirs loads real code, and `PluginHost` here
+      does the equivalent and stays deliberately unwired, because "any DLL on disk
+      can add tools" is a decision somebody makes on purpose. What people actually
+      want from those add-ons is more things to put in the room, and a file naming a
+      desk as three boxes cannot execute anything or break the app.
 
 #### Diffusion Studio — video
 
@@ -1386,7 +1395,7 @@ commit it was last actually checked at, because "all four hold as of `<ref>`"
 was one date covering four checks made at different times — and it had drifted
 two commits behind `HEAD` before anyone noticed.
 
-- [x] **1581 tests pass, and the suite is deterministic again.** It was not: four
+- [x] **1599 tests pass, and the suite is deterministic again.** It was not: four
       consecutive runs each failed *one different test*, which meant it could not
       tell a regression from noise — the same defect as a screen asserting
       something untrue, sitting on the check everything else is measured by.

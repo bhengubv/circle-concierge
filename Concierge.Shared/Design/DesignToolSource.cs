@@ -46,6 +46,12 @@ public sealed class DesignWorkbench
     public IMediaExport? Export { get; set; }
 
     /// <summary>
+    /// The things a room can be furnished with, and the file anybody can add to.
+    /// Null on a head that keeps none, and the built-ins are used instead.
+    /// </summary>
+    public RoomCatalogue? Catalogue { get; set; }
+
+    /// <summary>
     /// Reaching the network, for bringing a track in from a link. Null on a head
     /// that has no web access, and the tool is then absent.
     /// </summary>
@@ -117,6 +123,8 @@ public sealed class DesignToolSource : IAgentToolSource
                 new LookAtTheFloors(_workbench),
                 new PutOnAFloor(_workbench),
                 new HangItOn(_workbench),
+                new LayAPlan(_workbench),
+                new FurnishTheRoom(_workbench),
                 .. _workbench.Web is null || _workbench.Approval is null
                     ? Array.Empty<IAgentTool>()
                     : [new BringASoundIn(_workbench)],
@@ -1585,6 +1593,192 @@ public sealed class DesignToolSource : IAgentToolSource
                 on.Equals("ceiling", StringComparison.OrdinalIgnoreCase)
                     ? "That hangs from the ceiling now."
                     : "That sits against the wall now."));
+        }
+    }
+
+    /// <summary>
+    /// A plan on the floor to build on top of.
+    ///
+    /// **This is how somebody with a drawing on paper starts.** Not by typing
+    /// coordinates — by photographing what they already have, saying how wide the
+    /// building is, and putting walls up over it. Pascal calls it a guide image and
+    /// it is the single most useful thing in its editor for anybody who is not an
+    /// architect.
+    ///
+    /// The picture is carried in the design as a data URI, like every other
+    /// picture, so the design still travels. A plan is a photograph of a sheet of
+    /// paper rather than footage, so the size that made footage stay on disk does
+    /// not apply.
+    /// </summary>
+    private sealed class LayAPlan(DesignWorkbench workbench) : IAgentTool
+    {
+        public string Name => "design_plan";
+
+        public string Description =>
+            "Lay a picture of a floor plan flat on the ground to build on top of. "
+            + "Say how wide and deep the building really is so it comes out at the right size.";
+
+        public JsonNode? ArgumentsSchema => new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject
+            {
+                ["picture"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["description"] = "The plan, as a data URI.",
+                },
+                ["width"] = new JsonObject
+                {
+                    ["type"] = "number",
+                    ["description"] = "How wide the building really is.",
+                },
+                ["depth"] = new JsonObject
+                {
+                    ["type"] = "number",
+                    ["description"] = "How deep it really is.",
+                },
+            },
+            ["required"] = new JsonArray("picture"),
+        };
+
+        public bool IsReadOnly => false;
+
+        public Task<AgentToolResult> InvokeAsync(
+            JsonNode? arguments, CancellationToken cancellationToken = default)
+        {
+            if (workbench.Session is not { } session)
+            {
+                return Task.FromResult(NoCanvas());
+            }
+
+            var picture = Text(arguments, "picture");
+
+            // The same rule the paperclip follows everywhere else: a data URI
+            // travels with the design and an address does not, so a plan that
+            // lived on somebody's machine would make a design that looks complete
+            // here and arrives somewhere else with nothing to trace.
+            if (!picture.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
+            {
+                return Task.FromResult(new AgentToolResult(
+                    false, string.Empty, "Give the plan as a picture carried in the design."));
+            }
+
+            var room = Room(session);
+
+            var plan = DesignNode.New(
+                DesignNodeKind.Solid,
+                room,
+                ("shape", "plan"),
+                ("text", "The plan"),
+                ("src", picture),
+                ("width", Number(Math.Max(1, Amount(arguments, "width") ?? 400))),
+                ("depth", Number(Math.Max(1, Amount(arguments, "depth") ?? 400))));
+
+            session.Record(session.Current.Add(plan), "Laid the plan down");
+
+            return Task.FromResult(new AgentToolResult(
+                true, "The plan is on the floor. Put walls up over it."));
+        }
+    }
+
+    /// <summary>
+    /// Puts a named thing in the room — a desk, a sofa, a bed.
+    ///
+    /// A desk is three boxes and a sofa is four, and nobody should have to say so.
+    /// The catalogue knows, and **anybody can add to it by writing a file** — no
+    /// code, nothing loaded, nothing that can break the app. That is Pascal's
+    /// plugin idea with the dangerous half left out.
+    ///
+    /// The parts are added as one thing with pieces under it, so moving the desk
+    /// moves its legs, and going back undoes the whole desk rather than a leg at a
+    /// time.
+    /// </summary>
+    private sealed class FurnishTheRoom(DesignWorkbench workbench) : IAgentTool
+    {
+        public string Name => "design_furnish";
+
+        public string Description =>
+            "Put a named piece of furniture in the room — a desk, a table, a chair, a sofa, "
+            + "a bed, a shelf, a lamp. Ask what is available if you are not sure.";
+
+        public JsonNode? ArgumentsSchema => new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject
+            {
+                ["what"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["description"] = "What to put in, by name. Leave out to be told what there is.",
+                },
+                ["x"] = new JsonObject { ["type"] = "number", ["description"] = "Where it goes, across." },
+                ["y"] = new JsonObject { ["type"] = "number", ["description"] = "Where it goes, back." },
+            },
+        };
+
+        public bool IsReadOnly => false;
+
+        public Task<AgentToolResult> InvokeAsync(
+            JsonNode? arguments, CancellationToken cancellationToken = default)
+        {
+            if (workbench.Session is not { } session)
+            {
+                return Task.FromResult(NoCanvas());
+            }
+
+            var catalogue = workbench.Catalogue ?? new RoomCatalogue(
+                Path.Combine(Path.GetTempPath(), "concierge-no-catalogue.json"));
+
+            var what = Text(arguments, "what");
+
+            if (what.Length == 0)
+            {
+                return Task.FromResult(new AgentToolResult(
+                    true,
+                    "There is: " + string.Join(", ", catalogue.Things.Select(thing => thing.Name)) + "."));
+            }
+
+            if (catalogue.Find(what) is not { } found)
+            {
+                // Named rather than silent, and the list comes back with the
+                // refusal — a model that guessed once will guess again otherwise.
+                return Task.FromResult(new AgentToolResult(
+                    false,
+                    string.Empty,
+                    $"There is nothing called {what}. There is: "
+                    + string.Join(", ", catalogue.Things.Select(thing => thing.Name)) + "."));
+            }
+
+            var room = Room(session);
+            var x = (int)(Amount(arguments, "x") ?? 0);
+            var y = (int)(Amount(arguments, "y") ?? 0);
+
+            // The thing itself carries nothing to draw; its pieces do. That keeps
+            // moving it and undoing it as one act rather than several.
+            var thing = DesignNode.New(
+                DesignNodeKind.Box, room, ("text", found.Name), ("x", x.ToString(Culture)), ("y", y.ToString(Culture)));
+
+            var document = session.Current.Add(thing);
+
+            foreach (var part in found.Parts)
+            {
+                document = document.Add(DesignNode.New(
+                    DesignNodeKind.Solid,
+                    room,
+                    ("text", found.Name),
+                    ("shape", string.IsNullOrWhiteSpace(part.Shape) ? "box" : part.Shape),
+                    ("width", Math.Max(1, part.Width).ToString(Culture)),
+                    ("depth", Math.Max(1, part.Depth).ToString(Culture)),
+                    ("height", Math.Max(1, part.Height).ToString(Culture)),
+                    ("x", (x + part.X).ToString(Culture)),
+                    ("y", (y + part.Y).ToString(Culture)),
+                    ("sill", Math.Max(0, part.Sill).ToString(Culture))));
+            }
+
+            session.Record(document, $"Put in a {found.Name}");
+
+            return Task.FromResult(new AgentToolResult(true, $"Put a {found.Name} in the room."));
         }
     }
 

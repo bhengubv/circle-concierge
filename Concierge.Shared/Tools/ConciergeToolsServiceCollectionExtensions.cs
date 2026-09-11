@@ -150,6 +150,11 @@ public static class ConciergeToolsServiceCollectionExtensions
         // engine shows a room that works, forever, and nothing anywhere says so.
         services.TryAddSingleton<Design.SceneEngineReport>();
 
+        // The things a room can be furnished with. Anybody can add their own by
+        // writing shapes.json — no code, nothing loaded, nothing that can break
+        // the app, which is the safe half of what a plugin system is wanted for.
+        services.TryAddSingleton(_ => new Design.RoomCatalogue(Path.Combine(dataRoot, "shapes.json")));
+
         // Turning a design into a file somebody keeps. Registered only where there
         // is an encoder to do it with, so `design_save` is absent on a machine
         // without one rather than offered and always failing — the rule the device

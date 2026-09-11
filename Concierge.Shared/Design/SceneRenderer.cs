@@ -268,6 +268,7 @@ public static class SceneRenderer
                       : thing.shape === 'floor' ? slabOf(thing, false)
                       : thing.shape === 'ceiling' ? slabOf(thing, true)
                       : thing.shape === 'roof' ? roofOf(thing)
+                      : thing.shape === 'plan' ? guideOf(thing)
                       : solidOf(thing);
                     if (!mesh) { continue; }
                     if (!shown(thing.level)) { continue; }
@@ -286,6 +287,54 @@ public static class SceneRenderer
                     mesh.userData.id = thing.id;
                     scene.add(mesh);
                     pickable.push(mesh);
+                  }
+
+                  // ── A plan to trace over ────────────────────────────────
+
+                  // A photograph of a floor plan, laid flat on the ground at the
+                  // size it really is, so walls can be put up on top of it.
+                  //
+                  // **This is how somebody with a plan on paper starts.** Not by
+                  // typing coordinates — by photographing what they already have,
+                  // saying how wide the building is, and drawing over it. Pascal
+                  // calls it a guide image and it is the single most useful thing
+                  // in its editor for anybody who is not an architect.
+                  //
+                  // Laid *under* everything by a hair, so a wall drawn on the line
+                  // covers it rather than fighting it for the same pixels.
+                  function guideOf(thing) {
+                    var picture = new Image();
+                    var wide = Math.max(1, thing.width);
+                    var deep = Math.max(1, thing.depth);
+
+                    var texture = new THREE.Texture();
+                    texture.colorSpace = THREE.SRGBColorSpace;
+
+                    picture.onload = function () {
+                      texture.image = picture;
+                      texture.needsUpdate = true;
+                      draw();
+                    };
+
+                    picture.src = thing.src;
+
+                    var plan = new THREE.Mesh(
+                      new THREE.PlaneGeometry(wide, deep),
+                      new THREE.MeshBasicMaterial({
+                        map: texture,
+                        transparent: true,
+                        opacity: 0.75,
+                        depthWrite: false,
+                      }));
+
+                    plan.rotation.x = -Math.PI / 2;
+                    plan.position.set(thing.x, 0.4, thing.y);
+
+                    // Under the grid and under everything built on it, but above
+                    // the floor itself so it is visible at all.
+                    plan.renderOrder = -1;
+
+                    return plan;
                   }
 
                   // ── Things that hang on something ───────────────────────
@@ -752,6 +801,13 @@ public static class SceneRenderer
                 // worked out where the wall was is the commonest thing to get
                 // wrong here.
                 thing.Props.TryGetValue("on", out var on) ? on.Trim() : string.Empty,
+
+                // Only a plan uses this: the photograph being traced over, carried
+                // as a data URI like every other picture so the design travels.
+                thing.Props.TryGetValue("src", out var src)
+                    && src.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase)
+                        ? src
+                        : string.Empty,
                 DesignMediums.Number(thing, "at", 0),
                 DesignMediums.Number(thing, "sill", 0),
 
@@ -813,7 +869,7 @@ public static class SceneRenderer
         string Id, string Kind, string Text, string Shape,
         int X, int Y, int Width, int Depth, int Height,
         int X2, int Y2, int Thickness, int Level,
-        string On, int At, int Sill,
+        string On, string Src, int At, int Sill,
         IReadOnlyList<Opening> Openings);
 
     /// <summary>

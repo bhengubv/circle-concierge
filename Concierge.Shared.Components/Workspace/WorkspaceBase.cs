@@ -1046,6 +1046,11 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
                 Workbench.Approval = Services.GetService(typeof(Concierge.Shared.Tools.IToolApprovalService))
                     as Concierge.Shared.Tools.IToolApprovalService;
+
+                // What a room can be furnished with, including anything somebody
+                // added themselves.
+                Workbench.Catalogue = Services.GetService(typeof(Concierge.Shared.Design.RoomCatalogue))
+                    as Concierge.Shared.Design.RoomCatalogue;
             }
             else
             {
