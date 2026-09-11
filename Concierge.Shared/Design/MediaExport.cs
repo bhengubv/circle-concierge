@@ -319,7 +319,7 @@ public sealed class FfmpegMediaExport : IMediaExport
                 {
                     pieces.Add(new Piece(
                         await PieceFromFootageAsync(
-                            footage, timing, held, PictureFilter(shot, timing.Rate),
+                            footage, timing, held, PictureFilter(shot, timing.Rate, held, still: false),
                             workspace, $"shot{at:D3}", cancellationToken)
                             .ConfigureAwait(false),
                         held,
@@ -332,7 +332,7 @@ public sealed class FfmpegMediaExport : IMediaExport
 
                 pieces.Add(new Piece(
                     await PieceFromCardAsync(
-                        card, held, PictureFilter(shot, timing.Rate), workspace, $"shot{at:D3}",
+                        card, held, PictureFilter(shot, timing.Rate, held, still: true), workspace, $"shot{at:D3}",
                         cancellationToken).ConfigureAwait(false),
                     held,
                     pieces.Count == 0 ? 0 : BlendOf(shot)));
@@ -508,6 +508,56 @@ public sealed class FfmpegMediaExport : IMediaExport
         ["warm", "cool", "bright", "dark", "grey", "faded", "vivid"];
 
     /// <summary>
+    /// How a shot moves while it is on screen, as a filter, or nothing.
+    ///
+    /// **A still picture held for four seconds looks like a fault.** That is the whole of
+    /// what a motion-graphics engine is wanted for here, and it does not need one: a slow
+    /// push in or a slow drift across turns a card or a photograph into a shot, and both are
+    /// ordinary filters the encoder already has.
+    ///
+    /// Three words, not a keyframe editor — still, fade, grow, drift. Somebody who wants to
+    /// author a curve is not who this is for, and somebody who wants the picture to stop
+    /// looking dead should not have to become them.
+    ///
+    /// **Grow and drift only apply to a still.** On real footage they fight the picture that
+    /// is already moving, and the encoder does it by resampling frame by frame, so it costs
+    /// time and looks worse. A fade works on either. A word that cannot be honoured here
+    /// costs the movement, not the film.
+    /// </summary>
+    /// <param name="shot">The shot.</param>
+    /// <param name="seconds">How long it is held, which is what the movement is spread over.</param>
+    /// <param name="still">Whether this is a drawn card or a photograph rather than footage.</param>
+    internal static string MoveOf(DesignNode shot, double seconds, bool still)
+    {
+        if (!shot.Props.TryGetValue("move", out var said) || string.IsNullOrWhiteSpace(said))
+        {
+            return string.Empty;
+        }
+
+        // Frames rather than seconds, because that is what zoompan counts in — and at the
+        // thirty the rest of the export is normalised to.
+        var frames = Math.Max(1, (int)Math.Round(Math.Max(seconds, 0.1) * 30));
+
+        return said.Trim().ToLowerInvariant() switch
+        {
+            "fade" or "fade in" or "in" => "fade=t=in:st=0:d=0.5",
+
+            "grow" or "push" or "zoom" or "closer" when still =>
+                $"zoompan=z='min(zoom+0.0006,1.10)':d={frames}"
+                + ":x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1280x720:fps=30",
+
+            "drift" or "pan" or "across" when still =>
+                $"zoompan=z=1.10:d={frames}"
+                + $":x='(iw-iw/zoom)*(on/{frames})':y='ih/2-(ih/zoom/2)':s=1280x720:fps=30",
+
+            _ => string.Empty,
+        };
+    }
+
+    /// <summary>The words a movement can be asked for by, for the tool and the tests.</summary>
+    internal static IReadOnlyList<string> Moves => ["still", "fade", "grow", "drift"];
+
+    /// <summary>
     /// Everything done to one shot's picture, in the order it has to happen.
     ///
     /// Grading goes before the shaping rather than after. Padding a clip to 16:9
@@ -515,7 +565,7 @@ public sealed class FfmpegMediaExport : IMediaExport
     /// shot would come out with warm grey edges, which is the kind of thing nobody
     /// sees until it is in front of an audience.
     /// </summary>
-    private static string PictureFilter(DesignNode shot, double rate)
+    private static string PictureFilter(DesignNode shot, double rate, double seconds = 0, bool still = false)
     {
         var parts = new List<string>();
 
@@ -530,6 +580,14 @@ public sealed class FfmpegMediaExport : IMediaExport
         }
 
         parts.Add(Shape);
+
+        // Movement last, on the shaped picture. A push in applied before the shaping would
+        // be undone by the scale that follows it, and a fade applied first would fade the
+        // picture and then have bars painted over the result.
+        if (MoveOf(shot, seconds, still) is { Length: > 0 } moving)
+        {
+            parts.Add(moving);
+        }
 
         return string.Join(',', parts);
     }

@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **142 boxes ticked, 21 open, eight
+`main`. What replaces it is the working list: **144 boxes ticked, 19 open, eight
 partial**, ordered so the next person can pick one up.
 
 **Thirty-six of those forty arrived at once**, on 2026-09-11, when the six
@@ -1317,7 +1317,21 @@ hole. The rest is a video editor.
       the device, and going back is free. Nothing coming back is a failure rather than a
       silent track — a silent track looks exactly like one that worked.
 - [ ] Built-in free stock footage
-- [ ] A composition engine for motion graphics
+- [x] Motion graphics — **the useful half, without the half that makes the category
+      unusable.** A still picture held for four seconds looks like a fault, and that is
+      what a composition engine is actually wanted for here. `design_move` gives a shot a
+      slow push in, a slow drift across, or a fade: four words — still, fade, grow, drift —
+      instead of keyframes, a curve editor and a layer stack, which are the three things
+      somebody who has never used one cannot get past.
+
+      Grow and drift need a still to work on, and are **refused on filmed footage rather
+      than accepted and quietly dropped** — told "done", nobody looks at that shot again.
+      The preview animates over the shot's own length, so what is on screen is what will be
+      in the file rather than an impression of it.
+
+      Run for real through the encoder, both expressions: `zoompan` takes frames rather than
+      seconds and its position as expressions, and a wrong one is not a worse-looking shot,
+      it is no file at all. 21 tests.
 - [~] Automatic captions — waits on the same timings as word-timed subtitles above.
 
 #### Antra — a music library
@@ -1354,7 +1368,7 @@ there is nothing to take from it short of the model itself.
       finds out until it is built. No device frame, no bezel, no fake battery — those
       make a mock-up look finished and tell nobody anything.
 - [ ] Image generation
-- [ ] Animated motion graphics
+- [x] Animated motion graphics — `design_move`, described under OpenMontage above.
 - [x] Live dashboards that update themselves — `Board`. A small name, an enormous
       number, and which way it is moving as an arrow (▲▼▬) rather than a colour alone,
       because a board is read at a glance by whoever is walking past and colour says

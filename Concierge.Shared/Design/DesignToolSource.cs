@@ -131,6 +131,7 @@ public sealed class DesignToolSource : IAgentToolSource
                 new CutTheShot(_workbench),
                 new ColourTheShot(_workbench),
                 new BlendTheShots(_workbench),
+                new MoveTheShot(_workbench),
                 new BuildTheRoom(_workbench),
                 new CutAnOpening(_workbench),
                 new LookAtTheFloors(_workbench),
@@ -2139,6 +2140,103 @@ public sealed class DesignToolSource : IAgentToolSource
 
             return Task.FromResult(new AgentToolResult(
                 true, $"{found.Name} — {found.When}{Environment.NewLine}{Environment.NewLine}{found.Guide}"));
+        }
+    }
+
+    /// <summary>
+    /// How a shot moves while it is on screen.
+    ///
+    /// **A still picture held for four seconds looks like a fault**, and that is the whole
+    /// of what a motion-graphics engine is wanted for here. A slow push in or a slow drift
+    /// across turns a card or a photograph into a shot, and both are ordinary filters the
+    /// encoder already has — no composition engine, no keyframes, no curve editor, which are
+    /// the three things that make this category's software unusable for the people this is
+    /// for.
+    ///
+    /// Four words: still, fade, grow, drift. Grow and drift need a still to work on; on real
+    /// footage they fight a picture that is already moving, and the tool says so rather than
+    /// accepting the word and quietly doing nothing.
+    /// </summary>
+    private sealed class MoveTheShot(DesignWorkbench workbench) : IAgentTool
+    {
+        public string Name => "design_move";
+
+        public string Description =>
+            "Say how a shot moves while it is on screen: still, fade, grow (a slow push in) "
+            + "or drift (a slow pan across). Use it so a held picture does not look frozen.";
+
+        public JsonNode? ArgumentsSchema => new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject
+            {
+                ["id"] = new JsonObject { ["type"] = "string", ["description"] = "Which shot." },
+                ["move"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["description"] = "still, fade, grow or drift.",
+                },
+            },
+            ["required"] = new JsonArray("id", "move"),
+        };
+
+        public bool IsReadOnly => false;
+
+        public Task<AgentToolResult> InvokeAsync(
+            JsonNode? arguments, CancellationToken cancellationToken = default)
+        {
+            if (workbench.Session is not { } session)
+            {
+                return Task.FromResult(NoCanvas());
+            }
+
+            var id = Text(arguments, "id");
+
+            if (session.Current.Find(id) is not { } shot)
+            {
+                return Task.FromResult(new AgentToolResult(
+                    false, string.Empty, $"There is nothing called {id} on the canvas."));
+            }
+
+            var asked = Text(arguments, "move").ToLowerInvariant();
+
+            if (asked is "still" or "none" or "off")
+            {
+                session.Record(session.Current.Set(id, "move", string.Empty), $"Stilled {id}");
+                return Task.FromResult(new AgentToolResult(true, "That shot holds still."));
+            }
+
+            // Checked here rather than swallowed at export, for the same reason grading is:
+            // a movement that does nothing because nobody knows the word is a shot that looks
+            // unchanged and a person who believes it worked.
+            var asFilter = FfmpegMediaExport.MoveOf(
+                DesignNode.New(DesignNodeKind.Frame, null, ("move", asked)), seconds: 3, still: true);
+
+            if (asFilter.Length == 0)
+            {
+                return Task.FromResult(new AgentToolResult(
+                    false,
+                    string.Empty,
+                    $"There is no movement called {asked}. Try: {string.Join(", ", FfmpegMediaExport.Moves)}."));
+            }
+
+            // A word that only works on a still is refused on footage rather than accepted
+            // and quietly dropped. Told "done", nobody looks at that shot again.
+            var onFootage = shot.Props.TryGetValue("src", out var src) && !string.IsNullOrWhiteSpace(src);
+
+            if (onFootage && FfmpegMediaExport.MoveOf(
+                    DesignNode.New(DesignNodeKind.Frame, null, ("move", asked)), seconds: 3, still: false).Length == 0)
+            {
+                return Task.FromResult(new AgentToolResult(
+                    false,
+                    string.Empty,
+                    $"{asked} needs a still to work on — that shot is filmed, and it is already "
+                    + "moving. A fade works on either."));
+            }
+
+            session.Record(session.Current.Set(id, "move", asked), $"Moved {id}");
+
+            return Task.FromResult(new AgentToolResult(true, $"That shot {asked}s while it is on screen."));
         }
     }
 
