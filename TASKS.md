@@ -1502,38 +1502,54 @@ ninety-seven-year-old — rules several of the lines above out on purpose.
 
 ## What is actually next
 
-Everything above is done or done-bar-a-named-remainder. Nine items are open and
-they are not equal: three can be done today, and six cannot, for reasons worth
-being explicit about rather than rediscovering.
+**Everything buildable on this machine is built.** Thirteen items are open and
+every one of them waits on something that is not here: a device, a platform, an
+account, or a trained model. That is a different statement from "we are finished",
+and it is the honest one — the list below names what each waits for so nobody has
+to rediscover it.
 
-**This list had gone stale, and two of its three items were already done.** Worth
-saying rather than quietly deleting: a next-actions list that disagrees with the
-ticked list above it is the same defect as a badge that always says two.
+This section had gone stale twice. The first time, two of its three items were
+already done; the second, it still said "three can be done today" after all three
+had been. A next-actions list that disagrees with the ticked list above it is the
+same defect as a badge that always says two, so this is re-derived rather than
+edited.
 
-- ~~Show registered hooks in Engineering~~ — **done.** `Engineering.razor:156–199`
-  reads `HookStatus` and renders the list, the empty state, the problem and the
-  file path. Item 12 had it ticked; only this section still asked for it.
-- ~~Verify Design on a handheld~~ — **done**, at 504px, per item 9. What is still
-  open is the other half of that line: **what a watch shows instead of a canvas.**
+**What each open item waits for.**
 
-**Can be done now, and needs no model.**
+| Waiting on | Items |
+| --- | --- |
+| A toggle on the handset (Developer options → Install via USB) | Running the device actions on the Redmi 12 |
+| A second device in the room | BLE or Wi-Fi Direct |
+| macOS, Android and iOS to run on | Confinement on those three — iOS forbids child processes at all, so that one is a fact rather than a gap |
+| Packet signing upstream in Aether | Approvals over the mesh. `Aether.Core` 1.0.1 has fields for a signature and a nonce and **no public API that writes or checks one** |
+| Accounts and keys for seven music services | Pulling from them, exact matching, clean-or-explicit, whole discographies, downloads on a schedule |
+| A model that makes pictures | Image generation, and the generated half of "images, video and voiceover" |
+| A trained model, a Python stack and a GPU | AniGen, both lines. It is a research pipeline, not a feature |
 
-1. **Decide what a watch shows instead of a canvas.** A 192dp face is not a design
-   surface and pretending otherwise would be the fourth-tab mistake in miniature.
-   The decision is the work; the rendering is small.
-2. **Close the sandbox escape**, now that the failing half is known rather than
-   guessed — see item 11. The measurement is done; the fix is not.
+**Two things that are not blocked and are not scheduled**, said plainly rather
+than left in a list that implies they are next:
 
-**Blocked, and by what.**
+- **What a watch shows instead of a canvas.** Decided and written down as
+  `WatchSurfaces.Design` with a test, so building it is a deliberate act. It needs
+  approvals to ride the mesh, which is the row above.
+- **Podcasts and peer-to-peer** from Antra's list. Nothing blocks them; nobody has
+  asked for them.
 
-- **Android actions; BLE or Wi-Fi Direct** — need a second device in the room.
-- **Confinement on Linux, macOS, Android, iOS** — need those platforms.
-- **Approvals over the mesh** — needs packet signatures verified, and the mesh
-  upgrade is in the pipeline elsewhere. Putting approvals on an unauthenticated
-  channel would hand anyone on the café wifi the ability to say "allowed".
-- **A plan for a multi-step design change** — the canvas is on the agent loop now,
-  so this is no longer blocked on a runtime; it is blocked on wanting it. Nothing
-  to plan until somebody asks for a change big enough to need one.
+**And one that closed itself.** "Close the sandbox escape" sat here for weeks and
+there was no escape — four rounds of measurement, and the fault was in the
+measuring every time. See item 11.
+
+---
+
+## What is left over, in one paragraph
+
+Speech works both ways on the device and has **no model files**. The local model
+can be shown a picture and there is **no vision model**. Seven music services are
+wired to nothing because there are **no accounts**. Image generation has **no
+answer at all** — CircleAI does not make pictures, and a cloud provider or a local
+model is a decision nobody has taken. Everything else on the thirty-six-item list
+is built, and the four of those sentences are the same four things this file named
+as missing before any of it started.
 
 ---
 
