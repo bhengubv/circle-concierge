@@ -233,6 +233,17 @@ public static class DesignRenderer
           font-family: {{look.Fonts}};
           line-height: 1.5;
         }
+
+        /* A word longer than the page.
+           **A design that scrolls sideways is a design nobody can read, and it is the one
+           thing the standing check says must never happen.** Somebody pastes a URL, or a
+           German compound noun, or a file path, and the whole page grows wider than the
+           window — on screen, and in the file when it is saved and sent to somebody else.
+           Breaking the word is the lesser harm by a distance. */
+        body, main, h1, h2, p, button, section, figcaption, div {
+          overflow-wrap: anywhere;
+          word-break: normal;
+        }
         main {
           max-width: 46rem;
           margin: 0 auto;

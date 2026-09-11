@@ -19,7 +19,7 @@ public partial class Images
     private int _size = 1024;
     private int _count = 1;
     private bool _busy;
-    private string _statusMessage = "Pick a runtime + describe an image.";
+    private string _statusMessage = string.Empty;
     private List<ImageArtifact> _artifacts = new();
 
     protected override void OnInitialized()
@@ -35,8 +35,44 @@ public partial class Images
 
     private bool CanGenerate => !_busy
         && !string.IsNullOrWhiteSpace(_prompt)
-        && _selectedRuntimeId is not null
-        && _orderedRuntimes.FirstOrDefault(r => r.Id == _selectedRuntimeId)?.IsReady == true;
+        && Chosen is { IsReady: true };
+
+    private IImageRuntime? Chosen
+        => _orderedRuntimes.FirstOrDefault(runtime => runtime.Id == _selectedRuntimeId);
+
+    /// <summary>
+    /// Why the button is off, in the words of whatever is actually missing.
+    ///
+    /// **It used to say "Pick a runtime + describe an image" forever**, including to somebody
+    /// who had picked one and described an image and was staring at a dead button. The thing
+    /// missing was an API key, and the screen never said so — it told them to do again the
+    /// two things they had already done.
+    ///
+    /// The runtime knows why it is not ready and says so in a sentence. This hands that
+    /// sentence on rather than inventing a second explanation beside it.
+    /// </summary>
+    private string WhyNot
+    {
+        get
+        {
+            // Nothing installed at all is answered by the room itself, above the section
+            // this line lives in — so a sentence for it here would be words nobody can ever
+            // see, which is the same defect in miniature.
+            if (Chosen is null)
+            {
+                return "Pick something to make it with.";
+            }
+
+            if (!Chosen.IsReady)
+            {
+                return Chosen.StatusMessage;
+            }
+
+            return string.IsNullOrWhiteSpace(_prompt)
+                ? "Describe the picture you want."
+                : string.Empty;
+        }
+    }
 
     private void OnRuntimeChanged(ChangeEventArgs args)
     {

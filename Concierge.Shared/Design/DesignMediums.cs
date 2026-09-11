@@ -133,6 +133,13 @@ public static class DesignMediums
             }
             .picked { outline: 2px solid var(--accent); outline-offset: 3px; }
             .nothing { opacity: .55; font-style: italic; }
+
+            /* A word longer than the frame. Somebody pastes a URL or a file path and every
+               medium that shares this head would otherwise grow wider than the window — on
+               screen and in the saved file. Breaking the word is the lesser harm. */
+            body, h1, h2, p, button, section, figcaption, div, span {
+              overflow-wrap: anywhere;
+            }
             """);
         html.AppendLine(extra);
         html.AppendLine("</style></head><body>");

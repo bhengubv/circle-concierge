@@ -61,7 +61,14 @@
                     @(_busy ? "Drawing…" : "Draw it")
                 </button>
 
-                <p class="room-note">@_statusMessage</p>
+                @* What is missing, when something is — in the words of whatever is
+                   missing it. The old line said "Pick a runtime + describe an image"
+                   to somebody who had done both and was looking at a dead button,
+                   while the actual answer, "needs an API key", sat unsaid on the
+                   runtime itself. *@
+                <p class="room-note">
+                    @(string.IsNullOrWhiteSpace(_statusMessage) ? WhyNot : _statusMessage)
+                </p>
             </RoomSection>
 
             @* Size and count have sensible defaults and are rarely changed, so

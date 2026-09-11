@@ -82,10 +82,35 @@ public sealed class WatchFootageTests : BunitContext
         => Services.GetRequiredService<CapturedImages>()
             .Add(new ChatImage("clip-frames.png", "image/png", [0x89, 0x50, 0x4E, 0x47]));
 
+    /// <summary>
+    /// Asks a question, having first waited for the workspace to be ready to take one.
+    ///
+    /// **This is what the third test here was flaking on**, roughly one run in four, and the
+    /// waiting was in the wrong place. Send is disabled while a turn is in flight, so asking
+    /// a second question the moment the model had been *called* pressed a dead button: the
+    /// question was never asked, the assertion waited ten seconds for an answer nobody had
+    /// requested, and the failure pointed at the assertion rather than the press.
+    ///
+    /// Waiting for the model to be called is not the same as waiting for the turn to be
+    /// done, and every other flake this suite has had was the same shape — an assertion
+    /// racing a render. This one was a *press* racing a render, which is worse, because the
+    /// thing that did not happen leaves nothing behind to look at.
+    /// </summary>
     private static void Ask(
         IRenderedComponent<Concierge.Shared.Components.Workspace.Desktop.Workspace> cut, string question)
     {
         cut.Find("textarea.comp-input").Input(question);
+
+        // The typing comes first and the waiting second, which is not a detail. Send is
+        // disabled by an empty box as well as by a turn in flight, so waiting before typing
+        // waits for something that can never happen — which is what the first attempt at
+        // this fix did, and it turned one flaky test into three that failed every time.
+        cut.WaitForAssertion(
+            () => Assert.False(
+                cut.Find("button.icon-btn-send").HasAttribute("disabled"),
+                "the workspace is still busy with the last turn"),
+            TimeSpan.FromSeconds(10));
+
         cut.Find("button.icon-btn-send").Click();
     }
 
