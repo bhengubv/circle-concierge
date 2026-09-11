@@ -1745,8 +1745,10 @@ two commits behind `HEAD` before anyone noticed.
       the real catalogue, `todo_read` and `todo_write` included, and says what
       confines a command. Last checked at `a00191b`
 - [x] **The app starts with everything added since.** Built and run from
-      `Concierge.exe` on 2026-09-11 after the eleven new tools were wired: it comes up,
-      stays up, and starts `Concierge.Model.Host` beside it. That is the check that
+      `Concierge.exe` on 2026-09-11, twice: after the first eleven new tools were wired, and
+      again after the second batch — image generation, the music catalogues, podcasts and
+      the upkeep schedule, which adds a hosted service that wakes on a timer. Both times it
+      comes up, stays up, and starts `Concierge.Model.Host` beside it. That is the check that
       matters here rather than a screenshot — the fault this was looking for was a
       container that throws while it is being built, which is what the three bare-factory
       registrations would have done. What is on screen with the new tools is **not**
