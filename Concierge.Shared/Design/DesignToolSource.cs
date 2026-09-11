@@ -44,6 +44,19 @@ public sealed class DesignWorkbench
     /// advertised and always fails is worse than one that is absent.
     /// </summary>
     public IMediaExport? Export { get; set; }
+
+    /// <summary>
+    /// Reaching the network, for bringing a track in from a link. Null on a head
+    /// that has no web access, and the tool is then absent.
+    /// </summary>
+    public Concierge.Shared.Web.IWebAccess? Web { get; set; }
+
+    /// <summary>
+    /// Asking first. Required for the one design tool that leaves the device —
+    /// without it that tool is not offered at all, because the alternative is a
+    /// tool that reaches the internet without anybody agreeing to it.
+    /// </summary>
+    public IToolApprovalService? Approval { get; set; }
 }
 
 /// <summary>
@@ -95,6 +108,9 @@ public sealed class DesignToolSource : IAgentToolSource
                 new ChooseMedium(_workbench),
                 new GoBackOnCanvas(_workbench),
                 .. _workbench.Export is null ? Array.Empty<IAgentTool>() : [new SaveTheDesign(_workbench)],
+                .. _workbench.Web is null || _workbench.Approval is null
+                    ? Array.Empty<IAgentTool>()
+                    : [new BringASoundIn(_workbench)],
             ];
 
     // ── The tools ─────────────────────────────────────────────────────────
@@ -519,6 +535,151 @@ public sealed class DesignToolSource : IAgentToolSource
             }
 
             return path;
+        }
+    }
+
+    /// <summary>
+    /// A track brought in from a link.
+    ///
+    /// **This is the one design tool that asks first, and the exception is the
+    /// point.** Everything else on this canvas acts without asking because going
+    /// back is free and asking is what makes the surface unusable for the people
+    /// it is for. That argument holds exactly as far as the edge of the device.
+    /// This one makes a request to an address a model may have written, which is
+    /// not undoable by picking an earlier picture — the request has happened, and
+    /// whoever is at the other end knows it. So it asks, with the address on the
+    /// card.
+    ///
+    /// The fetch itself goes through the same `IWebAccess` the web tools use, so
+    /// there is one set of rules about what this program may reach: http and https
+    /// only, no loopback or private address on any hop, a redirect limit, a
+    /// timeout. A second fetcher with its own idea of those rules is how a guard
+    /// comes to cover one path and miss the newer one.
+    ///
+    /// What arrives is carried as a data URI, the same way the paperclip carries a
+    /// picture, so the design stays a thing that travels rather than a set of
+    /// references to somebody else's server that may be gone next week.
+    /// </summary>
+    private sealed class BringASoundIn(DesignWorkbench workbench) : IAgentTool
+    {
+        /// <summary>
+        /// Ten megabytes: a four-minute track with room to spare.
+        ///
+        /// Not arbitrary — the design is written to disk whole on every change, so
+        /// what comes in here is rewritten every time anything else is edited. A
+        /// cap that allowed an album would make editing a heading cost a hundred
+        /// megabytes of writing.
+        /// </summary>
+        private const int MostBytes = 10 * 1024 * 1024;
+
+        public string Name => "design_bring_in_sound";
+
+        public string Description =>
+            "Fetch an audio file from a web address and add it to the running order. "
+            + "This leaves the device, so the person is asked first.";
+
+        public JsonNode? ArgumentsSchema => new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject
+            {
+                ["url"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["description"] = "The http or https address of the audio file.",
+                },
+                ["name"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["description"] = "What to call it on the canvas. Optional.",
+                },
+            },
+            ["required"] = new JsonArray("url"),
+        };
+
+        public bool IsReadOnly => false;
+
+        public async Task<AgentToolResult> InvokeAsync(
+            JsonNode? arguments, CancellationToken cancellationToken = default)
+        {
+            if (workbench.Session is not { } session)
+            {
+                return NoCanvas();
+            }
+
+            if (workbench.Web is not { } web || workbench.Approval is not { } approval)
+            {
+                return new AgentToolResult(
+                    false, string.Empty, "This head cannot reach the web, so nothing can be brought in.");
+            }
+
+            var url = Text(arguments, "url");
+
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                return new AgentToolResult(false, string.Empty, "Give the address of the audio file.");
+            }
+
+            // The address is on the card, not a summary of it. "Fetch a sound" is
+            // not a thing anybody can make a decision about; the address is.
+            var decision = await approval.RequestAsync(
+                new ToolApprovalRequest(
+                    Name,
+                    url,
+                    ConciergeToolRisk.Medium,
+                    "It downloads that file from the internet and puts it in your design."),
+                cancellationToken).ConfigureAwait(false);
+
+            if (decision != ToolApprovalDecision.Allowed)
+            {
+                return new AgentToolResult(false, string.Empty, "Not allowed, so nothing was fetched.");
+            }
+
+            var got = await web.FetchBytesAsync(url, "audio/", MostBytes, cancellationToken).ConfigureAwait(false);
+
+            if (!got.Success)
+            {
+                return new AgentToolResult(false, string.Empty, got.Problem ?? "That could not be fetched.");
+            }
+
+            var asked = Text(arguments, "name");
+            var called = string.IsNullOrWhiteSpace(asked) ? NameFromAddress(got.Url) : asked;
+
+            var track = DesignNode.New(
+                DesignNodeKind.Sound, null, ("text", called), ("src", got.AsDataUri));
+
+            session.Record(session.Current.Add(track), $"Brought in {called}");
+
+            return new AgentToolResult(
+                true, $"Added {called} to the running order, {got.Bytes.Length / 1024}KB of {got.MediaType}.");
+        }
+
+        /// <summary>
+        /// A name out of the address, when nobody gave one.
+        ///
+        /// The last part of the path with its extension taken off, which is what a
+        /// person would have called it anyway. A track labelled with a whole URL is
+        /// a track nobody can read on a canvas.
+        /// </summary>
+        private static string NameFromAddress(string url)
+        {
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var address))
+            {
+                return "A sound";
+            }
+
+            var last = address.Segments.Length == 0 ? string.Empty : address.Segments[^1].Trim('/');
+            var stem = Uri.UnescapeDataString(last);
+
+            var dot = stem.LastIndexOf('.');
+            if (dot > 0)
+            {
+                stem = stem[..dot];
+            }
+
+            stem = stem.Replace('-', ' ').Replace('_', ' ').Trim();
+
+            return stem.Length == 0 ? "A sound" : stem;
         }
     }
 

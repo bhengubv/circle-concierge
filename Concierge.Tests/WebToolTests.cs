@@ -57,6 +57,62 @@ public sealed class WebToolTests
     public void A_name_that_cannot_be_resolved_is_refused_rather_than_attempted()
         => Assert.True(HttpWebAccess.IsPrivate("this-host-does-not-exist.invalid"));
 
+    // ── Fetching a file, not a page ───────────────────────────────────────
+
+    /// <summary>
+    /// The byte fetch sits on the same seam and walks the same guard, so these
+    /// hold that it really does refuse what the text fetch refuses. A second
+    /// fetcher with its own idea of the rules is how a guard comes to cover one
+    /// path and miss the newer one — which is exactly what bringing a track in
+    /// from a link would have been.
+    /// </summary>
+    [Theory]
+    [InlineData("file:///C:/Users/me/secret.mp3")]
+    [InlineData("ftp://example.com/a.mp3")]
+    [InlineData("not a url at all")]
+    public async Task Fetching_bytes_refuses_anything_that_is_not_http(string url)
+    {
+        var result = await new HttpWebAccess().FetchBytesAsync(url, "audio/", 1024);
+
+        Assert.False(result.Success);
+        Assert.False(string.IsNullOrWhiteSpace(result.Problem));
+    }
+
+    [Theory]
+    [InlineData("http://127.0.0.1/a.mp3")]
+    [InlineData("http://localhost/a.mp3")]
+    [InlineData("http://169.254.169.254/latest/meta-data/")]
+    [InlineData("http://192.168.0.1/a.mp3")]
+    [InlineData("http://10.0.0.5/a.mp3")]
+    public async Task Fetching_bytes_cannot_reach_this_machine_or_this_network(string url)
+    {
+        var result = await new HttpWebAccess().FetchBytesAsync(url, "audio/", 1024);
+
+        Assert.False(result.Success);
+        Assert.Contains("not reachable this way", result.Problem!, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Half a page is still readable and worth keeping. Half an audio file is a
+    /// broken file that would be embedded in somebody's design and fail much
+    /// later, somewhere that does not mention downloading — so the byte fetch
+    /// refuses rather than truncating.
+    /// </summary>
+    [Fact]
+    public void What_comes_back_is_the_whole_file_or_nothing()
+    {
+        var refused = new WebBytesResult(false, "https://example.com/a.mp3", string.Empty, [], "too big");
+
+        Assert.False(refused.Success);
+        Assert.Empty(refused.Bytes);
+    }
+
+    [Fact]
+    public void Bytes_become_the_data_uri_a_design_carries()
+        => Assert.Equal(
+            "data:audio/mpeg;base64,AQID",
+            new WebBytesResult(true, "https://example.com/a.mp3", "audio/mpeg", [1, 2, 3], null).AsDataUri);
+
     [Fact]
     public async Task A_non_http_scheme_is_refused()
     {
@@ -266,6 +322,31 @@ public sealed class WebToolTests
     private sealed class RecordingWebAccess : IWebAccess
     {
         public bool WasCalled { get; private set; }
+
+
+        /// <summary>
+
+
+        /// Not used by the web tools — they read pages, not files. Here because the
+
+
+        /// byte fetch lives on the same seam on purpose, so there is one set of
+
+
+        /// rules about what this program may reach rather than two.
+
+
+        /// </summary>
+
+
+        public Task<WebBytesResult> FetchBytesAsync(
+
+
+            string url, string expectedType, int maxBytes, CancellationToken cancellationToken = default)
+
+
+            => throw new NotSupportedException();
+
 
         public Task<WebFetchResult> FetchAsync(string url, CancellationToken cancellationToken = default)
         {

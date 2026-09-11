@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **120 boxes ticked, 5 open, three
+`main`. What replaces it is the working list: **121 boxes ticked, 4 open, three
 partial**, ordered so the next person can pick one up.
 
 That count is counted, not remembered — `grep -c '^- \[x\]'` and `'^- \[ \]'`
@@ -770,12 +770,42 @@ the argument is the bar, not the architecture.
       anything *at all* rather than anything **not already on screen**. A title is
       already the caption above the player. 24 tests.
 
-- [ ] Antra's other half: **links in.** You give it an address and it goes and gets
-      the music. Everything here is already on the machine, because the export
-      refuses to make a network request to a string a model may have written —
-      a refusal that is deliberate and load-bearing. Turning it on is a decision
-      about what this program may reach, and it is yours, not mine. Left open and
-      named rather than closed with a reason I invented.
+- [x] Antra's other half: **links in.** Your call, taken, and gated the way
+      `web_fetch` already is rather than opened up in the export path.
+
+      `design_bring_in_sound` fetches an audio file and adds it to the running
+      order. **It is the one design tool that asks first, and the exception is the
+      point.** Everything else on this canvas acts without asking, because going
+      back is free and asking is what makes the surface unusable for the people it
+      is for. That argument holds exactly as far as the edge of the device: this
+      one makes a request to an address a model may have written, and no amount of
+      picking an earlier picture un-makes it — the request happened, and whoever is
+      at the other end knows it. The **address** is on the card, not a summary of
+      it, because "fetch a sound" is not something anybody can decide about.
+
+      The fetch goes through the same `IWebAccess` the web tools use — one set of
+      rules about what this program may reach, rather than a second fetcher with
+      its own idea of them, which is how a guard comes to cover one path and miss
+      the newer one. http and https only, no loopback or private address **on any
+      hop** (a redirect to 169.254.169.254 is the whole trick, and a guard that
+      runs once at the start does not see it), a redirect limit, a timeout, and
+      `audio/` or nothing.
+
+      Two decisions worth stating. A file over the cap is **refused, not
+      truncated**: half a page is still readable, half an audio file is a broken
+      file embedded in somebody's design that fails much later somewhere that does
+      not mention downloading. And the cap is 10MB because the design is written to
+      disk whole on every change — a cap that allowed an album would make editing a
+      heading cost a hundred megabytes of writing.
+
+      What arrives is carried as a data URI, the way the paperclip carries a
+      picture, so the design still travels rather than pointing at somebody else's
+      server that may be gone next week. Absent entirely on a head with no web
+      access or no way to ask. 21 tests.
+
+      Still not here, and worth naming: this is reachable by a model, not by a
+      sentence. `DesignSpeech` is synchronous and this needs to ask and wait, so
+      "add the track at https://…" typed into a canvas with no model does nothing.
 
 **What every renderer refuses, because it is the whole point:** no timeline, no
 track stack, no waveform, no node graph, no orbit-by-dragging, no keyframes. Each
@@ -1058,7 +1088,7 @@ commit it was last actually checked at, because "all four hold as of `<ref>`"
 was one date covering four checks made at different times — and it had drifted
 two commits behind `HEAD` before anyone noticed.
 
-- [x] **1445 tests pass, and the suite is deterministic again.** It was not: four
+- [x] **1471 tests pass, and the suite is deterministic again.** It was not: four
       consecutive runs each failed *one different test*, which meant it could not
       tell a regression from noise — the same defect as a screen asserting
       something untrue, sitting on the check everything else is measured by.

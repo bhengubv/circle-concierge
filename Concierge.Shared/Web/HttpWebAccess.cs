@@ -135,6 +135,127 @@ public sealed class HttpWebAccess : IWebAccess
         return Failed(url, $"Gave up after {MaxRedirects} redirects.");
     }
 
+    /// <summary>
+    /// The same walk as <see cref="FetchAsync"/>, keeping the bytes.
+    ///
+    /// Deliberately a sibling rather than a second implementation: scheme,
+    /// private-address check, redirect limit and timeout are the same lines, so
+    /// there is no second idea of what this program may reach. The differences
+    /// are the two that matter for a file — what media type is acceptable, and a
+    /// cap the caller sets, because a page and a track are not the same size of
+    /// thing.
+    ///
+    /// A file over the cap is **refused, not truncated**. Half a page is still
+    /// readable and worth having; half an audio file is a broken file that would
+    /// be embedded in somebody's design and fail much later, somewhere that does
+    /// not mention downloading.
+    /// </summary>
+    public async Task<WebBytesResult> FetchBytesAsync(
+        string url, string expectedType, int maxBytes, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(expectedType);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxBytes);
+
+        var current = url;
+
+        for (var hop = 0; hop <= MaxRedirects; hop++)
+        {
+            if (!Uri.TryCreate(current, UriKind.Absolute, out var uri))
+            {
+                return NoBytes(url, $"'{current}' is not a URL.");
+            }
+
+            if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps)
+            {
+                return NoBytes(url, $"Only http and https are allowed, not '{uri.Scheme}'.");
+            }
+
+            // Checked on every hop, not only the first. A redirect to 169.254.169.254
+            // is the whole trick, and a guard that runs once at the start does not
+            // see it.
+            if (IsPrivate(uri.Host))
+            {
+                return NoBytes(url, $"'{uri.Host}' is on this machine or this network, and is not reachable this way.");
+            }
+
+            HttpResponseMessage response;
+
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+                response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+                                      .ConfigureAwait(false);
+            }
+            catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                return NoBytes(url, "The site did not answer in time.");
+            }
+            catch (HttpRequestException ex)
+            {
+                return NoBytes(url, $"Could not reach it: {ex.Message}");
+            }
+
+            using (response)
+            {
+                if (IsRedirect(response.StatusCode) && response.Headers.Location is not null)
+                {
+                    current = response.Headers.Location.IsAbsoluteUri
+                        ? response.Headers.Location.ToString()
+                        : new Uri(uri, response.Headers.Location).ToString();
+                    continue;
+                }
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    return NoBytes(url, $"The site answered {(int)response.StatusCode} {response.ReasonPhrase}.");
+                }
+
+                var mediaType = response.Content.Headers.ContentType?.MediaType ?? string.Empty;
+
+                if (!mediaType.StartsWith(expectedType, StringComparison.OrdinalIgnoreCase))
+                {
+                    return NoBytes(
+                        url,
+                        mediaType.Length == 0
+                            ? "The site did not say what that file is."
+                            : $"That is {mediaType}, not {expectedType.TrimEnd('/')}.");
+                }
+
+                // Refused before a byte is read where the server says how big it
+                // is, so an enormous file costs nothing at all.
+                if (response.Content.Headers.ContentLength is > 0 and var told && told > maxBytes)
+                {
+                    return NoBytes(url, $"That is {told / 1024 / 1024}MB, and the limit is {maxBytes / 1024 / 1024}MB.");
+                }
+
+                await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+
+                var buffer = new byte[8192];
+                var collected = new MemoryStream();
+                int chunk;
+
+                while ((chunk = await stream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+                {
+                    collected.Write(buffer, 0, chunk);
+
+                    // And again while reading, because Content-Length is something
+                    // the other end chose to tell us and may simply be absent.
+                    if (collected.Length > maxBytes)
+                    {
+                        return NoBytes(url, $"That is larger than the {maxBytes / 1024 / 1024}MB limit.");
+                    }
+                }
+
+                return new WebBytesResult(true, uri.ToString(), mediaType, collected.ToArray(), null);
+            }
+        }
+
+        return NoBytes(url, $"Gave up after {MaxRedirects} redirects.");
+    }
+
+    private static WebBytesResult NoBytes(string url, string problem)
+        => new(false, url, string.Empty, [], problem);
+
     private static bool IsRedirect(HttpStatusCode code)
         => code is HttpStatusCode.MovedPermanently or HttpStatusCode.Found
                 or HttpStatusCode.SeeOther or HttpStatusCode.TemporaryRedirect

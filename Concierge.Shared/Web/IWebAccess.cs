@@ -11,6 +11,40 @@ public interface IWebAccess
 {
     /// <summary>Fetches one URL and returns it as readable text.</summary>
     Task<WebFetchResult> FetchAsync(string url, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Fetches one URL and returns the bytes, for a file rather than a page.
+    ///
+    /// On this interface rather than beside the thing that needs it, so there is
+    /// **one** set of rules about what this program may reach. A second fetcher
+    /// with its own idea of which addresses are allowed is how a guard comes to
+    /// protect one path and not the other, and the path it misses is always the
+    /// newer one.
+    /// </summary>
+    /// <param name="url">The address.</param>
+    /// <param name="expectedType">
+    /// The media type this is willing to accept, as a prefix — "audio/" for a
+    /// track. A server answering with something else is refused rather than
+    /// downloaded and guessed at.
+    /// </param>
+    /// <param name="maxBytes">The most it will take before giving up.</param>
+    Task<WebBytesResult> FetchBytesAsync(
+        string url, string expectedType, int maxBytes, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// What came back from a fetch of bytes.
+/// </summary>
+/// <param name="Success">Whether there is anything here.</param>
+/// <param name="Url">Where it finally came from, after any redirects.</param>
+/// <param name="MediaType">What the server said it is.</param>
+/// <param name="Bytes">The content, or empty.</param>
+/// <param name="Problem">Why not, in words a person can act on.</param>
+public sealed record WebBytesResult(
+    bool Success, string Url, string MediaType, byte[] Bytes, string? Problem)
+{
+    /// <summary>The content as a data URI, which is how a design carries a file.</summary>
+    public string AsDataUri => $"data:{MediaType};base64,{Convert.ToBase64String(Bytes)}";
 }
 
 /// <summary>

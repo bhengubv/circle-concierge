@@ -1036,6 +1036,16 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
                 // rather than offered one that always fails.
                 Workbench.Export = Services.GetService(typeof(Concierge.Shared.Design.IMediaExport))
                     as Concierge.Shared.Design.IMediaExport;
+
+                // Reaching the network, and asking first. Both, or the tool that
+                // brings a track in from a link is not offered — it is the one
+                // design tool that leaves the device, so a head that cannot ask
+                // must not be able to do it.
+                Workbench.Web = Services.GetService(typeof(Concierge.Shared.Web.IWebAccess))
+                    as Concierge.Shared.Web.IWebAccess;
+
+                Workbench.Approval = Services.GetService(typeof(Concierge.Shared.Tools.IToolApprovalService))
+                    as Concierge.Shared.Tools.IToolApprovalService;
             }
             else
             {
