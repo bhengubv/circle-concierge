@@ -111,6 +111,13 @@ public static class CodeSandbox
             return new LinuxNamespaceSandbox();
         }
 
+        // Mac Catalyst reports as macOS and is the desktop head, so it gets the same
+        // boundary. iOS does not reach here at all — it forbids child processes.
+        if (OperatingSystem.IsMacOS() || OperatingSystem.IsMacCatalyst())
+        {
+            return new MacSandbox();
+        }
+
         return new UnconfinedSandbox();
     }
 
@@ -125,6 +132,11 @@ public static class CodeSandbox
         if (OperatingSystem.IsLinux() && !OperatingSystem.IsAndroid())
         {
             return new LinuxNamespaceSandbox().Capability;
+        }
+
+        if (OperatingSystem.IsMacOS() || OperatingSystem.IsMacCatalyst())
+        {
+            return new MacSandbox().Capability;
         }
 
         if (OperatingSystem.IsAndroid())

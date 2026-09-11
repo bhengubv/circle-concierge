@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **154 boxes ticked, 6 open, thirteen
+`main`. What replaces it is the working list: **154 boxes ticked, 5 open, fourteen
 partial**, ordered so the next person can pick one up.
 
 **Thirty-six of those forty arrived at once**, on 2026-09-11, when the six
@@ -568,9 +568,30 @@ includes `run_command`, and the answer was: whatever it likes.
       architecture. So it reports `Process`, exactly as Windows does. Android is
       Linux and is deliberately excluded: a child there runs under the app's own
       uid, and wrapping it would report a boundary the platform does not give.
-- [ ] macOS, Android and iOS confinement. Still "not confined", still honestly —
-      and iOS forbids child processes at all, so that one is a fact rather than a
-      gap.
+- [~] macOS, Android and iOS confinement. **macOS is written; Android and iOS are
+      answered rather than open.**
+
+      `MacSandbox` wraps a command in `sandbox-exec` and `/bin/sh`'s own `ulimit`, at the
+      same numbers the other two heads use: 512MB, four processes, 256MB per file, and
+      **writes confined to the workspace**. `sandbox-exec` is deprecated by Apple and is
+      also still on every macOS this would run on and still used by Apple's own tooling —
+      deprecated and working beats absent, and if a future release removes it the capability
+      drops to what `ulimit` alone gives and says so.
+
+      **It does not kill what a command leaves behind, and says so**: Windows gets that from
+      a job object and Linux from `--kill-child`, and macOS has no equivalent short of a
+      launchd job. The profile denies writing and allows the workspace back — deny by
+      exception rather than allow by exception, the weaker choice made deliberately for the
+      same reason the environment scrubbing made it.
+
+      **None of it has been run.** There is no Mac here. The Catalyst head compiles clean
+      with it, 10 tests pin the capability and the profile, and the file says in its own
+      first paragraph that it is waiting for a machine — because this repository's history
+      is four rounds of confident sandbox reasoning that were all wrong until somebody
+      measured.
+
+      Android and iOS are not gaps: a child on Android runs under the app's own user id, so
+      there is nothing to add that would be true, and iOS forbids child processes outright.
 - [x] Scrub the child's environment. Done: `ConfinedProcess` built the child's
       environment instead of passing `nint.Zero`, which had been handing every
       command everything this process holds — on a developer's machine that
