@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **164 boxes ticked, 5 open, fourteen
+`main`. What replaces it is the working list: **166 boxes ticked, 5 open, fourteen
 partial**, ordered so the next person can pick one up.
 
 **Thirty-six of those forty arrived at once**, on 2026-09-11, when the six
@@ -1698,7 +1698,7 @@ commit it was last actually checked at, because "all four hold as of `<ref>`"
 was one date covering four checks made at different times — and it had drifted
 two commits behind `HEAD` before anyone noticed.
 
-- [x] **1928 tests pass, and the suite is deterministic.** It was not: four
+- [x] **1931 tests pass, and the suite is deterministic.** It was not: four
       consecutive runs each failed *one different test*, which meant it could not
       tell a regression from noise — the same defect as a screen asserting
       something untrue, sitting on the check everything else is measured by.
@@ -1924,6 +1924,20 @@ two commits behind `HEAD` before anyone noticed.
       the running app. Settings, the skills picker (switching one on and off, with the chip
       under the composer and the sidebar count), History, Product and Business APIs all check
       out.
+- [x] **The canvas keeps its words on a narrow window.** Found by making the window 700px
+      wide and looking: the seven media and the six looks dropped their names and became
+      thirteen unlabelled icons, with no way to tell Page from Space or Calm from Night.
+
+      Hiding them all is the obvious thing and it is wrong for **this** product: the whole
+      argument for calling a look "Calm" rather than "#F4F5F7" is that a five-year-old and a
+      ninety-seven-year-old can both say which one they want. The chosen one keeps its name
+      now, so the screen always answers "what am I making, and how does it look?" in words,
+      and the rest are one tap from saying so. 3 tests, read off the stylesheet, which is
+      crude and is what is available.
+- [x] The layout changes live as the window narrows — sidebar into a drawer, canvas keeping
+      the room, the drawer closing behind you — looked at on the desktop head at 700px, not
+      only claimed. Pricing checks out too: "Price not final" and "Contact us" rather than
+      invented numbers.
 - [x] `[skip ci]` in the HEAD commit before any push — a rule, not a check
 - [x] The app actually starts. Added after a Razor comment inside an element's
       attribute list compiled, passed 1141 tests, and threw on every render in

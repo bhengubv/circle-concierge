@@ -1260,8 +1260,20 @@ button.row:hover { color: var(--ink); }
   .dz-thumb { width: 4.25rem; height: 2.75rem; }
   .dz-thumb-frame { transform: scale(.062); }
   .dz-moment-what { display: none; }
+
+  /* The names go, because seven words and six more will not fit across a phone —
+     **except on the one you have chosen.**
+
+     Hiding all of them was the obvious thing and it is wrong for this product in
+     particular: the whole argument for naming a look "Calm" rather than "#F4F5F7"
+     is that a five-year-old and a ninety-seven-year-old can both say which one
+     they want. Seven unlabelled icons hands that back. Keeping the chosen one's
+     name means the screen always answers "what am I making, and how does it
+     look?" in words, and the rest are one tap from telling you. */
   .dz-look-name { display: none; }
+  .dz-look.is-on .dz-look-name { display: inline; }
   .dz-look { padding: .25rem; }
+  .dz-look.is-on { padding: .25rem .5rem; }
 }
 
 /* A sidebar entry that switches a posture rather than travelling somewhere. It
