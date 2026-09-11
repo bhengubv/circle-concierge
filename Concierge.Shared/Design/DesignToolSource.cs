@@ -429,16 +429,20 @@ public sealed class DesignToolSource : IAgentToolSource
     /// nobody wanted — recoverable by deleting it — rather than replace one
     /// somebody did.
     ///
-    /// Sound and video only. A page and a deck are already printable from the
-    /// surface itself, and a space is not a file yet.
+    /// **Every medium saves now.** A page, a deck and a room become one HTML file
+    /// carrying its own look and pictures; a sound becomes an .m4a and a motion
+    /// piece an .mp4. It refused the first three until 2026-09-11 on the grounds
+    /// that they were "printed from the page itself", which meant the only way to
+    /// hand anybody a design was a print dialog, by hand, on a head that has one.
     /// </summary>
     private sealed class SaveTheDesign(DesignWorkbench workbench) : IAgentTool
     {
         public string Name => "design_save";
 
         public string Description =>
-            "Save the design as a file that can be kept and shared: an audio file when making "
-            + "a sound, a video file when making a motion piece. Says where it put it.";
+            "Save the design as a file that can be kept and shared: an HTML file for a page, "
+            + "a deck or a room, an audio file for a sound, a video file for a motion piece. "
+            + "Says where it put it.";
 
         public JsonNode? ArgumentsSchema => new JsonObject
         {
@@ -470,18 +474,49 @@ public sealed class DesignToolSource : IAgentToolSource
             }
 
             var document = session.Current;
-            var sound = document.Medium == DesignMedium.Sound;
-
-            if (!sound && document.Medium != DesignMedium.Motion)
-            {
-                return new AgentToolResult(
-                    false,
-                    $"A {document.Medium.ToString().ToLowerInvariant()} is not saved as a file — "
-                    + "it is printed from the page itself.");
-            }
-
             var asked = Text(arguments, "name");
             var stem = string.IsNullOrWhiteSpace(asked) ? "design" : Tidy(asked);
+
+            // A page, a deck and a room are saved as one HTML file.
+            //
+            // This used to refuse them — "it is printed from the page itself" —
+            // which meant the only way to hand somebody a design was a browser
+            // print dialog, by hand, on a head that has one. Three of the five
+            // media could not be given to anybody at all.
+            //
+            // It costs nothing, and that is the point rather than an excuse: the
+            // renderer already emits a complete standalone document with its look,
+            // its fonts and its pictures inlined as data URIs, because it has to
+            // stand alone inside a srcdoc frame. The file that opens in a browser
+            // is the file that was on screen — not an export of it, the same
+            // bytes.
+            if (document.Medium is not (DesignMedium.Sound or DesignMedium.Motion))
+            {
+                var page = Free(
+                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                    stem,
+                    ".html");
+
+                try
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(page)!);
+                    await File.WriteAllTextAsync(
+                        page, DesignMediums.Render(document), cancellationToken).ConfigureAwait(false);
+                }
+                catch (IOException problem)
+                {
+                    return new AgentToolResult(false, string.Empty, problem.Message);
+                }
+                catch (UnauthorizedAccessException problem)
+                {
+                    return new AgentToolResult(false, string.Empty, problem.Message);
+                }
+
+                return new AgentToolResult(
+                    true, $"Saved to {page}. Open it in a browser, or print it to PDF from there.");
+            }
+
+            var sound = document.Medium == DesignMedium.Sound;
             var path = Free(Folder(sound), stem, sound ? ".m4a" : ".mp4");
 
             var result = sound

@@ -51,16 +51,65 @@ public sealed class DesignSaveToolTests
 
     // ── What it does ──────────────────────────────────────────────────────
 
+    /// <summary>
+    /// A page, a deck and a room save as one HTML file.
+    ///
+    /// This test used to assert the opposite — that a page "is printed from the
+    /// page itself" — which meant three of the five media could not be handed to
+    /// anybody at all, and the test held that shut. Cloning the six made the cost
+    /// obvious: open-design's entire pitch is "real files, HTML/PDF/PPTX/MP4
+    /// export", and Concierge could produce a file for two media out of five.
+    ///
+    /// It writes into Documents, so these tests assert on what comes back rather
+    /// than reading the disk — the path is real and the file is really written,
+    /// which the tool's own message reports.
+    /// </summary>
+    [Theory]
+    [InlineData(DesignMedium.Page)]
+    [InlineData(DesignMedium.Deck)]
+    [InlineData(DesignMedium.Scene)]
+    public async Task A_page_a_deck_and_a_room_save_as_one_html_file(DesignMedium medium)
+    {
+        var bench = Open(new Refusing());
+        bench.Session!.Record(bench.Session.Current.As(medium), "Something");
+
+        var result = await Tools(bench).Run("design_save", new JsonObject { ["name"] = $"handout-{medium}" });
+
+        Assert.True(result.Success, result.Output);
+        Assert.Contains(".html", result.Output, StringComparison.Ordinal);
+
+        var path = result.Output.Split(' ').First(word => word.Contains(".html", StringComparison.Ordinal)).TrimEnd('.');
+        Assert.True(File.Exists(path), path);
+
+        try
+        {
+            var written = await File.ReadAllTextAsync(path);
+
+            // The same bytes the canvas shows, not an export of them.
+            Assert.StartsWith("<!doctype html>", written, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    /// <summary>
+    /// It does not need an encoder to write one. A machine with no ffmpeg can
+    /// still hand somebody a page — which is most of what a person makes.
+    /// </summary>
     [Fact]
-    public async Task A_page_is_not_saved_as_a_file_and_says_why()
+    public async Task A_page_saves_without_an_encoder()
     {
         var bench = Open(new Refusing());
         bench.Session!.Record(bench.Session.Current.As(DesignMedium.Page), "A page");
 
-        var result = await Tools(bench).Run("design_save");
+        var result = await Tools(bench).Run("design_save", new JsonObject { ["name"] = "no-encoder-needed" });
 
-        Assert.False(result.Success);
-        Assert.Contains("printed", result.Output, StringComparison.OrdinalIgnoreCase);
+        Assert.True(result.Success, result.Output);
+
+        var path = result.Output.Split(' ').First(word => word.Contains(".html", StringComparison.Ordinal)).TrimEnd('.');
+        File.Delete(path);
     }
 
     [Fact]

@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **121 boxes ticked, 5 open, three
+`main`. What replaces it is the working list: **123 boxes ticked, 4 open, three
 partial**, ordered so the next person can pick one up.
 
 That count is counted, not remembered — `grep -c '^- \[x\]'` and `'^- \[ \]'`
@@ -671,11 +671,32 @@ cockpit. None is a competitor to the product it was inspired by.
 
 **One thing worth taking, found by cloning them rather than remembering them.**
 
-- [ ] **Let a model look inside a media file.** Diffusion Studio ships media
+- [x] **Let a model look inside a media file.** Done. Diffusion Studio ships media
       inspection as a first-class idea — `probe`, `grab`, `filmstrip`, `waveform`,
       `transcribe`, `listen` — framed in its own README as "the inspection tools an
       agent needs to work with media it cannot watch". That sentence is the whole
-      argument, and it names a hole here exactly.
+      argument, and it named a hole here exactly.
+
+      `MediaLook` and three tools, all read-only, so none of them asks — the same
+      rule `read_file` follows. `media_facts` reads how long a file runs and what
+      streams are in it, from the encoder's own report rather than a second parser
+      of ours. `media_is_silent` answers the question that actually comes up — a
+      track that downloaded wrong, a shot recorded with the microphone muted, both
+      of which look entirely normal in a file listing. `media_frames` takes frames
+      from across a video and hands them over as **one** strip rather than several
+      pictures: a model given eight separate frames spends eight times the context
+      and still has to work out the order. It rides the same `CapturedImages`
+      channel `screenshot` uses, and is absent on a head that keeps none, because a
+      tool that produces a picture nothing can carry reports success and shows
+      nobody anything.
+
+      A number a model asks for is bounded rather than trusted — two hundred frames
+      becomes twelve. Absent entirely where there is no encoder.
+
+      16 tests, all real runs against files the encoder makes, and **one of them is
+      a tripwire that goes red when there is no encoder** — applied before the
+      mistake could repeat, because four export tests stood down on exactly that
+      and reported success for weeks.
 
       Concierge has vision input, an encoder already wired, and **no way for a
       model to learn anything about an audio or video file at all.** Told "the
@@ -721,6 +742,28 @@ the argument is the bar, not the architecture.
       pictures, drawn differently
 - [x] The composer's invitation follows the medium: on the slide, in the shot,
       in the room, to hear
+- [x] **Every medium can be handed to somebody now.** `design_save` wrote only
+      `.m4a` and `.mp4` until 2026-09-11 and refused a page, a deck and a room on
+      the grounds that they were "printed from the page itself" — so three of the
+      five media could not be given to anybody at all except through a browser
+      print dialog, by hand, on a head that has one.
+
+      Cloning the six made the cost plain: open-design's entire pitch is "real
+      files, HTML/PDF/PPTX/MP4 export", and Concierge could produce a file for two
+      media out of five.
+
+      A page, a deck and a room now save as one HTML file, and it costs nothing —
+      which is the point rather than an excuse. The renderer already emits a
+      complete standalone document with its look, fonts and pictures inlined as
+      data URIs, because it has to stand alone inside a srcdoc frame. **The file
+      that opens in a browser is the file that was on screen** — not an export of
+      it, the same bytes. It needs no encoder, so a machine without ffmpeg can
+      still hand somebody a page, which is most of what a person makes.
+
+      Still open: PDF and PPTX. Proper PDF from HTML needs a browser engine driven
+      headlessly — the desktop head has one in WebView2, so it is reachable there
+      and nowhere else; PPTX is OOXML and needs no dependency at all, only work.
+      Neither is pretended at.
 - [x] Encoding. Done, and it produces real files: `FfmpegMediaExport` concatenates
       a running order into one `.m4a`, and turns shots into an `.mp4` with each
       shot held for its own length, the design's own colours behind it and its
@@ -1170,7 +1213,7 @@ commit it was last actually checked at, because "all four hold as of `<ref>`"
 was one date covering four checks made at different times — and it had drifted
 two commits behind `HEAD` before anyone noticed.
 
-- [x] **1471 tests pass, and the suite is deterministic again.** It was not: four
+- [x] **1490 tests pass, and the suite is deterministic again.** It was not: four
       consecutive runs each failed *one different test*, which meant it could not
       tell a regression from noise — the same defect as a screen asserting
       something untrue, sitting on the check everything else is measured by.

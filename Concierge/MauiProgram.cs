@@ -90,6 +90,10 @@ public static class MauiProgram
 			.AddConciergeHooks()
 			.AddConciergeDeviceCapabilities()
 			.AddConciergeDesignTools()
+			// Looking inside a media file. Registered only where there is an
+			// encoder to look with, so a machine without one is never offered
+			// tools that would always fail.
+			.AddConciergeMediaLook()
 			.AddMauiDeviceCapabilities()
 			// AddConciergeAi() registers ILlmRuntimeService and the in-process
 			// chat runtime; AddConciergeAiIsolated() then replaces the chat

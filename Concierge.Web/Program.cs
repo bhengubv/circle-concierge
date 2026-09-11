@@ -1,3 +1,4 @@
+using Concierge.Shared.Design;
 using Concierge.CodeMode;
 using System.Threading.RateLimiting;
 using Concierge.Web.Components;
@@ -53,6 +54,9 @@ builder.Services
     .AddConciergeAi()
     .AddConciergeMesh()
     .AddConciergeMedia()
+    .AddConciergeDesignTools()
+    // Looking inside a media file, where there is an encoder to look with.
+    .AddConciergeMediaLook()
     // Parental controls / content-filter pipeline. Wraps the IChatRuntime
     // registered above so every chat call routes through the filter when
     // Family Mode is on. Off-mode is a zero-cost pass-through.
