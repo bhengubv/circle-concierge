@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **136 boxes ticked, 27 open, five
+`main`. What replaces it is the working list: **139 boxes ticked, 27 open, five
 partial**, ordered so the next person can pick one up.
 
 **Thirty-six of those forty arrived at once**, on 2026-09-11, when the six
@@ -116,9 +116,30 @@ Ordered. The first is a correctness problem; the rest are absences.
 - [x] Per-provider image encoding — Anthropic base64, OpenAI data URI, Gemini inline_data
 - [x] Test: all three shapes, and a text-only turn keeps its plain string content
 
-The local model is text-only and stays that way; the check the image channel
-added had nothing to find, so every picture was refused. Live confirmation
-needs a cloud key — the wire shapes are tested, the round trip is not.
+**"The local model is text-only and stays that way" was the sentence here, and it
+is now out of date rather than wrong-at-the-time.** `CircleAI.Inference` 3.3.0
+carries an image channel: `ChatMessage.ImageBytes`, fed through
+`mnn_llm_generate_with_image_stream_ex` by `KimiVlGenerator`. Concierge used none
+of it, so the image channel on `ChatTurn` reached the cloud runtimes only and
+every picture on the device was refused with "this model cannot look at
+pictures".
+
+- [x] Pictures reach the local model. A turn's first image is carried through to
+      `ChatMessage.ImageBytes`, and a vision family is loaded through the generator
+      that can see rather than the text one.
+- [x] **Whether it can see is read off the model, never off its filename.** The name
+      only decides which generator to build; `KimiVlGenerator.IsVisionCapable` is
+      the native runtime's own answer, and that is what fills
+      `SupportedImageMediaTypes`. A file named like a vision model that is not one
+      is never advertised as one.
+- [x] The composer reads the list, not only the interface. The local runtime
+      declares `IVisionCapableRuntime` because it *can* see, and lists nothing while
+      a text model is loaded — so checking the interface alone would have sent a
+      picture to a Qwen model and said nothing about it.
+
+**No vision model is on this machine**, so the round trip is still unconfirmed,
+exactly as it is for the cloud runtimes with no key. The wiring is tested; the
+looking is not. Live confirmation needs a cloud key or a vision model.
 
 ### 6. ~~The model cannot find anything~~ — done
 

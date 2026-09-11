@@ -1195,8 +1195,14 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
         // A runtime that cannot see is told so, rather than handed pictures it
         // will ignore. The model that ships with Concierge runs on the device
-        // and is text-only, so this is the common case, not the edge one.
-        if (_pendingImages.Count > 0 && _activeRuntime is not IVisionCapableRuntime)
+        // and is usually text-only, so this is the common case, not the edge one.
+        //
+        // The list is read, not only the interface. The local runtime declares the
+        // capability because it *can* see — with a vision model loaded — and lists
+        // nothing while the model loaded is text-only. Checking only the interface
+        // would send a picture to a Qwen model and say nothing about it.
+        if (_pendingImages.Count > 0
+            && _activeRuntime is not IVisionCapableRuntime { SupportedImageMediaTypes.Count: > 0 })
         {
             var names = string.Join(", ", _pendingImages.Select(i => i.FileName));
             attachmentBlocks.Add($"[{names} attached, but {_activeRuntime?.EngineLabel ?? "this model"} cannot look at pictures.]");

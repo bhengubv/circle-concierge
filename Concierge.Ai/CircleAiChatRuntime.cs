@@ -46,7 +46,7 @@ namespace Concierge.Ai;
 /// </list>
 /// </para>
 /// </remarks>
-public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime, IModelDownloadRequired, IAsyncDisposable
+public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime, IModelDownloadRequired, IVisionCapableRuntime, IAsyncDisposable
 {
     private readonly ILogger<CircleAiChatRuntime> _logger;
     private readonly CircleAiChatOptions _options;
@@ -361,10 +361,64 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
         }
     }
 
+    /// <summary>
+    /// The generator for this model — and, for a vision family, the one that can see.
+    ///
+    /// `KimiVlGenerator` takes the image bytes on a turn and feeds them through the model's
+    /// own vision encoder; `QwenTextGenerator` has nowhere to put them. Which one is built is
+    /// decided by what the model is, because loading a text model through the vision
+    /// generator asks a text model for a picture it cannot take.
+    ///
+    /// Whether it can actually see is then read back from the model rather than from its
+    /// name: `IsVisionCapable` is the native runtime's own answer. A file named like a vision
+    /// model that is not one says so, instead of being advertised on the strength of its
+    /// filename.
+    /// </summary>
     private IChatGenerator CreateGenerator(string modelPath)
         => _options.GeneratorFactory is { } factory
             ? factory(modelPath)
-            : new QwenTextGenerator(modelPath, _options.ContextSize);
+            : LooksLikeItCanSee(modelPath)
+                ? new KimiVlGenerator(modelPath, _options.ContextSize)
+                : new QwenTextGenerator(modelPath, _options.ContextSize);
+
+    /// <summary>
+    /// Whether this model is from a family that sees, by the name it was published under.
+    ///
+    /// A guess, and only used to decide which generator to build — never to claim the
+    /// capability. The claim comes from the model itself.
+    /// </summary>
+    public static bool LooksLikeItCanSee(string modelPath)
+    {
+        var name = modelPath.Replace(Path.DirectorySeparatorChar, '/');
+
+        return name.Contains("-vl", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("vision", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("kimi-vl", StringComparison.OrdinalIgnoreCase)
+            || name.Contains("llava", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// What this model can be shown, which is nothing at all unless a vision model is loaded.
+    ///
+    /// Empty is the ordinary answer and is meant to be read as "cannot see" — the composer
+    /// checks the list rather than only the interface, so a text model does not silently
+    /// accept a picture it will ignore.
+    /// </summary>
+    public IReadOnlyCollection<string> SupportedImageMediaTypes
+    {
+        get
+        {
+            IChatGenerator? generator;
+            lock (_statusGate)
+            {
+                generator = _generator;
+            }
+
+            return generator is KimiVlGenerator seeing && seeing.IsVisionCapable
+                ? ["image/jpeg", "image/png", "image/webp"]
+                : [];
+        }
+    }
 
     /// <summary>
     /// Makes <paramref name="generator"/> the one this runtime owns, disposing whatever it
@@ -417,8 +471,20 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
             yield break;
         }
 
+        // The image channel on a turn, carried through to the model's own. It has existed on
+        // ChatTurn since vision input was added and has only ever reached the cloud runtimes;
+        // this is the local end of it. A text generator ignores ImageBytes, so the worst a
+        // picture on a text model costs is nothing — and the composer will not send one
+        // anyway, because SupportedImageMediaTypes is empty until a vision model is loaded.
+        //
+        // One picture rather than several: MNN takes a single image per turn, and quietly
+        // dropping the rest would be worse than saying so, which SupportedImageMediaTypes
+        // being read by the composer already handles.
         var translated = messages
-            .Select(turn => new ChatMessage(turn.Role, turn.Content))
+            .Select(turn => new ChatMessage(turn.Role, turn.Content)
+            {
+                ImageBytes = turn.Images is { Count: > 0 } pictures ? pictures[0].Bytes : null,
+            })
             .ToList();
 
         // Per-call generation knobs:
