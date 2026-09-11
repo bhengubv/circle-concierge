@@ -3,8 +3,15 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **125 boxes ticked, 4 open, three
+`main`. What replaces it is the working list: **125 boxes ticked, 40 open, three
 partial**, ordered so the next person can pick one up.
+
+**Thirty-six of those forty arrived at once**, on 2026-09-11, when the six
+inspiration repos were cloned again and their feature lists written out in full as
+item 17. Nobody has agreed to any of them and nothing there is scheduled — the
+list exists so the choice is made with the real scope visible rather than from a
+feeling about it. Before that section the open count was four, and all four were
+other heads.
 
 That count is counted, not remembered — `grep -c '^- \[x\]'` and `'^- \[ \]'`
 against this file. It read "17 items done, 23 open" for some time and matched
@@ -1150,6 +1157,117 @@ sessions, so reading without recording produces coverage and not knowledge. Four
 items here and four in item 15 are what survived because they were written down.
 That is the argument for reading less and recording more, and it applies to
 whatever is read next.
+
+
+---
+
+### 17. Feature parity with the six, listed out
+
+Asked for in full on 2026-09-11, after the six were cloned again and read rather
+than remembered. Everything below is **theirs**, taken from their own feature
+lists and READMEs, written as what Concierge would have to build to match it.
+
+**Read the size before reading the list.** These six are 2,516,644 lines against
+Concierge's 61,232. Real parity means building a building editor, a video editor,
+a video production studio, a music download service and a machine-learning
+research model — five separate products. Nothing here is scheduled, nobody has
+agreed to any of it, and the list exists so the choice is made with the actual
+scope in view instead of from a feeling about it.
+
+**The useful question is not whether to do all of this.** It is which two or
+three of these lines would change what a person can actually do with Concierge.
+The rest can stay written down and undone without that being a failure.
+
+Links, which this file never recorded and should have — finding them cost an
+afternoon digging through an old session transcript:
+
+| Repo | Where it is |
+| --- | --- |
+| Pascal | https://github.com/pascalorg/editor |
+| Diffusion Studio | https://github.com/diffusionstudio/editor |
+| OpenMontage | https://github.com/calesthio/OpenMontage (ours: `bhengubv/OpenMontage`) |
+| Antra | https://github.com/bhengubv/Antra |
+| AniGen | https://github.com/VAST-AI-Research/AniGen (ours: `bhengubv/AniGen`) |
+| open-design | https://github.com/nexu-io/open-design |
+
+#### Pascal — a 3D building editor
+
+Space today is four shapes on a floor, turned with arrow keys. Pascal is
+architecture.
+
+- [ ] Walls, floors, ceilings and roofs as things you draw, not blocks you place
+- [ ] Doors and windows cut into walls properly, so a wall has a hole in it
+- [ ] Building levels that stack, pull apart, or show one at a time
+- [ ] Furniture that attaches to a wall or a ceiling and sits at the right height
+- [ ] Trace over a photo, or bring in a 3D scan of a real room
+- [ ] Add-ons other people can write
+
+#### Diffusion Studio — video
+
+Motion today is shots held for a length, exported as a slideshow of cards. Its
+own comment says so. Diffusion Studio edits video.
+
+- [ ] Cut and join real video clips
+- [ ] Strip out "um" and "er"
+- [ ] Subtitles timed to each word
+- [ ] Colour correction and filters
+- [ ] Animation
+- [ ] Generate images, video and voiceover
+- [ ] Write out what is said in a recording
+- [ ] Watch footage and answer questions about it
+
+The inspection half of this is **done** — `media_facts`, `media_is_silent` and
+`media_frames`, in item 14. That was the piece that cost little and closed a real
+hole. The rest is a video editor.
+
+#### OpenMontage — video production
+
+- [ ] Production routines that run end to end, rather than one tool at a time
+- [ ] Computer-generated narration
+- [ ] Built-in free stock footage
+- [ ] A composition engine for motion graphics
+- [ ] Automatic captions
+
+#### Antra — a music library
+
+Sound today is a running order that exports one file, with tags, artwork and
+lyrics, and one approval-gated fetch from a link. Antra is a library.
+
+- [ ] Pull from the seven music services it supports
+- [ ] Match the exact recording rather than the right title
+- [ ] Choose between clean and explicit versions
+- [ ] Notice high-quality audio and prefer it
+- [ ] File everything into artist and album folders
+- [ ] Spot duplicates already in the library
+- [ ] Download an artist's whole catalogue
+- [ ] Downloads on a schedule
+- [ ] An audio analyser, podcasts, and peer-to-peer
+
+#### AniGen — research
+
+- [ ] Turn one photograph into a 3D model with a skeleton that can be animated
+- [ ] Ship or reach the trained model that does it
+
+Nothing was ever taken from AniGen and for a long time this file called that a
+hole in the record. It is not: this is a machine-learning research pipeline, and
+there is nothing to take from it short of the model itself.
+
+#### open-design
+
+- [ ] Mobile app designs as their own medium
+- [ ] Image generation
+- [ ] Animated motion graphics
+- [ ] Live dashboards that update themselves
+- [ ] 298 design guides. Concierge has six looks with briefs.
+- [ ] Plug into the other coding tools, the way it reaches sixteen of them
+
+**What Concierge has that none of the six has**, kept here so the list above is
+not read as a scoreboard: one document across five media on one agent loop, with
+approvals, working on the device, on five heads. Pascal is an editor. Diffusion
+Studio is a runtime. open-design is an agent shell with no document model at all.
+Matching their features is not the same as being better than them at anything,
+and the bar this product is actually held to — a five-year-old and a
+ninety-seven-year-old — rules several of the lines above out on purpose.
 
 ---
 
