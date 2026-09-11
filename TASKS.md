@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **121 boxes ticked, 4 open, three
+`main`. What replaces it is the working list: **121 boxes ticked, 5 open, three
 partial**, ordered so the next person can pick one up.
 
 That count is counted, not remembered — `grep -c '^- \[x\]'` and `'^- \[ \]'`
@@ -668,6 +668,31 @@ gap.
 into them again:** a page, a deck, a slideshow with timing, a room of primitives,
 and a running order. Each is the thing a person can use without learning a
 cockpit. None is a competitor to the product it was inspired by.
+
+**One thing worth taking, found by cloning them rather than remembering them.**
+
+- [ ] **Let a model look inside a media file.** Diffusion Studio ships media
+      inspection as a first-class idea — `probe`, `grab`, `filmstrip`, `waveform`,
+      `transcribe`, `listen` — framed in its own README as "the inspection tools an
+      agent needs to work with media it cannot watch". That sentence is the whole
+      argument, and it names a hole here exactly.
+
+      Concierge has vision input, an encoder already wired, and **no way for a
+      model to learn anything about an audio or video file at all.** Told "the
+      second shot is too long", it cannot check. Handed a track, it cannot tell
+      whether the file is silence. It can put media into a design and export it,
+      and it is blind to everything in between.
+
+      What is cheap here, because `FfmpegMediaExport` already finds and runs the
+      encoder: how long it is, what is in it, a frame or a row of frames as
+      pictures the vision channel can already carry, and whether an audio file is
+      silent. Read-only, every one of them — the same reason `read_file` does not
+      ask and `write_file` does.
+
+      What is **not** cheap and should not be assumed into scope: transcription and
+      "ask a model about this footage" both need a model that can hear, which is a
+      different decision. Named here so the small half does not quietly drag the
+      large half in behind it.
 
 The document knows nothing about how it is drawn, so five media is five files.
 
