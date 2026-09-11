@@ -630,8 +630,44 @@ tools" is a decision to make deliberately rather than by finishing a wiring job.
 
 ### 14. Five renderers, one document
 
-Matching all six inspirations feature for feature, which is the strategy: parity
-is table stakes, and the UX is what wins on top of it — not instead of it.
+**The strategy line this section opened with was wrong, and it was wrong for
+months.** It read: *"Matching all six inspirations feature for feature, which is
+the strategy: parity is table stakes, and the UX is what wins on top of it."*
+
+That was never achievable and was never measured. The six were cloned again on
+2026-09-11 and counted:
+
+| Repo | Lines | What it actually is |
+| --- | --- | --- |
+| Pascal | 516,762 | Architectural 3D editor — walls with mitering and CSG cutouts, slabs, ceilings, roofs, levels, zones, 3D scans, spatial grid, plugin registry, MCP server, CLI |
+| Diffusion Studio | 79,403 | Agent-native video editor — cuts, filler-word removal, word-level subtitles, colour grading, motion graphics, generative video and voiceover, scene search, transcription |
+| OpenMontage | 152,995 | 12 pipelines, 52 tools, 500+ skills, Piper TTS, Remotion and HyperFrames compositions, archival footage providers |
+| Antra | 39,182 | Music library manager — seven streaming sources, ISRC exact matching, hi-res awareness, dedup, discography download, scheduled sync, audio analyzer |
+| AniGen | 25,951 | SIGGRAPH 2026 research — one image to a rigged mesh with skeleton and skinning weights |
+| open-design | 1,702,351 | Six artifact types, desktop app, Docker, 16+ CLI integrations, 248 skill files, 298 design briefs |
+
+**2,516,644 lines against Concierge's 61,232.** The file also said the six were
+"248,000 lines", which is out by a factor of ten and is the only number here
+anybody had written down.
+
+So the honest strategy, replacing the one above: **this is not a smaller version
+of any of them, and matching them feature for feature is not the goal.** What
+Concierge has that none of the six has is one document across five media on one
+agent loop, with approvals, local-first, on five heads. Pascal is an editor.
+Diffusion Studio is a runtime. open-design is an agent shell with no document
+model at all. The thing to protect is the harness and the bar — a five-year-old
+and a ninety-seven-year-old — not a feature count.
+
+**And AniGen is now answered rather than open.** Nothing was ever taken from it
+and no reason was recorded, which sat here as a hole. It is a machine-learning
+research pipeline that turns a photograph into a rigged 3D asset. There was
+nothing applicable to take short of shipping a model. That is a finding, not a
+gap.
+
+**What each of these five renderers is, said plainly, so nobody reads "parity"
+into them again:** a page, a deck, a slideshow with timing, a room of primitives,
+and a running order. Each is the thing a person can use without learning a
+cockpit. None is a competitor to the product it was inspired by.
 
 The document knows nothing about how it is drawn, so five media is five files.
 
@@ -739,8 +775,21 @@ the argument is the bar, not the architecture.
       All four were invisible to 1,353 passing tests and took one look at the
       screen. 33 tests now, most of them on the fallback and on the two files
       agreeing about spellings.
-- [x] Antra's half of Sound: tagged files out, artwork and lyrics. Done — and the
-      entry it replaces was the problem. It read "that is a library, not a design
+- [x] Antra's half of Sound: tagged files out, artwork and lyrics. Done — **and
+      "Antra's half" overstates it, which was checked on 2026-09-11 by cloning
+      Antra and reading its own feature list.** Antra is a music library manager:
+      seven streaming sources, ISRC exact matching, explicit-version preference,
+      hi-res awareness, deduplication, artist discography download, scheduled
+      sync, parallel downloads, a failed-downloads viewer, source health checks,
+      library history and an audio analyzer, across FLAC, ALAC, AAC and MP3.
+      39,182 lines of it.
+
+      What is here is tagging, artwork and lyrics on export, and one approval-gated
+      fetch of a direct audio URL. That is a useful slice of one of its twenty-odd
+      features. It is not its half and it is not parity, and saying so here stops
+      the next person reading this list as though it were.
+
+      The entry it replaces was a different problem. It read "that is a library, not a design
       surface", **which was my decision, taken in my own commit, and then quoted
       back in a parity answer as though it had been agreed.** It had not been. Asked
       "declined by whom?", the answer was me.
@@ -817,11 +866,19 @@ what a person who has never used one cannot get past.
 ### 15. What reading the six actually showed
 
 Cloned and read, after asserting things about them from summaries of their
-READMEs. Coverage stated honestly: their architecture-defining code, not all
-248,000 lines — Pascal's `core` schema and its architecture test, Diffusion
-Studio's runtime traits, OpenMontage's pipeline manifests and checkpoint layer,
-Antra's source adapters and resolver, AniGen's representations and licences,
-open-design's packages and design systems.
+READMEs. Coverage stated honestly: their architecture-defining code — Pascal's
+`core` schema and its architecture test, Diffusion Studio's runtime traits,
+OpenMontage's pipeline manifests and checkpoint layer, Antra's source adapters
+and resolver, AniGen's representations and licences, open-design's packages and
+design systems.
+
+**"Not all 248,000 lines" was the figure written here, and it is wrong.** Counted
+on 2026-09-11 after cloning them again: **2,516,644 lines**, of which open-design
+alone is 1.7 million. So the coverage was an order of magnitude thinner than this
+paragraph claimed — a fraction of a percent, not a slice of a quarter-million.
+What was read is still what is written below; what was *not* read is ten times
+larger than stated. A number nobody re-derived, sitting in the section about
+claims nobody checked.
 
 **Two claims of mine were wrong.**
 
