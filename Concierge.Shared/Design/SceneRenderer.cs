@@ -253,6 +253,11 @@ public static class SceneRenderer
                   grid.position.y = 0.6;
                   scene.add(grid);
 
+                  // How the building is being looked at: whole, pulled apart,
+                  // or one floor at a time.
+                  var showing = room.showing || 'whole';
+                  var only = room.only || 0;
+
                   var pickable = [];
 
                   for (var i = 0; i < room.things.length; i++) {
@@ -265,9 +270,127 @@ public static class SceneRenderer
                       : thing.shape === 'roof' ? roofOf(thing)
                       : solidOf(thing);
                     if (!mesh) { continue; }
+                    if (!shown(thing.level)) { continue; }
+
+                    // Before the floor is applied, because hanging works out where
+                    // something sits within its own storey and the lift then moves
+                    // the whole storey.
+                    hangOn(mesh, thing);
+
+                    // Lifted to its floor. Done here rather than inside each
+                    // shape so that a wall, a slab, a roof and a chair all rise
+                    // together — a floor whose furniture stayed on the ground
+                    // would be worse than no floors at all.
+                    mesh.position.y += riseOf(thing.level);
+
                     mesh.userData.id = thing.id;
                     scene.add(mesh);
                     pickable.push(mesh);
+                  }
+
+                  // ── Things that hang on something ───────────────────────
+
+                  // A shelf goes on a wall, a lamp hangs from the ceiling, and
+                  // neither of them should have to be positioned by working out
+                  // where that wall is.
+                  //
+                  // **Furniture floating in the middle of a room is the commonest
+                  // thing to get wrong here**, and it happens because a person says
+                  // "a shelf on the back wall" and something has to turn that into
+                  // three numbers. This does it: distance along the wall, height
+                  // off the floor, and pushed out far enough to sit against it
+                  // rather than inside it.
+                  function byId(id) {
+                    for (var i = 0; i < room.things.length; i++) {
+                      if (room.things[i].id === id) { return room.things[i]; }
+                    }
+                    return null;
+                  }
+
+                  function hangOn(mesh, thing) {
+                    if (!thing.on) { return; }
+
+                    if (thing.on === 'ceiling') {
+                      // Hung from whatever the walls here are tall, so a lamp in a
+                      // room with high ceilings hangs where the ceiling actually
+                      // is rather than at a number somebody guessed.
+                      var tall = 240;
+
+                      for (var i = 0; i < room.things.length; i++) {
+                        if (room.things[i].shape === 'wall' && room.things[i].level === thing.level) {
+                          tall = Math.max(1, room.things[i].height);
+                          break;
+                        }
+                      }
+
+                      mesh.position.set(thing.x, tall - (Math.max(1, thing.height) / 2), thing.y);
+                      return;
+                    }
+
+                    var wall = byId(thing.on);
+
+                    if (!wall || wall.shape !== 'wall') { return; }
+
+                    var dx = wall.x2 - wall.x;
+                    var dz = wall.y2 - wall.y;
+                    var run = Math.sqrt(dx * dx + dz * dz);
+
+                    if (run < 1) { return; }
+
+                    var along = Math.max(0, Math.min(run, thing.at));
+                    var ux = dx / run;
+                    var uz = dz / run;
+
+                    // Out from the face of the wall by half its thickness and half
+                    // the thing's own depth, so it touches rather than intersects.
+                    var out = (Math.max(2, wall.thickness) / 2) + (Math.max(1, thing.depth) / 2);
+
+                    mesh.position.set(
+                      wall.x + (ux * along) - (uz * -out),
+                      thing.sill + (Math.max(1, thing.height) / 2),
+                      wall.y + (uz * along) + (ux * -out));
+
+                    // Turned to face the way the wall does, so a bookcase is flat
+                    // against it rather than sticking out corner-first.
+                    mesh.rotation.y = -Math.atan2(dz, dx);
+                  }
+
+                  // ── Floors of a building ────────────────────────────────
+
+                  // Everything on the first floor sits at the first floor's
+                  // height, and a building with three of them can be looked at
+                  // whole, pulled apart, or one at a time.
+                  //
+                  // **Pulled apart is the one worth having.** A house seen from
+                  // outside is a box; a house with its floors lifted away from
+                  // each other is a thing you can actually read, and it is the one
+                  // view no physical model gives you. Pascal calls it exploded and
+                  // is right to.
+                  var levels = {};
+
+                  for (var t = 0; t < room.things.length; t++) {
+                    levels[Math.max(0, room.things[t].level)] = true;
+                  }
+
+                  var storeys = Object.keys(levels).map(Number).sort(function (a, b) { return a - b; });
+
+                  // How high a floor sits, and how far it is lifted when the
+                  // building is pulled apart.
+                  function riseOf(level) {
+                    var at = storeys.indexOf(Math.max(0, level));
+                    if (at < 0) { at = 0; }
+
+                    var stacked = at * 280;
+                    var apart = showing === 'apart' ? at * 240 : 0;
+
+                    return stacked + apart;
+                  }
+
+                  // Which floors are drawn at all. Showing one at a time is how
+                  // somebody works on the kitchen without the bedroom in the way.
+                  function shown(level) {
+                    if (showing !== 'one') { return true; }
+                    return Math.max(0, level) === storeys[Math.min(only, storeys.length - 1)];
                   }
 
                   // ── Walls, floors and ceilings ──────────────────────────
@@ -624,6 +747,14 @@ public static class SceneRenderer
                 DesignMediums.Number(thing, "thickness", 12),
                 DesignMediums.Number(thing, "level", 0),
 
+                // What it hangs on, if anything: a wall by name, or the ceiling.
+                // Furniture that floats in the middle of a room because nobody
+                // worked out where the wall was is the commonest thing to get
+                // wrong here.
+                thing.Props.TryGetValue("on", out var on) ? on.Trim() : string.Empty,
+                DesignMediums.Number(thing, "at", 0),
+                DesignMediums.Number(thing, "sill", 0),
+
                 // Doors and windows, which live on the wall they are cut into.
                 document.ChildrenOf(thing.Id)
                     .Where(hole => hole.Kind == DesignNodeKind.Solid
@@ -655,7 +786,16 @@ public static class SceneRenderer
         // from nothing and the failure was swallowed by the catch meant for a
         // missing engine. Two silent things agreeing to be silent.
         var json = JsonSerializer.Serialize(
-            new Room(look.Ground, look.Ink, look.Raised, look.Accent, selectedId ?? string.Empty, things),
+            new Room(
+                look.Ground, look.Ink, look.Raised, look.Accent, selectedId ?? string.Empty,
+
+                // How the building is being looked at. Kept on the room rather
+                // than in the component, so going back to an earlier picture
+                // brings back how you were looking at it too.
+                room.Props.TryGetValue("showing", out var showing) ? showing : "whole",
+                DesignMediums.Number(room, "only", 0),
+
+                things),
             new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
 
         // The one character that could close the tag this sits in. Escaped as a
@@ -666,12 +806,14 @@ public static class SceneRenderer
 
     private sealed record Room(
         string Ground, string Ink, string Raised, string Accent, string Picked,
+        string Showing, int Only,
         IReadOnlyList<Thing> Things);
 
     private sealed record Thing(
         string Id, string Kind, string Text, string Shape,
         int X, int Y, int Width, int Depth, int Height,
         int X2, int Y2, int Thickness, int Level,
+        string On, int At, int Sill,
         IReadOnlyList<Opening> Openings);
 
     /// <summary>

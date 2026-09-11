@@ -272,4 +272,123 @@ public sealed class RoomBuildingTests
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(html, @"import\("));
         Assert.Contains("three.module.js", html, StringComparison.Ordinal);
     }
+
+    // ── Things that hang on something ─────────────────────────────────────
+
+    /// <summary>
+    /// Furniture floating in the middle of a room is the commonest thing to get
+    /// wrong in a 3D surface, and it happens because somebody says "a shelf on the
+    /// back wall" and something has to turn that into three numbers.
+    /// </summary>
+    [Fact]
+    public async Task Something_can_be_put_against_a_wall()
+    {
+        var bench = Open();
+
+        await Tool(bench, "design_build").InvokeAsync(new JsonObject { ["what"] = "wall" });
+        var wallId = Only(bench.Session!.Current, "wall").GetProperty("id").GetString();
+
+        await Tool(bench, "design_add").InvokeAsync(new JsonObject
+        {
+            ["kind"] = "solid",
+            ["text"] = "A bookcase",
+        });
+
+        var shelf = bench.Session.Current.Nodes.Values.Single(node => node.Text == "A bookcase");
+
+        var result = await Tool(bench, "design_hang").InvokeAsync(new JsonObject
+        {
+            ["id"] = shelf.Id,
+            ["on"] = wallId,
+            ["at"] = 120,
+            ["height"] = 90,
+        });
+
+        Assert.True(result.Success, result.FailureMessage);
+
+        var after = bench.Session.Current.Find(shelf.Id)!;
+
+        Assert.Equal(wallId, after.Props["on"]);
+        Assert.Equal("120", after.Props["at"]);
+        Assert.Equal("90", after.Props["sill"]);
+    }
+
+    [Fact]
+    public async Task Something_can_hang_from_the_ceiling()
+    {
+        var bench = Open();
+        await Tool(bench, "design_build").InvokeAsync(new JsonObject { ["what"] = "wall" });
+
+        await Tool(bench, "design_add").InvokeAsync(new JsonObject
+        {
+            ["kind"] = "solid",
+            ["text"] = "A lamp",
+        });
+
+        var lamp = bench.Session!.Current.Nodes.Values.Single(node => node.Text == "A lamp");
+
+        var result = await Tool(bench, "design_hang")
+            .InvokeAsync(new JsonObject { ["id"] = lamp.Id, ["on"] = "ceiling" });
+
+        Assert.True(result.Success, result.FailureMessage);
+        Assert.Equal("ceiling", bench.Session.Current.Find(lamp.Id)!.Props["on"]);
+    }
+
+    /// <summary>
+    /// Hanging a shelf on a chair would be accepted and then drawn wherever the
+    /// shelf already was, which looks exactly like the tool doing nothing.
+    /// </summary>
+    [Fact]
+    public async Task Something_cannot_hang_on_a_thing_that_is_not_a_wall()
+    {
+        var bench = Open();
+
+        await Tool(bench, "design_build").InvokeAsync(new JsonObject { ["what"] = "floor" });
+        var floorId = Only(bench.Session!.Current, "floor").GetProperty("id").GetString();
+
+        await Tool(bench, "design_add").InvokeAsync(new JsonObject { ["kind"] = "solid", ["text"] = "A shelf" });
+        var shelf = bench.Session.Current.Nodes.Values.Single(node => node.Text == "A shelf");
+
+        var result = await Tool(bench, "design_hang")
+            .InvokeAsync(new JsonObject { ["id"] = shelf.Id, ["on"] = floorId });
+
+        Assert.False(result.Success);
+        Assert.Contains("not a wall", result.FailureMessage!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Something_can_be_taken_off_the_wall_again()
+    {
+        var bench = Open();
+
+        await Tool(bench, "design_build").InvokeAsync(new JsonObject { ["what"] = "wall" });
+        var wallId = Only(bench.Session!.Current, "wall").GetProperty("id").GetString();
+
+        await Tool(bench, "design_add").InvokeAsync(new JsonObject { ["kind"] = "solid", ["text"] = "A shelf" });
+        var shelf = bench.Session.Current.Nodes.Values.Single(node => node.Text == "A shelf");
+
+        var hang = Tool(bench, "design_hang");
+
+        await hang.InvokeAsync(new JsonObject { ["id"] = shelf.Id, ["on"] = wallId });
+        await hang.InvokeAsync(new JsonObject { ["id"] = shelf.Id, ["on"] = "floor" });
+
+        Assert.Equal(string.Empty, bench.Session.Current.Find(shelf.Id)!.Props["on"]);
+    }
+
+    /// <summary>
+    /// The engine has to be told what something hangs on, how far along, and how
+    /// high — and it works the pushing-out distance from the wall's own thickness
+    /// rather than being told, so a thing touches the wall instead of sitting
+    /// inside it.
+    /// </summary>
+    [Fact]
+    public void The_engine_is_told_what_hangs_on_what()
+    {
+        var html = DesignMediums.Render(DesignDocument.Blank(medium: DesignMedium.Scene)
+            .Add(DesignNode.New(DesignNodeKind.Frame, null, ("text", "A room"))));
+
+        Assert.Contains("function hangOn(mesh, thing)", html, StringComparison.Ordinal);
+        Assert.Contains("thing.on === 'ceiling'", html, StringComparison.Ordinal);
+        Assert.Contains("wall.thickness", html, StringComparison.Ordinal);
+    }
 }

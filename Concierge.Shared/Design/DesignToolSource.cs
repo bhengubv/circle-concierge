@@ -114,6 +114,9 @@ public sealed class DesignToolSource : IAgentToolSource
                 new BlendTheShots(_workbench),
                 new BuildTheRoom(_workbench),
                 new CutAnOpening(_workbench),
+                new LookAtTheFloors(_workbench),
+                new PutOnAFloor(_workbench),
+                new HangItOn(_workbench),
                 .. _workbench.Web is null || _workbench.Approval is null
                     ? Array.Empty<IAgentTool>()
                     : [new BringASoundIn(_workbench)],
@@ -1328,6 +1331,261 @@ public sealed class DesignToolSource : IAgentToolSource
             "Started a room");
 
         return room.Id;
+    }
+
+    /// <summary>
+    /// How a building with more than one floor is looked at.
+    ///
+    /// Whole, pulled apart, or one floor at a time. **Pulled apart is the one worth
+    /// having**: a house from outside is a box, and a house with its floors lifted
+    /// away from each other is a thing you can actually read — the one view no
+    /// physical model gives you.
+    ///
+    /// Kept on the room rather than in the component, so going back to an earlier
+    /// picture brings back how you were looking at it as well as what you were
+    /// looking at.
+    /// </summary>
+    private sealed class LookAtTheFloors(DesignWorkbench workbench) : IAgentTool
+    {
+        public string Name => "design_floors";
+
+        public string Description =>
+            "Look at a building with more than one floor: all of it, pulled apart so the floors "
+            + "are separated, or one floor at a time.";
+
+        public JsonNode? ArgumentsSchema => new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject
+            {
+                ["how"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["description"] = "whole, apart, or one.",
+                },
+                ["which"] = new JsonObject
+                {
+                    ["type"] = "number",
+                    ["description"] = "Which floor, when looking at one. Nought is the ground floor.",
+                },
+            },
+            ["required"] = new JsonArray("how"),
+        };
+
+        public bool IsReadOnly => false;
+
+        public Task<AgentToolResult> InvokeAsync(
+            JsonNode? arguments, CancellationToken cancellationToken = default)
+        {
+            if (workbench.Session is not { } session)
+            {
+                return Task.FromResult(NoCanvas());
+            }
+
+            var rooms = DesignMediums.FramesOf(session.Current);
+
+            if (rooms.Count == 0)
+            {
+                return Task.FromResult(new AgentToolResult(
+                    false, string.Empty, "There is no building to look at yet."));
+            }
+
+            var how = Text(arguments, "how").ToLowerInvariant();
+
+            how = how switch
+            {
+                "whole" or "all" or "together" => "whole",
+                "apart" or "exploded" or "separated" => "apart",
+                "one" or "single" or "just one" => "one",
+                _ => string.Empty,
+            };
+
+            if (how.Length == 0)
+            {
+                return Task.FromResult(new AgentToolResult(
+                    false, string.Empty, "Say whole, apart, or one."));
+            }
+
+            var room = rooms[^1];
+            var document = session.Current.Set(room.Id, "showing", how);
+
+            if (how == "one")
+            {
+                document = document.Set(
+                    room.Id, "only", Number(Math.Max(0, Amount(arguments, "which") ?? 0)));
+            }
+
+            session.Record(document, how switch
+            {
+                "apart" => "Pulled the floors apart",
+                "one" => "Showed one floor",
+                _ => "Showed the whole building",
+            });
+
+            return Task.FromResult(new AgentToolResult(true, how switch
+            {
+                "apart" => "The floors are lifted away from each other.",
+                "one" => "Showing one floor.",
+                _ => "Showing the whole building.",
+            }));
+        }
+    }
+
+    /// <summary>
+    /// What floor something is on.
+    ///
+    /// Its own tool rather than a property on `design_build`, because floors are
+    /// decided after the fact far more often than before: somebody puts up a room,
+    /// likes it, and then says the whole thing is upstairs.
+    /// </summary>
+    private sealed class PutOnAFloor(DesignWorkbench workbench) : IAgentTool
+    {
+        public string Name => "design_floor_of";
+
+        public string Description =>
+            "Say which floor of the building something is on. Nought is the ground floor.";
+
+        public JsonNode? ArgumentsSchema => new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject
+            {
+                ["id"] = new JsonObject { ["type"] = "string", ["description"] = "Which thing." },
+                ["floor"] = new JsonObject { ["type"] = "number", ["description"] = "Which floor." },
+            },
+            ["required"] = new JsonArray("id", "floor"),
+        };
+
+        public bool IsReadOnly => false;
+
+        public Task<AgentToolResult> InvokeAsync(
+            JsonNode? arguments, CancellationToken cancellationToken = default)
+        {
+            if (workbench.Session is not { } session)
+            {
+                return Task.FromResult(NoCanvas());
+            }
+
+            var id = Text(arguments, "id");
+
+            if (session.Current.Find(id) is null)
+            {
+                return Task.FromResult(new AgentToolResult(
+                    false, string.Empty, $"There is nothing called {id} on the canvas."));
+            }
+
+            var floor = (int)Math.Max(0, Amount(arguments, "floor") ?? 0);
+
+            session.Record(
+                session.Current.Set(id, "level", floor.ToString(Culture)),
+                $"Moved it to floor {floor}");
+
+            return Task.FromResult(new AgentToolResult(
+                true, floor == 0 ? "That is on the ground floor." : $"That is on floor {floor}."));
+        }
+    }
+
+    private static readonly System.Globalization.CultureInfo Culture =
+        System.Globalization.CultureInfo.InvariantCulture;
+
+    /// <summary>
+    /// Hangs something on a wall, or from the ceiling.
+    ///
+    /// **Furniture floating in the middle of a room is the commonest thing to get
+    /// wrong in a 3D surface**, and it happens because a person says "a shelf on
+    /// the back wall" and something has to turn that into three numbers. This is
+    /// that something: which wall, how far along it, and how high off the floor.
+    /// The pushing-out — so the thing touches the wall rather than sitting inside
+    /// it — is worked out from the wall's own thickness rather than asked for.
+    /// </summary>
+    private sealed class HangItOn(DesignWorkbench workbench) : IAgentTool
+    {
+        public string Name => "design_hang";
+
+        public string Description =>
+            "Put something against a wall or hang it from the ceiling, at the right height. "
+            + "Say which wall, how far along it, and how far off the floor.";
+
+        public JsonNode? ArgumentsSchema => new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject
+            {
+                ["id"] = new JsonObject { ["type"] = "string", ["description"] = "What to hang." },
+                ["on"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["description"] = "A wall's id, or \"ceiling\", or \"floor\" to take it off again.",
+                },
+                ["at"] = new JsonObject
+                {
+                    ["type"] = "number",
+                    ["description"] = "How far along the wall it sits.",
+                },
+                ["height"] = new JsonObject
+                {
+                    ["type"] = "number",
+                    ["description"] = "How far off the floor. Nought stands it on the floor.",
+                },
+            },
+            ["required"] = new JsonArray("id", "on"),
+        };
+
+        public bool IsReadOnly => false;
+
+        public Task<AgentToolResult> InvokeAsync(
+            JsonNode? arguments, CancellationToken cancellationToken = default)
+        {
+            if (workbench.Session is not { } session)
+            {
+                return Task.FromResult(NoCanvas());
+            }
+
+            var id = Text(arguments, "id");
+
+            if (session.Current.Find(id) is null)
+            {
+                return Task.FromResult(new AgentToolResult(
+                    false, string.Empty, $"There is nothing called {id} on the canvas."));
+            }
+
+            var on = Text(arguments, "on");
+
+            if (on.Equals("floor", StringComparison.OrdinalIgnoreCase) || on.Length == 0)
+            {
+                session.Record(session.Current.Set(id, "on", string.Empty), "Put it back on the floor");
+                return Task.FromResult(new AgentToolResult(true, "That is standing on the floor again."));
+            }
+
+            if (!on.Equals("ceiling", StringComparison.OrdinalIgnoreCase))
+            {
+                var wall = session.Current.Find(on);
+
+                // Checked, because hanging a shelf on a chair would be accepted
+                // and then drawn wherever the shelf already was — which looks
+                // exactly like the tool doing nothing.
+                if (wall is null
+                    || !wall.Props.TryGetValue("shape", out var shape)
+                    || !shape.Equals("wall", StringComparison.OrdinalIgnoreCase))
+                {
+                    return Task.FromResult(new AgentToolResult(
+                        false, string.Empty, "That is not a wall, so nothing can hang on it."));
+                }
+            }
+
+            var document = session.Current
+                .Set(id, "on", on.ToLowerInvariant() == "ceiling" ? "ceiling" : on)
+                .Set(id, "at", Number(Math.Max(0, Amount(arguments, "at") ?? 60)))
+                .Set(id, "sill", Number(Math.Max(0, Amount(arguments, "height") ?? 0)));
+
+            session.Record(document, "Hung it up");
+
+            return Task.FromResult(new AgentToolResult(
+                true,
+                on.Equals("ceiling", StringComparison.OrdinalIgnoreCase)
+                    ? "That hangs from the ceiling now."
+                    : "That sits against the wall now."));
+        }
     }
 
     /// <summary>Changes what is being made.</summary>
