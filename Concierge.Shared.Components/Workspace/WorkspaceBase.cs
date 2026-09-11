@@ -1056,6 +1056,16 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
                     Services.GetService(typeof(IEnumerable<Concierge.Shared.Media.IVoiceRuntime>))
                         as IEnumerable<Concierge.Shared.Media.IVoiceRuntime> ?? []);
 
+                // Something that can make a picture, for putting one on the design.
+                // Whichever is ready, preferring one that works on the device — the same
+                // choice the voice runtimes get, for the same reason.
+                Workbench.Pictures = ImageRuntimes
+                    .Where(runtime => runtime.IsReady
+                        && !string.Equals(runtime.Id, "null", StringComparison.Ordinal))
+                    .OrderByDescending(runtime =>
+                        runtime.Id.Contains("circleai", StringComparison.OrdinalIgnoreCase))
+                    .FirstOrDefault();
+
                 // What to make, rather than what colour to make it — including any
                 // guides somebody wrote themselves.
                 Workbench.Guides = Services.GetService(typeof(Concierge.Shared.Design.DesignGuides))

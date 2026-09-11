@@ -64,6 +64,12 @@ public sealed class DesignWorkbench
     public Concierge.Shared.Web.IWebAccess? Web { get; set; }
 
     /// <summary>
+    /// Something that can make a picture, for putting one on a design. Null when nothing can
+    /// — no key and no generator — and `design_picture` is then not offered.
+    /// </summary>
+    public Concierge.Shared.Media.IImageRuntime? Pictures { get; set; }
+
+    /// <summary>
     /// Something that can speak, for turning written words into a track. Null when nothing
     /// on this machine can — no voice model and no cloud key — and `design_narrate` is then
     /// not offered rather than offered and always failing.
@@ -144,6 +150,10 @@ public sealed class DesignToolSource : IAgentToolSource
                 .. _workbench.Speech is null || !_workbench.Speech.SupportsSynthesis
                     ? Array.Empty<IAgentTool>()
                     : [new NarrateTheWords(_workbench)],
+                .. _workbench.Pictures is null || !_workbench.Pictures.IsReady
+                        || _workbench.Approval is null
+                    ? Array.Empty<IAgentTool>()
+                    : [new MakeAPictureForIt(_workbench)],
                 .. _workbench.Web is null || _workbench.Approval is null
                     ? Array.Empty<IAgentTool>()
                     : [new BringASoundIn(_workbench)],
@@ -2237,6 +2247,151 @@ public sealed class DesignToolSource : IAgentToolSource
             session.Record(session.Current.Set(id, "move", asked), $"Moved {id}");
 
             return Task.FromResult(new AgentToolResult(true, $"That shot {asked}s while it is on screen."));
+        }
+    }
+
+    /// <summary>
+    /// A picture made to order, put straight on the design.
+    ///
+    /// The paperclip puts a picture somebody already has on the canvas; this makes the one
+    /// they do not. It is the line open-design has and this did not, and the gap was never
+    /// the generator — the seam and two providers have been here for months, and **nothing
+    /// but the composer could reach them**, so a model asked to illustrate a page could not.
+    ///
+    /// **It asks, and the description is on the card.** It is the second design tool that
+    /// does, for the same reason as the first: it leaves the device, and no amount of picking
+    /// an earlier picture un-makes a request somebody else has already received and billed
+    /// for.
+    ///
+    /// What arrives is carried as a data URI, the way the paperclip carries a picture, so the
+    /// design still travels rather than pointing at a provider's address that stops working
+    /// in an hour.
+    /// </summary>
+    private sealed class MakeAPictureForIt(DesignWorkbench workbench) : IAgentTool
+    {
+        /// <summary>
+        /// The same cap the paperclip works to. The design is rewritten whole whenever
+        /// anybody edits a heading, so a picture that makes every keystroke cost eight
+        /// megabytes of writing is a picture that makes the canvas unusable.
+        /// </summary>
+        private const int MostBytes = 8 * 1024 * 1024;
+
+        public string Name => "design_picture";
+
+        public string Description =>
+            "Make a picture from a description and put it straight on the design. The person "
+            + "is asked first, because it leaves the device.";
+
+        public JsonNode? ArgumentsSchema => new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject
+            {
+                ["of"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["description"] = "What the picture should be of, in full.",
+                },
+                ["on"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["description"] = "Which slide, shot or panel it goes on. The page itself by default.",
+                },
+            },
+            ["required"] = new JsonArray("of"),
+        };
+
+        public bool IsReadOnly => false;
+
+        public async Task<AgentToolResult> InvokeAsync(
+            JsonNode? arguments, CancellationToken cancellationToken = default)
+        {
+            if (workbench.Session is not { } session)
+            {
+                return NoCanvas();
+            }
+
+            if (workbench.Pictures is not { IsReady: true } maker || workbench.Approval is not { } approval)
+            {
+                return new AgentToolResult(
+                    false, string.Empty, "Nothing here can make a picture, so none was made.");
+            }
+
+            var of = Text(arguments, "of");
+
+            if (of.Length == 0)
+            {
+                return new AgentToolResult(false, string.Empty, "Say what the picture should be of.");
+            }
+
+            var on = Text(arguments, "on");
+
+            // Checked before anything is sent, because a picture generated onto a frame that
+            // is not there costs a request somebody paid for and shows nobody anything.
+            if (on.Length > 0 && session.Current.Find(on) is null)
+            {
+                return new AgentToolResult(
+                    false, string.Empty, $"There is nothing called {on} on the canvas.");
+            }
+
+            var decision = await approval.RequestAsync(
+                new ToolApprovalRequest(
+                    Name,
+                    of,
+                    ConciergeToolRisk.Medium,
+                    $"It sends those words to {maker.EngineLabel} and puts the picture on the design."),
+                cancellationToken).ConfigureAwait(false);
+
+            if (decision != ToolApprovalDecision.Allowed)
+            {
+                return new AgentToolResult(false, string.Empty, "Not allowed, so no picture was made.");
+            }
+
+            IReadOnlyList<Concierge.Shared.Media.ImageArtifact> made;
+
+            try
+            {
+                made = await maker
+                    .GenerateAsync(new Concierge.Shared.Media.ImageGenerationRequest(of), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (HttpRequestException problem)
+            {
+                return new AgentToolResult(false, string.Empty, $"That did not come back: {problem.Message}");
+            }
+            catch (TaskCanceledException)
+            {
+                return new AgentToolResult(false, string.Empty, "That took too long and was stopped.");
+            }
+
+            if (made.Count == 0)
+            {
+                return new AgentToolResult(false, string.Empty, "Nothing came back, so nothing was added.");
+            }
+
+            var (bytes, problemGetting) = await Concierge.Shared.Media.ImageWords
+                .BytesOf(made[0], workbench.Web, MostBytes, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (bytes is null)
+            {
+                return new AgentToolResult(
+                    false,
+                    string.Empty,
+                    problemGetting ?? "The picture came back as an address this head cannot fetch, "
+                    + "and an address in a design stops working.");
+            }
+
+            var picture = DesignNode.New(
+                DesignNodeKind.Image,
+                on.Length > 0 ? on : null,
+                ("text", of),
+                ("src", $"data:{made[0].MimeType};base64,{Convert.ToBase64String(bytes)}"));
+
+            session.Record(session.Current.Add(picture), $"Made a picture of {of}");
+
+            return new AgentToolResult(
+                true, $"Put a picture of {of} on the design, {bytes.Length / 1024}KB.");
         }
     }
 

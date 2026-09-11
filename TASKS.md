@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **150 boxes ticked, 13 open, ten
+`main`. What replaces it is the working list: **151 boxes ticked, 11 open, eleven
 partial**, ordered so the next person can pick one up.
 
 **Thirty-six of those forty arrived at once**, on 2026-09-11, when the six
@@ -1274,7 +1274,10 @@ own comment says so. Diffusion Studio edits video.
       on it.
 - [x] Colour correction and filters — `design_colour`: warm, cool, bright, dark, grey, faded, vivid, graded before the shot is shaped so the letterbox bars are not graded too
 - [x] Animation — `design_blend` fades one shot into the next; a cut by default, because a dissolve on every join is what a first attempt looks like
-- [ ] Generate images, video and voiceover
+- [~] Generate images, video and voiceover — **images are wired** (`make_picture` and
+      `design_picture`, see open-design below) and **voiceover is wired** (`design_narrate`).
+      Both wait on CircleAI for the model itself. Generating *video* is not started and has
+      no answer on either side yet.
 - [~] Write out what is said in a recording — **wired, waiting on a model file.**
       `CircleAI.Voice` sat in the package cache with no caller at all: `WhisperTranscriber`
       for listening, `OnnxTtsEngine` for speaking, both complete, both unreachable. Both are
@@ -1432,7 +1435,26 @@ there is nothing to take from it short of the model itself.
       1200px and falls apart at 390 is the commonest thing to get wrong, and nobody
       finds out until it is built. No device frame, no bezel, no fake battery — those
       make a mock-up look finished and tell nobody anything.
-- [ ] Image generation
+- [x] Image generation — **wired, and the generator is CircleAI's side of the line.** The
+      seam (`IImageRuntime`) and two providers behind it have been here for months and the
+      only thing that could reach them was the composer: a person typing "draw a fox" got a
+      picture, and a model asked to illustrate a page could not. Ninth instance of this
+      repository's signature defect.
+
+      `make_picture` makes one and saves it, named from the words so a folder can be read
+      rather than searched. `design_picture` puts one straight on a design, **carried as a
+      data URI** the way the paperclip carries a picture, so the design still travels — a
+      provider's address stops working within the hour and a design would rather have nothing
+      than a picture that disappears.
+
+      **Both ask, with the description on the card.** `design_picture` is the second design
+      tool that asks, for the same reason as the first: no amount of picking an earlier
+      picture un-makes a request somebody else has already received and billed for. A slide
+      that is not there is caught before anything is sent, because a picture generated onto a
+      frame that does not exist costs a request somebody paid for and shows nobody anything.
+
+      Absent while nothing is ready, so a key added this afternoon works without a restart and
+      a CircleAI generator that arrives later needs no change here. 19 tests.
 - [x] Animated motion graphics — `design_move`, described under OpenMontage above.
 - [x] Live dashboards that update themselves — `Board`. A small name, an enormous
       number, and which way it is moving as an arrow (▲▼▬) rather than a colour alone,
