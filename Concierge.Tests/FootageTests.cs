@@ -377,4 +377,227 @@ public sealed class FootageTests : IDisposable
 
         Assert.False(result.Success);
     }
+
+    // ── Colour ────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Plain words, not a filter graph. A person who wants
+    /// <c>eq=saturation=1.4:contrast=1.1</c> is not who this is for.
+    /// </summary>
+    [Theory]
+    [InlineData("warm")]
+    [InlineData("cool")]
+    [InlineData("bright")]
+    [InlineData("dark")]
+    [InlineData("grey")]
+    [InlineData("faded")]
+    [InlineData("vivid")]
+    public async Task A_shot_can_be_graded_in_words(string colour)
+    {
+        if (!Possible)
+        {
+            return;
+        }
+
+        var film = Out($"graded-{colour}.mp4");
+
+        var result = await new FfmpegMediaExport().VideoAsync(
+            Film(Shot(await ClipAsync(), ("seconds", "1"), ("colour", colour))), film);
+
+        Assert.True(result.Ok, result.Problem);
+        Assert.True(new FileInfo(film).Length > 0);
+    }
+
+    /// <summary>
+    /// A grade has to actually change the picture. Two exports of the same clip,
+    /// one graded and one not, cannot come out as the same bytes — otherwise the
+    /// word was accepted and nothing happened, which is the defect this repository
+    /// keeps finding.
+    /// </summary>
+    [Fact]
+    public async Task Grading_changes_what_comes_out()
+    {
+        if (!Possible)
+        {
+            return;
+        }
+
+        var clip = await ClipAsync();
+        var plain = Out("plain.mp4");
+        var grey = Out("grey.mp4");
+
+        Assert.True((await new FfmpegMediaExport().VideoAsync(
+            Film(Shot(clip, ("seconds", "1"))), plain)).Ok);
+
+        Assert.True((await new FfmpegMediaExport().VideoAsync(
+            Film(Shot(clip, ("seconds", "1"), ("colour", "grey"))), grey)).Ok);
+
+        Assert.NotEqual(
+            await File.ReadAllBytesAsync(plain),
+            await File.ReadAllBytesAsync(grey));
+    }
+
+    /// <summary>
+    /// A model inventing "cinematic" costs the shot its grade, not the film.
+    /// </summary>
+    [Fact]
+    public async Task A_word_nobody_knows_leaves_the_shot_alone()
+    {
+        if (!Possible)
+        {
+            return;
+        }
+
+        var film = Out("unknown.mp4");
+
+        Assert.True((await new FfmpegMediaExport().VideoAsync(
+            Film(Shot(await ClipAsync(), ("seconds", "1"), ("colour", "cinematic"))), film)).Ok);
+    }
+
+    [Fact]
+    public async Task Asking_for_a_look_that_does_not_exist_says_which_ones_do()
+    {
+        if (!Possible)
+        {
+            return;
+        }
+
+        var bench = Open();
+        await Tool(bench, "design_add_footage").InvokeAsync(new JsonObject { ["path"] = await ClipAsync() });
+
+        var shot = DesignMediums.FramesOf(bench.Session!.Current).Single();
+
+        var result = await Tool(bench, "design_colour")
+            .InvokeAsync(new JsonObject { ["id"] = shot.Id, ["colour"] = "cinematic" });
+
+        Assert.False(result.Success);
+        Assert.Contains("warm", result.FailureMessage!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task A_grade_can_be_taken_off_again()
+    {
+        if (!Possible)
+        {
+            return;
+        }
+
+        var bench = Open();
+        await Tool(bench, "design_add_footage").InvokeAsync(new JsonObject { ["path"] = await ClipAsync() });
+
+        var shot = DesignMediums.FramesOf(bench.Session!.Current).Single();
+        var colour = Tool(bench, "design_colour");
+
+        await colour.InvokeAsync(new JsonObject { ["id"] = shot.Id, ["colour"] = "warm" });
+        await colour.InvokeAsync(new JsonObject { ["id"] = shot.Id, ["colour"] = "none" });
+
+        Assert.Equal(string.Empty, bench.Session.Current.Find(shot.Id)!.Props["colour"]);
+    }
+
+    // ── Fading from one shot to the next ──────────────────────────────────
+
+    /// <summary>
+    /// A fade overlaps two shots rather than sitting between them, so a film with
+    /// one is <em>shorter</em> than the same film cut straight. Getting that
+    /// backwards is how a film drifts further out of step at every join.
+    /// </summary>
+    [Fact]
+    public async Task A_fade_overlaps_the_shots_rather_than_adding_to_them()
+    {
+        if (!Possible)
+        {
+            return;
+        }
+
+        var first = await ClipAsync();
+        var second = await ClipAsync(colour: "red");
+
+        var cut = Out("cut-straight.mp4");
+        var faded = Out("faded.mp4");
+
+        Assert.True((await new FfmpegMediaExport().VideoAsync(
+            Film(Shot(first, ("seconds", "3")), Shot(second, ("seconds", "3"))), cut)).Ok);
+
+        Assert.True((await new FfmpegMediaExport().VideoAsync(
+            Film(Shot(first, ("seconds", "3")), Shot(second, ("seconds", "3"), ("blend", "1"))),
+            faded)).Ok);
+
+        var straight = await new MediaLook().FactsAsync(cut);
+        var blended = await new MediaLook().FactsAsync(faded);
+
+        Assert.True(
+            blended.Seconds < straight.Seconds - 0.4,
+            $"faded {blended.Seconds}s should be shorter than cut {straight.Seconds}s");
+    }
+
+    /// <summary>
+    /// Most films are all cuts, and re-encoding a finished film to achieve nothing
+    /// is a cost nobody sees and everybody pays. With no fades the pieces are
+    /// copied.
+    /// </summary>
+    [Fact]
+    public async Task A_film_of_straight_cuts_is_joined_by_copying()
+    {
+        if (!Possible)
+        {
+            return;
+        }
+
+        var film = Out("copied.mp4");
+
+        Assert.True((await new FfmpegMediaExport().VideoAsync(
+            Film(
+                Shot(await ClipAsync(), ("seconds", "2")),
+                Shot(await ClipAsync(colour: "red"), ("seconds", "2"))),
+            film)).Ok);
+
+        var facts = await new MediaLook().FactsAsync(film);
+        Assert.InRange(facts.Seconds, 3.4, 4.8);
+    }
+
+    [Fact]
+    public async Task Asking_for_a_fade_puts_it_on_the_shot_it_leads_into()
+    {
+        if (!Possible)
+        {
+            return;
+        }
+
+        var bench = Open();
+        var add = Tool(bench, "design_add_footage");
+
+        await add.InvokeAsync(new JsonObject { ["path"] = await ClipAsync() });
+        await add.InvokeAsync(new JsonObject { ["path"] = await ClipAsync(colour: "red") });
+
+        var second = DesignMediums.FramesOf(bench.Session!.Current)[1];
+
+        var result = await Tool(bench, "design_blend")
+            .InvokeAsync(new JsonObject { ["id"] = second.Id, ["seconds"] = 0.8 });
+
+        Assert.True(result.Success, result.FailureMessage);
+        Assert.Equal("0.8", bench.Session.Current.Find(second.Id)!.Props["blend"]);
+    }
+
+    /// <summary>
+    /// A long dissolve is what makes a first film look like a first film, and a
+    /// number a model picked at random should not put four seconds of mush in the
+    /// middle of somebody's work.
+    /// </summary>
+    [Fact]
+    public async Task A_fade_is_held_to_something_sensible()
+    {
+        if (!Possible)
+        {
+            return;
+        }
+
+        var bench = Open();
+        await Tool(bench, "design_add_footage").InvokeAsync(new JsonObject { ["path"] = await ClipAsync() });
+
+        var shot = DesignMediums.FramesOf(bench.Session!.Current).Single();
+
+        await Tool(bench, "design_blend").InvokeAsync(new JsonObject { ["id"] = shot.Id, ["seconds"] = 40 });
+
+        Assert.Equal("1.5", bench.Session.Current.Find(shot.Id)!.Props["blend"]);
+    }
 }

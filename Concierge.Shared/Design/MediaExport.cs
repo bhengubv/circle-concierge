@@ -292,7 +292,7 @@ public sealed class FfmpegMediaExport : IMediaExport
             // footage: a clip has its own length, its own frame rate and its own
             // audio. Normalising first is the standard answer and the only one
             // that lets a drawn card and a filmed clip sit next to each other.
-            var pieces = new List<string>();
+            var pieces = new List<Piece>();
 
             for (var at = 0; at < shots.Count; at++)
             {
@@ -305,42 +305,43 @@ public sealed class FfmpegMediaExport : IMediaExport
                 {
                     var blank = await BlankOf(look, workspace, at, cancellationToken).ConfigureAwait(false);
 
-                    pieces.Add(await PieceFromCardAsync(
-                        blank, timing.DelaySeconds, workspace, $"wait{at:D3}", cancellationToken)
-                        .ConfigureAwait(false));
+                    pieces.Add(new Piece(
+                        await PieceFromCardAsync(
+                            blank, timing.DelaySeconds, Shape, workspace, $"wait{at:D3}", cancellationToken)
+                            .ConfigureAwait(false),
+                        timing.DelaySeconds,
+                        0));
                 }
 
                 var held = Math.Max(0.1, timing.Seconds / timing.Rate);
 
                 if (FootageIn(shot) is { } footage)
                 {
-                    pieces.Add(await PieceFromFootageAsync(
-                        footage, timing, held, workspace, $"shot{at:D3}", cancellationToken)
-                        .ConfigureAwait(false));
+                    pieces.Add(new Piece(
+                        await PieceFromFootageAsync(
+                            footage, timing, held, PictureFilter(shot, timing.Rate),
+                            workspace, $"shot{at:D3}", cancellationToken)
+                            .ConfigureAwait(false),
+                        held,
+                        pieces.Count == 0 ? 0 : BlendOf(shot)));
 
                     continue;
                 }
 
                 var card = await StillOf(shot, look, workspace, at, cancellationToken).ConfigureAwait(false);
 
-                pieces.Add(await PieceFromCardAsync(
-                    card, held, workspace, $"shot{at:D3}", cancellationToken).ConfigureAwait(false));
+                pieces.Add(new Piece(
+                    await PieceFromCardAsync(
+                        card, held, PictureFilter(shot, timing.Rate), workspace, $"shot{at:D3}",
+                        cancellationToken).ConfigureAwait(false),
+                    held,
+                    pieces.Count == 0 ? 0 : BlendOf(shot)));
             }
-
-            var list = System.IO.Path.Combine(workspace, "shots.txt");
-
-            await File.WriteAllTextAsync(
-                list,
-                string.Join(Environment.NewLine, pieces.Select(Quoted)),
-                cancellationToken).ConfigureAwait(false);
 
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(outputPath)!);
 
-            // Copied rather than re-encoded: every piece already matches, so this
-            // is a join and costs nothing but the write.
-            var ran = await RunAsync(
-                ["-y", "-f", "concat", "-safe", "0", "-i", list, "-c", "copy", outputPath],
-                cancellationToken).ConfigureAwait(false);
+            var ran = await JoinAsync(pieces, outputPath, workspace, cancellationToken)
+                .ConfigureAwait(false);
 
             return ran.Ok && File.Exists(outputPath)
                 ? ExportResult.Made(outputPath)
@@ -365,6 +366,173 @@ public sealed class FfmpegMediaExport : IMediaExport
     /// </summary>
     private const string Shape =
         "scale=1280:720:force_original_aspect_ratio=decrease,pad=1280:720:(ow-iw)/2:(oh-ih)/2,format=yuv420p";
+
+    /// <summary>
+    /// Puts the finished pieces together.
+    ///
+    /// **Two ways, and which one is used depends on whether anything fades.** With
+    /// straight cuts every piece already matches, so joining is a copy: no
+    /// re-encoding, no quality lost, and it takes as long as writing the file. The
+    /// moment one shot fades into another that stops being possible — a dissolve
+    /// has to be computed from both pictures at once — so the whole film goes
+    /// through a filter chain instead.
+    ///
+    /// The fast path is kept rather than always using the slow one because most
+    /// films are all cuts, and re-encoding a finished film to achieve nothing is
+    /// the sort of cost nobody sees and everybody pays.
+    /// </summary>
+    private async Task<(bool Ok, string? Problem)> JoinAsync(
+        IReadOnlyList<Piece> pieces, string outputPath, string workspace, CancellationToken cancellationToken)
+    {
+        if (pieces.Count == 0)
+        {
+            return (false, "There was nothing to join.");
+        }
+
+        if (pieces.Count == 1 || pieces.All(piece => piece.Blend <= 0))
+        {
+            var list = System.IO.Path.Combine(workspace, "shots.txt");
+
+            await File.WriteAllTextAsync(
+                list,
+                string.Join(Environment.NewLine, pieces.Select(piece => Quoted(piece.Path))),
+                cancellationToken).ConfigureAwait(false);
+
+            return await RunAsync(
+                ["-y", "-f", "concat", "-safe", "0", "-i", list, "-c", "copy", outputPath],
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        var arguments = new List<string> { "-y" };
+
+        foreach (var piece in pieces)
+        {
+            arguments.AddRange(["-i", piece.Path]);
+        }
+
+        var chain = new StringBuilder();
+        var video = "0:v";
+        var audio = "0:a";
+
+        // Where each fade begins: everything played so far, less every fade so
+        // far, because a fade overlaps the two shots rather than sitting between
+        // them. Get this wrong and the film drifts a little further out of step at
+        // every join.
+        var played = pieces[0].Seconds;
+        var overlapped = 0.0;
+
+        for (var at = 1; at < pieces.Count; at++)
+        {
+            var blend = pieces[at].Blend > 0 ? pieces[at].Blend : 0.001;
+            overlapped += blend;
+
+            var offset = Math.Max(0, played - overlapped);
+
+            chain.Append(System.Globalization.CultureInfo.InvariantCulture,
+                $"[{video}][{at}:v]xfade=transition=fade:duration={Number(blend)}:offset={Number(offset)}[v{at}];");
+
+            chain.Append(System.Globalization.CultureInfo.InvariantCulture,
+                $"[{audio}][{at}:a]acrossfade=d={Number(blend)}[a{at}];");
+
+            video = $"v{at}";
+            audio = $"a{at}";
+            played += pieces[at].Seconds;
+        }
+
+        arguments.AddRange([
+            "-filter_complex", chain.ToString().TrimEnd(';'),
+            "-map", $"[{video}]", "-map", $"[{audio}]",
+            "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-ar", "44100", "-ac", "2",
+            outputPath,
+        ]);
+
+        return await RunAsync(arguments, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// One finished shot: where it is, how long it runs, and how long the shot
+    /// before it takes to fade into it.
+    /// </summary>
+    private sealed record Piece(string Path, double Seconds, double Blend);
+
+    /// <summary>
+    /// How long the shot before this one takes to fade into it, or nought for a cut.
+    ///
+    /// A cut is the default because a cut is what film is made of, and a dissolve on
+    /// every join is what a first attempt looks like.
+    /// </summary>
+    internal static double BlendOf(DesignNode shot)
+        => shot.Props.TryGetValue("blend", out var said)
+            && double.TryParse(said, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var seconds)
+            && seconds > 0
+                ? Math.Clamp(seconds, 0.1, 1.5)
+                : 0;
+
+    /// <summary>
+    /// How a shot is graded, as a filter, or nothing.
+    ///
+    /// **Plain words, not a filter graph.** Diffusion Studio exposes colour
+    /// correction the way an editor does; this exposes the six or seven things
+    /// somebody actually asks for — warmer, cooler, brighter, darker, black and
+    /// white, faded, vivid — and maps each to what the encoder needs. A person who
+    /// wants `eq=saturation=1.4:contrast=1.1` is not the person this is for, and a
+    /// person who wants "make it warmer" should not have to become them.
+    ///
+    /// Unknown words grade nothing rather than failing. A model inventing "cinematic"
+    /// should cost a shot its grade, not the whole film.
+    /// </summary>
+    internal static string GradeOf(DesignNode shot)
+    {
+        if (!shot.Props.TryGetValue("colour", out var said) || string.IsNullOrWhiteSpace(said))
+        {
+            return string.Empty;
+        }
+
+        return said.Trim().ToLowerInvariant() switch
+        {
+            "warm" or "warmer" => "colorbalance=rs=0.12:gs=0.04:bs=-0.12",
+            "cool" or "cooler" or "cold" => "colorbalance=rs=-0.12:gs=-0.02:bs=0.12",
+            "bright" or "brighter" => "eq=brightness=0.08:contrast=1.05",
+            "dark" or "darker" or "moody" => "eq=brightness=-0.09:contrast=1.1",
+            "grey" or "gray" or "mono" or "black and white" => "hue=s=0",
+            "faded" or "soft" or "washed" => "eq=saturation=0.6:contrast=0.92",
+            "vivid" or "punchy" or "bold" => "eq=saturation=1.45:contrast=1.12",
+            _ => string.Empty,
+        };
+    }
+
+    /// <summary>The words a grade can be asked for by, for the tool and the tests.</summary>
+    internal static IReadOnlyList<string> Grades =>
+        ["warm", "cool", "bright", "dark", "grey", "faded", "vivid"];
+
+    /// <summary>
+    /// Everything done to one shot's picture, in the order it has to happen.
+    ///
+    /// Grading goes before the shaping rather than after. Padding a clip to 16:9
+    /// adds bars, and a grade applied afterwards grades the bars too — a "warmer"
+    /// shot would come out with warm grey edges, which is the kind of thing nobody
+    /// sees until it is in front of an audience.
+    /// </summary>
+    private static string PictureFilter(DesignNode shot, double rate)
+    {
+        var parts = new List<string>();
+
+        if (rate != 1)
+        {
+            parts.Add($"setpts={Number(1 / rate)}*PTS");
+        }
+
+        if (GradeOf(shot) is { Length: > 0 } grade)
+        {
+            parts.Add(grade);
+        }
+
+        parts.Add(Shape);
+
+        return string.Join(',', parts);
+    }
 
     /// <summary>
     /// The footage a shot points at, or null.
@@ -409,7 +577,7 @@ public sealed class FfmpegMediaExport : IMediaExport
     /// long clip that is the difference between instant and a minute.
     /// </summary>
     private async Task<string> PieceFromFootageAsync(
-        string footage, DesignTiming timing, double held, string workspace, string name,
+        string footage, DesignTiming timing, double held, string picture, string workspace, string name,
         CancellationToken cancellationToken)
     {
         var piece = System.IO.Path.Combine(workspace, $"{name}.mp4");
@@ -436,7 +604,7 @@ public sealed class FfmpegMediaExport : IMediaExport
 
             "-map", "0:v:0", "-map", "1:a:0",
             "-t", Number(held),
-            "-vf", timing.Rate == 1 ? Shape : $"setpts={Number(1 / timing.Rate)}*PTS,{Shape}",
+            "-vf", picture,
             "-r", "30",
             "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-ar", "44100", "-ac", "2",
@@ -456,7 +624,8 @@ public sealed class FfmpegMediaExport : IMediaExport
 
     /// <summary>A drawn card held for a length, made to match the footage pieces.</summary>
     private async Task<string> PieceFromCardAsync(
-        string card, double held, string workspace, string name, CancellationToken cancellationToken)
+        string card, double held, string picture, string workspace, string name,
+        CancellationToken cancellationToken)
     {
         var piece = System.IO.Path.Combine(workspace, $"{name}.mp4");
 
@@ -466,7 +635,7 @@ public sealed class FfmpegMediaExport : IMediaExport
                 "-loop", "1", "-i", card,
                 "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
                 "-t", Number(held),
-                "-vf", Shape,
+                "-vf", picture,
                 "-r", "30",
                 "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
                 "-c:a", "aac", "-ar", "44100", "-ac", "2",

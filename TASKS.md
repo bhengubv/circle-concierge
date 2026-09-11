@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **126 boxes ticked, 39 open, three
+`main`. What replaces it is the working list: **128 boxes ticked, 37 open, three
 partial**, ordered so the next person can pick one up.
 
 **Thirty-six of those forty arrived at once**, on 2026-09-11, when the six
@@ -1226,8 +1226,8 @@ own comment says so. Diffusion Studio edits video.
 - [x] Cut and join real video clips — `design_add_footage`, `design_cut`, and an export that normalises every shot then joins by copying
 - [ ] Strip out "um" and "er"
 - [ ] Subtitles timed to each word
-- [ ] Colour correction and filters
-- [ ] Animation
+- [x] Colour correction and filters — `design_colour`: warm, cool, bright, dark, grey, faded, vivid, graded before the shot is shaped so the letterbox bars are not graded too
+- [x] Animation — `design_blend` fades one shot into the next; a cut by default, because a dissolve on every join is what a first attempt looks like
 - [ ] Generate images, video and voiceover
 - [ ] Write out what is said in a recording
 - [ ] Watch footage and answer questions about it
@@ -1386,7 +1386,7 @@ commit it was last actually checked at, because "all four hold as of `<ref>`"
 was one date covering four checks made at different times — and it had drifted
 two commits behind `HEAD` before anyone noticed.
 
-- [x] **1533 tests pass, and the suite is deterministic again.** It was not: four
+- [x] **1548 tests pass, and the suite is deterministic again.** It was not: four
       consecutive runs each failed *one different test*, which meant it could not
       tell a regression from noise — the same defect as a screen asserting
       something untrue, sitting on the check everything else is measured by.

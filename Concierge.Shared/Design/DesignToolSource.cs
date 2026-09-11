@@ -110,6 +110,8 @@ public sealed class DesignToolSource : IAgentToolSource
                 .. _workbench.Export is null ? Array.Empty<IAgentTool>() : [new SaveTheDesign(_workbench)],
                 new AddFootage(_workbench),
                 new CutTheShot(_workbench),
+                new ColourTheShot(_workbench),
+                new BlendTheShots(_workbench),
                 .. _workbench.Web is null || _workbench.Approval is null
                     ? Array.Empty<IAgentTool>()
                     : [new BringASoundIn(_workbench)],
@@ -971,6 +973,153 @@ public sealed class DesignToolSource : IAgentToolSource
     private static string Number(double value)
         => value.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
 
+    /// <summary>
+    /// How a shot is graded, in the words somebody uses.
+    ///
+    /// Warmer, cooler, brighter, darker, black and white, faded, vivid. Not a
+    /// filter graph — a person who wants `eq=saturation=1.4:contrast=1.1` is not
+    /// who this is for, and a person who wants "make it warmer" should not have to
+    /// become them.
+    /// </summary>
+    private sealed class ColourTheShot(DesignWorkbench workbench) : IAgentTool
+    {
+        public string Name => "design_colour";
+
+        public string Description =>
+            "Change how a shot looks: warm, cool, bright, dark, grey, faded or vivid. "
+            + "Say \"none\" to take it back to how it was filmed.";
+
+        public JsonNode? ArgumentsSchema => new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject
+            {
+                ["id"] = new JsonObject { ["type"] = "string", ["description"] = "Which shot." },
+                ["colour"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["description"] = "warm, cool, bright, dark, grey, faded, vivid, or none.",
+                },
+            },
+            ["required"] = new JsonArray("id", "colour"),
+        };
+
+        public bool IsReadOnly => false;
+
+        public Task<AgentToolResult> InvokeAsync(
+            JsonNode? arguments, CancellationToken cancellationToken = default)
+        {
+            if (workbench.Session is not { } session)
+            {
+                return Task.FromResult(NoCanvas());
+            }
+
+            var id = Text(arguments, "id");
+
+            if (session.Current.Find(id) is null)
+            {
+                return Task.FromResult(new AgentToolResult(
+                    false, string.Empty, $"There is nothing called {id} on the canvas."));
+            }
+
+            var asked = Text(arguments, "colour").ToLowerInvariant();
+
+            if (asked is "none" or "off" or "normal")
+            {
+                session.Record(session.Current.Set(id, "colour", string.Empty), $"Ungraded {id}");
+                return Task.FromResult(new AgentToolResult(true, "That shot looks as it was filmed again."));
+            }
+
+            // Checked here rather than swallowed at export. A grade that does
+            // nothing because nobody knows the word is a shot that looks unchanged
+            // and a person who thinks it worked.
+            if (FfmpegMediaExport.GradeOf(
+                    DesignNode.New(DesignNodeKind.Frame, null, ("colour", asked))).Length == 0)
+            {
+                return Task.FromResult(new AgentToolResult(
+                    false,
+                    string.Empty,
+                    $"There is no look called {asked}. Try: "
+                    + $"{string.Join(", ", FfmpegMediaExport.Grades)}."));
+            }
+
+            session.Record(session.Current.Set(id, "colour", asked), $"Made {id} {asked}");
+
+            return Task.FromResult(new AgentToolResult(true, $"That shot is {asked} now."));
+        }
+    }
+
+    /// <summary>
+    /// How one shot becomes the next.
+    ///
+    /// A cut by default, because a cut is what film is made of and a dissolve on
+    /// every join is what a first attempt looks like. Asking for one puts it on the
+    /// shot it leads into.
+    /// </summary>
+    private sealed class BlendTheShots(DesignWorkbench workbench) : IAgentTool
+    {
+        public string Name => "design_blend";
+
+        public string Description =>
+            "Fade one shot into the next instead of cutting. Say how long the fade lasts, "
+            + "or \"none\" to go back to a straight cut.";
+
+        public JsonNode? ArgumentsSchema => new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject
+            {
+                ["id"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["description"] = "The shot to fade into.",
+                },
+                ["seconds"] = new JsonObject
+                {
+                    ["type"] = "number",
+                    ["description"] = "How long the fade lasts. Leave out for half a second.",
+                },
+            },
+            ["required"] = new JsonArray("id"),
+        };
+
+        public bool IsReadOnly => false;
+
+        public Task<AgentToolResult> InvokeAsync(
+            JsonNode? arguments, CancellationToken cancellationToken = default)
+        {
+            if (workbench.Session is not { } session)
+            {
+                return Task.FromResult(NoCanvas());
+            }
+
+            var id = Text(arguments, "id");
+
+            if (session.Current.Find(id) is null)
+            {
+                return Task.FromResult(new AgentToolResult(
+                    false, string.Empty, $"There is nothing called {id} on the canvas."));
+            }
+
+            if (string.Equals(Text(arguments, "seconds"), "none", StringComparison.OrdinalIgnoreCase))
+            {
+                session.Record(session.Current.Set(id, "blend", string.Empty), $"Cut to {id}");
+                return Task.FromResult(new AgentToolResult(true, "That is a straight cut again."));
+            }
+
+            // Held under a second and a half. A long dissolve is the thing that
+            // makes a first film look like a first film, and a number a model
+            // picked at random should not be able to put four seconds of mush in
+            // the middle of somebody's work.
+            var seconds = Math.Clamp(Amount(arguments, "seconds") ?? 0.5, 0.1, 1.5);
+
+            session.Record(session.Current.Set(id, "blend", Number(seconds)), $"Faded into {id}");
+
+            return Task.FromResult(new AgentToolResult(
+                true, $"The shot before it now fades into this one over {Number(seconds)}s."));
+        }
+    }
+
     /// <summary>Changes what is being made.</summary>
     private sealed class ChooseMedium(DesignWorkbench workbench) : IAgentTool
     {
@@ -1091,6 +1240,27 @@ public sealed class DesignToolSource : IAgentToolSource
             : null;
     }
 
+    /// <summary>
+    /// A string from the arguments, however it was written.
+    ///
+    /// `GetValue&lt;string&gt;()` throws when the value is a number, and a model
+    /// answering "how many seconds" writes `0.8`, not `"0.8"`. Every tool here
+    /// reads its arguments through this, so one tolerant reader is worth more than
+    /// remembering which fields might arrive as numbers — and forgetting was
+    /// exactly what happened twice in one afternoon.
+    /// </summary>
     private static string Text(JsonNode? arguments, string key)
-        => arguments?[key]?.GetValue<string>()?.Trim() ?? string.Empty;
+    {
+        if (arguments?[key] is not JsonValue value)
+        {
+            return string.Empty;
+        }
+
+        if (value.TryGetValue<string>(out var written))
+        {
+            return written.Trim();
+        }
+
+        return value.ToJsonString().Trim('"').Trim();
+    }
 }
