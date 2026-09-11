@@ -13,6 +13,11 @@ list exists so the choice is made with the real scope visible rather than from a
 feeling about it. Before that section the open count was four, and all four were
 other heads.
 
+**And "ticked" means written, not seen working** — established on 2026-09-12 by driving the
+list on the running app rather than reading it. Twenty of the twenty-five design tools cannot
+be reached by saying anything at all, and the model on this machine did not call one in three
+attempts. See *What driving the list on the running app actually showed*, in item 17.
+
 That count is counted, not remembered — `grep -c '^- \[x\]'` and `'^- \[ \]'`
 against this file. It read "17 items done, 23 open" for some time and matched
 neither the boxes nor the sections. A number in a header nobody re-derives is
@@ -37,6 +42,14 @@ step, and copying one over the other loses whatever the target had and the
 source did not** — this Context section was destroyed exactly that way and
 restored by hand. Edit both, or diff them before you copy.
 
+**And this file was damaged once more on 2026-09-12, the same way, by me.** The warning above
+says diff before copying; I copied `TASKS.md` over the plan without diffing, and the plan's
+entire *The plan: all thirty-six, built on CircleAI* section — six subsections — existed only
+there. It was gone in one command. It is restored above from the copy the session was holding,
+and both files now genuinely carry it, which they did not before. The lesson is not "be
+careful": the warning was already written, in this paragraph, and read. **Diff, or do not
+copy.**
+
 **And edit this file by anchor, not by span.** Two completed entries were
 silently deleted by a script that replaced everything between one item's heading
 and the next one's: whatever sat in between went with it. Nothing failed, the
@@ -44,6 +57,235 @@ file stayed valid markdown, and the only reason it was caught is that the
 checkbox count came out two short of what the header claimed. Since this file is
 usually uncommitted while it is being worked on, git cannot give those back. The
 count at the top is the tripwire — re-derive it after every edit.
+
+---
+
+## The plan: all thirty-six, built on CircleAI
+
+### What was decided
+
+**Everything in item 17, not a selection of it.** No tiers, no phasing by cost.
+Asked for directly on 2026-09-11: *"WE DO EVERYTHING OR NOTHING."*
+
+**Desktop only.** Nothing below weighs phones, watches or Macs.
+
+**Built on CircleAI, whose upgrade is nearly done.** That is the instruction and
+it turns out to be the thing that makes the list possible rather than a slogan —
+see below.
+
+### The finding this plan turns on
+
+Eighteen CircleAI packages are on this machine. **Concierge uses five.**
+
+| Package | What is in it | Used here today |
+| --- | --- | --- |
+| `CircleAI.Inference` 3.3.0 | `mnn_llm_generate_with_image_stream_ex`, `mnn_llm_image_from_bytes`, `<image>` tags | Text only |
+| `CircleAI.Voice` 1.2.0 | `WhisperTranscriber`, `OnnxTtsEngine`, `IVoiceTranscriber`, `ITtsEngine`, VAD, wake word | **Nothing** |
+| `CircleAI.Memory` 1.2.0 | `IEpisodicMemoryStore`, `IPersonaStore`, `IGoalStore`, `ITextEmbedder` | **Nothing** — Concierge wrote its own `IGoalStore` |
+| `CircleAI.Tools`, `.Skills`, `.Search`, `.Embeddings`, `.Languages.Translation`, `.Companion`, `.Sync`, `.Networking`, `.Identity`, `.Hosting` | | **Nothing** |
+
+Two of those lines change what is buildable:
+
+**The local model can see.** `mnn_llm_generate_with_image_stream_ex` takes image
+bytes. This file currently states "the local model is text-only and stays that
+way" in item 5 — that sentence is now out of date and should be corrected when
+the first image goes through it. Vision stops being a cloud feature.
+
+**Speech works both ways, on the device.** `WhisperTranscriber` writes out what
+is said; `OnnxTtsEngine` speaks. No key, no network, nothing to configure.
+
+Against that, the alternative that was nearly planned looks wrong: three tools
+wired to `IImageRuntime` and `IVoiceRuntime`, which reach OpenAI and Stability,
+on a machine with no `secrets.json` and a product whose claim is that it works on
+the device. Those seams stay — a cloud provider is a fair thing to offer — but
+they are not what this is built on.
+
+**What CircleAI does not give, said now rather than discovered later:** there is
+no image *generation* package. `mnn_llm_image_*` is images going in, not pictures
+coming out. open-design's "image generation" is the one line in item 17 with no
+local answer, and it needs either a cloud provider or a decision about a local
+model.
+
+**And the cloud seams are unreachable anyway**, which is worth recording because
+it is the eighth instance of this repository's signature defect — after
+`McpClient`, `FileTodoStore`, `DesignDocumentFormat`,
+`SkillActivation.EstimatedTokens`, the sandbox, `ProcessHookBridge` and
+`DesignDocumentFormat` again:
+
+| Seam | Implementations | Who can reach it |
+| --- | --- | --- |
+| `IImageRuntime` | `OpenAiImageRuntime`, `StabilityImageRuntime` | The Images page. **No tool.** |
+| `IVoiceRuntime` | `OpenAiVoiceRuntime` — transcribe *and* speak | **Nothing at all.** Not one file outside its own. |
+
+### What the video gap actually is
+
+**An earlier draft of this plan claimed there was a tension here and there is
+not.** It said Diffusion Studio edits video, editing video means a timeline, and
+a timeline is the first thing every renderer here refuses — so cutting footage
+would be a break with the product's own bar. Every step of that was inference,
+none of it was checked, and it was wrong.
+
+Their document is not a timeline. It is JSX: a `<stage>` holding one `<scene>`
+per cut, with every element carrying `start` and `end`.
+
+```tsx
+<scene name="Intro" width={1920} height={1080}>
+  <video src={motion} start={0} end={5} />
+  <text start={2.5} end={5}>Neon Nights</text>
+</scene>
+```
+
+That is structurally what `DesignDocument` already is — a root, `Frame` children,
+nodes carrying `seconds`, `delay`, `trim` and `rate`. Their timeline is one view
+onto that tree, the way the canvas is a view onto this one. The agent edits the
+tree in both products. Two serious projects landing on the same shape without
+conferring, which this file has noted before about Pascal's `BaseNode` and
+Diffusion Studio's `Scene`.
+
+**So the gap is narrower and much more concrete than "they have a video editor".**
+A `Frame` here holds cards that are *drawn*; theirs points at real footage with an
+in point and an out point. What is missing is a node that references a video file
+with a trim, and an export that **cuts** rather than rebuilding from stills — which
+is exactly what `FfmpegMediaExport` does today, and says so in its own comment.
+
+**And "no timeline" was never a limit on what the product can do.** It is a
+decision about the screen: `MotionRenderer` draws shots as pictures in order with
+a progress bar nobody can drag, and says so in its own comment — *"something that
+cannot be dragged cannot be dragged wrong"*. That is about what a person sees and
+touches.
+
+Cutting four seconds off a clip does not need a timeline on screen any more than
+deleting a paragraph does. The earlier draft took a decision about the screen and
+used it as though it were a limit on capability, which is how a sentence like
+"video editing means a timeline, and we refuse timelines" comes to be written and
+to mean nothing.
+
+Worth dropping the word too. A renderer does not "refuse" a scrubber — nobody
+built one. Calling an absence a refusal makes it sound like a principle standing
+guard over something, and then it gets cited as a reason not to build things it
+has no bearing on.
+
+### The order, and why it is this order
+
+All thirty-six. The sequence is **what unlocks what** — not what is cheap. Each
+group below exists because the one before it makes it possible.
+
+**A. Bring CircleAI's own capabilities in.** Nothing else can be built on them
+until they are here, so they are first.
+
+1. ~~`CircleAI.Voice` wired.~~ **Done.** `CircleAiVoiceRuntime` puts
+   `WhisperTranscriber` and `OnnxTtsEngine` behind the `IVoiceRuntime` seam the cloud
+   runtime already sits behind, registered the way every optional capability is —
+   present when the model files are, absent otherwise, and the status names the folder
+   they go in. The model files are still not on this machine.
+2. ~~Images into `CircleAiChatRuntime`.~~ **Done.** A turn's picture is carried
+   through to `ChatMessage.ImageBytes`, a vision family loads through the generator
+   that can see, and whether it can see is read off the model rather than its name.
+   Item 5's claim that the local model is text-only is corrected there. No vision
+   model is on this machine, so the round trip is wired and unconfirmed.
+
+**B. What A makes possible, on the surfaces that already exist.**
+
+3. ~~`media_transcribe`~~ **Done** — words out of a file, beside `media_facts`.
+   Read-only, so it does not ask. Absent while nothing can hear.
+4. ~~`design_narrate`~~ **Done** — a spoken track from written words, added to a
+   sound design as a `Sound` node, carried inside the design so it travels.
+5. ~~Watch footage and answer questions about it.~~ **Done.** The strip reaches a
+   model that can see and never silently reaches one that cannot.
+6. Subtitles timed to the words — **blocked in the package.** `CircleAI.Voice`
+   returns no timings, and `WhisperInterop` is internal (checked by compiling
+   against it). Needs segment timings exposed upstream.
+
+**C. Video that is actually video.** ffmpeg is in and proven by the export work.
+
+7. ~~Cutting and joining real footage.~~ **Done.** A shot can point at a video
+   file; `design_add_footage` adds one and `design_cut` says where it starts and
+   how long it runs. The export normalises every shot — drawn card or filmed clip
+   — to one size, frame rate and pair of codecs, then joins them by copying rather
+   than re-encoding. That normalising step is the whole trick: without it a card
+   and a clip disagree about frame rate, size and whether audio exists, and the
+   join drops one or fails.
+
+   **Footage stays on disk rather than inside the design**, unlike a picture or a
+   track. A four-minute clip is hundreds of megabytes and `design.json` is
+   rewritten whenever anybody edits a heading. So a design holding footage points
+   at this machine and is not portable the way the others are, which is said in
+   the code rather than left to be found.
+
+   15 tests, all real encoder runs, with a tripwire that goes red when there is no
+   encoder.
+8. Strip "um" and "er" — same blocker: finding them is easy, knowing where they
+   are in the file needs timings the package does not hand back.
+9. Colour and filters, named in plain words rather than exposed as a filter graph.
+10. Animation between shots.
+11. ~~Production runs that go end to end.~~ **Done** — `run_routine`, which keeps
+    its place on disk so an interrupted run carries on rather than starting again.
+
+**D. Space becomes a room rather than shapes on a floor.** three.js is in and
+drawing, confirmed on the desktop head.
+
+12. Walls, floors, ceilings, roofs as things you draw.
+13. Openings cut into walls, so a wall has a door in it.
+14. Levels that stack, pull apart, or show one at a time.
+15. Furniture that attaches to a wall or ceiling at the right height.
+16. Tracing over a photo; bringing in a scan.
+17. Add-ons other people can write.
+
+**E. The surface widens.**
+
+18. ~~Mobile-app designs and live dashboards as their own media.~~ **Done.**
+    A phone screen that draws the safe areas and the reach line, and a board of
+    numbers with no chart. 20 tests.
+19. ~~Design guides.~~ **Done** — 21 written, plus a file anybody can add to. The
+    count is not matched and the entry says so rather than implying it.
+20. ~~Reaching the other coding tools.~~ **Done**, with their shape inverted: this
+    one is the assistant, and it hands a job to whichever of nine are installed.
+
+**F. The two that are not features.**
+
+21. The music services. **Antra is Elastic Licence 2.0 — source-available, not
+    open source — so none of its code can be taken.** Seven integrations written
+    from nothing, plus matching, deduplication, library filing and an analyser.
+22. AniGen — a photograph to a rigged model. A machine-learning dependency, not a
+    feature.
+
+**Image generation sits outside all of it.** It is the one line with no CircleAI
+answer. Either a cloud provider through the `IImageRuntime` seam that already
+exists, or a local model nobody has agreed to. It is not blocked, it is undecided.
+
+**Not drawn on screen, and that is all it means**: a timeline, a track stack, a
+waveform, a node graph, keyframes, and Pascal's full editor tool palette. A
+five-year-old and a ninety-seven-year-old is the spec, and each of those controls
+is what stops somebody who has never used one.
+
+None of that limits what the product can *do*. Cutting, trimming and reordering
+all happen — they happen by saying so and looking, which is how everything else
+on this surface happens. Anybody reading this list as a reason not to build a
+capability has read it wrong, and an earlier draft of this very plan did exactly
+that.
+
+### How progress is tracked
+
+The checkboxes in item 17 are the tracking, and ticking one is the only record
+that matters. **No second progress number anywhere** — this file already carries
+a header count that went stale and disagreed with the boxes for weeks, and the
+lesson written up in that entry was that a number nobody re-derives is the same
+defect as an approvals badge that always said two. One source of truth, counted
+with `grep -c`, re-derived after every edit.
+
+### Verifying each one
+
+Groups A to D are all reachable from the running desktop app, so each is checked
+the same way: open Design, ask for the thing in a sentence, and look. Beyond
+that, per item — a generated picture must survive a save and reopen (it is a
+data URI in `design.json`); a transcript must match a file whose words are known
+because the encoder made it; narration must come back as an audio file
+`media_is_silent` says has sound in it; a cut must produce an `.mp4` whose length
+`media_facts` reports as the length that was asked for.
+
+Tests go beside the existing ones — `MediaLookTests` is the pattern, including
+its tripwire that goes red when the encoder is missing so a green run cannot mean
+the work was skipped.
 
 ---
 
@@ -1247,6 +1489,51 @@ afternoon digging through an old session transcript:
 | Antra | https://github.com/bhengubv/Antra |
 | AniGen | https://github.com/VAST-AI-Research/AniGen (ours: `bhengubv/AniGen`) |
 | open-design | https://github.com/nexu-io/open-design |
+
+### What driving the list on the running app actually showed
+
+**Asked on 2026-09-12: "parity now?" — and the checking started here rather than at the
+answer.** What follows is measured on the running desktop head, not inferred.
+
+**Twenty-five `design_*` tools exist. Five can be reached by saying something.**
+
+`DesignSpeech` — the half that works with no model at all, and the half the whole surface is
+sold on — understands exactly seven patterns: start again, a look by name, delete, "change it
+to say …", switch medium, "add a <thing>" from a fixed list of nouns, and music metadata.
+That reaches `design_add`, `design_change`, `design_remove`, `design_look` and
+`design_making`.
+
+The other twenty — `design_build`, `design_opening`, `design_floors`, `design_floor_of`,
+`design_hang`, `design_plan`, `design_furnish`, `design_add_footage`, `design_cut`,
+`design_colour`, `design_blend`, `design_move`, `design_narrate`, `design_picture`,
+`design_panel`, `design_guide`, `design_bring_in_sound`, `design_save`, `design_describe`,
+`design_go_back` — are reachable **only** by a model calling a tool. That is the whole of
+Pascal's section below, most of Diffusion Studio's and OpenMontage's, and half of
+open-design's.
+
+**The word "wall" is not in the vocabulary.** Neither is door, window, roof, ceiling, or any
+word for a level. Typing "add a wall" into a room does nothing a person can see, which is how
+this was found.
+
+**And the model that ships did not call a tool, three times out of three.** "add a wall",
+"put a door in the wall", "add a desk against the wall" — each ran a full turn against
+Qwen3-0.6B on the device, each took about a minute, and the moments strip still read
+`Started | Back as you left it` afterwards. The first of them answered, in words, *"let's
+adjust the haiku to include the added detail of a wall"*.
+
+So: the tools are built, the wiring is real — the text tool-call protocol works with any model
+— and **none of those twenty has been exercised on this machine.** Three attempts is three
+attempts, not proof that it can never work; what it does establish is that the ticks below
+record that something was written, not that anybody has seen it run.
+
+That is a fifth thing waiting on a model, alongside the four already named at the top of this
+section: **a model capable enough to call a tool.** Every "done" in this list that reads
+"a model can now …" is inside it.
+
+Found on the way, and fixed (`401e7df`): with the canvas open the model's reply was rendered
+nowhere at all, and the "thinking" indicator was replaced by the name of the last design
+moment — so a minute-long turn looked identical to a sentence being ignored. The canvas says
+what came back now. Without that fix none of the measurement above would have been visible.
 
 #### Pascal — a 3D building editor
 
