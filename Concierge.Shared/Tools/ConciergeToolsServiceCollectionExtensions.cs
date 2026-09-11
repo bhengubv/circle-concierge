@@ -155,6 +155,11 @@ public static class ConciergeToolsServiceCollectionExtensions
         // the app, which is the safe half of what a plugin system is wanted for.
         services.TryAddSingleton(_ => new Design.RoomCatalogue(Path.Combine(dataRoot, "shapes.json")));
 
+        // What to make, rather than what colour to make it — a guide a person or a
+        // model can read before starting. Built-ins ship, and guides.json is how
+        // somebody adds their own, the same answer shapes.json gives for furniture.
+        services.TryAddSingleton(_ => new Design.DesignGuides(Path.Combine(dataRoot, "guides.json")));
+
         // Turning a design into a file somebody keeps. Registered only where there
         // is an encoder to do it with, so `design_save` is absent on a machine
         // without one rather than offered and always failing — the rule the device

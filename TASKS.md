@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **140 boxes ticked, 23 open, eight
+`main`. What replaces it is the working list: **141 boxes ticked, 22 open, eight
 partial**, ordered so the next person can pick one up.
 
 **Thirty-six of those forty arrived at once**, on 2026-09-11, when the six
@@ -1367,7 +1367,25 @@ there is nothing to take from it short of the model itself.
       What makes it *live* is where the numbers come from, which is the agent's job and
       not the renderer's: `design_panel` sets a panel, and writes only the fields
       actually given, so updating the number does not wipe the note.
-- [ ] 298 design guides. Concierge has six looks with briefs.
+- [x] Design guides. **The count is not matched and saying so is the point.** open-design
+      ships 298; this ships 21 that were written rather than counted, plus `guides.json` —
+      a file anybody can add to with no code, which is the answer `shapes.json` already
+      gives for furniture. Claiming a number would be claiming something nobody has
+      written.
+
+      What they are is the half the six looks do not answer: the looks say how a thing
+      appears, a guide says **what goes on it and in what order** — a poster read from a
+      corridor, a deck whose slide titles are sentences, a dashboard read in two seconds,
+      a form where every field is a reason to give up. That is the part somebody who is not
+      a designer has no way to know, and the part a model gets wrong by producing something
+      competently laid out that says nothing.
+
+      Prose with the reason beside every rule, which is open-design's own shape: a rule
+      with no reason gets applied where it does not belong, and a rule nobody understands
+      gets ignored the first time it is inconvenient. `design_guide` is read-only and takes
+      what somebody said in their own words — nobody says "artifact type: presentation",
+      they say "a deck for Thursday". A guide somebody wrote wins over one of ours with the
+      same name; a broken file costs the file and never the built-ins. 22 tests.
 - [ ] Plug into the other coding tools, the way it reaches sixteen of them
 
 **What Concierge has that none of the six has**, kept here so the list above is

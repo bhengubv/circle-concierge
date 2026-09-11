@@ -46,6 +46,12 @@ public sealed class DesignWorkbench
     public IMediaExport? Export { get; set; }
 
     /// <summary>
+    /// What to make, rather than what colour to make it. Null on a head that keeps no file
+    /// of its own, and the built-in guides are used instead — the advice is never absent.
+    /// </summary>
+    public DesignGuides? Guides { get; set; }
+
+    /// <summary>
     /// The things a room can be furnished with, and the file anybody can add to.
     /// Null on a head that keeps none, and the built-ins are used instead.
     /// </summary>
@@ -133,6 +139,7 @@ public sealed class DesignToolSource : IAgentToolSource
                 new LayAPlan(_workbench),
                 new FurnishTheRoom(_workbench),
                 new SetAPanel(_workbench),
+                new ReadTheGuide(_workbench),
                 .. _workbench.Speech is null || !_workbench.Speech.SupportsSynthesis
                     ? Array.Empty<IAgentTool>()
                     : [new NarrateTheWords(_workbench)],
@@ -2063,6 +2070,75 @@ public sealed class DesignToolSource : IAgentToolSource
             var flat = string.Join(' ', words.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
             return flat.Length <= 40 ? flat : flat[..40].TrimEnd() + "…";
+        }
+    }
+
+    /// <summary>
+    /// What actually goes on the thing being made, and in what order.
+    ///
+    /// The looks answer how something appears. This answers what goes on it — the part
+    /// somebody who is not a designer has no way to know, and the part a model gets wrong by
+    /// producing something competently laid out that says nothing. A poster with the date in
+    /// body copy is a poster nobody can read from the corridor, and no palette fixes it.
+    ///
+    /// Read-only: it produces advice and changes nothing, so it does not ask.
+    ///
+    /// **It is not offered a category to pick from.** Nobody says "artifact type:
+    /// presentation"; they say "a deck for Thursday". So it takes what somebody said in their
+    /// own words and finds the guide that fits, and with nothing said it lists what there is.
+    /// </summary>
+    private sealed class ReadTheGuide(DesignWorkbench workbench) : IAgentTool
+    {
+        public string Name => "design_guide";
+
+        public string Description =>
+            "Read the guide for the kind of thing being made — what goes on a poster, a pitch "
+            + "deck, a dashboard, a room — before making it. Say what it is in ordinary words.";
+
+        public JsonNode? ArgumentsSchema => new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject
+            {
+                ["about"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["description"] =
+                        "What is being made, in ordinary words — \"a poster for a school fair\". "
+                        + "Leave it out to see what guides there are.",
+                },
+            },
+        };
+
+        public bool IsReadOnly => true;
+
+        public Task<AgentToolResult> InvokeAsync(
+            JsonNode? arguments, CancellationToken cancellationToken = default)
+        {
+            var guides = workbench.Guides ?? new DesignGuides();
+            var about = Text(arguments, "about");
+
+            if (about.Length == 0)
+            {
+                var lines = guides.All.Select(guide => $"{guide.Name} — {guide.When}");
+
+                return Task.FromResult(new AgentToolResult(
+                    true, "There are guides for:" + Environment.NewLine + string.Join(Environment.NewLine, lines)));
+            }
+
+            if (guides.For(about) is not { } found)
+            {
+                // Named rather than silent: a model told "no guide" has no idea whether it
+                // asked the wrong way or there is nothing for this at all.
+                return Task.FromResult(new AgentToolResult(
+                    true,
+                    $"There is no guide for {about}. There are guides for: "
+                    + string.Join(", ", guides.All.Select(guide => guide.Name))
+                    + ". Make it well anyway — the guides are advice, not a gate."));
+            }
+
+            return Task.FromResult(new AgentToolResult(
+                true, $"{found.Name} — {found.When}{Environment.NewLine}{Environment.NewLine}{found.Guide}"));
         }
     }
 

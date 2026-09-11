@@ -60,18 +60,23 @@ public sealed class DesignToolSourceTests
     }
 
     /// <summary>
-    /// Only describing is read-only. Everything else changes the canvas, and a
-    /// tool that lied about that would be run unattended.
+    /// Only the two that read are read-only: describing the canvas, and reading the guide
+    /// for the kind of thing being made. Everything else changes the canvas, and a tool
+    /// that lied about that would be run unattended.
     /// </summary>
     [Fact]
-    public void Only_describing_is_read_only()
+    public void Only_the_ones_that_read_are_read_only()
     {
         var (tools, _, _) = Open();
+        string[] reading = ["design_describe", "design_guide"];
 
-        Assert.True(tools.Tools.Single(t => t.Name == "design_describe").IsReadOnly);
         Assert.All(
-            tools.Tools.Where(t => t.Name != "design_describe"),
-            tool => Assert.False(tool.IsReadOnly));
+            tools.Tools.Where(t => reading.Contains(t.Name)),
+            tool => Assert.True(tool.IsReadOnly, tool.Name));
+
+        Assert.All(
+            tools.Tools.Where(t => !reading.Contains(t.Name)),
+            tool => Assert.False(tool.IsReadOnly, tool.Name));
     }
 
     [Fact]

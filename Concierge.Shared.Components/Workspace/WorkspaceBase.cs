@@ -1056,6 +1056,11 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
                     Services.GetService(typeof(IEnumerable<Concierge.Shared.Media.IVoiceRuntime>))
                         as IEnumerable<Concierge.Shared.Media.IVoiceRuntime> ?? []);
 
+                // What to make, rather than what colour to make it — including any
+                // guides somebody wrote themselves.
+                Workbench.Guides = Services.GetService(typeof(Concierge.Shared.Design.DesignGuides))
+                    as Concierge.Shared.Design.DesignGuides;
+
                 // What a room can be furnished with, including anything somebody
                 // added themselves.
                 Workbench.Catalogue = Services.GetService(typeof(Concierge.Shared.Design.RoomCatalogue))
