@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **154 boxes ticked, 5 open, fourteen
+`main`. What replaces it is the working list: **156 boxes ticked, 5 open, fourteen
 partial**, ordered so the next person can pick one up.
 
 **Thirty-six of those forty arrived at once**, on 2026-09-11, when the six
@@ -1698,7 +1698,7 @@ commit it was last actually checked at, because "all four hold as of `<ref>`"
 was one date covering four checks made at different times — and it had drifted
 two commits behind `HEAD` before anyone noticed.
 
-- [x] **1786 tests pass, and the suite is deterministic.** It was not: four
+- [x] **1908 tests pass, and the suite is deterministic.** It was not: four
       consecutive runs each failed *one different test*, which meant it could not
       tell a regression from noise — the same defect as a screen asserting
       something untrue, sitting on the check everything else is measured by.
@@ -1824,6 +1824,27 @@ two commits behind `HEAD` before anyone noticed.
       registered for IAgentToolSource" **while the container is being built**. Every head
       would have failed to start. The typed overload fixes it, and the test that found it now
       resolves the registry with every later source registered.
+- [x] **Every medium is checked with something on it, not only empty.** The rule the 3D
+      engine bug wrote: *an empty case is not a case.* `PopulatedMediaTests` renders all seven
+      with a heading, a paragraph, a picture and a sound on them and asserts the content is
+      actually drawn and that nothing says "nothing here yet".
+
+      **It found one on the first run.** `DesignRenderer` had cases for Page, Box, Heading,
+      Text, Button and Image — and none for Frame, Sound or Solid. So turning a deck, a video,
+      a room, a phone or a board **back into a page drew an empty rectangle**: the document
+      still held everything, going back to Slides brought it all up, and the page said
+      nothing at all. The twin of a defect already fixed in the other direction, where a
+      page's loose content found no frames and drew "No slides yet" over a design that was
+      all there. Both directions keep what is on them now.
+- [x] **A sentence applies in every medium, checked where the answer is trustworthy.**
+      `CanvasSpeechTests` opens the canvas, switches to each of the seven, types the sentence
+      that medium's own invitation asks for, presses send, and asserts the canvas gained a
+      moment and the box emptied.
+
+      Written because driving the running app gave an answer worth nothing: a sentence in
+      Space appeared to do nothing, and the same synthetic clicks were being ignored by the
+      **Windows maximize button**, which is not Blazor at all. All seven pass, so the product
+      was fine and the measurement was not — the sixth time in this file's history.
 - [x] `[skip ci]` in the HEAD commit before any push — a rule, not a check
 - [x] The app actually starts. Added after a Razor comment inside an element's
       attribute list compiled, passed 1141 tests, and threw on every render in

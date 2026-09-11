@@ -133,6 +133,54 @@ public static class DesignRenderer
                 html.AppendLine($"<button type=\"button\"{attrs}>{Escape(node.Text)}</button>");
                 break;
 
+            // A slide, a shot, a room, a screen or a panel, drawn on a page.
+            //
+            // **Without this, turning any of them back into a page lost everything on
+            // screen.** The document still had it — going back to Slides brought it
+            // all up again — but the page drew an empty rectangle with no explanation,
+            // which is the worst way to be told nothing is wrong.
+            //
+            // This is the twin of a defect already fixed in the other direction: a page's
+            // loose content found no frames and drew "No slides yet" over a design that was
+            // still all there. Both directions now keep what is on them, which is the claim
+            // the whole surface rests on.
+            case DesignNodeKind.Frame:
+                html.AppendLine($"<section{attrs}>");
+
+                if (node.Text.Length > 0)
+                {
+                    html.AppendLine($"<h2>{Escape(node.Text)}</h2>");
+                }
+
+                foreach (var child in children)
+                {
+                    Write(html, document, child.Id, selectedId, depth + 1);
+                }
+
+                html.AppendLine("</section>");
+                break;
+
+            // Something to listen to, on a page. Real controls rather than an icon, for the
+            // same reason the running order has them: somebody adding a piece of music wants
+            // to hear whether it is the right one.
+            case DesignNodeKind.Sound:
+                var track = node.Props.TryGetValue("src", out var heard) ? heard : null;
+                var called = node.Text.Length > 0 ? node.Text : "A sound";
+
+                html.AppendLine(string.IsNullOrWhiteSpace(track) || !DesignMediums.IsSafeAudio(track)
+                    ? $"<div class=\"placeholder\"{attrs}>{Escape(called)}</div>"
+                    : $"<figure{attrs}><figcaption>{Escape(called)}</figcaption>"
+                      + $"<audio controls preload=\"metadata\" src=\"{Escape(track)}\"></audio></figure>");
+                break;
+
+            // A thing from a room, on a page that has no room to put it in. Named rather
+            // than drawn: a page is not a floor, and a labelled block says what is there
+            // without pretending to be a view of it.
+            case DesignNodeKind.Solid:
+                html.AppendLine(
+                    $"<div class=\"placeholder\"{attrs}>{Escape(node.Text.Length > 0 ? node.Text : "A thing")}</div>");
+                break;
+
             case DesignNodeKind.Image:
                 // A picture that has not been chosen yet is a labelled space, not a
                 // broken-image icon. The design is unfinished, not wrong.
