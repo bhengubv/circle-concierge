@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **149 boxes ticked, 13 open, ten
+`main`. What replaces it is the working list: **150 boxes ticked, 13 open, ten
 partial**, ordered so the next person can pick one up.
 
 **Thirty-six of those forty arrived at once**, on 2026-09-11, when the six
@@ -1644,7 +1644,14 @@ two commits behind `HEAD` before anyone noticed.
       and a filtered pipe reports that as success
 - [x] Verified on the running desktop app, not only in tests — Engineering lists
       the real catalogue, `todo_read` and `todo_write` included, and says what
-      confines a command. Last checked at `a00191b`; **not re-run since**
+      confines a command. Last checked at `a00191b`
+- [x] **The app starts with everything added since.** Built and run from
+      `Concierge.exe` on 2026-09-11 after the eleven new tools were wired: it comes up,
+      stays up, and starts `Concierge.Model.Host` beside it. That is the check that
+      matters here rather than a screenshot — the fault this was looking for was a
+      container that throws while it is being built, which is what the three bare-factory
+      registrations would have done. What is on screen with the new tools is **not**
+      checked: Engineering has not been opened since
 - [x] **The 3D engine works on the desktop head. Measured, not assumed.**
 
       The only genuinely head-specific thing about it was whether WebView2 loads an
