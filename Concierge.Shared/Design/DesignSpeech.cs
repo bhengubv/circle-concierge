@@ -169,6 +169,56 @@ public static class DesignSpeech
             }
         }
 
+        // Building a room: walls, floors, ceilings, roofs. Before the general "add a thing"
+        // branch, because "wall" would otherwise fall through to the noun list, not be found
+        // there, and the whole sentence would go to a model.
+        if (Match(said, Building) is { } built)
+        {
+            if (design.Medium != DesignMedium.Scene)
+            {
+                return new DesignHeard(false, design, string.Empty,
+                    "Walls and floors go in a room. Say 'space' first.");
+            }
+
+            var piece = built.Groups["piece"].Value.ToLowerInvariant();
+            var named = Clean(built.Groups["name"].Value);
+
+            var node = DesignNode.New(
+                DesignNodeKind.Solid,
+                ParentFor(design, DesignNodeKind.Solid),
+                [.. RoomPieces.Props(piece, named.Length > 0 ? named : null)]);
+
+            return new DesignHeard(true, design.Add(node), $"Put up a {piece}");
+        }
+
+        // A door or a window, cut into a wall that is already there.
+        if (Match(said, Cutting) is { } cut)
+        {
+            if (design.Medium != DesignMedium.Scene)
+            {
+                return new DesignHeard(false, design, string.Empty,
+                    "Doors and windows go in a room. Say 'space' first.");
+            }
+
+            var wall = WallToCut(design, pointedAt);
+
+            if (wall is null)
+            {
+                // Said rather than swallowed: without this the sentence goes to a model and,
+                // on a machine with none that can act, produces nothing and no reason.
+                return new DesignHeard(false, design, string.Empty,
+                    "There is no wall to cut into yet. Say 'add a wall' first.");
+            }
+
+            var opening = cut.Groups["opening"].Value.ToLowerInvariant();
+
+            return new DesignHeard(
+                true,
+                design.Add(DesignNode.New(
+                    DesignNodeKind.Solid, wall.Id, [.. RoomPieces.Opening(opening)])),
+                $"Cut a {opening}");
+        }
+
         // Adding something. The workhorse, and the sentence everybody types first.
         if (Match(said, Adding) is { } add)
         {
@@ -216,6 +266,35 @@ public static class DesignSpeech
     /// canonical form. Somebody who has to discover the phrasing has been handed a
     /// syntax, which is the thing this surface exists to avoid.
     /// </summary>
+    /// <summary>
+    /// "add a wall", "put up a wall", "build a wall", "lay a floor", "add a roof".
+    ///
+    /// **`design_build` existed for months and no sentence reached it.** The word "wall" was
+    /// not in this file at all, nor floor-as-a-slab, ceiling or roof — so the one medium that
+    /// is meant to be a room could be given cubes and spheres by talking, and the things a
+    /// room is actually made of only by a model calling a tool. On a machine whose model does
+    /// not call tools, that is a feature nobody can use.
+    ///
+    /// "put up" and "lay" are here because they are what people say about walls and floors,
+    /// and somebody who has to discover that "add" is the only verb has been handed a syntax.
+    /// </summary>
+    private const string Building =
+        @"^(?:add|put up|put|build|lay|make|create|erect)\s+(?:a|an|some)?\s*(?<piece>wall|floor|ceiling|roof)\b"
+        + @"(?:\s+(?:called|named)\s+(?<name>.+))?[.!]?$";
+
+    /// <summary>
+    /// "put a door in the wall", "add a window", "cut a door into it".
+    ///
+    /// Goes into the most recently built wall, or the selected one if a wall is selected.
+    /// Which is a guess, and the right one: somebody who has just put up a wall and says
+    /// "put a door in it" means that wall, and if they meant another they can say so to a
+    /// model. Guessing beats refusing here because refusing leaves nothing on screen to
+    /// correct, and correcting is how this surface works.
+    /// </summary>
+    private const string Cutting =
+        @"^(?:add|put|cut|insert|make)\s+(?:a|an)?\s*(?<opening>door|window)\b"
+        + @"(?:\s+(?:in|into|through|to)\b.*)?[.!]?$";
+
     private const string Adding =
         @"^(?:add|put|insert|make|create)\s+(?:a|an|some)?\s*(?<thing>title|heading|header|words|text|paragraph|sentence|button|picture|image|photo|screen|panel|box|group|block|solid|shape|cube|sphere|ball|cylinder|column|post|cone|slide|shot|scene|room|track|section)\b(?:\s*(?:that\s+)?(?:saying|says|say|reading|reads|read|with|of|:)\s*(?<words>.+))?$";
 
@@ -230,6 +309,41 @@ public static class DesignSpeech
     private const string Telling =
         @"^(?:the\s+)?(?<about>artist|singer|band|musician|composer|album|record|year|date|words|lyrics|title|name)\s+"
         + @"(?:is|are|was|were)\s*(?:called\s+)?(?<value>.+)$";
+
+    /// <summary>
+    /// Which wall a door or a window goes into.
+    ///
+    /// Whatever is being pointed at, if that is a wall — somebody who has clicked a wall and
+    /// says "put a door in it" means that one. Otherwise the wall most recently added, which
+    /// is the one they just built and are looking at.
+    ///
+    /// A guess, and the right one. Refusing until somebody names a wall would mean naming
+    /// walls, and there is nothing on this surface that gives a wall a name a person could
+    /// use. Guessing wrong leaves a door in the wrong wall, which can be seen and undone;
+    /// refusing leaves nothing on screen at all.
+    /// </summary>
+    private static DesignNode? WallToCut(DesignDocument design, string? pointedAt)
+    {
+        static bool IsWall(DesignNode node)
+            => node.Kind == DesignNodeKind.Solid
+               && node.Props.TryGetValue("shape", out var shape)
+               && shape.Equals("wall", StringComparison.OrdinalIgnoreCase);
+
+        if (pointedAt is { Length: > 0 } && design.Find(pointedAt) is { } picked && IsWall(picked))
+        {
+            return picked;
+        }
+
+        // The room's children in the order somebody put them there. `Nodes` is a dictionary
+        // and has no order, so "the wall I just built" cannot be asked of it.
+        //
+        // Falling back to the root is the case that matters, not an edge one: a fresh Space
+        // has no frames at all, so `Add` re-parents a wall to the root and "add a wall, put a
+        // door in it" — the first two sentences anybody says — found nothing to cut into.
+        var room = ParentFor(design, DesignNodeKind.Solid) ?? design.RootId;
+
+        return design.ChildrenOf(room).LastOrDefault(IsWall);
+    }
 
     private static Match? Match(string input, string pattern)
     {

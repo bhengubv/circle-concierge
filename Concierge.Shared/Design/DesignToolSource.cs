@@ -1217,37 +1217,26 @@ public sealed class DesignToolSource : IAgentToolSource
 
             var what = Text(arguments, "what").ToLowerInvariant();
 
-            if (what is not ("wall" or "floor" or "ceiling" or "roof"))
+            if (!RoomPieces.IsPiece(what))
             {
                 return Task.FromResult(new AgentToolResult(
                     false, string.Empty, "Say wall, floor, ceiling or roof."));
             }
 
-            var props = new List<(string Key, string Value)>
-            {
-                ("shape", what),
-                ("text", Text(arguments, "text") is { Length: > 0 } named ? named : what),
-                ("x", Number(Amount(arguments, "x") ?? 0)),
-                ("y", Number(Amount(arguments, "y") ?? 0)),
-            };
-
-            if (what == "wall")
-            {
-                // A wall needs somewhere to end. Without one it would be drawn as
-                // nothing at all, so it runs two metres along rather than being
-                // refused — a wall in roughly the right place can be moved, and a
-                // refusal leaves somebody with nothing to move.
-                props.Add(("x2", Number(Amount(arguments, "x2") ?? (Amount(arguments, "x") ?? 0) + 200)));
-                props.Add(("y2", Number(Amount(arguments, "y2") ?? (Amount(arguments, "y") ?? 0))));
-                props.Add(("height", Number(Amount(arguments, "height") ?? 240)));
-                props.Add(("thickness", Number(Amount(arguments, "thickness") ?? 12)));
-            }
-            else
-            {
-                props.Add(("width", Number(Amount(arguments, "width") ?? 400)));
-                props.Add(("depth", Number(Amount(arguments, "depth") ?? 400)));
-                props.Add(("height", Number(Amount(arguments, "height") ?? (what == "roof" ? 90 : 240))));
-            }
+            // Built by RoomPieces rather than here, because "add a wall" typed into the
+            // canvas has to produce the same wall this does. Two copies of these defaults is
+            // how a sentence and a tool come to disagree about how thick a wall is.
+            var props = RoomPieces.Props(
+                what,
+                Text(arguments, "text") is { Length: > 0 } named ? named : null,
+                Amount(arguments, "x"),
+                Amount(arguments, "y"),
+                Amount(arguments, "x2"),
+                Amount(arguments, "y2"),
+                Amount(arguments, "width"),
+                Amount(arguments, "depth"),
+                Amount(arguments, "height"),
+                Amount(arguments, "thickness"));
 
             var room = Room(session);
             var piece = DesignNode.New(DesignNodeKind.Solid, room, [.. props]);
@@ -1323,22 +1312,20 @@ public sealed class DesignToolSource : IAgentToolSource
 
             var what = Text(arguments, "what").ToLowerInvariant();
 
-            if (what is not ("door" or "window"))
+            if (!RoomPieces.IsOpening(what))
             {
                 return Task.FromResult(new AgentToolResult(false, string.Empty, "Say door or window."));
             }
 
-            var door = what == "door";
-
             var opening = DesignNode.New(
                 DesignNodeKind.Solid,
                 wall.Id,
-                ("shape", what),
-                ("text", what),
-                ("at", Number(Amount(arguments, "at") ?? 60)),
-                ("width", Number(Amount(arguments, "width") ?? (door ? 90 : 120))),
-                ("height", Number(Amount(arguments, "height") ?? (door ? 200 : 120))),
-                ("sill", Number(door ? 0 : Amount(arguments, "sill") ?? 90)));
+                [.. RoomPieces.Opening(
+                    what,
+                    Amount(arguments, "at"),
+                    Amount(arguments, "width"),
+                    Amount(arguments, "height"),
+                    Amount(arguments, "sill"))]);
 
             session.Record(session.Current.Add(opening), $"Cut a {what}");
 
