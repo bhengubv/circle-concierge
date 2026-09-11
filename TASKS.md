@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **123 boxes ticked, 4 open, three
+`main`. What replaces it is the working list: **124 boxes ticked, 4 open, three
 partial**, ordered so the next person can pick one up.
 
 That count is counted, not remembered — `grep -c '^- \[x\]'` and `'^- \[ \]'`
@@ -760,10 +760,38 @@ the argument is the bar, not the architecture.
       it, the same bytes. It needs no encoder, so a machine without ffmpeg can
       still hand somebody a page, which is most of what a person makes.
 
-      Still open: PDF and PPTX. Proper PDF from HTML needs a browser engine driven
-      headlessly — the desktop head has one in WebView2, so it is reachable there
-      and nowhere else; PPTX is OOXML and needs no dependency at all, only work.
-      Neither is pretended at.
+- [x] **PDF and PowerPoint.** Both written by hand, no dependency added for either.
+
+      A `.pptx` is a zip of XML, so `DeckExport` writes the smallest set of parts
+      PowerPoint will open: content types, a presentation, a master, a layout, a
+      theme carrying the design's own colours, and a slide each. The reason it is
+      worth the XML rather than exporting a picture: **a deck that leaves as a
+      picture is a deck nobody can change**, and somebody who needs to fix one word
+      has to come back and ask.
+
+      `PdfExport` lays the document out itself from the same tree the renderers
+      read. The obvious build is to drive WebView2 headlessly and get an exact copy
+      of the canvas; this does not, and the reason is that it would work on Windows
+      on the desktop and nowhere else. Type is one of the fourteen standard fonts so
+      nothing is embedded, and wrapping uses Helvetica's real character widths —
+      guessing an average gives lines that overrun on capitals and stop short on
+      narrow letters, which shows up on exactly the words people notice. Pictures
+      ride as JPEG, which a PDF carries as-is; a PNG is converted by the encoder
+      when there is one and **left out when there is not** rather than embedded as
+      bytes a reader will show as noise.
+
+      **What it costs, and it is not hidden:** a PDF here is not a picture of the
+      canvas. Words, colours, pictures and order carry; exact spacing and anything
+      CSS does that this does not know about do not.
+
+      Verified outside our own code: Windows' own OPC reader — the one Office uses
+      — opens the .pptx and enumerates all fourteen parts, and Chromium's PDF viewer
+      renders all three pages of a test deck. Two defects the first real file
+      showed: a start-of-frame marker at the very end of a JPEG was skipped by an
+      off-by-one, and "Concierge — Q3" came out as "Concierge  Q3" because the em
+      dash was dropped, leaving a double space that reads as a typo. Typographic
+      characters become their plain equivalents now — the reader loses the
+      typography and keeps the sentence. 28 tests.
 - [x] Encoding. Done, and it produces real files: `FfmpegMediaExport` concatenates
       a running order into one `.m4a`, and turns shots into an `.mp4` with each
       shot held for its own length, the design's own colours behind it and its
@@ -1213,7 +1241,7 @@ commit it was last actually checked at, because "all four hold as of `<ref>`"
 was one date covering four checks made at different times — and it had drifted
 two commits behind `HEAD` before anyone noticed.
 
-- [x] **1490 tests pass, and the suite is deterministic again.** It was not: four
+- [x] **1518 tests pass, and the suite is deterministic again.** It was not: four
       consecutive runs each failed *one different test*, which meant it could not
       tell a regression from noise — the same defect as a screen asserting
       something untrue, sitting on the check everything else is measured by.

@@ -442,7 +442,8 @@ public sealed class DesignToolSource : IAgentToolSource
         public string Description =>
             "Save the design as a file that can be kept and shared: an HTML file for a page, "
             + "a deck or a room, an audio file for a sound, a video file for a motion piece. "
-            + "Says where it put it.";
+            + "Add as=\"pdf\" to send to somebody, or as=\"pptx\" for an editable PowerPoint "
+            + "file from a deck. Says where it put it.";
 
         public JsonNode? ArgumentsSchema => new JsonObject
         {
@@ -453,6 +454,13 @@ public sealed class DesignToolSource : IAgentToolSource
                 {
                     ["type"] = "string",
                     ["description"] = "What to call it, without an extension. Optional.",
+                },
+                ["as"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["description"] =
+                        "\"pdf\" to send to somebody, or \"pptx\" for an editable PowerPoint "
+                        + "file from a deck. Left out, it saves as HTML.",
                 },
             },
         };
@@ -490,6 +498,38 @@ public sealed class DesignToolSource : IAgentToolSource
             // stand alone inside a srcdoc frame. The file that opens in a browser
             // is the file that was on screen — not an export of it, the same
             // bytes.
+            // PDF is the format people actually send each other, so every medium
+            // that is a document can be one.
+            if (string.Equals(Text(arguments, "as"), "pdf", StringComparison.OrdinalIgnoreCase)
+                && document.Medium is not (DesignMedium.Sound or DesignMedium.Motion))
+            {
+                var pdf = Free(
+                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), stem, ".pdf");
+
+                var wrote = await PdfExport.WriteAsync(
+                    document, pdf, encoder as FfmpegMediaExport, cancellationToken).ConfigureAwait(false);
+
+                return wrote.Ok
+                    ? new AgentToolResult(true, $"Saved to {wrote.Path}.")
+                    : new AgentToolResult(false, string.Empty, wrote.Problem ?? "It could not be saved.");
+            }
+
+            // A deck also saves as a .pptx, because a deck that leaves as a
+            // picture is a deck nobody can change — somebody who needs to fix one
+            // word has to come back and ask.
+            if (document.Medium == DesignMedium.Deck
+                && string.Equals(Text(arguments, "as"), "pptx", StringComparison.OrdinalIgnoreCase))
+            {
+                var deck = Free(
+                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), stem, ".pptx");
+
+                var made = DeckExport.Write(document, deck);
+
+                return made.Ok
+                    ? new AgentToolResult(true, $"Saved to {made.Path}. It opens in PowerPoint and can be edited.")
+                    : new AgentToolResult(false, string.Empty, made.Problem ?? "It could not be saved.");
+            }
+
             if (document.Medium is not (DesignMedium.Sound or DesignMedium.Motion))
             {
                 var page = Free(

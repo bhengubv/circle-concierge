@@ -340,6 +340,55 @@ public sealed class FfmpegMediaExport : IMediaExport
         }
     }
 
+    /// <summary>
+    /// A picture as a JPEG, or null.
+    ///
+    /// For the PDF, which carries a JPEG exactly as it is and cannot take a PNG
+    /// without one of us decoding it. The encoder is already here and already
+    /// knows how, so it does it rather than a second image library arriving for
+    /// one conversion.
+    ///
+    /// Null rather than an exception when it cannot: a picture that will not
+    /// convert costs the picture, and the rest of the document still goes out.
+    /// </summary>
+    public async Task<byte[]?> ToJpegAsync(byte[] picture, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(picture);
+
+        var workspace = Scratch();
+
+        try
+        {
+            var from = System.IO.Path.Combine(workspace, "in");
+            var to = System.IO.Path.Combine(workspace, "out.jpg");
+
+            await File.WriteAllBytesAsync(from, picture, cancellationToken).ConfigureAwait(false);
+
+            // Flattened onto white, because a PDF image has no transparency here
+            // and a PNG with an alpha channel would otherwise come out with black
+            // where it should be clear.
+            var ran = await RunAsync(
+                [
+                    "-y", "-i", from,
+                    "-vf", "scale=trunc(iw/2)*2:trunc(ih/2)*2,format=rgb24",
+                    "-q:v", "3", to,
+                ],
+                cancellationToken).ConfigureAwait(false);
+
+            return ran.Ok && File.Exists(to)
+                ? await File.ReadAllBytesAsync(to, cancellationToken).ConfigureAwait(false)
+                : null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        finally
+        {
+            Sweep(workspace);
+        }
+    }
+
     // ── What the file says it is ──────────────────────────────────────────
 
     /// <summary>
