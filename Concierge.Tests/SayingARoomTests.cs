@@ -139,4 +139,51 @@ public sealed class SayingARoomTests
         Assert.True(heard.Understood);
         Assert.Contains(heard.Document.Nodes.Values, node => node.Kind == DesignNodeKind.Solid);
     }
+
+    /// <summary>
+    /// Looking at a building floor by floor — the one thing a model of a building does that a
+    /// physical model cannot, and it was reachable only by a tool call.
+    /// </summary>
+    [Theory]
+    [InlineData("pull the floors apart", "apart")]
+    [InlineData("show them apart", "apart")]
+    [InlineData("show the whole building", "whole")]
+    [InlineData("show one floor", "one")]
+    [InlineData("show floor 2", "one")]
+    public void A_building_can_be_pulled_apart_by_saying_so(string said, string showing)
+    {
+        var withRoom = Say(ARoom(), "add a room").Document;
+        var heard = Say(withRoom, said);
+
+        Assert.True(heard.Understood, $"'{said}' was not understood");
+
+        var room = DesignMediums.FramesOf(heard.Document)[^1];
+
+        Assert.Equal(showing, room.Props["showing"]);
+    }
+
+    /// <summary>
+    /// And the floor asked for is the floor shown, rather than always the ground one.
+    /// </summary>
+    [Fact]
+    public void And_the_floor_asked_for_is_the_one_shown()
+    {
+        var withRoom = Say(ARoom(), "add a room").Document;
+        var heard = Say(withRoom, "show floor 2");
+
+        Assert.Equal("2", DesignMediums.FramesOf(heard.Document)[^1].Props["only"]);
+    }
+
+    /// <summary>
+    /// With nothing built, it says so rather than going quiet — the same rule as a door with
+    /// no wall.
+    /// </summary>
+    [Fact]
+    public void And_with_no_building_it_says_so()
+    {
+        var heard = Say(ARoom(), "pull the floors apart");
+
+        Assert.False(heard.Understood);
+        Assert.Contains("no building", heard.Reply, StringComparison.OrdinalIgnoreCase);
+    }
 }

@@ -219,6 +219,43 @@ public static class DesignSpeech
                 $"Cut a {opening}");
         }
 
+        // Looking at a building with more than one floor.
+        if (Match(said, Levels) is { } levels)
+        {
+            var rooms = DesignMediums.FramesOf(design);
+
+            if (rooms.Count == 0)
+            {
+                return new DesignHeard(false, design, string.Empty,
+                    "There is no building to look at yet. Say 'add a room' first.");
+            }
+
+            var phrase = levels.Groups["how"].Value.ToLowerInvariant()
+                + " " + levels.Value.ToLowerInvariant();
+
+            var how = phrase.Contains("apart", StringComparison.Ordinal) ? "apart"
+                : phrase.Contains("whole", StringComparison.Ordinal)
+                  || phrase.Contains("together", StringComparison.Ordinal) ? "whole"
+                : "one";
+
+            var room = rooms[^1];
+            var document = design.Set(room.Id, "showing", how);
+
+            if (how == "one")
+            {
+                var which = levels.Groups["which"].Value;
+                document = document.Set(
+                    room.Id, "only", int.TryParse(which, out var floor) ? $"{Math.Max(0, floor)}" : "0");
+            }
+
+            return new DesignHeard(true, document, how switch
+            {
+                "apart" => "Pulled the floors apart",
+                "whole" => "Showed the whole building",
+                _ => "Showed one floor",
+            });
+        }
+
         // Adding something. The workhorse, and the sentence everybody types first.
         if (Match(said, Adding) is { } add)
         {
@@ -294,6 +331,19 @@ public static class DesignSpeech
     private const string Cutting =
         @"^(?:add|put|cut|insert|make)\s+(?:a|an)?\s*(?<opening>door|window)\b"
         + @"(?:\s+(?:in|into|through|to)\b.*)?[.!]?$";
+
+    /// <summary>
+    /// "pull the floors apart", "show one floor", "show the whole building", "show floor 2".
+    ///
+    /// `design_floors` was in the same position as `design_build`: a real capability with no
+    /// sentence that reached it. Pulling a building apart to look at one floor is the one
+    /// thing a model of a building does that a physical model cannot, and it was reachable
+    /// only by a tool call.
+    /// </summary>
+    private const string Levels =
+        @"^(?:show|view|look at|pull|take|put|see)\s+(?:me\s+)?(?:the\s+)?"
+        + @"(?<how>whole building|building|floors apart|apart|them apart|one floor|a floor|floor|level)"
+        + @"(?:\s+(?:apart|together|back together))?(?:\s+(?<which>\d+))?[.!]?$";
 
     private const string Adding =
         @"^(?:add|put|insert|make|create)\s+(?:a|an|some)?\s*(?<thing>title|heading|header|words|text|paragraph|sentence|button|picture|image|photo|screen|panel|box|group|block|solid|shape|cube|sphere|ball|cylinder|column|post|cone|slide|shot|scene|room|track|section)\b(?:\s*(?:that\s+)?(?:saying|says|say|reading|reads|read|with|of|:)\s*(?<words>.+))?$";
