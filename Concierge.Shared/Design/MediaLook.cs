@@ -11,6 +11,16 @@ namespace Concierge.Shared.Design;
 /// <param name="Problem">Why not, when it could not be read.</param>
 public sealed record MediaFacts(bool Ok, double Seconds, string Description, string? Problem);
 
+/// <summary>What a file says about itself. Anything missing is empty rather than guessed.</summary>
+/// <param name="Ok">Whether it said anything at all.</param>
+/// <param name="Title">What the track is called.</param>
+/// <param name="Artist">Who made it.</param>
+/// <param name="Album">What it is on.</param>
+/// <param name="Genre">What kind of thing it is.</param>
+/// <param name="Year">When it came out, or nought.</param>
+public sealed record MediaTags(
+    bool Ok, string Title, string Artist, string Album, string Genre, int Year);
+
 /// <summary>
 /// Letting a model look inside a media file.
 ///
@@ -93,6 +103,94 @@ public sealed class MediaLook
         }
 
         return new MediaFacts(true, seconds, streams.ToString().TrimEnd(), null);
+    }
+
+    /// <summary>
+    /// What a music file says about itself: who made it, what it is on, what it is called.
+    ///
+    /// Read from the same report `FactsAsync` reads, for the same reason — ffmpeg prints the
+    /// file's metadata before it does anything, and a second parser of ours would be one more
+    /// thing to disagree with the encoder about.
+    ///
+    /// Everything is optional and a missing tag is empty rather than guessed. A file with no
+    /// artist is a real and common thing, and inventing one from the filename is how a library
+    /// ends up with an artist called "01 Track".
+    /// </summary>
+    public async Task<MediaTags> TagsAsync(string path, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(path);
+
+        if (!File.Exists(path))
+        {
+            return new MediaTags(false, string.Empty, string.Empty, string.Empty, string.Empty, 0);
+        }
+
+        var (_, said) = await RunAsync(["-hide_banner", "-i", path], cancellationToken).ConfigureAwait(false);
+
+        var tags = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var line in said.Split('\n'))
+        {
+            // "    title           : Wild Is The Wind". Only lines that are indented and
+            // carry a colon, so "Stream #0:0" and "Duration: 00:03:12" are not mistaken for
+            // tags — both of which are in the same block and both of which would otherwise
+            // land in the library as an artist.
+            if (line.Length == 0 || !char.IsWhiteSpace(line[0]))
+            {
+                continue;
+            }
+
+            var at = line.IndexOf(':');
+
+            if (at <= 0)
+            {
+                continue;
+            }
+
+            var key = line[..at].Trim();
+            var value = line[(at + 1)..].Trim();
+
+            if (key.Length == 0 || value.Length == 0 || key.Contains(' ', StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            tags.TryAdd(key, value);
+        }
+
+        var year = tags.TryGetValue("date", out var when) ? YearIn(when) : 0;
+
+        return new MediaTags(
+            tags.Count > 0,
+            Tag(tags, "title"),
+            Tag(tags, "artist", "album_artist"),
+            Tag(tags, "album"),
+            Tag(tags, "genre"),
+            year);
+    }
+
+    private static string Tag(IReadOnlyDictionary<string, string> tags, params string[] names)
+    {
+        foreach (var name in names)
+        {
+            if (tags.TryGetValue(name, out var value) && value.Length > 0)
+            {
+                return value;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    /// <summary>
+    /// A year out of whatever was written. A date tag is "1965", "1965-03-07" or occasionally
+    /// a whole timestamp, and the year is the only part anybody files by.
+    /// </summary>
+    private static int YearIn(string written)
+    {
+        var digits = new string(written.TakeWhile(char.IsDigit).ToArray());
+
+        return digits.Length == 4 && int.TryParse(digits, out var year) ? year : 0;
     }
 
     /// <summary>

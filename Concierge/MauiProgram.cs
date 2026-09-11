@@ -96,6 +96,7 @@ public static class MauiProgram
 			.AddConciergeMediaLook()
 			.AddConciergeTranscription()
 			.AddConciergeCodingTools()
+			.AddConciergeMusicLibrary()
 			.AddMauiDeviceCapabilities()
 			// AddConciergeAi() registers ILlmRuntimeService and the in-process
 			// chat runtime; AddConciergeAiIsolated() then replaces the chat

@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **145 boxes ticked, 18 open, eight
+`main`. What replaces it is the working list: **147 boxes ticked, 16 open, eight
 partial**, ordered so the next person can pick one up.
 
 **Thirty-six of those forty arrived at once**, on 2026-09-11, when the six
@@ -1362,8 +1362,25 @@ lyrics, and one approval-gated fetch from a link. Antra is a library.
 - [ ] Match the exact recording rather than the right title
 - [ ] Choose between clean and explicit versions
 - [ ] Notice high-quality audio and prefer it
-- [ ] File everything into artist and album folders
-- [ ] Spot duplicates already in the library
+- [x] File everything into artist and album folders — `music_filing` says where every track
+      belongs and moves nothing; `music_file` moves them, and asks first with the count and
+      the destination on the card. **Nothing is ever overwritten**: a name already taken gets
+      a number, because two different recordings can genuinely share an artist, an album and
+      a title, and replacing one with the other loses music somebody cannot get back. A track
+      that does not know who made it **stays where it is** rather than going into "Unknown
+      Artist", which is where music goes to be lost.
+- [x] Spot duplicates already in the library — `music_duplicates`, matched on who made it
+      and what it is called rather than on the filename: the same track downloaded twice is
+      "05 Wild Is The Wind.mp3" and "Nina Simone - Wild Is The Wind.m4a", and nothing about
+      those two strings says they are the same thing. A track with no artist or title is
+      **never** called a duplicate — two untagged files would otherwise match each other and
+      the answer would be "everything untagged in your library is the same song", which is
+      the kind of wrong somebody acts on. Antra matches on ISRC, which is exact where it
+      exists, is not in most files, and is not invented here.
+
+      **Nothing deletes a duplicate.** The bigger copy is named first because that is usually
+      the better one, and choosing which to lose is somebody's decision about their own
+      music. 19 tests, the moving ones against real files the encoder made.
 - [ ] Download an artist's whole catalogue
 - [ ] Downloads on a schedule
 - [ ] An audio analyser, podcasts, and peer-to-peer
