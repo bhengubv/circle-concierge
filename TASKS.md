@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **134 boxes ticked, 31 open, three
+`main`. What replaces it is the working list: **136 boxes ticked, 29 open, three
 partial**, ordered so the next person can pick one up.
 
 **Thirty-six of those forty arrived at once**, on 2026-09-11, when the six
@@ -1279,10 +1279,27 @@ there is nothing to take from it short of the model itself.
 
 #### open-design
 
-- [ ] Mobile app designs as their own medium
+- [x] Mobile app designs as their own medium — `Handheld`. A phone screen at 390×844
+      with the two strips nothing may go under drawn as hatched bands, and the line a
+      thumb reaches drawn across it. **Its own medium rather than a page drawn narrow**,
+      because the difference that matters is not the width: a design that looks fine at
+      1200px and falls apart at 390 is the commonest thing to get wrong, and nobody
+      finds out until it is built. No device frame, no bezel, no fake battery — those
+      make a mock-up look finished and tell nobody anything.
 - [ ] Image generation
 - [ ] Animated motion graphics
-- [ ] Live dashboards that update themselves
+- [x] Live dashboards that update themselves — `Board`. A small name, an enormous
+      number, and which way it is moving as an arrow (▲▼▬) rather than a colour alone,
+      because a board is read at a glance by whoever is walking past and colour says
+      nothing to somebody who cannot tell red from green. **No chart, and that is the
+      decision this renderer turns on**: a line going up is what every dashboard reaches
+      for and almost nobody reads. A panel with no number shows a labelled blank —
+      open-design's own rule, adopted unchanged, that an invented metric is slop the
+      moment it is invented.
+
+      What makes it *live* is where the numbers come from, which is the agent's job and
+      not the renderer's: `design_panel` sets a panel, and writes only the fields
+      actually given, so updating the number does not wipe the note.
 - [ ] 298 design guides. Concierge has six looks with briefs.
 - [ ] Plug into the other coding tools, the way it reaches sixteen of them
 

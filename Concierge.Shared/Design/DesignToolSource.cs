@@ -125,6 +125,7 @@ public sealed class DesignToolSource : IAgentToolSource
                 new HangItOn(_workbench),
                 new LayAPlan(_workbench),
                 new FurnishTheRoom(_workbench),
+                new SetAPanel(_workbench),
                 .. _workbench.Web is null || _workbench.Approval is null
                     ? Array.Empty<IAgentTool>()
                     : [new BringASoundIn(_workbench)],
@@ -1779,6 +1780,95 @@ public sealed class DesignToolSource : IAgentToolSource
             session.Record(document, $"Put in a {found.Name}");
 
             return Task.FromResult(new AgentToolResult(true, $"Put a {found.Name} in the room."));
+        }
+    }
+
+    /// <summary>
+    /// What a panel on a board says.
+    ///
+    /// A number, which way it is moving, and a line of context. **The blank is the
+    /// point when there is no number** — open-design's own rule, adopted here
+    /// unchanged: an invented metric is slop the moment it is invented, and "10×
+    /// faster" or "99.9% uptime" with nothing behind it is the same defect as an
+    /// approvals badge that always said two.
+    ///
+    /// What makes a board *live* is where the numbers come from, which is the
+    /// agent's job: it reads a file, runs a command, fetches a page, and sets the
+    /// panel. This is the setting.
+    /// </summary>
+    private sealed class SetAPanel(DesignWorkbench workbench) : IAgentTool
+    {
+        public string Name => "design_panel";
+
+        public string Description =>
+            "Set what a panel on a board shows: the number, which way it is moving, and a note. "
+            + "Leave the number out and it shows a blank rather than something made up.";
+
+        public JsonNode? ArgumentsSchema => new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject
+            {
+                ["id"] = new JsonObject { ["type"] = "string", ["description"] = "Which panel." },
+                ["value"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["description"] = "The number, as it should read. Leave out for a blank.",
+                },
+                ["change"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["description"] = "Which way it is moving — \"+12%\", \"-3\", \"steady\".",
+                },
+                ["note"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["description"] = "A line of context under it.",
+                },
+            },
+            ["required"] = new JsonArray("id"),
+        };
+
+        public bool IsReadOnly => false;
+
+        public Task<AgentToolResult> InvokeAsync(
+            JsonNode? arguments, CancellationToken cancellationToken = default)
+        {
+            if (workbench.Session is not { } session)
+            {
+                return Task.FromResult(NoCanvas());
+            }
+
+            var id = Text(arguments, "id");
+
+            if (session.Current.Find(id) is null)
+            {
+                return Task.FromResult(new AgentToolResult(
+                    false, string.Empty, $"There is nothing called {id} on the canvas."));
+            }
+
+            var document = session.Current;
+
+            foreach (var field in new[] { "value", "change", "note" })
+            {
+                // Only what was actually said. Writing an empty string for a field
+                // nobody mentioned would quietly wipe the note every time somebody
+                // updated the number.
+                if (arguments?[field] is not null)
+                {
+                    document = document.Set(id, field, Text(arguments, field));
+                }
+            }
+
+            session.Record(document, "Set the panel");
+
+            var value = Text(arguments, "value");
+
+            return Task.FromResult(new AgentToolResult(
+                true,
+                value.Length > 0
+                    ? $"That panel reads {value}."
+                    : "That panel shows a blank, which is right when there is no number."));
         }
     }
 

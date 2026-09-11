@@ -217,7 +217,7 @@ public static class DesignSpeech
     /// syntax, which is the thing this surface exists to avoid.
     /// </summary>
     private const string Adding =
-        @"^(?:add|put|insert|make|create)\s+(?:a|an|some)?\s*(?<thing>title|heading|header|words|text|paragraph|sentence|button|picture|image|photo|box|group|block|solid|shape|cube|sphere|ball|cylinder|column|post|cone|slide|shot|scene|room|track|section)\b(?:\s*(?:that\s+)?(?:saying|says|say|reading|reads|read|with|of|:)\s*(?<words>.+))?$";
+        @"^(?:add|put|insert|make|create)\s+(?:a|an|some)?\s*(?<thing>title|heading|header|words|text|paragraph|sentence|button|picture|image|photo|screen|panel|box|group|block|solid|shape|cube|sphere|ball|cylinder|column|post|cone|slide|shot|scene|room|track|section)\b(?:\s*(?:that\s+)?(?:saying|says|say|reading|reads|read|with|of|:)\s*(?<words>.+))?$";
 
     /// <summary>
     /// "the artist is Nina Simone", "the album is called Wild Is The Wind", "it
@@ -245,7 +245,8 @@ public static class DesignSpeech
         "box" or "group" => DesignNodeKind.Box,
         "block" or "solid" or "shape" or "cube" or "sphere" or "ball"
             or "cylinder" or "column" or "post" or "cone" => DesignNodeKind.Solid,
-        "slide" or "shot" or "scene" or "room" or "track" or "section" => DesignNodeKind.Frame,
+        "slide" or "shot" or "scene" or "room" or "track" or "section"
+            or "screen" or "panel" => DesignNodeKind.Frame,
         _ => DesignNodeKind.Text,
     };
 
