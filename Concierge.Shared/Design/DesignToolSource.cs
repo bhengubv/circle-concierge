@@ -1766,31 +1766,19 @@ public sealed class DesignToolSource : IAgentToolSource
                     + string.Join(", ", catalogue.Things.Select(thing => thing.Name)) + "."));
             }
 
+            // Room first, then the document — `Room` makes one when there is none, and reading
+            // `session.Current` in the same argument list would read it before that happened.
+            // C# evaluates arguments left to right, so the room was created and then built on
+            // top of the document from before it existed.
             var room = Room(session);
-            var x = (int)(Amount(arguments, "x") ?? 0);
-            var y = (int)(Amount(arguments, "y") ?? 0);
 
-            // The thing itself carries nothing to draw; its pieces do. That keeps
-            // moving it and undoing it as one act rather than several.
-            var thing = DesignNode.New(
-                DesignNodeKind.Box, room, ("text", found.Name), ("x", x.ToString(Culture)), ("y", y.ToString(Culture)));
-
-            var document = session.Current.Add(thing);
-
-            foreach (var part in found.Parts)
-            {
-                document = document.Add(DesignNode.New(
-                    DesignNodeKind.Solid,
-                    room,
-                    ("text", found.Name),
-                    ("shape", string.IsNullOrWhiteSpace(part.Shape) ? "box" : part.Shape),
-                    ("width", Math.Max(1, part.Width).ToString(Culture)),
-                    ("depth", Math.Max(1, part.Depth).ToString(Culture)),
-                    ("height", Math.Max(1, part.Height).ToString(Culture)),
-                    ("x", (x + part.X).ToString(Culture)),
-                    ("y", (y + part.Y).ToString(Culture)),
-                    ("sill", Math.Max(0, part.Sill).ToString(Culture))));
-            }
+            // Placed by RoomPieces so a said desk and a tool-placed desk are one desk.
+            var document = RoomPieces.Furnish(
+                session.Current,
+                room,
+                found,
+                Amount(arguments, "x"),
+                Amount(arguments, "y"));
 
             session.Record(document, $"Put in a {found.Name}");
 

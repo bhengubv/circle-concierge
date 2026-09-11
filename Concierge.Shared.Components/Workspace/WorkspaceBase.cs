@@ -942,7 +942,11 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         }
 
         var said = _composerText;
-        var heard = Concierge.Shared.Design.DesignSpeech.Hear(_design.Current, said, _design.Selected);
+        // The catalogue goes with it, so "add a desk" works by saying it rather than only by a
+        // model calling design_furnish. It is whatever the workbench holds, which is the same
+        // one the tool uses — a second catalogue would be a second answer to "what is there".
+        var heard = Concierge.Shared.Design.DesignSpeech.Hear(
+            _design.Current, said, _design.Selected, Workbench?.Catalogue);
 
         if (heard.Understood)
         {

@@ -49,7 +49,14 @@ public static class DesignSpeech
     /// bigger" mean anything — pointing supplies the subject, so the sentence does
     /// not have to describe which part it means.
     /// </param>
-    public static DesignHeard Hear(DesignDocument design, string? sentence, string? pointedAt)
+    /// <param name="catalogue">
+    /// What a room may be furnished with, when there is one. Optional because this class is
+    /// otherwise pure — it takes a document and a sentence and hands back a document — and
+    /// furniture is the one thing in the vocabulary that has to be read off disk. A host that
+    /// passes nothing simply cannot say "add a desk"; nothing else changes.
+    /// </param>
+    public static DesignHeard Hear(
+        DesignDocument design, string? sentence, string? pointedAt, RoomCatalogue? catalogue = null)
     {
         ArgumentNullException.ThrowIfNull(design);
 
@@ -61,7 +68,7 @@ public static class DesignSpeech
 
         try
         {
-            return Read(design, said, pointedAt);
+            return Read(design, said, pointedAt, catalogue);
         }
         catch (RegexMatchTimeoutException)
         {
@@ -69,7 +76,8 @@ public static class DesignSpeech
         }
     }
 
-    private static DesignHeard Read(DesignDocument design, string said, string? pointedAt)
+    private static DesignHeard Read(
+        DesignDocument design, string said, string? pointedAt, RoomCatalogue? catalogue)
     {
         // Start again. First, because "start again" contains words that would
         // otherwise be read as an instruction to add something.
@@ -292,6 +300,44 @@ public static class DesignSpeech
             return new DesignHeard(true, design.Add(node), $"Added a {NameFor(kind, design.Medium)}");
         }
 
+        // Furniture comes last, and that ordering is the whole of it. This pattern matches
+        // almost any noun, so in front of the branch above it swallowed "add a sphere" and
+        // every other word the canvas already knew — nine tests went red at once saying so.
+        // Known nouns win; the catalogue only gets what nothing else claimed.
+        if (Match(said, Furnishing) is { } furnish)
+        {
+            var what = Clean(furnish.Groups["what"].Value);
+
+            if (design.Medium != DesignMedium.Scene)
+            {
+                return new DesignHeard(false, design, string.Empty,
+                    "Furniture goes in a room. Say 'space' first.");
+            }
+
+            // No catalogue is not the same as nothing called that, and the two must not both
+            // come back as silence. A host with no catalogue wired says so.
+            if (catalogue is null)
+            {
+                return new DesignHeard(false, design, string.Empty,
+                    "Nothing is set up to furnish a room on this device.");
+            }
+
+            if (catalogue.Find(what) is not { } thing)
+            {
+                // The list comes back with the refusal: somebody who guessed once will guess
+                // again otherwise, and the whole catalogue is a handful of names.
+                return new DesignHeard(false, design, string.Empty,
+                    $"There is nothing called {what}. There is: "
+                    + string.Join(", ", catalogue.Things.Select(item => item.Name)) + ".");
+            }
+
+            return new DesignHeard(
+                true,
+                RoomPieces.Furnish(design, ParentFor(design, DesignNodeKind.Solid), thing),
+                $"Put in a {thing.Name}");
+        }
+
+
         return Puzzled(design);
     }
 
@@ -344,6 +390,22 @@ public static class DesignSpeech
         @"^(?:show|view|look at|pull|take|put|see)\s+(?:me\s+)?(?:the\s+)?"
         + @"(?<how>whole building|building|floors apart|apart|them apart|one floor|a floor|floor|level)"
         + @"(?:\s+(?:apart|together|back together))?(?:\s+(?<which>\d+))?[.!]?$";
+
+    /// <summary>
+    /// "add a desk", "put in a chair", "put a lamp in the room".
+    ///
+    /// The catalogue decides what the words may be, not this file — `shapes.json` is the
+    /// half of Pascal's plugin idea that is safe to have, and a name somebody adds to it
+    /// should be sayable the same day without a code change. So this matches a name loosely
+    /// and lets the catalogue refuse it, rather than listing the furniture here and going out
+    /// of date the first time anybody adds a wardrobe.
+    ///
+    /// Deliberately narrow on the verb side — "put in", "add", "put" — because a pattern that
+    /// swallowed every unknown noun would stop anything ever reaching a model.
+    /// </summary>
+    private const string Furnishing =
+        @"^(?:add|put in|put|place|bring in)\s+(?:a|an|the|some)?\s*(?<what>[a-z][a-z \-]{1,28}?)"
+        + @"(?:\s+(?:in|into|to)(?:\s+the)?(?:\s+room)?)?[.!]?$";
 
     private const string Adding =
         @"^(?:add|put|insert|make|create)\s+(?:a|an|some)?\s*(?<thing>title|heading|header|words|text|paragraph|sentence|button|picture|image|photo|screen|panel|box|group|block|solid|shape|cube|sphere|ball|cylinder|column|post|cone|slide|shot|scene|room|track|section)\b(?:\s*(?:that\s+)?(?:saying|says|say|reading|reads|read|with|of|:)\s*(?<words>.+))?$";

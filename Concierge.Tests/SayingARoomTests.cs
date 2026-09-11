@@ -186,4 +186,124 @@ public sealed class SayingARoomTests
         Assert.False(heard.Understood);
         Assert.Contains("no building", heard.Reply, StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>
+    /// Furniture by name, from the catalogue anybody can add to.
+    ///
+    /// `design_furnish` was reachable only by a model, and "add a desk" is about the most
+    /// natural sentence there is in a room. The catalogue decides the words rather than this
+    /// file, so a name added to `shapes.json` is sayable the same day with no code change —
+    /// which is the whole point of the file existing.
+    /// </summary>
+    [Theory]
+    [InlineData("add a desk")]
+    [InlineData("put in a chair")]
+    [InlineData("put a lamp in the room")]
+    public void Furniture_can_be_asked_for_by_name(string said)
+    {
+        var heard = DesignSpeech.Hear(ARoom(), said, null, Catalogue());
+
+        Assert.True(heard.Understood, $"'{said}' was not understood");
+        Assert.Contains(heard.Document.Nodes.Values, node => node.Kind == DesignNodeKind.Solid);
+    }
+
+    /// <summary>
+    /// A said desk is the desk the tool places — same parts, same sizes.
+    /// </summary>
+    [Fact]
+    public void And_a_said_desk_is_the_desk_the_tool_places()
+    {
+        var said = DesignSpeech.Hear(ARoom(), "add a desk", null, Catalogue()).Document;
+        var built = RoomPieces.Furnish(ARoom(), null, Catalogue().Find("desk")!);
+
+        Assert.Equal(built.Nodes.Count, said.Nodes.Count);
+    }
+
+    /// <summary>
+    /// Something the catalogue has never heard of comes back with the list, because somebody
+    /// who guessed once will guess again — and the whole catalogue is a handful of names.
+    /// </summary>
+    [Fact]
+    public void And_something_that_is_not_in_it_is_told_what_is()
+    {
+        var heard = DesignSpeech.Hear(ARoom(), "add a harpsichord", null, Catalogue());
+
+        Assert.False(heard.Understood);
+        Assert.Contains("desk", heard.Reply, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// And with no catalogue wired at all it says that instead — a host that cannot furnish a
+    /// room and a room with no such furniture are different facts.
+    /// </summary>
+    [Fact]
+    public void And_no_catalogue_at_all_is_a_different_answer()
+    {
+        var heard = DesignSpeech.Hear(ARoom(), "add a desk", null);
+
+        Assert.False(heard.Understood);
+        Assert.Contains("Nothing is set up", heard.Reply, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The catalogue must never swallow a word the canvas already knows. Putting the
+    /// furniture branch in front of the noun list turned "add a sphere" into "there is
+    /// nothing called sphere" and took nine tests red at once.
+    /// </summary>
+    [Theory]
+    [InlineData("add a sphere")]
+    [InlineData("add a box")]
+    [InlineData("add a wall")]
+    public void And_known_words_still_win_over_the_catalogue(string said)
+    {
+        var heard = DesignSpeech.Hear(ARoom(), said, null, Catalogue());
+
+        Assert.True(heard.Understood, $"'{said}' was not understood");
+        Assert.DoesNotContain("nothing called", heard.Reply ?? string.Empty, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>The shipped catalogue, read from where the app reads it.</summary>
+    private static RoomCatalogue Catalogue()
+        => new(Path.Combine(Path.GetTempPath(), $"shapes-{Guid.NewGuid():N}.json"));
+
+    /// <summary>
+    /// Two pieces of furniture do not stand in the same place.
+    ///
+    /// **Watched this happen on the desktop head**: a desk, a chair and a lamp said one after
+    /// another all landed at the middle of the floor, inside one another, and the room looked
+    /// as though only the last had been added. The same defect `DesignSpeech.Standing` was
+    /// written for, arriving a second time through a different door — which is what happens
+    /// when a layout rule lives in one of two places that both place things.
+    /// </summary>
+    [Fact]
+    public void Two_things_put_in_a_room_do_not_stand_in_the_same_place()
+    {
+        var catalogue = Catalogue();
+
+        var one = DesignSpeech.Hear(ARoom(), "add a desk", null, catalogue).Document;
+        var two = DesignSpeech.Hear(one, "add a chair", null, catalogue).Document;
+
+        var spots = two.Nodes.Values
+            .Where(node => node.Kind == DesignNodeKind.Box)
+            .Select(node => (node.Props["x"], node.Props["y"]))
+            .ToList();
+
+        Assert.Equal(2, spots.Count);
+        Assert.Equal(2, spots.Distinct().Count());
+    }
+
+    /// <summary>
+    /// And a tool that says exactly where still gets exactly there — the arrangement is for
+    /// when nobody said, not instead of what somebody said.
+    /// </summary>
+    [Fact]
+    public void And_a_place_that_was_asked_for_is_still_the_place()
+    {
+        var placed = RoomPieces.Furnish(ARoom(), null, Catalogue().Find("desk")!, 42, 7);
+
+        var thing = placed.Nodes.Values.Single(node => node.Kind == DesignNodeKind.Box);
+
+        Assert.Equal("42", thing.Props["x"]);
+        Assert.Equal("7", thing.Props["y"]);
+    }
 }
