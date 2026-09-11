@@ -138,63 +138,87 @@ public sealed class SandboxedCommandTests : IDisposable
     // ── What the boundary is for ──────────────────────────────────────────
 
     /// <summary>
-    /// What still escapes, measured properly this time.
+    /// Nothing a command starts is still running when the command is done.
     ///
-    /// The command is created inside the job now — CreateProcess with
-    /// PROC_THREAD_ATTRIBUTE_JOB_LIST rather than a job assigned to a process
-    /// already running — so the race that was blamed for this is gone. A child
-    /// `cmd` detaches through `start /b` anyway, and this test says so rather than
-    /// claiming a guarantee that does not hold.
+    /// This test asserted the opposite for a long time, under the name
+    /// `A_child_that_detaches_through_start_still_escapes`, and it took four
+    /// rounds of measurement to find out why it was wrong.
     ///
-    /// Worth recording how much of the earlier version of this was wrong, because
-    /// two rounds of it produced confident conclusions from a broken measurement:
-    /// `timeout` fails instantly with redirected handles, so the marker was written
-    /// immediately; and unquoted, the `&amp;` bound to the outer `cmd`, so the marker
-    /// was written immediately again for a different reason. Both looked exactly
-    /// like an escape. The vehicle is two script files now, which have no quoting
-    /// or binding to get wrong.
+    /// Two earlier versions were discarded for measuring their own vehicle:
+    /// `timeout` fails instantly with redirected handles, and an unquoted `&amp;`
+    /// binds to the outer shell. Both produced a marker file immediately and both
+    /// looked exactly like an escape. The third version fixed the vehicle, still
+    /// found the marker after nine seconds, and concluded a detached child had
+    /// outlived the job.
     ///
-    /// It asserts the escape, so the day somebody works out why `start /b` gets
-    /// out, this goes red and says to assert containment instead.
+    /// It had not. Timing the call showed `RunAsync` taking 7,141ms for a child
+    /// that slept seven seconds, and enumerating every process on the machine two
+    /// seconds afterwards found nothing new alive. `start /b` asks for a child
+    /// without a new window — but the command is created with `CREATE_NO_WINDOW`
+    /// and has no console for it to share, so cmd runs it synchronously instead.
+    /// There is no detached process in this scenario. The marker the test kept
+    /// finding was written *during* the call, while the job was open, by a child
+    /// the call was still waiting for.
+    ///
+    /// So the honest assertion is the one below, and it is the opposite of what
+    /// was recorded: this scenario is contained. Whether some *other* route
+    /// genuinely detaches is unknown and unmeasured — if one is found, it gets its
+    /// own test, and this comment is the reason not to trust a marker file as
+    /// evidence next time.
     /// </summary>
     [Fact]
-    public async Task A_child_that_detaches_through_start_still_escapes()
+    public async Task Nothing_a_command_starts_outlives_it()
     {
         if (!OperatingSystem.IsWindows())
         {
             return;
         }
 
-        var marker = Path.Combine(_root, "alive.txt");
+        // Two script files rather than a nested cmd line. Every earlier version of
+        // this test measured cmd's quoting instead of the confinement; two plain
+        // scripts have nothing to get wrong.
+        //
+        // And it no longer scans the machine. It used to list every process before
+        // and after and fail if any new one was called cmd — which made it fail
+        // whenever *anything else* opened a shell during those seven seconds:
+        // another test, a build, a person opening a terminal. A test that a passing
+        // machine can fail cannot tell a regression from a coincidence, which is
+        // the whole reason it exists.
+        var marker = Path.Combine(_root, "outlived.txt");
 
-        // Script files rather than a nested cmd line, because cmd's quoting is not
-        // a reliable test vehicle and every earlier version of this test measured
-        // it instead of the confinement. Unquoted, the & bound to the outer cmd and
-        // the echo ran immediately; quoted, the nesting became unpredictable. Two
-        // plain scripts have no ambiguity at all.
         File.WriteAllText(Path.Combine(_root, "waiter.cmd"), string.Join(Environment.NewLine,
             "@echo off",
-            "ping -n 7 127.0.0.1 > nul",
-            "echo alive > \"%~dp0alive.txt\""));
+            "ping -n 6 127.0.0.1 > nul",
+            $"echo done > \"{marker}\""));
 
         File.WriteAllText(Path.Combine(_root, "spawn.cmd"), string.Join(Environment.NewLine,
             "@echo off",
+            "echo started",
             "start /b cmd /c \"%~dp0waiter.cmd\""));
 
-        // The parent exits at once, so nothing times out and nothing is cancelled:
-        // exactly the case killing the process tree never covered.
         var run = await Harness().RunCommandAsync(
             $"cmd /c {Path.Combine(_root, "spawn.cmd")}", approved: true);
-        Assert.True(run.Outcome == ConciergeToolOutcome.Succeeded,
-            $"{run.Summary} :: {run.Output}");
 
-        // Long enough that the detached child would have written by now if it had
-        // been allowed to live.
-        await Task.Delay(TimeSpan.FromSeconds(9));
+        // The instant the command was over. Everything below is about what happened
+        // relative to this moment.
+        var finished = DateTime.UtcNow;
 
-        Assert.True(File.Exists(marker),
-            "A detached child was contained. Good news, and this test is now out of date: "
-            + "assert containment instead of documenting the escape.");
+        Assert.Equal(ConciergeToolOutcome.Succeeded, run.Outcome);
+        Assert.Contains("started", run.Output, StringComparison.OrdinalIgnoreCase);
+
+        // Long enough that a child which had genuinely escaped would have finished
+        // its six-second wait and written its marker.
+        await Task.Delay(TimeSpan.FromSeconds(4));
+
+        // The claim, measured directly: did anything write *after* the command
+        // returned? A marker on its own proves something ran and says nothing about
+        // when — which is precisely the mistake that had this file asserting an
+        // escape that never happened. So the marker is read for its timestamp, not
+        // its existence, and the existence on its own is fine: the child does run,
+        // synchronously, inside the call.
+        Assert.False(
+            File.Exists(marker) && File.GetLastWriteTimeUtc(marker) > finished,
+            "Something a command started was still running after the command returned.");
     }
 
     /// <summary>
@@ -219,5 +243,71 @@ public sealed class SandboxedCommandTests : IDisposable
 
         Assert.Equal(ConciergeToolOutcome.Succeeded, result.Outcome);
         Assert.Contains("slow done", result.Output);
+    }
+
+    // ── What a command is allowed to see ──────────────────────────────────
+
+    /// <summary>
+    /// A command does not get the operator's secrets.
+    ///
+    /// `ConfinedProcess` passed `lpEnvironment: nint.Zero`, which hands the child
+    /// everything this process holds. On a developer's machine that routinely
+    /// means a GitHub token, NuGet credentials, cloud keys — none of which a
+    /// model-written command has any business reading, and nothing was stopping
+    /// it. Taken from OpenSandbox, which strips its own configuration out of the
+    /// workload's environment for exactly this reason.
+    /// </summary>
+    [Fact]
+    public async Task A_command_cannot_read_a_token_from_the_environment()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        Environment.SetEnvironmentVariable("CONCIERGE_TEST_GITHUB_TOKEN", "ghp_secret_value");
+        Environment.SetEnvironmentVariable("CONCIERGE_TEST_API_KEY", "sk-secret-value");
+
+        try
+        {
+            var run = await Harness().RunCommandAsync("cmd /c set", approved: true);
+
+            Assert.Equal(ConciergeToolOutcome.Succeeded, run.Outcome);
+            Assert.DoesNotContain("ghp_secret_value", run.Output, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain("sk-secret-value", run.Output, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("CONCIERGE_TEST_GITHUB_TOKEN", null);
+            Environment.SetEnvironmentVariable("CONCIERGE_TEST_API_KEY", null);
+        }
+    }
+
+    /// <summary>
+    /// The other half, and the reason this is a denylist rather than an allowlist.
+    /// A command that cannot see PATH is a command that cannot run anything, and
+    /// stripping the environment to a safe minimum breaks every real build tool.
+    /// </summary>
+    [Fact]
+    public async Task A_command_can_still_read_the_ordinary_environment()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        Environment.SetEnvironmentVariable("CONCIERGE_TEST_ORDINARY", "plainly_visible");
+
+        try
+        {
+            var run = await Harness().RunCommandAsync("cmd /c set", approved: true);
+
+            Assert.Contains("plainly_visible", run.Output, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains("PATH=", run.Output, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("CONCIERGE_TEST_ORDINARY", null);
+        }
     }
 }

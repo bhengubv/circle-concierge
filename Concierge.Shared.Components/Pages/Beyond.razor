@@ -53,7 +53,7 @@
             </div>
             @if (!_allCapabilities && snapshot.Capabilities.Count > 3)
             {
-                <button class="ws-more" type="button" @onclick="@(() => _allCapabilities = true)" @onpointerup="@(() => _allCapabilities = true)">
+                <button class="ws-more" type="button" @onclick="@(() => _allCapabilities = true)">
                     Show all @snapshot.Capabilities.Count
                 </button>
             }

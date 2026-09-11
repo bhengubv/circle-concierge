@@ -50,7 +50,7 @@
             </div>
             @if (!_all && tasks.Count > 5)
             {
-                <button class="ws-more" type="button" @onclick="@(() => _all = true)" @onpointerup="@(() => _all = true)">
+                <button class="ws-more" type="button" @onclick="@(() => _all = true)">
                     Show all @tasks.Count
                 </button>
             }

@@ -152,8 +152,15 @@ public sealed class WorkspaceThreadTests : BunitContext
 
         cut.Find("button.chip").Click();
 
-        Assert.Equal("true", cut.Find("button.chip").GetAttribute("aria-expanded"));
-        Assert.Contains("the detailed output nobody wants by default", cut.Find("pre.chip-out").TextContent);
+        // Waited for on this side too. Only the *first* render was waited for, and
+        // the one after the click was read straight away — so the test held for a
+        // race it had already been fixed for once, three lines further down. Under
+        // load it failed here instead, which read as a different bug.
+        cut.WaitForAssertion(() =>
+            Assert.Equal("true", cut.Find("button.chip").GetAttribute("aria-expanded")));
+
+        cut.WaitForAssertion(() => Assert.Contains(
+            "the detailed output nobody wants by default", cut.Find("pre.chip-out").TextContent));
     }
 
     /// <summary>

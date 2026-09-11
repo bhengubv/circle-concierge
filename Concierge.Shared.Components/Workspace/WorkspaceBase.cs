@@ -32,6 +32,32 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     [Inject] protected IEnumerable<IChatRuntime> Runtimes { get; set; } = default!;
     [Inject] protected IEnumerable<Concierge.Shared.Media.IImageRuntime> ImageRuntimes { get; set; } = default!;
     [Inject] protected IAgentToolRegistry Tools { get; set; } = default!;
+
+    /// <summary>
+    /// Everything in the container, so genuinely optional services can be asked
+    /// for rather than demanded.
+    /// </summary>
+    [Inject] protected IServiceProvider Services { get; set; } = default!;
+
+    /// <summary>
+    /// The seam between the canvas on screen and the design tools, when a head
+    /// has one.
+    ///
+    /// Resolved rather than injected, and that distinction cost 76 tests. A
+    /// nullable `[Inject]` property is not optional — Blazor throws when the
+    /// service is missing whether or not the type says `?` — so annotating it and
+    /// writing "optional" in the comment produced a workspace that could not
+    /// render at all on any head that had not registered it. Which was the same
+    /// defect this seam was built to fix: a comment describing behaviour that did
+    /// not exist.
+    ///
+    /// `GetService` returns null, which is what optional actually looks like. A
+    /// head without design tools keeps its canvas working without a model, which
+    /// is what it was built to do, and simply offers the model nothing.
+    /// </summary>
+    protected Concierge.Shared.Design.DesignWorkbench? Workbench
+        => Services.GetService(typeof(Concierge.Shared.Design.DesignWorkbench))
+            as Concierge.Shared.Design.DesignWorkbench;
     [Inject] protected Concierge.Shared.Tools.IToolCallScheduler ToolScheduler { get; set; } = default!;
     [Inject] protected Concierge.Shared.Tools.IRepeatToolReminder RepeatReminder { get; set; } = default!;
     [Inject] protected Concierge.Shared.Context.IToolResultPruner ResultPruner { get; set; } = default!;
@@ -95,6 +121,17 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     }
 
     protected List<IChatRuntime> _orderedRuntimes = new();
+
+    /// <summary>
+    /// Which order to try the alternatives in, and what has failed lately.
+    ///
+    /// Lives for as long as the workspace does, because the whole value is
+    /// remembering across turns: a provider that fell over on the last message
+    /// should not be first on this one. Held here rather than injected because
+    /// the memory is per-person-at-a-screen, which is exactly this component's
+    /// lifetime.
+    /// </summary>
+    private readonly Concierge.Shared.Chat.RuntimeResolver _resolver = new();
 
     /// <summary>
     /// Which runtime actually answered the turn in flight, and what failed first.
@@ -866,11 +903,15 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     /// between something that feels like a pen and something that feels like a
     /// form. A model still handles everything this cannot.
     /// </summary>
-    protected void SayToTheCanvas()
+    /// <returns>
+    /// True when the canvas dealt with it. False means the words are still in the
+    /// box and belong to the model.
+    /// </returns>
+    protected bool SayToTheCanvas()
     {
         if (!_designOpen || _design is null || string.IsNullOrWhiteSpace(_composerText))
         {
-            return;
+            return false;
         }
 
         var said = _composerText;
@@ -881,15 +922,76 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
             _design.Record(heard.Document, heard.What);
             _composerText = string.Empty;
             _composerHint = heard.What;
-        }
-        else
-        {
-            // The words are left in the box. Somebody who was misunderstood wants
-            // to fix what they said, not type it again.
-            _composerHint = heard.Reply;
+            StateHasChanged();
+            return true;
         }
 
+        // Not understood here, so it goes to the model with the design tools in
+        // its hand. The words stay in the box until the send path clears them,
+        // because somebody who was misunderstood wants to fix what they said
+        // rather than type it again.
         StateHasChanged();
+        return false;
+    }
+
+    /// <summary>
+    /// Puts back whatever was on the canvas when it was last closed.
+    ///
+    /// Only the design comes back, not the thirty moments of history behind it —
+    /// writing all of them on every keystroke would turn a canvas into a disk
+    /// benchmark. So going back stops at the moment the app opened, and that is
+    /// worth being straight about rather than letting somebody discover it by
+    /// pressing back one too many times.
+    /// </summary>
+    private async Task RestoreTheCanvasAsync()
+    {
+        if (Services.GetService(typeof(Concierge.Shared.Design.IDesignStore))
+            is not Concierge.Shared.Design.IDesignStore store || _design is null)
+        {
+            return;
+        }
+
+        var restored = await store.LoadAsync();
+
+        if (restored.Document is { } document)
+        {
+            _design.Record(document, "Back as you left it");
+        }
+        else if (restored.Problem is { } problem)
+        {
+            // Said rather than swallowed. A canvas that silently opens blank when
+            // there was a saved design is the worst of both — the work looks lost
+            // and nothing explains why.
+            _composerHint = problem;
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>
+    /// Keeps the canvas as it stands.
+    ///
+    /// Failure is shown rather than swallowed. A design that is not being saved
+    /// while somebody keeps working on it is exactly the situation where silence
+    /// costs the most.
+    /// </summary>
+    private async Task KeepTheCanvasAsync()
+    {
+        if (Services.GetService(typeof(Concierge.Shared.Design.IDesignStore))
+            is not Concierge.Shared.Design.IDesignStore store || _design is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await store.SaveAsync(_design.Current);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            _composerHint = $"The design could not be saved: {error.Message}";
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     protected void ToggleDesign()
@@ -898,7 +1000,48 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
         // Made on first opening and kept for the life of the workspace. Closing
         // puts the canvas away; it does not throw away what is on it.
-        _design ??= new Concierge.Shared.Design.DesignSession();
+        if (_design is null)
+        {
+            _design = new Concierge.Shared.Design.DesignSession();
+
+            // Whatever was on it last time. Fire-and-forget rather than awaited:
+            // the canvas has to appear the instant it is asked for, and a design
+            // arriving a moment later is better than a surface that hesitates.
+            _ = RestoreTheCanvasAsync();
+
+            // Saved as it changes. Subscribed once, here, rather than at each
+            // place that records a change — there are three of those now (typed
+            // sentences, the tools, going back) and a fourth would forget.
+            _design.Changed += (_, _) => _ = KeepTheCanvasAsync();
+        }
+
+        // Hand the canvas to the tool source, or take it back. This is what makes
+        // the design tools appear in the catalogue while a canvas is open and
+        // vanish when it is not — a model offered design_add against a chat would
+        // use it, and report a heading added to something nobody can see.
+        if (Workbench is not null)
+        {
+            if (_designOpen)
+            {
+                Workbench.Attach(_design);
+
+                // Handed over with the canvas, so the tools can say what the last
+                // few looked like. Optional: a head without one keeps its canvas
+                // and simply says nothing about variety.
+                Workbench.Log = Services.GetService(typeof(Concierge.Shared.Design.IDesignLog))
+                    as Concierge.Shared.Design.IDesignLog;
+
+                // And what turns the design into a file. Optional in the same way:
+                // a machine with no encoder is not offered design_save at all,
+                // rather than offered one that always fails.
+                Workbench.Export = Services.GetService(typeof(Concierge.Shared.Design.IMediaExport))
+                    as Concierge.Shared.Design.IMediaExport;
+            }
+            else
+            {
+                Workbench.Detach();
+            }
+        }
 
         // The invitation lives in the placeholder now, so repeating it here would
         // say the same sentence twice under one box. The hint is for what just
@@ -909,11 +1052,18 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
     protected async Task SendAsync()
     {
-        // With the canvas open, a sentence is an instruction to it. The composer
-        // is the same composer; only where the words go changes.
-        if (_designOpen)
+        // With the canvas open, an ordinary sentence is an instruction to it and
+        // is applied here, instantly. Anything the canvas cannot work out falls
+        // through to the model, which has the design tools.
+        //
+        // It used to return unconditionally. A sentence the canvas did not
+        // understand became a hint under the box and went nowhere — while the
+        // comment above claimed "a model still handles everything this cannot".
+        // Nothing did; there was no fall-through and there never had been. That
+        // is the fifth comment in this repository found describing behaviour that
+        // did not exist, and the one that kept the canvas outside the harness.
+        if (_designOpen && SayToTheCanvas())
         {
-            SayToTheCanvas();
             return;
         }
 
@@ -1348,11 +1498,38 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
             // a stream error pasted into the thread with two other configured
             // providers sitting idle. It only moves on from a failure before the
             // first token, and never from a local runtime to a remote one.
+            // Resolved rather than listed. Failover decides who *may* be asked —
+            // never off the device, never past a refusal, never after the first
+            // token — and the resolver decides the order: recently-failed
+            // providers to the back rather than out, and rotation among the
+            // healthy ones so the same one is not hammered every turn.
             await foreach (var chunk in Concierge.Shared.Chat.RuntimeFailover.StreamAsync(
                 _activeRuntime,
-                _orderedRuntimes,
+                _resolver.Order(_orderedRuntimes),
                 turns,
-                outcome => _answeredBy = outcome,
+                outcome =>
+                {
+                    _answeredBy = outcome;
+
+                    // What actually happened, recorded so the next turn is
+                    // ordered by it: whoever answered is healthy, and everything
+                    // it fell back past failed.
+                    _resolver.RecordSuccess(outcome.Runtime);
+
+                    // Matched on EngineLabel, because that is what FellBackFrom
+                    // carries — it is built for the sentence shown in the thread,
+                    // not for lookups. Matching on Id here compiles, runs, and
+                    // silently never fires, which would have left the resolver
+                    // learning nothing while looking wired up.
+                    foreach (var label in outcome.FellBackFrom)
+                    {
+                        if (_orderedRuntimes.FirstOrDefault(r =>
+                                string.Equals(r.EngineLabel, label, StringComparison.OrdinalIgnoreCase)) is { } failed)
+                        {
+                            _resolver.RecordFailure(failed);
+                        }
+                    }
+                },
                 cancellationToken))
             {
                 buffer.Append(chunk);

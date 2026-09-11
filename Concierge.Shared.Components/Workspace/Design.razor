@@ -1,5 +1,6 @@
 @using Concierge.Shared.Design
 @inject IJSRuntime JS
+@inject IServiceProvider Services
 @implements IDisposable
 
 @*
@@ -220,6 +221,34 @@
         Point(nodeId);
     }
 
+    /// <summary>
+    /// How the room got drawn. Called from the page inside the frame.
+    ///
+    /// A room that falls back to the flat drawing works perfectly, which is the
+    /// whole point of drawing it that way — and is exactly why nobody would ever
+    /// find out it had. Engineering says which, so "why does my room look flat?"
+    /// has an answer that is not a guess.
+    /// </summary>
+    [JSInvokable]
+    public void Drew(bool engine, string? why)
+    {
+        if (Services.GetService(typeof(SceneEngineReport)) is not SceneEngineReport report)
+        {
+            // A head that does not keep the report keeps its canvas. This is a
+            // thing Engineering shows, not a thing the canvas needs.
+            return;
+        }
+
+        if (engine)
+        {
+            report.Drew();
+        }
+        else
+        {
+            report.FellBack(why);
+        }
+    }
+
     private void Point(string? nodeId)
     {
         _session.Point(nodeId);
@@ -284,19 +313,23 @@
     /// What is being pointed at, in the words a person would use. "The title" and
     /// not "heading#4f2a1c" — this is read at a glance while deciding what to say
     /// next.
+    ///
+    /// **Every kind is named.** Three were missing and all three fell through to
+    /// "The page": pointing at a block in a room, a track in a running order, or a
+    /// slide said the page had been touched, and the very next sentence was then
+    /// about the wrong thing. Caught by clicking a box in a room and reading the
+    /// chip — the same class of defect as an approvals badge that always said two,
+    /// on the one strip whose whole job is saying what you just touched.
+    ///
+    /// A frame borrows the medium's own word, so it is a slide on a deck, a shot
+    /// in a film and a room in a space.
     /// </summary>
     private void Describe()
     {
         _touched = _session.Pointed is { } node
-            ? node.Kind switch
-            {
-                DesignNodeKind.Heading => "The title",
-                DesignNodeKind.Text => "These words",
-                DesignNodeKind.Button => "This button",
-                DesignNodeKind.Image => "This picture",
-                DesignNodeKind.Box => "This box",
-                _ => "The page",
-            }
+            ? node.Kind == DesignNodeKind.Page
+                ? "The page"
+                : $"This {DesignSpeech.NameFor(node.Kind, _session.Current.Medium)}"
             : null;
     }
 

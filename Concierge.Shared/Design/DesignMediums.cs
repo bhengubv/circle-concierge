@@ -208,11 +208,15 @@ public static class DesignMediums
     /// <summary>
     /// Something with three dimensions, positioned in space.
     ///
-    /// CSS transforms rather than a 3D engine, and the trade is worth naming: no
-    /// dependency, no download, works offline on every head, and it will draw a
-    /// room with walls and furniture perfectly well. It will not draw a mesh, a
-    /// light, or a shadow. That is a real ceiling and is written down rather than
-    /// discovered.
+    /// CSS transforms rather than a 3D engine — and this is now the *fallback*
+    /// rather than the whole story. `SceneRenderer` draws the same room again with
+    /// three.js over the top and hides this one once it has succeeded, so meshes,
+    /// lights and shadows are there on a machine that can manage them.
+    ///
+    /// This one stays because it is what somebody sees when the engine cannot
+    /// load, and because it is what is on screen for the moment it takes to load.
+    /// It draws boxes and only boxes: a solid asked to be a sphere is a box here,
+    /// which is a fallback being worse rather than a fallback being wrong.
     /// </summary>
     internal static void WriteSolid(StringBuilder html, DesignNode node, string picked, string attr)
     {

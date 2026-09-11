@@ -31,7 +31,7 @@
 
         <button class="row" type="button"
                 aria-expanded="@(open ? "true" : "false")"
-                @onclick="@(() => Edit(key))" @onpointerup="@(() => Edit(key))">
+                @onclick="@(() => Edit(key))">
             <span class="row-name">
                 @field.Label
                 @* Where to get the key matters when you are about to paste one,
@@ -64,7 +64,7 @@
                    @oninput="@(e => OnFieldChanged(key, e.Value?.ToString() ?? string.Empty))" />
 
             <button class="btn btn-primary" type="button" disabled="@(_saving || _drafts.Count == 0)"
-                    @onclick="SaveAsync" @onpointerup="SaveAsync">
+                    @onclick="SaveAsync">
                 @(_saving ? "Saving…" : "Save")
             </button>
         }

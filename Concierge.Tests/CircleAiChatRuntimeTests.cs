@@ -135,4 +135,26 @@ public sealed class CircleAiChatRuntimeTests
         var options = new CircleAiChatOptions { RepositoryUrl = null };
         Assert.Null(options.RepositoryUrl);
     }
+
+    /// <summary>
+    /// The prefill KV cache stays off, because the product does not work with it
+    /// on.
+    ///
+    /// The cache is keyed on (modelId, systemPrompt), so it only engages once a
+    /// system turn exists — and that path faults inside the native generator,
+    /// killing the host mid-reply. Every real turn carries a system prompt, so
+    /// that was every turn, and Concierge could not hold a conversation at all.
+    /// It looked like a package bug for weeks because running the model host by
+    /// hand sends no system prompt and therefore never touched the cache.
+    ///
+    /// This test is the reason the switch is an option rather than a literal.
+    /// Turning it back on is a decision that needs evidence: feed the host a
+    /// system turn and a 6,882-char payload and watch for "Fatal error." before
+    /// changing this line.
+    /// </summary>
+    [Fact]
+    public void The_prefill_cache_is_off_by_default()
+    {
+        Assert.False(new CircleAiChatOptions().UsePrefixCache);
+    }
 }

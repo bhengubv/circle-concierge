@@ -46,13 +46,18 @@ public static class MotionRenderer
 
         for (var i = 0; i < shots.Count; i++)
         {
-            var length = Math.Clamp(DesignMediums.Number(shots[i], "seconds", DefaultSeconds), 1, 120);
-            seconds.Add(length);
+            // Timing rather than a single number: a shot can now wait before it
+            // starts and play at a speed, which is what makes "start this a beat
+            // after the last one" sayable at all. A shot carrying only `seconds`
+            // reads exactly as it did.
+            var timing = DesignTiming.Of(shots[i], DefaultSeconds);
+            var length = timing.Seconds;
+            seconds.Add(timing.TotalSeconds);
 
             var picked = string.Equals(shots[i].Id, selectedId, StringComparison.Ordinal) ? " picked" : string.Empty;
 
             html.AppendLine(
-                $"<div class=\"shot{(i == 0 ? " on" : string.Empty)}{picked}\" data-node=\"{DesignMediums.Escape(shots[i].Id)}\" data-seconds=\"{length}\">");
+                $"<div class=\"shot{(i == 0 ? " on" : string.Empty)}{picked}\" data-node=\"{DesignMediums.Escape(shots[i].Id)}\" data-seconds=\"{length}\" data-delay=\"{timing.DelaySeconds}\" data-rate=\"{timing.Rate.ToString(System.Globalization.CultureInfo.InvariantCulture)}\">");
 
             if (shots[i].Text.Length > 0)
             {

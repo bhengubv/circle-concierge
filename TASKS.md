@@ -1,12 +1,42 @@
 # Concierge — what is done and what is left
 
-Supersedes the redesign plan, which is finished. Every unchecked item below is
-something a person could pick up; every checked one was verified on the running
-desktop app, not only by tests.
+## Context
+
+The "one dark workspace" redesign this file used to hold is finished and on
+`main`. What replaces it is the working list: **120 boxes ticked, 5 open, three
+partial**, ordered so the next person can pick one up.
+
+That count is counted, not remembered — `grep -c '^- \[x\]'` and `'^- \[ \]'`
+against this file. It read "17 items done, 23 open" for some time and matched
+neither the boxes nor the sections. A number in a header nobody re-derives is
+the same defect as an approvals badge that always said two, which this file
+argues against roughly every third paragraph. Re-count it when you change it,
+or delete it.
+
+Everything checked below was verified on the running desktop app, not only by
+tests. That distinction earns its place — five defects in one week were
+invisible to bUnit and only appeared when the app was actually looked at: a
+settings panel cut off by 166px, a status bar left MAUI purple, a top bar
+hidden under the system bar, a sidebar clipped by a fifth group, and a model
+host that never loaded because nothing ran its hosted service.
 
 Desktop runs point until the product is complete. The handheld, wearable, web
 and native Wear heads are built and stay in the tree, but they do not gate a
 release.
+
+Mirrored at `circle-concierge/TASKS.md`, which is version-controlled so every
+concurrent session sees the same list. **The two are not automatically kept in
+step, and copying one over the other loses whatever the target had and the
+source did not** — this Context section was destroyed exactly that way and
+restored by hand. Edit both, or diff them before you copy.
+
+**And edit this file by anchor, not by span.** Two completed entries were
+silently deleted by a script that replaced everything between one item's heading
+and the next one's: whatever sat in between went with it. Nothing failed, the
+file stayed valid markdown, and the only reason it was caught is that the
+checkbox count came out two short of what the header claimed. Since this file is
+usually uncommitted while it is being worked on, git cannot give those back. The
+count at the top is the tripwire — re-derive it after every edit.
 
 ---
 
@@ -129,8 +159,72 @@ rather than a call that fails.
       Written once, true on Windows, Android, iOS and Mac Catalyst
 - [x] Engineering shows them, and shows what this device *cannot* do
 - [x] Test: 18, including that the container can actually be built
-- [ ] Android-only actions — send a message, place a call. Deliberately last: these are
-      where "it asks first" has to be exactly right, and they need a device to test on
+- [x] Android-only actions — send a message, place a call. Written, and **the
+      decision that made them safe enough to write is that neither of them sends
+      anything.** `send_message` opens the messaging app with the message already
+      written; `place_call` opens the dialler with the number already in it. A
+      person presses send. A person presses call.
+
+      The obvious build is the wrong one. MAUI *can* send an SMS silently on
+      Android with the right permission, and a capability that did would be one
+      approval card away from a model that misread a name texting the wrong
+      person — with the card showing a phone number that looks like any other
+      phone number. Composing means two gates, and the second is the operating
+      system's own, in the app somebody already recognises, showing the message as
+      it will actually arrive.
+
+      A number is checked before it goes anywhere, and **the characters it refuses
+      are the point**: `*` and `#` make a USSD code, and some Android diallers act
+      on one the moment they receive it rather than waiting to be dialled. Codes
+      exist that wipe a handset. A model writing a number out of a sentence
+      somebody sent it must not be able to reach that.
+
+      Both absent off a phone, like every other capability that cannot do its job
+      here. OpenDroid's payment actions stay absent entirely.
+- [x] **Run on a real Android runtime — done, on the emulator, and it found two
+      things.** `concierge_phone` (Android 14, x86_64), deployed with
+      `dotnet build -t:Run`, which is the part that matters: an APK installed by
+      hand with `adb push` + `pm install` starts and then crashes, because a Debug
+      build depends on fast-deployment pieces the MSBuild targets deliver and a
+      hand install does not. That crash looked like an app defect and was not one.
+
+      Verified on screen: the handheld layout renders, insets are right, Engineering
+      lists 21 tools, and **`send_message` and `place_call` appear under "Not on
+      this device"** — the emulator has no SIM, so `Available` is false and the
+      model is never offered them. "Concierge is never offered these on this device,
+      so it will not try them", in the room's own words. That is the capability
+      design working end to end on a real runtime rather than in a container test.
+- [x] **Every folding section in every room was unopenable, and nobody had noticed.**
+      `RoomSection` bound `@onclick` *and* `@onpointerup` to the same Toggle, and one
+      press fires both — so it opened and shut again in the same press. Thirty-five
+      elements across seventeen files had the same pairing: saving a key twice,
+      fetching a diagram twice, answering an approval twice. Found by tapping "Can
+      change things" on a phone and watching the row light up and stay closed.
+
+      The pairing existed for a comment repeated in three files — "MAUI's
+      BlazorWebView drops touch-originated clicks on buttons intermittently" — with
+      no measurement recorded anywhere. So it was measured: fourteen alternating
+      taps on the permission-mode buttons in the Android head, state read back from
+      the accessibility tree after each. **Fourteen of fourteen registered, none
+      dropped.** The honest limit is that this is one emulator and one WebView
+      build; it does not prove clicks are never dropped, but the workaround was
+      costing a real reproducible defect to prevent one nobody had shown.
+
+      And the measuring was wrong first, as usual: the first run reported 12 of 12
+      dropped because the parser reading the accessibility tree matched nothing.
+      The buttons had worked the whole time. Fifth time in this file's history that
+      the measurement, not the thing measured, was the broken part.
+
+      3 tests hold the rule: nothing answers one press twice, nothing responds to a
+      pointer alone (that would be an Approve button a keyboard cannot press), and a
+      folding section opens on one press.
+- [ ] Run them on the handset itself. A Redmi 12 (`22101316UG`, Android 14,
+      arm64-v8a) is paired and connected over wireless debugging, and the app builds
+      and signs for it. Installing is refused with `INSTALL_FAILED_USER_RESTRICTED`
+      by MIUI's own install policy — **Developer options → Install via USB** governs
+      adb installs over any transport, wireless included. One toggle on the handset.
+      That is the only step left, and with a SIM in it the two capabilities move from
+      "Not on this device" to "Asks first".
 
 The thing worth keeping from the comparison is the thing OpenDroid does not do.
 Its README describes no confirmation workflow for sending a message or making a
@@ -218,6 +312,21 @@ prompts. It is about the surface — which is the product.
       modes, engine name and paperclip were all describing a conversation that was
       not happening
 - [x] Closing the canvas puts it away instead of throwing the design out
+- [x] And closing the *app* no longer does either. `FileDesignStore` writes the
+      design as it changes and puts it back when the canvas opens. Built because
+      `DesignDocumentFormat` — added the same morning, precisely to write a design
+      down — was referenced by nothing: a seventh instance of this file's
+      signature defect, and the first one that was mine.
+      Two decisions stated rather than left to be discovered. **Only the design
+      comes back, not its thirty moments of history** — writing all of them on
+      every keystroke would make a canvas a disk benchmark, so undo stops at the
+      moment the app opened. And **the file is written beside and moved into
+      place**, because a save interrupted by the app closing would otherwise leave
+      half a file where the design used to be; losing the last change is
+      recoverable, losing the design is not. A design that cannot be read never
+      blocks the canvas — it opens blank and says why, since refusing to open
+      leaves somebody with no route back to a working surface and the bad file is
+      still on disk either way. 10 tests.
 - [x] The handheld can reach it. Every other piece was wired there — placeholder,
       hidden paperclip, suppressed permission modes — and there was no control that
       could ever open it, so all of it was dead code that looked finished
@@ -226,12 +335,79 @@ prompts. It is about the surface — which is the product.
       the design is genuinely portable rather than a reference to one machine
 - [x] Verified on a handheld at 504px: canvas 393 of 680, nothing overflows,
       drawer closes behind you
-- [ ] What a watch shows instead of a canvas. A 192dp face is not a design surface
-      and pretending otherwise would be the fourth-tab mistake in miniature
-- [ ] A model driving the canvas — the same edits as agent tools, so "make it feel
-      like a school newsletter" reaches it
-- [ ] The plan in plain language for a multi-step design change. Nothing to plan
-      until a model is driving it
+- [x] What a watch shows instead of a canvas: **nothing, and the reason is not the
+      screen.** Decided and written down as `WatchSurfaces.Design`, with a test, so
+      adding it later is a deliberate act rather than something that happens
+      because nothing said not to.
+
+      A watch could carry the useful half of designing — "no, not like that" —
+      without carrying the canvas at all. Glancing at your wrist, seeing what
+      changed and saying no fits the product's actual claim better than any attempt
+      to draw on a 192dp face. That is the screen to build: the last change, plus
+      undo.
+
+      It is not built because the correction has no way home. Answering on the
+      wrist needs approvals to ride the mesh, which is held behind packet-signature
+      verification — an unauthenticated channel would let anyone on the café wifi
+      say "allowed". So a design screen today is a button that appears to work and
+      does not, and `WatchFace` already refuses to ship exactly that: its decisions
+      are held per session rather than persisted, for this same reason.
+- [x] A model driving the canvas — the same edits as agent tools, so "make it feel
+      like a school newsletter" reaches it. **Done, and it was the seam the whole
+      product turns on rather than one more feature.**
+
+      What was actually there: `SendAsync` returned early whenever the canvas was
+      open, so a sentence went to `DesignSpeech` and never to a model. No tools, no
+      plan, no skills, no approvals. The comment above it read "a model still
+      handles everything this cannot" — and nothing did. There was no
+      fall-through and there never had been. Fifth comment in this file's history
+      found describing behaviour that did not exist, and the one that kept Design
+      outside the harness entirely.
+
+      `DesignToolSource` publishes the canvas as seven tools — describe, add,
+      change, remove, look, making, go back — and `DesignWorkbench` is the seam
+      that hands the live session over when the canvas opens and takes it back
+      when it closes. Nothing is published while no canvas is open, because a
+      model offered `design_add` against a chat would use it and report a heading
+      added to something nobody can see. An ordinary sentence is still applied
+      instantly and locally, which is what makes the surface feel like a pen;
+      everything else now falls through to the model.
+
+      **These tools do not ask permission, deliberately.** Everywhere else acting
+      asks first, because acting on files is hard to reverse. On a canvas, asking
+      is what makes the tool unusable for the people it is for, and going back is
+      free because every state is kept. Applying the file rule here would be
+      importing a rule from a different problem.
+
+      This was blocked on "a working runtime" this morning and was unblocked by
+      the prefix-cache fix earlier the same day. 16 tests. Registered for the
+      desktop head in `MauiProgram`, **not yet verified by a desktop build** — the
+      running app holds the binaries.
+
+      **A trap worth writing down, because it cost 76 tests here.** A nullable
+      `[Inject]` property is *not* optional. Blazor throws when the service is
+      missing whether or not the type says `?`, so `[Inject] Workbench? ...` with
+      a comment calling it optional made every workspace fail to render on every
+      host that had not registered it. Optional means
+      `Services.GetService(typeof(T)) as T`, which returns null. The irony is on
+      the record: the comment asserted behaviour nobody had checked, inside the
+      change whose whole purpose was removing a comment that asserted behaviour
+      nobody had checked.
+- [x] The plan in plain language for a multi-step design change. One is driving it
+      now, so this stopped being hypothetical the moment the canvas joined the
+      agent loop — and it immediately exposed a hole I had put there the same day.
+
+      `StepExpectation` knew about files and commands and nothing else, so a design
+      step could state itself but could not say what it would leave behind. The
+      strip therefore fell back to ticking on any success — the exact behaviour
+      `Judge` was written to stop, walking back in through a medium it had never
+      been taught about. "Make it feel like a school newsletter" is a look, a
+      heading and three sizes, and all three would have ticked off the moment the
+      model did anything at all.
+
+      `StepOutcome.CanvasChanged` closes it, and excludes `design_describe` on
+      purpose: looking at the canvas does not keep a promise to change it, for the
+      same reason reading a file does not keep a promise to write one. 22 tests.
 
 **The rule this surface must not break:** every defect worth fixing in Concierge
 so far has been the same one — a screen asserting something untrue. An approvals
@@ -254,7 +430,31 @@ Wi-Fi Direct, internet relay" to attach.
 - [x] Opt-in — attaching a radio opens a port on somebody's machine and puts
       traffic on their network, which a host should decide out loud
 - [x] Test: a packet reaches another node, and an answer comes back
-- [ ] Approvals as a bundle type, so the wrist can actually answer
+- [ ] Approvals as a bundle type, so the wrist can actually answer. **Still blocked,
+      and now checked rather than inherited.** This sat here as "held behind packet-
+      signature verification, which is in the pipeline elsewhere" — a claim nobody
+      had tested against the package. Reflected over `Aether.Core` 1.0.1, the version
+      actually restored:
+
+      * `MeshPacket.Signature` and `MeshPacket.PacketNonce` exist as **fields with a
+        getter and a setter and nothing else**. No public API signs a packet, and
+        none verifies one.
+      * `AetherTag.Verify(string, byte[])` binds a UHID to a public key. That proves
+        an id was derived from a key — not that a packet came from whoever holds it.
+      * `IRouteReplyVerifier` exists, and the only implementation the package ships
+        is `AcceptAllRouteReplyVerifier`, which says what it does in its name.
+      * `AetherTelemetry` counts `SignaturesValidated` and `SignaturesRejected`, so
+        signing is coming upstream — it is simply not here at 1.0.1.
+
+      And `LanMeshSender.AcceptLoopAsync` deserialises a `MeshPacket` straight off
+      the socket and raises `PacketReceived` with no check at all, which is exactly
+      what the boundary note below says.
+
+      So the blocker is real and is **stronger** than it was written: it is not that
+      signatures go unverified, it is that there is no way to sign or verify one.
+      Putting approvals on this would let anyone on the same wifi say "allowed".
+      The mesh is a NuGet package and signing belongs upstream in it, not
+      reimplemented here.
 - [ ] BLE or Wi-Fi Direct, for when there is no shared network
 
 **The boundary, stated so it is not forgotten:** this transport does not
@@ -285,20 +485,116 @@ includes `run_command`, and the answer was: whatever it likes.
 - [x] The process is created inside the job rather than assigned to one after it
       starts — CreateProcess with PROC_THREAD_ATTRIBUTE_JOB_LIST, which removes the
       window rather than narrowing it
-- [ ] Work out why `cmd`'s `start /b` still gets out. The race is gone and a
-      detached child escapes anyway, so the earlier explanation was wrong. Two
-      attempts to measure this drew confident conclusions from broken vehicles —
-      `timeout` fails instantly with redirected handles, and an unquoted `&` binds
-      to the outer shell — so read the test before trusting the next theory
-- [ ] Confinement on the other platforms. Linux has Landlock, macOS has its own
-      sandbox, Android runs a child under the app's uid, iOS forbids children —
-      today all four report "not confined", honestly
+- [x] Measure why `cmd`'s `start /b` gets out, instead of theorising about it a
+      third time. Querying the job for its process list the moment the parent exits:
+      `in-job survivors=0`. The job is not failing to kill the child — the child was
+      never in the job. So the fix belongs in how the process is created, not in the
+      job's lifetime, and every explanation offered so far looked at the wrong half
+- [x] **There is no escape. There never was.** Four rounds of measurement, and the
+      fault was in the measuring every time.
+
+      Two early versions of the test were discarded for measuring their own
+      vehicle — `timeout` fails instantly with redirected handles, an unquoted `&`
+      binds to the outer shell. The third fixed the vehicle, waited nine seconds,
+      found the child's marker file and concluded a detached child had outlived
+      the job. That conclusion stood in this file as a known gap.
+
+      It was wrong. Timing the call: `RunAsync` takes **7,141ms** for a child that
+      sleeps seven seconds, and enumerating **every process on the machine** two
+      seconds later finds nothing new alive. `start /b` asks for a child with no
+      new window, but the command is created with `CREATE_NO_WINDOW` and has no
+      console to share, so cmd runs it **synchronously**. No detached process is
+      created at all. The marker the test kept finding was written during the call
+      it believed had already returned, while the job was still open.
+
+      The test now asserts what is true — nothing a command starts outlives it —
+      and carries the whole history, because the lesson is not about job objects.
+      A marker file proves something ran. It proves nothing about *when*, and four
+      rounds of confident reasoning were built on it. Whether some other route
+      genuinely detaches is unknown and unmeasured; if one is found it gets its own
+      test.
+
+      Also killed on the way: a speculative fix. Believing the pipe was holding the
+      call open, I bounded the drain after process exit — a change that would have
+      risked truncating real output to solve a problem that did not exist. Reverted
+      before it went anywhere near the suite.
+
+- [x] **Linux is confined now.** `LinuxNamespaceSandbox` wraps a command in
+      `unshare --user --map-root-user --pid --fork --kill-child` and `prlimit`, so
+      it gets the same two guarantees the Windows job object gives, at the same
+      numbers: nothing it starts outlives it (`--kill-child` is the direct
+      equivalent of KILL_ON_JOB_CLOSE), and it is capped at 512MB and four
+      processes. No package to install — both tools are already on an Ubuntu.
+
+      **Measured on Linux before being claimed**, because this file's history is
+      four rounds of confident sandbox reasoning that were all wrong. Under WSL
+      Ubuntu-24.04, kernel 6.18: the wrapped command runs; a child started with
+      `nohup … & disown` does **not** survive it; a 900MB allocation under the
+      512MB cap dies with MemoryError; and an ordinary pipeline still works, so the
+      four-process cap does not break real commands. 15 tests check that the
+      command line which produced those results is the one this builds.
+
+      **It does not restrict the filesystem, and does not claim to.** That is
+      Landlock, which the child has to ask for itself between fork and exec —
+      somewhere managed code cannot reach without a helper binary per
+      architecture. So it reports `Process`, exactly as Windows does. Android is
+      Linux and is deliberately excluded: a child there runs under the app's own
+      uid, and wrapping it would report a boundary the platform does not give.
+- [ ] macOS, Android and iOS confinement. Still "not confined", still honestly —
+      and iOS forbids child processes at all, so that one is a fact rather than a
+      gap.
+- [x] Scrub the child's environment. Done: `ConfinedProcess` built the child's
+      environment instead of passing `nint.Zero`, which had been handing every
+      command everything this process holds — on a developer's machine that
+      routinely means a GitHub token, NuGet credentials, cloud keys. Concierge's
+      own keys live in a file rather than the environment, so this was leaking the
+      operator's secrets rather than ours, which makes it no less real.
+      **A denylist, not an allowlist, and that is the weaker choice made
+      deliberately.** An allowlist would have to name every variable a build tool
+      needs — PATH, TEMP, USERPROFILE, VSINSTALLDIR, half of MSBuild's surface —
+      and the first one missed turns a working command into a mysterious failure.
+      The denylist fails the other way: it can miss a secret nobody thought of. So
+      this reduces blast radius, it does not guarantee anything, and the comment in
+      the code says so. Two tests: a token is invisible, and `PATH` still is not.
+- [~] Cap what a command may write. **Done on Linux; still not doable on Windows.**
+      `prlimit --fsize` sets RLIMIT_FSIZE and the kernel enforces it: writing 400MB
+      under a 256MB cap stops at exactly 268,435,456 bytes, measured. It caps any
+      one file rather than everything written in total, so a command determined to
+      fill a disk can still write many files — it stops the ordinary accident, a
+      runaway log or a bad download, which is what this was ever going to catch.
+
+      Worth noting how this was missed: the entry said "not doable", which was true
+      of job objects and then got quietly generalised to every platform without
+      anybody checking. Linux had it all along. The original reasoning follows,
+      and it still stands for Windows. **Not doable with a job object, and the entry
+      was written without checking.** Job objects cap memory and process count;
+      Windows has no per-process disk quota to set. OpenSandbox gets its
+      `UpperMaxBytes` from an overlay filesystem under bubblewrap — the cap is a
+      property of the overlay, not of the process — and there is no overlay here.
+      Doing it properly on Windows means a filesystem filter driver or running the
+      command in a container, both of which are far larger decisions than the line
+      that asked for it. Left open with the reason, rather than closed with
+      something that looks like a cap and is not.
+
+**Read against OpenSandbox (Alibaba, Apache-2.0), and a claim of mine corrected.**
+I said three times that it does not confine local processes. It does —
+`components/execd/pkg/isolation/` uses bubblewrap, seccomp, Landlock and
+capability-dropping, with no Docker. Docker is a requirement of their *server*,
+not their isolation layer, and I had read the README and the SDK rather than the
+code. The same mistake as item 15, made again while item 15 was open on screen.
+
+Most of theirs does not apply — multi-tenancy, Kubernetes, pooling, egress
+proxying — because ours confines one command, for one user, on one machine. What
+does apply is the two boxes above, plus the shape: their hardening, Landlock,
+seccomp and eBPF layers each switch on independently and each default to off,
+which is how the four platform gaps could ship a floor before the filesystem
+work. Their Landlock implementation is a usable reference for the Linux box.
 
 That last gap is a passing test rather than a failing one: it asserts the escape
 happens, so the day somebody closes the race the test goes red and says to assert
 containment instead. A limitation nobody can read is the same as silence.
 
-### 12. ~~Two more things written and never reached~~ — done bar showing hooks
+### 12. ~~Two more things written and never reached~~ — done, hooks included
 
 `FileTodoStore` was registered in DI and nothing resolved it. `ProcessHookBridge`
 was complete and never constructed, because what it was missing was
@@ -364,13 +660,122 @@ the argument is the bar, not the architecture.
       pictures, drawn differently
 - [x] The composer's invitation follows the medium: on the slide, in the shot,
       in the room, to hear
-- [ ] Encoding. Video plays and does not produce an MP4; sound plays and does not
-      produce one file. Both need FFmpeg, which is a real dependency and a real
-      download — a decision to make deliberately
-- [ ] A real 3D engine. Space draws rooms and furniture and will not draw a mesh,
-      a light or a shadow
-- [ ] Antra's half of Sound: links in, tagged files out, artwork and lyrics. That
-      is a library, not a design surface — this draws from one
+- [x] Encoding. Done, and it produces real files: `FfmpegMediaExport` concatenates
+      a running order into one `.m4a`, and turns shots into an `.mp4` with each
+      shot held for its own length, the design's own colours behind it and its
+      words on it. Timing comes from `DesignTiming`, so a delay and a rate are in
+      the file rather than only in the preview. `design_save` puts it in Music or
+      Videos and never writes over anything — a name already taken gets a number,
+      which is how a tool that leaves something on a real disk keeps the same
+      promise the undoable ones keep by being undoable.
+
+      **The honest limit:** this is a slideshow with timing, not a recording of
+      the canvas. The canvas is HTML, and turning HTML into frames needs a browser
+      driven frame by frame — a much larger piece of work. So the words and the
+      ground are right and the layout is the encoder's.
+
+      **And the tests were green while proving nothing.** Four end-to-end exports
+      returned early on `if (!EncoderHere) return;` and reported success, because
+      installing the encoder prints "restart your shell to use the new value" and
+      the test host still had the old path. Nine passes were five real tests and
+      four no-ops. Two fixes, and the second matters more: `Find()` now also looks
+      where an installer actually puts one, and a single test goes **red** when
+      there is no encoder, so a run says which it was instead of looking identical
+      either way. Eighth instance of this file's signature defect and the first
+      where the thing asserting something untrue was the test suite.
+
+      Two real defects surfaced the moment they genuinely ran. `CardOf` discarded
+      the encoder's result, so a card it refused to draw came back as a path to a
+      file that was never written and failed several steps later as "No such file
+      or directory" — the symptom, three calls away from the cause. The cause was
+      that `drawtext` asks fontconfig for a default face and Windows has none, so
+      every card with words on it failed while blank ones came out fine. A font is
+      named outright now, and a shot whose font cannot be found keeps its ground
+      and loses its words rather than losing the film. Escaping the words by hand
+      was tried and is not winnable — they cross two parsers, and `Act 1: "the
+      fall" \ 50% off` beat it — so the words go to the encoder in a file, where
+      there is no syntax to get wrong. 20 tests.
+- [x] A real 3D engine. Done: three.js, MIT, **carried in the repository** rather
+      than fetched from a CDN, because a design surface that needs the internet to
+      draw a box is not a local-first product. 2.1MB of vendored source, which is
+      the price.
+
+      **Drawn twice, and the ordering is the design.** The room is written out
+      first as the CSS version it has always been, and the engine then draws the
+      same room over the top and hides the flat one only once it has actually
+      succeeded. So the fallback is the default and the upgrade is what has to
+      work — no WebGL, no GPU, a webview that will not run modules, the file
+      missing, and somebody is looking at the room this always drew. The obvious
+      build is the other way round, and it makes the failure path the one nobody
+      ever runs and the one that greets somebody on an old laptop with an empty
+      rectangle.
+
+      Meshes, two lights (one that casts and one that fills — a single hard light
+      makes every unlit face pure black, which reads as a hole), soft shadows on a
+      floor that receives them, and four shapes: box, sphere, cylinder, cone.
+      Picking is a raycast that writes the same `data-node` attribute every other
+      thing on every other surface carries, during capture, so the click handler
+      that already existed needed no changes at all — one contract, five surfaces.
+      **Still no orbit-by-dragging.** An engine makes that gesture trivially
+      available, which is exactly why it is worth refusing again.
+
+      **Verified on the running app, and it found four things tests had not.**
+      One: the room went over as `Things` and the script read `things` —
+      undefined is not an error in JavaScript until you ask it for a length, and a
+      single `.catch` on the promise chain then made our own bug look exactly like
+      a machine without a GPU. The rejection handler is now the second argument to
+      `then`, so it sees only the import failing, and a build that throws says so
+      out loud. Two: **there was no sentence that put anything in a room at all** —
+      no word anywhere mapped to a solid, so the entire medium was reachable only
+      by a model calling a tool, on a surface whose whole claim is that you say
+      what you want. Three: everything a person added landed in the middle of the
+      floor, so the second thing was inside the first and looked like nothing had
+      happened. Four: pointing at a block said **"The page"** — the component kept
+      its own list of names with no case for a solid, a sound or a frame, so
+      pointing at a track or a slide had been saying the same thing all along. It
+      uses `DesignSpeech.NameFor` now: one vocabulary, which is the rule the tools
+      were written under and the component was not.
+
+      All four were invisible to 1,353 passing tests and took one look at the
+      screen. 33 tests now, most of them on the fallback and on the two files
+      agreeing about spellings.
+- [x] Antra's half of Sound: tagged files out, artwork and lyrics. Done — and the
+      entry it replaces was the problem. It read "that is a library, not a design
+      surface", **which was my decision, taken in my own commit, and then quoted
+      back in a parity answer as though it had been agreed.** It had not been. Asked
+      "declined by whom?", the answer was me.
+
+      The line was never as clean as that sentence made it sound. Artwork and
+      lyrics are things you *look at*, and a running order that showed neither was
+      showing less than the file it exported already carried. `SoundDetails` reads
+      title, artist, album, year, artwork and lyrics off a track — or off the
+      design, so an album name said once covers the whole running order and a
+      person is not filling in a form twelve times. A track that names its own
+      artist is naming a guest and wins for that track. `FfmpegMediaExport` writes
+      them as tags and attaches the cover as a still stream marked `attached_pic`,
+      so the file knows what it is when it lands on a phone instead of showing a
+      grey square and the word Unknown. The canvas shows the cover and who made it,
+      with the words folded away — lyrics are long, and something that pushes the
+      next track off the screen has stopped being a running order. Sayable, not
+      just settable: "the artist is Nina Simone", "the album is called Wild Is The
+      Wind", "it came out in 1965".
+
+      A cover follows the rule the paperclip already follows: a data URI travels
+      with the document, an address does not. And a picture that cannot be decoded
+      costs the picture, not the export — nobody loses forty minutes of audio over
+      half-pasted artwork.
+
+      One test earned its place immediately: a track that knows only its own name
+      drew an empty box under every row, because the guard asked whether there was
+      anything *at all* rather than anything **not already on screen**. A title is
+      already the caption above the player. 24 tests.
+
+- [ ] Antra's other half: **links in.** You give it an address and it goes and gets
+      the music. Everything here is already on the machine, because the export
+      refuses to make a network request to a string a model may have written —
+      a refusal that is deliberate and load-bearing. Turning it on is a decision
+      about what this program may reach, and it is yours, not mine. Left open and
+      named rather than closed with a reason I invented.
 
 **What every renderer refuses, because it is the whole point:** no timeline, no
 track stack, no waveform, no node graph, no orbit-by-dragging, no keyframes. Each
@@ -407,24 +812,66 @@ service. It is yours, so it changes nothing here, but it does not meet the
 
 **Four things worth taking, each better than what we have.**
 
-- [ ] **Schema-validated stage artifacts** (OpenMontage). Every stage writes a
-      checkpoint whose output is validated against a JSON schema before the
-      pipeline may advance, with `checkpoint_required` and
-      `human_approval_default` per stage, and caps on budget, revisions,
-      send-backs and wall time. `PlanProgress` counts successes and failures and
-      knows nothing about what a step was supposed to produce.
-- [ ] **A resolver, not a list** (Antra). Fifteen source adapters in priority
-      tiers, rotated within a tier to spread load, rate-limited ones demoted to
-      the back rather than dropped, per-adapter accept thresholds, and hooks for
-      "do not retry this" and "exclude this adapter". `RuntimeFailover` tries
-      them in order.
-- [ ] **Schema migrations** (Pascal — seven migration test files). Our design
-      documents have no version and no migration path. Nothing has broken because
-      nothing is persisted yet; the day a design is saved, that becomes a
-      data-loss bug rather than a gap.
-- [ ] **Timing that means something** (Diffusion Studio). Delay, Trim,
-      SourceFrameRate, PlaybackRate and Workarea as separate traits. A shot here
-      has one `seconds` property.
+- [x] **Schema-validated stage artifacts** (OpenMontage). Done, and it turned up
+      a live defect rather than an absence: `PlanProgress.Round` ticked a step off
+      whenever *any* call in the round succeeded. A plan whose step was "write the
+      config file" ticked when the model instead listed a directory — the strip
+      advanced, whoever was watching believed the file existed, and nothing had
+      been written. The same defect as an approvals badge that always said two,
+      sitting on the one surface whose entire job is showing what is happening.
+      `StepExpectation` states what a step will leave behind — a file written, a
+      file read, a command run, optionally against a named target — and
+      `PlanProgress.Judge` only ticks when the promise was kept. A round that
+      worked but did something else still counts as progress (the failure counter
+      resets) and simply does not tick, because withholding a tick must not also
+      stop a turn that is going fine.
+      **Their JSON schema is declined**: what a step here promises is small and
+      nameable, and the plan strip has to stay something a person can read.
+      `Unstated` is the default, so a plan that names no expectations behaves
+      exactly as every plan did before. 17 tests.
+- [x] **A resolver, not a list** (Antra). Done: `RuntimeResolver` decides the
+      order, `RuntimeFailover` keeps deciding who may be asked at all. Failover
+      answered "may this one be asked" and said nothing about order, so the chain
+      was whatever order the alternatives arrived in — every turn, forever. A
+      provider that fell over thirty seconds ago was tried first again while the
+      one answering all afternoon waited behind it.
+      Recently-failed providers are **demoted to the back, never removed** — that
+      is Antra's actual insight, and it keeps a bad thirty seconds from costing a
+      provider for the session; healthy ones are rotated round-robin so the same
+      one is not hammered; when everything is cooling, the one that broke longest
+      ago goes first because it is the likeliest to have recovered. Wired into
+      `WorkspaceBase`, which records the outcome of every turn, rather than
+      registered and never reached like `McpClient` and `FileTodoStore` were.
+      **Per-source accept thresholds are declined on purpose:** Antra scores a
+      candidate and rejects a poor match, but a chat reply has no such score, and
+      inventing one would mean deciding an answer was not good enough and quietly
+      asking somebody else — the shopping-for-a-yes that `RuntimeFailover`
+      exists to forbid. 9 tests.
+- [x] **Schema migrations** (Pascal — seven migration test files). Done:
+      `DesignDocumentFormat` writes a `SchemaVersion` and reads one back,
+      upgrading older documents one step at a time through a migration chain that
+      is empty today and exists so version 2 is an entry and a test rather than a
+      mechanism invented while somebody's saved work depends on it.
+      A **newer** document is refused with a sentence a person can read, because
+      opening one by ignoring what this build does not understand hands back a
+      design that silently lost half of itself — which then gets saved over the
+      good copy. Insertion order is written too: children live in a list private
+      to the document, and a serialiser that wrote only the node dictionary would
+      reopen a deck with its slides shuffled, first noticed by somebody standing
+      in front of an audience. 13 tests.
+- [x] **Timing that means something** (Diffusion Studio). Done: `DesignTiming`
+      reads `seconds`, `delay`, `trim` and `rate` off a node, so "start this a
+      beat after the last one", "skip the first four seconds" and "play it at half
+      speed" are sayable — none of which one number can express. Two of their five
+      are declined on purpose: **Workarea** is a timeline slice and there is no
+      timeline, it being first on the list of things every renderer refuses;
+      **SourceFrameRate** is for frame-accurate cutting against source material
+      and Concierge does not decode video, so it would be stored, never read, and
+      eventually believed. Read off properties rather than a new node shape, so
+      nothing migrates and a document carrying only `seconds` behaves exactly as
+      before. 19 tests, most of them about a sentence a model got slightly wrong —
+      "a couple", "two point five", a rate of zero — falling back rather than
+      breaking the canvas.
 
 **And a convergence worth noting rather than claiming credit for.** Pascal's
 `BaseNode` is `id / type / parentId / visible / metadata` — the shape we arrived
@@ -435,24 +882,106 @@ was being clever.
 
 ---
 
+### 16. What the second pass through open-design added
+
+Where the first pass read the architecture, this one read the design corpus:
+every `DESIGN.md`, the whole `design-templates` tree, all 162 skills, and about
+sixty per cent of the plugin skills. Four things are worth having; the rest was
+repetition, and saying so is part of the finding.
+
+- [x] **A design system as prose, not tokens.** Unblocked by the canvas joining
+      the agent loop, and done the same day: `DesignLook.Brief` carries the
+      argument behind each of the six looks — what it is for, what it refuses,
+      where it goes wrong — beside the hex values that were all it had before.
+      `design_describe` hands the brief for the current look to the model, and
+      `design_look` hands back the brief for the one it just chose, so what gets
+      added next is added *in* the look rather than merely alongside it. That
+      wiring is the whole point: told only "Warm", a model adds a hard-edged banner
+      and four accent colours and produces something wearing the name and none of
+      the intent. Written prose rather than more tokens, from open-design's 154
+      briefs — theirs read as atmosphere → palette → type → components → motion
+      with the reason beside every rule, which is why somebody who is not a
+      designer can read them. Same bar this product sets for everything else.
+
+- [x] **Rules written as corrections to a known offender.** The three built-in
+      personas in `AgentPreset` were ideals — "Be warm and plain-spoken. Ask before
+      doing anything that changes a file" — which is advice a model already agrees
+      with and goes on ignoring. They now name the specific ways it fails, and the
+      failures named are this product's own rather than generic: acting and then
+      mentioning it; reporting a success it never checked (every defect worth
+      fixing here has been a screen asserting something untrue); padding a one-line
+      answer. The operator persona adds the two that matter when there is nothing
+      left to ask permission for — reaching for the broad command, and stating a
+      cause nobody measured. Kept short on purpose: this text is in every message
+      of every conversation and spends the same budget the skills do.
+
+- [x] **Diversification against a log.** Also unblocked the same day, and the
+      failure it prevents is specific rather than theoretical: a model driving a
+      canvas picks the same look every time — not because it is right, but because
+      it is first in the list and the safest-sounding word. Six looks with one used
+      forever is the same product as one look, and nobody notices until every page
+      anybody made is identical.
+      `FileDesignLog` keeps the last five (look, medium) pairs; `design_describe`
+      tells the model what the last three wore and why it is being mentioned; and
+      choosing a look records it. **It informs, it does not enforce** — a person
+      who asks for Calm twice is right, and a canvas that argued with them would be
+      worse than a repetitive one. Kept short deliberately: a long history lets a
+      model reason about trends nobody asked it to notice. An unreadable log is an
+      empty one, because a memory aid must never break the thing it is helping
+      with. 10 tests.
+
+- [x] **Load discipline as a first-class rule.** Another written-and-never-reached:
+      `SkillActivation` has computed an `EstimatedTokens` since the day it was
+      written and nothing ever read it, so there was no budget at all. Switch on
+      twenty skills and twenty full bodies went into every message, all conversation
+      long, whether or not any applied. `ComposeSystemPrompt` now spends a budget in
+      the order the skills are shown — predictable from the list in front of you
+      rather than a ranking you cannot see — and anything past it is **named rather
+      than dropped**, because a skill that vanished silently leaves somebody who
+      switched it on unable to tell it from one that simply did not help. The first
+      is always quoted whatever it costs: a budget that can reject everything
+      produces a prompt that mentions skills and contains none. 8,000 tokens, which
+      two or three skills never reach — it exists for the pathological case, not to
+      police ordinary use. 7 tests.
+
+**One rule of theirs we should adopt outright, unchanged:** *invented metrics are
+slop the moment they are invented.* "10× faster", "trusted by 50,000+ teams",
+"99.9% uptime" — the fix is a labelled blank, never a plausible number. That is
+the same defect as an approvals badge that always said two, and we have now hit
+it twice.
+
+**The honest limit on all of this.** I read considerably more than is written
+above, and what is not written down is gone — my context compacts between
+sessions, so reading without recording produces coverage and not knowledge. Four
+items here and four in item 15 are what survived because they were written down.
+That is the argument for reading less and recording more, and it applies to
+whatever is read next.
+
+---
+
 ## What is actually next
 
 Everything above is done or done-bar-a-named-remainder. Nine items are open and
 they are not equal: three can be done today, and six cannot, for reasons worth
 being explicit about rather than rediscovering.
 
+**This list had gone stale, and two of its three items were already done.** Worth
+saying rather than quietly deleting: a next-actions list that disagrees with the
+ticked list above it is the same defect as a badge that always says two.
+
+- ~~Show registered hooks in Engineering~~ — **done.** `Engineering.razor:156–199`
+  reads `HookStatus` and renders the list, the empty state, the problem and the
+  file path. Item 12 had it ticked; only this section still asked for it.
+- ~~Verify Design on a handheld~~ — **done**, at 504px, per item 9. What is still
+  open is the other half of that line: **what a watch shows instead of a canvas.**
+
 **Can be done now, and needs no model.**
 
-1. **Show registered hooks in Engineering**, beside the MCP servers. `HookStatus`
-   is already in the container with the list, the problem and the file path — the
-   room simply does not read it. Small, and the room is the place somebody checks
-   what runs on their machine.
-2. **Verify Design on a handheld**, and decide what a watch shows instead. The CSS
-   is written and neither has been run, so today the claim rests on a media query
-   nobody has looked at.
-3. **Close the detach race** in the command sandbox. Real interop —
-   `CreateProcess` with `CREATE_SUSPENDED`, assign to the job, resume — and the
-   test that documents the gap goes red when it lands, which is the point.
+1. **Decide what a watch shows instead of a canvas.** A 192dp face is not a design
+   surface and pretending otherwise would be the fourth-tab mistake in miniature.
+   The decision is the work; the rendering is small.
+2. **Close the sandbox escape**, now that the failing half is known rather than
+   guessed — see item 11. The measurement is done; the fix is not.
 
 **Blocked, and by what.**
 
@@ -461,8 +990,9 @@ being explicit about rather than rediscovering.
 - **Approvals over the mesh** — needs packet signatures verified, and the mesh
   upgrade is in the pipeline elsewhere. Putting approvals on an unauthenticated
   channel would hand anyone on the café wifi the ability to say "allowed".
-- **A model driving the canvas; a plan for a multi-step design change** — need a
-  working runtime. Deliberately last.
+- **A plan for a multi-step design change** — the canvas is on the agent loop now,
+  so this is no longer blocked on a runtime; it is blocked on wanting it. Nothing
+  to plan until somebody asks for a change big enough to need one.
 
 ---
 
@@ -482,22 +1012,39 @@ being explicit about rather than rediscovering.
 
 ## Not doing
 
-- **The native model crash.** `mnn_llm_generate_stream_text` faults with an
-  access violation. It is in the `CircleAI.Inference` package, upgraded
-  separately. Concierge now survives it; it does not fix it.
+- ~~**The native model crash.**~~ **Not a package bug, and not "not doing" — it
+  was a switch of ours, and it is off.** Recorded here for weeks as an access
+  violation inside `mnn_llm_generate_stream_text`, owned by the `CircleAI.Inference`
+  package and upgraded elsewhere. That attribution was wrong.
 
-  Checked again on 6 Sep 2026, twice in a row on the running desktop app.
-  Every turn ends the same way: *"The model stopped unexpectedly. Concierge is
-  still running — send the message again to try once more."* So **Concierge
-  cannot yet hold a conversation**, and no amount of work in this repo changes
-  that. What the run does confirm is the isolation: the parent process kept
-  its PID and its window across both crashes, the child was replaced each time
-  (9672 → 14260 → 5544), the thread was saved, and the composer came back
-  ready. Before isolation this was an application-wide crash.
+  `GenerationOptions.UsePrefixCache` was set to `true` in
+  `CircleAiChatRuntime.StreamAsync`. The prefill KV cache is keyed on
+  (modelId, systemPrompt), so it engages only once a system turn is present, and
+  that path faults: the host prints `Fatal error.` and dies mid-reply. Every real
+  turn carries a system prompt, so it was every turn. It read as a package fault
+  for weeks because running `Concierge.Model.Host` by hand — the obvious way to
+  check — sends no system prompt and so never touches the cache. It looked
+  healthy every single time anyone looked.
 
-  Two smaller things it also showed: the send button is briefly disabled while
-  the replacement child starts, which is correct but undocumented; and the
-  retry the message invites does work — it fails the same way.
+  Measured through the host rather than reasoned about, and the three payloads
+  are worth keeping because they are what makes the diagnosis falsifiable:
+  a 3,075-char **user** prompt completes (`cache=off`); a **16-char system turn**
+  faults at 121 chars fed (`cache=on`); the same 6,882-char payload faults as a
+  system turn and completes as a user turn. Length is irrelevant. The system role
+  is the trigger.
+
+  With the cache off, that same 6,882-char system payload streams and completes.
+  The cost is the sub-200ms first-token latency of RT-06, which is a fair price
+  for a product that answers. It is a named option now, defaulted off, with a
+  test holding the default, so switching it back on is a decision with evidence
+  rather than a literal nobody re-examines.
+
+  **What this cost, and the lesson worth more than the fix:** the entry said
+  "no amount of work in this repo changes that", and one line in this repo did.
+  Third misattribution in this file — after the `start /b` race and two broken
+  sandbox measurements — and all three shared a shape: a confident cause written
+  down before anything was measured, then inherited by everyone who read it.
+
 - **`MainLayout`, `NavMenu`, `BottomNavLayout`, `AppMenu`, `Bell`.** These are
   the navigation model the redesign removed. Kept as shells for possible reuse
   rather than deleted.
@@ -506,14 +1053,72 @@ being explicit about rather than rediscovering.
 
 ## Standing checks
 
-Boxes that are re-checked per change rather than ticked once. All four hold as
-of `a00191b`.
+Boxes that are re-checked per change rather than ticked once. Each carries the
+commit it was last actually checked at, because "all four hold as of `<ref>`"
+was one date covering four checks made at different times — and it had drifted
+two commits behind `HEAD` before anyone noticed.
 
-- [x] 1201 tests pass — `dotnet test Concierge.Tests/Concierge.Tests.csproj`
+- [x] **1445 tests pass, and the suite is deterministic again.** It was not: four
+      consecutive runs each failed *one different test*, which meant it could not
+      tell a regression from noise — the same defect as a screen asserting
+      something untrue, sitting on the check everything else is measured by.
+
+      Three separate causes, none of them the code under test.
+
+      `SandboxedCommandTests.Nothing_a_command_starts_outlives_it` listed **every
+      process on the machine** and failed if a new one was called `cmd` — so it
+      failed whenever anything else opened a shell during those seven seconds:
+      another test, a build, a person opening a terminal. It now writes a marker
+      *after* its wait and checks the timestamp against the moment the command
+      returned, which measures the actual claim. Note the shape: the previous
+      version of this test was itself the fix for reading a marker's existence as
+      proof of *when*; this one reads its timestamp, which is the thing that was
+      missing all along.
+
+      `WorkspaceThreadTests.A_chip_is_collapsed_until_it_is_asked` waited for the
+      first render and then read the state after a click straight away — holding
+      for a race it had already been fixed for once, three lines further down.
+
+      `WorkspaceHandoffTests` polled, *then* rendered, then asserted. If the
+      handoff needs a render to fire, the poll could only ever time out, the render
+      then started the work, and the assertion read the store before it finished.
+      Rendering inside the wait fixes it.
+
+      Verified the only way this can be: **six consecutive full runs, all green.**
+
+      **Stop the web head before running it** — a running `Concierge.Web` holds the
+      shared DLLs and the build fails with MSB3027 rather than anything about tests. One of them is
+      a tripwire rather than a test of this code — it goes red when there is no
+      encoder on the machine, because the four export tests stand down without one
+      and four silent greens look exactly like four real ones. **Run it from the repo root with an absolute
+      project path** — a backgrounded run starts elsewhere, fails with MSB1009,
+      and a filtered pipe reports that as success
 - [x] Verified on the running desktop app, not only in tests — Engineering lists
       the real catalogue, `todo_read` and `todo_write` included, and says what
-      confines a command
-- [x] `[skip ci]` in the HEAD commit before any push
+      confines a command. Last checked at `a00191b`; **not re-run since**
+- [~] **The 3D engine on the desktop head: unverified, and now self-reporting.**
+      Everything about it is shared code — one `SceneRenderer`, one set of
+      components — so there is nothing to port. What is genuinely head-specific is
+      whether the WebView loads an ES module by absolute path from inside a srcdoc
+      frame. Checked what could be checked without eyes on the screen: the engine
+      **does** ship in the desktop app's `wwwroot/_content/Concierge.Shared.Components/lib/three/`,
+      at exactly the path the renderer asks for. Whether it then loads is not
+      known.
+
+      Rather than guess, the app answers it. `SceneEngineReport` records how the
+      last room was drawn and Engineering shows it under **Rooms in three
+      dimensions** — "With a 3D engine", "Flat" with the reason, or "Not tried
+      yet", which is a third answer on purpose because *not tried* and *tried and
+      failed* are different things. The reason comes from whichever way out was
+      taken: no engine, no WebGL, an unreadable room, or a fault in ours.
+
+      This exists because the fallback is silent by design. A machine that cannot
+      run the engine shows a room that works perfectly and never mentions it — the
+      desktop head could have been falling back for weeks with every test passing.
+      To check: open Design, choose **Space**, say "add a room", then open
+      Engineering. 10 tests.
+- [x] `[skip ci]` in the HEAD commit before any push — a rule, not a check
 - [x] The app actually starts. Added after a Razor comment inside an element's
       attribute list compiled, passed 1141 tests, and threw on every render in
-      the real host — the whole sidebar went dead and no test noticed
+      the real host — the whole sidebar went dead and no test noticed. Last
+      checked at `a00191b`; **not re-run since**

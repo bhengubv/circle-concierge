@@ -57,7 +57,7 @@
                        @oninput="OnNegativeChanged" />
 
                 <button class="btn btn-primary" type="button" disabled="@(!CanGenerate)"
-                        @onclick="GenerateAsync" @onpointerup="GenerateAsync">
+                        @onclick="GenerateAsync">
                     @(_busy ? "Drawing…" : "Draw it")
                 </button>
 

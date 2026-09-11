@@ -172,4 +172,18 @@ public sealed class WatchFaceTests
         Assert.Equal(ApprovalSeverity.Caution, ApprovalRisk.SeverityOf("Medium"));
         Assert.Equal(ApprovalSeverity.Settled, ApprovalRisk.SeverityOf("low"));
     }
+
+    /// <summary>
+    /// The watch does not carry the design canvas, and the reason is the transport
+    /// rather than the screen. A correction made on the wrist has no way back to
+    /// the phone until approvals can ride the mesh, so a design screen today would
+    /// be a button that appears to work and does not — the one thing WatchFace
+    /// already refuses to ship, which is why its own decisions are not persisted.
+    ///
+    /// Asserted rather than left as an absence, so adding it is a decision somebody
+    /// takes deliberately with the transport in hand.
+    /// </summary>
+    [Fact]
+    public void Design_is_not_a_watch_surface()
+        => Assert.False(WatchSurfaces.Design);
 }

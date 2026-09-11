@@ -36,7 +36,7 @@
 
                     <button class="row" type="button"
                             aria-pressed="@(chosen ? "true" : "false")"
-                            @onclick="@(() => Pick(value))" @onpointerup="@(() => Pick(value))">
+                            @onclick="@(() => Pick(value))">
                         <span class="row-name">
                             @option.Title
                             <span class="row-sub">@option.Description</span>

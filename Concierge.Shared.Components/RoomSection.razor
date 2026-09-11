@@ -14,9 +14,19 @@
 
 <section class="room-sec @(_open ? "is-open" : null)">
     <h2>
+        @*
+            One handler, not two. It had @onclick and @onpointerup both calling
+            Toggle, and a single press fires both — so every section opened and
+            shut again in the same press, and no folding section in any room could
+            be opened at all. Found by tapping "Can change things" on a phone and
+            watching the row light up and stay closed.
+
+            @onclick is the one to keep: it is what a keyboard sends on Enter and
+            Space, and this is a real button that has to work without a pointer.
+        *@
         <button class="room-sec-head" type="button"
                 aria-expanded="@(_open ? "true" : "false")"
-                @onclick="Toggle" @onpointerup="Toggle">
+                @onclick="Toggle">
             <svg class="ws-chev @(_open ? "is-open" : null)" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
             <span class="room-sec-name">@Title</span>
             @if (Count is not null)

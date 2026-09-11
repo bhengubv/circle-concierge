@@ -427,13 +427,32 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
         //     drops below 15%. Matches Concierge's "snappy chat reply" shape;
         //     callers that need long planning replies can override per-message
         //     once that surface exists.
-        //   * UsePrefixCache = true — first conversation per (modelId,
-        //     systemPrompt) snapshots the prefill KV; subsequent ones reuse
-        //     it so first-token latency drops to sub-200ms (RT-06).
+        //   * UsePrefixCache = false — and this is why Concierge can hold a
+        //     conversation at all.
+        //
+        //     The prefix cache is keyed on (modelId, systemPrompt), so it only
+        //     engages once a system turn is present. That path faults in the
+        //     native generator: the process prints "Fatal error." and dies,
+        //     taking the reply with it. Because the app always sends a system
+        //     prompt, it died on every single turn, and because a bare
+        //     `Concierge.Model.Host` run by hand sends none, it looked healthy
+        //     every time anyone checked.
+        //
+        //     Measured rather than reasoned about, three payloads through the
+        //     host: a 3,075-char *user* prompt completes (cache=off); a
+        //     16-char *system* turn faults at 121 chars fed (cache=on); the
+        //     same 6,882-char payload faults as a system turn and completes as
+        //     a user turn. Size is irrelevant — the system role is the trigger.
+        //
+        //     This was recorded as "not doing, it is the CircleAI package" and
+        //     that was wrong twice over: the switch is ours, and turning it off
+        //     costs sub-200ms first-token latency (RT-06) rather than a
+        //     conversation. Turn it back on when the native cache path is
+        //     fixed, and re-run the three payloads above before believing it.
         var options = new GenerationOptions
         {
             Budget = PowerBudget.Normal,
-            UsePrefixCache = true,
+            UsePrefixCache = _options.UsePrefixCache,
             MaxTokens = (int)_options.MaxOutputTokens,
         };
 
@@ -640,6 +659,20 @@ public sealed class CircleAiChatOptions
     /// low-battery devices but never widens it past this value.
     /// </summary>
     public uint MaxOutputTokens { get; init; } = 512;
+
+    /// <summary>
+    /// Whether the native prefill KV cache may be used.
+    /// </summary>
+    /// <remarks>
+    /// False on purpose, and the product does not work with it on. The cache is
+    /// keyed on (modelId, systemPrompt), so it engages only once a system turn
+    /// is present — and that path faults inside the native generator, killing
+    /// the host process mid-reply. Since every real turn carries a system
+    /// prompt, that was every turn. It is an option rather than a literal so a
+    /// test can hold the default and so it can be switched back on deliberately,
+    /// with evidence, once the native path is fixed.
+    /// </remarks>
+    public bool UsePrefixCache { get; init; }
 
     /// <summary>
     /// Whether the engine may fetch a model it does not have, without being asked.

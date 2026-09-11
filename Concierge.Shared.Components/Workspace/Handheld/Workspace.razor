@@ -50,7 +50,7 @@
     @if (_drawerOpen)
     {
         <button class="ws-scrim" type="button" aria-label="Close the menu"
-                @onclick="CloseDrawer" @onpointerup="CloseDrawer"></button>
+                @onclick="CloseDrawer"></button>
     }
 
     <aside class="ws-side @(_drawerOpen ? "is-open" : null)">
@@ -76,7 +76,7 @@
                 @if (IsGroupOpen("threads"))
                 {
                     <div class="ws-group-body">
-                        <button class="ws-item" type="button" @onclick="StartNewAsync" @onpointerup="StartNewAsync">
+                        <button class="ws-item" type="button" @onclick="StartNewAsync">
                             <span class="ws-item-label" style="color:var(--accent-ink);">New thread</span>
                         </button>
                         @*
@@ -107,7 +107,7 @@
                         @if (!_allThreads && _conversations.Count > 3)
                         {
                             <button class="ws-more" type="button"
-                                    @onclick="@(() => _allThreads = true)" @onpointerup="@(() => _allThreads = true)">
+                                    @onclick="@(() => _allThreads = true)">
                                 Show all @_conversations.Count
                             </button>
                         }
@@ -256,7 +256,7 @@
             group of a page you had to navigate to.
         *@
         <button class="ws-runtime" type="button" title="Settings"
-                @onclick="OpenSettings" @onpointerup="OpenSettings">
+                @onclick="OpenSettings">
             <span class="dot @(runtime.RegistryAvailable ? "dot-done" : "dot-waiting")" aria-hidden="true"></span>
             <span class="ws-runtime-name">@runtime.Engine</span>
             @* Was the literal text "on device", under whichever engine was
@@ -280,7 +280,7 @@
                     title="Menu"
                     aria-label="Open the menu"
                     aria-expanded="@(_drawerOpen ? "true" : "false")"
-                    @onclick="OpenDrawer" @onpointerup="OpenDrawer">
+                    @onclick="OpenDrawer">
                 <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
             </button>
             @*
@@ -480,11 +480,14 @@
                         <span class="sr">@(_recording ? "Stop recording" : "Speak")</span>
                     </button>
 
-                    @* type=button with both handlers: MAUI's BlazorWebView drops
-                       touch-originated form submits. *@
+                    @* type=button, and one handler now. It had @onclick and
+                       @onpointerup both, so a single press sent twice; the claim
+                       behind the pairing was measured on the Android head and did
+                       not hold — fourteen taps, none dropped. type=button still
+                       earns its place: without it this submits the form. *@
                     <button class="icon-btn icon-btn-send" type="button"
                             aria-disabled="@(!CanSend)" disabled="@(!CanSend)"
-                            title="Send" @onclick="SendAsync" @onpointerup="SendAsync">
+                            title="Send" @onclick="SendAsync">
                         <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="M6 11l6-6 6 6"/></svg>
                         <span class="sr">Send</span>
                     </button>
@@ -540,8 +543,7 @@
                                     type="button"
                                     title="@choice.Explain()"
                                     aria-pressed="@(_permission == choice ? "true" : "false")"
-                                    @onclick="@(() => SetPermission(choice))"
-                                    @onpointerup="@(() => SetPermission(choice))">@choice.Label()</button>
+                                    @onclick="@(() => SetPermission(choice))">@choice.Label()</button>
                         }
                     </div>
                     <span class="comp-sep">·</span>

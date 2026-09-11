@@ -54,6 +54,7 @@ public sealed class PlanProgress
     public const int MaxRevisions = 3;
 
     private IReadOnlyList<string> _steps = [];
+    private IReadOnlyList<StepExpectation> _expectations = [];
 
     /// <summary>The steps as last stated.</summary>
     public IReadOnlyList<string> Steps => _steps;
@@ -69,6 +70,27 @@ public sealed class PlanProgress
 
     /// <summary>Whether anything is being tracked at all.</summary>
     public bool HasPlan => _steps.Count > 0;
+
+    /// <summary>
+    /// What the step now in progress promised to leave behind.
+    ///
+    /// <see cref="StepExpectation.Unstated"/> when the plan named no expectation,
+    /// which is every plan that existed before this and any plan that chooses not
+    /// to. A step that promises nothing behaves exactly as it always did.
+    /// </summary>
+    public StepExpectation CurrentExpectation
+        => Done >= 0 && Done < _expectations.Count ? _expectations[Done] : StepExpectation.Unstated;
+
+    /// <summary>
+    /// Records what each step is expected to leave behind, alongside the steps.
+    ///
+    /// Separate from <see cref="State"/> rather than folded into it because a plan
+    /// is a list of sentences a person reads, and the expectations are machinery.
+    /// Keeping them apart means the strip never has to render one and a plan
+    /// without them is not a second-class plan.
+    /// </summary>
+    public void Expect(IReadOnlyList<StepExpectation>? expectations)
+        => _expectations = expectations ?? [];
 
     /// <summary>
     /// Records a plan the model stated.
@@ -94,6 +116,10 @@ public sealed class PlanProgress
 
         _steps = steps;
         Done = 0;
+
+        // A new plan invalidates the old promises. Carrying them over would judge
+        // step two of this plan against what step two of the last one intended.
+        _expectations = [];
 
         if (revised)
         {
@@ -152,9 +178,66 @@ public sealed class PlanProgress
     public void Clear()
     {
         _steps = [];
+        _expectations = [];
         Done = 0;
         Revisions = 0;
         ConsecutiveFailures = 0;
+    }
+
+    /// <summary>
+    /// Judges one round against what the current step actually promised.
+    ///
+    /// The overload taking bare booleans ticks a step off when *any* call in the
+    /// round succeeded. So a plan whose step was "write the config file" ticked
+    /// when the model instead listed a directory successfully: the strip advanced,
+    /// somebody watching believed the file had been written, and nothing had been.
+    /// That is the same defect as an approvals badge that always said two, sitting
+    /// on the surface whose entire job is showing what is happening.
+    ///
+    /// OpenMontage validates a stage's output before the pipeline may advance.
+    /// This is that, at the size this product is: the round still counts as
+    /// progress — the failure counter resets, because something worked — but the
+    /// step is only ticked off when the promise was kept.
+    /// </summary>
+    /// <param name="evidence">One entry per call made this round.</param>
+    /// <remarks>
+    /// Named apart from <c>Round</c> rather than overloading it: an empty
+    /// collection expression cannot choose between a list of bools and a list of
+    /// evidence, so adding an overload made every existing <c>Round([])</c> call
+    /// ambiguous. A name is cheaper than making every caller cast.
+    /// </remarks>
+    public RoundVerdict Judge(IReadOnlyList<StepEvidence> evidence)
+    {
+        var calls = evidence ?? [];
+        var verdict = Round(calls.Select(call => call.Succeeded).ToList());
+
+        // Only ever takes a tick away, never adds one. Everything about stopping,
+        // revising and counting failures is decided by the overload above and is
+        // not second-guessed here.
+        if (!verdict.StepCompleted)
+        {
+            return verdict;
+        }
+
+        var expectation = Done > 0 && Done - 1 < _expectations.Count
+            ? _expectations[Done - 1]
+            : StepExpectation.Unstated;
+
+        if (expectation.SatisfiedBy(calls))
+        {
+            return verdict;
+        }
+
+        // Something worked, but not the thing this step was for. Give the tick
+        // back and say so, rather than showing progress nobody made.
+        Done--;
+
+        return verdict with
+        {
+            StepCompleted = false,
+            Note = "That round did something, but not what this step said it would do, "
+                   + "so it has been left unticked.",
+        };
     }
 
     /// <summary>

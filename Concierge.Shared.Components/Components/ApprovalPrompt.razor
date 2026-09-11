@@ -39,14 +39,23 @@
         </div>
 
         <div class="ask-actions">
-            @* type=button with both handlers: MAUI's BlazorWebView drops
-               touch-originated clicks on buttons intermittently. *@
+            @* type=button, and one handler. It carried @onclick and @onpointerup
+               both, for a claim written here and repeated in two other files —
+               "MAUI's BlazorWebView drops touch-originated clicks on buttons
+               intermittently" — with no measurement recorded anywhere. One press
+               fires both, so every one of these answered twice.
+
+               Measured on the Android head: fourteen alternating taps on the
+               permission-mode buttons, state read back from the accessibility tree
+               after each, fourteen registered, none dropped. One emulator and one
+               WebView build, so it does not prove clicks are never dropped — but
+               the workaround was costing a real defect to prevent one nobody had
+               shown. If dropped clicks do turn up, the answer is a handler that
+               runs once, not two that both run. *@
             <button class="btn btn-primary" type="button"
-                    @onclick="@(() => Answer(ask.Id, ToolApprovalDecision.Allowed))"
-                    @onpointerup="@(() => Answer(ask.Id, ToolApprovalDecision.Allowed))">Allow once</button>
+                    @onclick="@(() => Answer(ask.Id, ToolApprovalDecision.Allowed))">Allow once</button>
             <button class="btn" type="button"
-                    @onclick="@(() => Answer(ask.Id, ToolApprovalDecision.Denied))"
-                    @onpointerup="@(() => Answer(ask.Id, ToolApprovalDecision.Denied))">Deny</button>
+                    @onclick="@(() => Answer(ask.Id, ToolApprovalDecision.Denied))">Deny</button>
             @if (_pending.Count > 1)
             {
                 <span class="state" style="margin-left:auto;">@(_pending.Count - 1) more after this</span>

@@ -88,14 +88,31 @@ public sealed class UnconfinedSandbox : ICodeSandbox
 /// </summary>
 /// <remarks>
 /// The differences are real and worth stating plainly rather than papering over:
-/// Windows has job objects, Linux has Landlock, macOS has its sandbox, Android runs a child
-/// under the app's own user id, and iOS forbids spawning children at all.
+/// Windows has job objects; Linux has process namespaces and resource limits, and Landlock for
+/// the filesystem half that is not in place; macOS has its sandbox; Android runs a child under
+/// the app's own user id; and iOS forbids spawning children at all.
 /// </remarks>
 public static class CodeSandbox
 {
     /// <summary>The best available boundary here.</summary>
     public static ICodeSandbox ForCurrentPlatform()
-        => OperatingSystem.IsWindows() ? new WindowsJobObjectSandbox() : new UnconfinedSandbox();
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            return new WindowsJobObjectSandbox();
+        }
+
+        // Android is Linux and is deliberately not this. A child there runs under
+        // the app's own user id, and wrapping it in unshare would report a boundary
+        // that the platform does not actually give — the exact thing this file is
+        // written to prevent.
+        if (OperatingSystem.IsLinux() && !OperatingSystem.IsAndroid())
+        {
+            return new LinuxNamespaceSandbox();
+        }
+
+        return new UnconfinedSandbox();
+    }
 
     /// <summary>What this platform can do, without building a sandbox to ask.</summary>
     public static SandboxCapability DescribeCurrentPlatform()
@@ -103,6 +120,11 @@ public static class CodeSandbox
         if (OperatingSystem.IsWindows())
         {
             return new WindowsJobObjectSandbox().Capability;
+        }
+
+        if (OperatingSystem.IsLinux() && !OperatingSystem.IsAndroid())
+        {
+            return new LinuxNamespaceSandbox().Capability;
         }
 
         if (OperatingSystem.IsAndroid())

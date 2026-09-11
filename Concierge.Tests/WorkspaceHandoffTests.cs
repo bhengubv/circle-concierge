@@ -79,14 +79,20 @@ public sealed class WorkspaceHandoffTests : BunitContext
         // on different days — this failed about once in a hundred runs and passed
         // on retry, which is the worst way for a test to be wrong. The fifth of
         // this shape in the suite, and the only one that hid behind a sleep.
-        var deadline = DateTime.UtcNow.AddSeconds(10);
+        // Rendered *inside* the wait rather than once after it, which is what made
+        // this flaky. The order used to be: poll, then render, then assert. If the
+        // handoff needs a render to fire, the poll could only ever time out, the
+        // render then started the work, and the assertion read the store before it
+        // had finished — so it passed on a quiet machine and failed on a busy one,
+        // which is the worst way for a test to be wrong.
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+
         while (DateTime.UtcNow < deadline
                && store.ListAsync("local").GetAwaiter().GetResult().Count == 0)
         {
+            cut.Render();
             Thread.Sleep(25);
         }
-
-        cut.Render();
 
         var listed = Assert.Single(store.ListAsync("local").GetAwaiter().GetResult());
 

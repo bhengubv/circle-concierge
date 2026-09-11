@@ -107,7 +107,32 @@ public static class DesignSpeech
                     "Touch the thing you want gone first, then say delete.");
             }
 
-            return new DesignHeard(true, design.Remove(doomed.Id), $"Removed the {Name(doomed.Kind, design.Medium)}");
+            return new DesignHeard(true, design.Remove(doomed.Id), $"Removed the {NameFor(doomed.Kind, design.Medium)}");
+        }
+
+        // What a piece of music is, beyond the sound of it. "the artist is Nina
+        // Simone", "the album is Wild Is The Wind", "it came out in 1965", and the
+        // words.
+        //
+        // Applied to whatever is being pointed at, and to the design itself when
+        // nothing is — because an album name said once should cover the whole
+        // running order, and saying it twelve times is filling in a form.
+        if (Match(said, Telling) is { } told)
+        {
+            var about = told.Groups["about"].Value.ToLowerInvariant() switch
+            {
+                "artist" or "singer" or "band" or "musician" or "composer" => "artist",
+                "album" or "record" => "album",
+                "year" or "date" => "year",
+                "words" or "lyrics" => "lyrics",
+                _ => "title",
+            };
+
+            var value = Clean(told.Groups["value"].Value);
+            var which = design.Find(pointedAt)?.Id ?? design.RootId;
+
+            return new DesignHeard(
+                true, design.Set(which, about, value), $"The {about} is {value}");
         }
 
         // Changing what something says, while pointing at it.
@@ -118,7 +143,7 @@ public static class DesignSpeech
         {
             var words = Clean(reword.Groups["words"].Value);
             return new DesignHeard(true, design.Set(target.Id, "text", words),
-                $"Changed the {Name(target.Kind, design.Medium)}");
+                $"Changed the {NameFor(target.Kind, design.Medium)}");
         }
 
         // Bigger and smaller, on the thing being pointed at.
@@ -132,7 +157,7 @@ public static class DesignSpeech
 
             var bigger = size.Value.StartsWith('b') || size.Value.StartsWith('l');
             return new DesignHeard(true, design.Set(sized.Id, "size", bigger ? "big" : "small"),
-                bigger ? $"Made the {Name(sized.Kind, design.Medium)} bigger" : $"Made the {Name(sized.Kind, design.Medium)} smaller");
+                bigger ? $"Made the {NameFor(sized.Kind, design.Medium)} bigger" : $"Made the {NameFor(sized.Kind, design.Medium)} smaller");
         }
 
         // Which kind of thing this is. "Slides", "make it a video", "space".
@@ -158,9 +183,26 @@ public static class DesignSpeech
                     "A page is one surface. Say 'slides' or 'video' first, then add one.");
             }
 
-            var node = DesignNode.New(kind, ParentFor(design, kind), ("text", words));
+            // In a room, a thing is a thing you can walk round. "Add a box" on a
+            // page groups what is under it; in a room it is a box on the floor,
+            // and there was previously no sentence at all that put a solid in a
+            // room — the whole medium was unreachable by talking, which is the
+            // only way this surface is meant to be reached.
+            var shape = ShapeOf(add.Groups["thing"].Value);
 
-            return new DesignHeard(true, design.Add(node), $"Added a {Name(kind, design.Medium)}");
+            if (design.Medium == DesignMedium.Scene
+                && kind is DesignNodeKind.Box or DesignNodeKind.Text)
+            {
+                kind = DesignNodeKind.Solid;
+            }
+
+            var where = ParentFor(design, kind);
+
+            var node = kind == DesignNodeKind.Solid
+                ? Standing(design, where, words, shape)
+                : DesignNode.New(kind, where, ("text", words));
+
+            return new DesignHeard(true, design.Add(node), $"Added a {NameFor(kind, design.Medium)}");
         }
 
         return Puzzled(design);
@@ -175,7 +217,19 @@ public static class DesignSpeech
     /// syntax, which is the thing this surface exists to avoid.
     /// </summary>
     private const string Adding =
-        @"^(?:add|put|insert|make|create)\s+(?:a|an|some)?\s*(?<thing>title|heading|header|words|text|paragraph|sentence|button|picture|image|photo|box|group|slide|shot|scene|room|track|section)\b(?:\s*(?:that\s+)?(?:saying|says|say|reading|reads|read|with|of|:)\s*(?<words>.+))?$";
+        @"^(?:add|put|insert|make|create)\s+(?:a|an|some)?\s*(?<thing>title|heading|header|words|text|paragraph|sentence|button|picture|image|photo|box|group|block|solid|shape|cube|sphere|ball|cylinder|column|post|cone|slide|shot|scene|room|track|section)\b(?:\s*(?:that\s+)?(?:saying|says|say|reading|reads|read|with|of|:)\s*(?<words>.+))?$";
+
+    /// <summary>
+    /// "the artist is Nina Simone", "the album is called Wild Is The Wind", "it
+    /// came out in 1965", "the words are ...".
+    ///
+    /// Written for the ways somebody says it rather than one form, like every
+    /// other sentence here. A person who has to discover the phrasing has been
+    /// handed a syntax.
+    /// </summary>
+    private const string Telling =
+        @"^(?:the\s+)?(?<about>artist|singer|band|musician|composer|album|record|year|date|words|lyrics|title|name)\s+"
+        + @"(?:is|are|was|were)\s*(?:called\s+)?(?<value>.+)$";
 
     private static Match? Match(string input, string pattern)
     {
@@ -189,8 +243,62 @@ public static class DesignSpeech
         "button" => DesignNodeKind.Button,
         "picture" or "image" or "photo" => DesignNodeKind.Image,
         "box" or "group" => DesignNodeKind.Box,
+        "block" or "solid" or "shape" or "cube" or "sphere" or "ball"
+            or "cylinder" or "column" or "post" or "cone" => DesignNodeKind.Solid,
         "slide" or "shot" or "scene" or "room" or "track" or "section" => DesignNodeKind.Frame,
         _ => DesignNodeKind.Text,
+    };
+
+    /// <summary>
+    /// A solid, standing somewhere there is not already one.
+    ///
+    /// Everything a person adds lands at the middle of the floor otherwise, and
+    /// the second thing is inside the first. Watched exactly that happen: a ball
+    /// added to a room with a box in it was drawn correctly, in the same place,
+    /// and looked for all the world like nothing had been added.
+    ///
+    /// Laid out in rows rather than at random, so adding the same things twice
+    /// gives the same room, and so somebody can say "move it" about a thing they
+    /// can see rather than hunt for one they cannot.
+    /// </summary>
+    private static DesignNode Standing(
+        DesignDocument design, string? room, string words, string? shape)
+    {
+        var already = room is null
+            ? 0
+            : design.ChildrenOf(room).Count(child => child.Kind == DesignNodeKind.Solid);
+
+        // A 440px floor, four to a row, kept off the edges.
+        const int step = 120;
+        var x = (already % 4) * step - 180;
+        var y = (already / 4 % 4) * step - 180;
+
+        return shape is null
+            ? DesignNode.New(DesignNodeKind.Solid, room,
+                ("text", words), ("x", x.ToString(Culture)), ("y", y.ToString(Culture)))
+            : DesignNode.New(DesignNodeKind.Solid, room,
+                ("text", words), ("shape", shape),
+                ("x", x.ToString(Culture)), ("y", y.ToString(Culture)));
+    }
+
+    private static readonly System.Globalization.CultureInfo Culture =
+        System.Globalization.CultureInfo.InvariantCulture;
+
+    /// <summary>
+    /// The shape somebody actually named, or null when they said no more than
+    /// "block".
+    ///
+    /// Separate from the kind because a sphere and a cube are the same thing in a
+    /// room, differing only in how they are drawn — folding that into the kind
+    /// would put a drawing decision into the document, which is the one thing the
+    /// document is supposed to know nothing about.
+    /// </summary>
+    private static string? ShapeOf(string word) => word.ToLowerInvariant() switch
+    {
+        "sphere" or "ball" => "sphere",
+        "cylinder" or "column" or "post" => "cylinder",
+        "cone" => "cone",
+        _ => null,
     };
 
     /// <summary>
@@ -208,8 +316,15 @@ public static class DesignSpeech
     /// <summary>
     /// What to call a thing when telling somebody what just happened. The words
     /// under a picture in the history strip, so they are the ones a person uses.
+    ///
+    /// Public because the canvas needs the same words when it says what you have
+    /// just pointed at, and it had its own list. The two disagreed: this one names
+    /// every kind, and that one had no case for a solid, a sound or a frame, so
+    /// pointing at a block in a room said "The page". Two vocabularies for one
+    /// canvas is how they drift, which is the rule the tools were written under
+    /// and the component was not.
     /// </summary>
-    private static string Name(DesignNodeKind kind, DesignMedium medium = DesignMedium.Page) => kind switch
+    public static string NameFor(DesignNodeKind kind, DesignMedium medium = DesignMedium.Page) => kind switch
     {
         DesignNodeKind.Heading => "title",
         DesignNodeKind.Text => "words",

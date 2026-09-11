@@ -49,11 +49,9 @@
 
             <div class="wear-acts">
                 <button class="wear-yes" type="button"
-                        @onclick="@(() => Decide(waiting.Id, true))"
-                        @onpointerup="@(() => Decide(waiting.Id, true))">Allow</button>
+                        @onclick="@(() => Decide(waiting.Id, true))">Allow</button>
                 <button class="wear-no" type="button"
-                        @onclick="@(() => Decide(waiting.Id, false))"
-                        @onpointerup="@(() => Decide(waiting.Id, false))">Deny</button>
+                        @onclick="@(() => Decide(waiting.Id, false))">Deny</button>
             </div>
         </div>
     }
@@ -91,7 +89,7 @@
             <button class="wear-mic @(_recording ? "is-live" : null)"
                     type="button"
                     aria-label="@(_recording ? "Stop and send" : "Speak")"
-                    @onclick="ToggleMicAsync" @onpointerup="ToggleMicAsync">
+                    @onclick="ToggleMicAsync">
                 @if (_recording)
                 {
                     <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>

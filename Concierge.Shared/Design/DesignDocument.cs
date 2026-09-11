@@ -207,6 +207,32 @@ public sealed record DesignDocument
 
     private ImmutableList<string> _order = ImmutableList<string>.Empty;
 
+    /// <summary>
+    /// The order things were added, for writing the document down.
+    ///
+    /// Internal because insertion order is this class's business — callers ask
+    /// <see cref="ChildrenOf"/> and get things in the order a person put them
+    /// there. The serialiser is the one caller that needs the raw list, because a
+    /// saved document that lost this would reopen with its slides shuffled and
+    /// nobody would notice until they presented it.
+    /// </summary>
+    internal IReadOnlyList<string> SerializationOrder => _order;
+
+    /// <summary>
+    /// Rebuilds a document that was written down, order included.
+    ///
+    /// Here rather than in the serialiser because the private constructor and the
+    /// order list are this class's invariants, and a second place that knows how
+    /// to assemble one is a second place to get them wrong.
+    /// </summary>
+    internal static DesignDocument Rehydrate(
+        ImmutableDictionary<string, DesignNode> nodes,
+        string rootId,
+        string look,
+        DesignMedium medium,
+        ImmutableList<string> order)
+        => new(nodes, rootId, look, medium) { _order = order };
+
     /// <summary>Adds something to the page, or inside a box.</summary>
     public DesignDocument Add(DesignNode node)
     {

@@ -11,7 +11,8 @@
 // this, which is the reason it is not.
 //
 // Exposed globals (window.conciergeDesign):
-//   watch(frame, dotnet) — tell .NET which element was touched, by node id.
+//   watch(frame, dotnet) — tell .NET which element was touched, by node id, and
+//                           whether the room was drawn by the 3D engine.
 
 (function () {
     'use strict';
@@ -59,6 +60,26 @@
             // The pointer says the thing is touchable. Without it a canvas looks
             // like a picture, and nobody clicks a picture.
             doc.body.style.cursor = 'pointer';
+
+            // How the room got drawn. A room that falls back to the flat drawing
+            // still works perfectly, which is the whole point of drawing it that
+            // way — and is also why nobody would ever find out. This carries the
+            // answer back so Engineering can say it.
+            //
+            // Both directions, because the frame decides asynchronously and can
+            // land either side of this listener being attached: the bridge is
+            // installed for anything still to come, and anything already decided
+            // is drained now.
+            var win = frame.contentWindow;
+            if (win) {
+                win.__conciergeDrew = function (drew, why) {
+                    dotnet.invokeMethodAsync('Drew', !!drew, why || '');
+                };
+
+                if (win.__deepReport) {
+                    win.__conciergeDrew(win.__deepReport.drew, win.__deepReport.why);
+                }
+            }
         };
 
         frame.addEventListener('load', attach);

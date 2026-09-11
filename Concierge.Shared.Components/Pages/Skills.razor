@@ -32,7 +32,7 @@
 <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="skills-title">
     <div class="sheet-head">
         <h1 class="sheet-title" id="skills-title">Skills</h1>
-        <button class="icon-btn" type="button" title="Close" @onclick="Close" @onpointerup="Close">
+        <button class="icon-btn" type="button" title="Close" @onclick="Close">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
             <span class="sr">Close skills</span>
         </button>
@@ -78,8 +78,7 @@
                 <button class="row skill-row @(on ? "is-on" : null)"
                         type="button"
                         aria-pressed="@(on ? "true" : "false")"
-                        @onclick="@(() => OnToggle.InvokeAsync(id))"
-                        @onpointerup="@(() => OnToggle.InvokeAsync(id))">
+                        @onclick="@(() => OnToggle.InvokeAsync(id))">
                     <span class="row-name">
                         @skill.Name
                         <span class="row-sub">@skill.Summary</span>
@@ -133,7 +132,7 @@
                             }
                         </span>
                         <button class="row-val" type="button" style="background:none;border:0;cursor:pointer;"
-                                @onclick="@(() => RemoveFolder(path))" @onpointerup="@(() => RemoveFolder(path))">Remove</button>
+                                @onclick="@(() => RemoveFolder(path))">Remove</button>
                     </div>
                 }
             </div>
@@ -147,7 +146,7 @@
                @oninput="@(e => _newFolder = e.Value?.ToString() ?? string.Empty)" />
 
         <button class="btn btn-primary" type="button" disabled="@string.IsNullOrWhiteSpace(_newFolder)"
-                @onclick="AddFolder" @onpointerup="AddFolder">Add</button>
+                @onclick="AddFolder">Add</button>
 
         @if (!string.IsNullOrWhiteSpace(_folderMessage))
         {

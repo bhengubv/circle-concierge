@@ -4,6 +4,7 @@ using Concierge.Shared.Rpc.Mcp;
 using Concierge.Ai.Isolated;
 using MudBlazor.Services;
 using Concierge.Chat.Cloud;
+using Concierge.Shared.Design;
 using Concierge.Diagrams.Design;
 using Concierge.Hosting;
 using Concierge.Media;
@@ -88,6 +89,7 @@ public static class MauiProgram
 			// is constructed and the scheduler behaves exactly as before.
 			.AddConciergeHooks()
 			.AddConciergeDeviceCapabilities()
+			.AddConciergeDesignTools()
 			.AddMauiDeviceCapabilities()
 			// AddConciergeAi() registers ILlmRuntimeService and the in-process
 			// chat runtime; AddConciergeAiIsolated() then replaces the chat

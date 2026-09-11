@@ -61,11 +61,9 @@
 
                             <span class="ask-actions">
                                 <button class="btn btn-primary" type="button"
-                                        @onclick="@(() => Answer(id, ToolApprovalDecision.Allowed))"
-                                        @onpointerup="@(() => Answer(id, ToolApprovalDecision.Allowed))">Allow</button>
+                                        @onclick="@(() => Answer(id, ToolApprovalDecision.Allowed))">Allow</button>
                                 <button class="btn" type="button"
-                                        @onclick="@(() => Answer(id, ToolApprovalDecision.Denied))"
-                                        @onpointerup="@(() => Answer(id, ToolApprovalDecision.Denied))">Deny</button>
+                                        @onclick="@(() => Answer(id, ToolApprovalDecision.Denied))">Deny</button>
                             </span>
                         </div>
                     }

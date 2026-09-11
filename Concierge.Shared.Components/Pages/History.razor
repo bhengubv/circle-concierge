@@ -75,15 +75,15 @@
                                            and a modal over the list hides which
                                            one is about to go. *@
                                         <span class="ask-actions">
-                                            <button class="btn" type="button" @onclick="ConfirmDelete" @onpointerup="ConfirmDelete">Delete</button>
-                                            <button class="btn" type="button" @onclick="CancelDelete" @onpointerup="CancelDelete">Keep</button>
+                                            <button class="btn" type="button" @onclick="ConfirmDelete">Delete</button>
+                                            <button class="btn" type="button" @onclick="CancelDelete">Keep</button>
                                         </span>
                                     }
                                     else
                                     {
                                         <button class="row-val" type="button" style="background:none;border:0;cursor:pointer;"
                                                 title="Delete this thread"
-                                                @onclick="@(() => RequestDelete(id))" @onpointerup="@(() => RequestDelete(id))">Delete</button>
+                                                @onclick="@(() => RequestDelete(id))">Delete</button>
                                     }
                                 </div>
                             }

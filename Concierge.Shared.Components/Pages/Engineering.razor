@@ -110,6 +110,45 @@
         </RoomSection>
 
         @*
+            How rooms get drawn.
+
+            The same argument as "Not on this device", and the reason it is in
+            this room. Space draws the flat room first and lets the 3D engine
+            replace it, so a machine that cannot run the engine shows a room that
+            works perfectly and says nothing — which is right for the person using
+            it and useless for the person wondering why theirs looks flatter than
+            somebody else's. This is where you check which you are in.
+        *@
+        <RoomSection Title="Rooms in three dimensions">
+            @if (_scene is null)
+            {
+                <p class="room-note">Not available in this build.</p>
+            }
+            else
+            {
+                <div class="row">
+                    <span class="row-name">Space</span>
+                    <span class="state">
+                        <span class="dot @(_scene.Last.By switch
+                                          {
+                                              Concierge.Shared.Design.SceneDrawnBy.Engine => "dot-on",
+                                              Concierge.Shared.Design.SceneDrawnBy.Fallback => "dot-off",
+                                              _ => "dot-waiting",
+                                          })" aria-hidden="true"></span>
+                        @(_scene.Last.By switch
+                        {
+                            Concierge.Shared.Design.SceneDrawnBy.Engine => "With a 3D engine",
+                            Concierge.Shared.Design.SceneDrawnBy.Fallback => "Flat",
+                            _ => "Not tried yet",
+                        })
+                    </span>
+                </div>
+
+                <p class="room-note">@_scene.Sentence</p>
+            }
+        </RoomSection>
+
+        @*
             What this device cannot do.
 
             The model is never told about these — an unavailable capability is
@@ -292,6 +331,7 @@
     /// AddConciergeHooks renders the room without the section.
     /// </summary>
     private Concierge.Shared.Hooks.HookStatus? _hookStatus;
+    private Concierge.Shared.Design.SceneEngineReport? _scene;
 
     private IReadOnlyList<Concierge.Shared.Hooks.HookRegistration> _hooks = [];
 
@@ -307,6 +347,9 @@
 
         _hookStatus = Services.GetService(typeof(Concierge.Shared.Hooks.HookStatus))
             as Concierge.Shared.Hooks.HookStatus;
+
+        _scene = Services.GetService(typeof(Concierge.Shared.Design.SceneEngineReport))
+            as Concierge.Shared.Design.SceneEngineReport;
 
         _hooks = _hookStatus?.Hooks ?? [];
 

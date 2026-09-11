@@ -14,14 +14,24 @@ namespace Concierge.Shared.Design;
 /// software feel like a cockpit. What replaces them is what somebody actually
 /// says: this one, then that one, and this bit is too quiet.
 ///
-/// Antra is the other half of this and is deliberately not here. Getting music
-/// onto the machine — links in, tagged files out, artwork, lyrics, organised on
-/// disk — is a library, not a design surface. This draws from a library; it does
-/// not try to be one.
+/// **A track shows what it knows about itself** — its cover, who made it, what it
+/// belongs to, and its words, when it has been told any of that. Antra's half of
+/// this was written off here as "a library, not a design surface", which was my
+/// decision presented as a settled one. The line was never that clean: artwork and
+/// lyrics are things you look at, and a surface showing neither was showing less
+/// than the exported file already carried.
 ///
-/// What this is not: a mixer or an encoder. It plays what you give it in the order
-/// you put it. It does not render a single audio file, which needs an encoder, and
-/// saying so beats implying otherwise.
+/// The words are folded away rather than printed down the page. Lyrics are long,
+/// this is a running order, and something that pushes the next track off the
+/// screen has stopped being a running order.
+///
+/// **What is still not here, and it is one thing:** fetching. Antra takes links in
+/// — you give it an address and it goes and gets the music. Everything here is
+/// already on the machine, because the export refuses to make a network request to
+/// a string a model may have written. That refusal is deliberate, and undoing it is
+/// a decision about what this program may reach.
+///
+/// What this is not: a mixer. It plays what you give it in the order you put it.
 /// </summary>
 public static class SoundRenderer
 {
@@ -60,13 +70,19 @@ public static class SoundRenderer
 
             if (track.Kind == DesignNodeKind.Sound)
             {
+                WriteDetails(html, SoundDetails.Of(track, document));
                 DesignMediums.WriteSound(html, track, string.Empty, string.Empty);
             }
             else
             {
                 // A frame holding sounds — a section of the running order rather
-                // than one piece.
+                // than one piece. It carries what it is in exactly the same way:
+                // saying "add a track" makes one of these, so drawing details only
+                // for the other kind meant somebody who said "the artist is Nina
+                // Simone" watched the history strip record it and the track show
+                // nothing. Watched that happen.
                 html.AppendLine($"<div class=\"grp\"><span class=\"nm\">{DesignMediums.Escape(track.Text.Length > 0 ? track.Text : "A section")}</span>");
+                WriteDetails(html, SoundDetails.Of(track, document));
                 DesignMediums.WriteContents(html, document, track, selectedId);
                 html.AppendLine("</div>");
             }
@@ -111,6 +127,61 @@ public static class SoundRenderer
         return html.ToString();
     }
 
+    /// <summary>
+    /// What a track knows about itself, when it knows anything.
+    ///
+    /// Silent when it does not: a design that has said none of this looks exactly
+    /// as it did, rather than growing a row of empty labels. An empty field on
+    /// screen is a form, and this is not a form.
+    /// </summary>
+    private static void WriteDetails(StringBuilder html, SoundDetails details)
+    {
+        if (!details.WorthShowing)
+        {
+            return;
+        }
+
+        html.AppendLine("<div class=\"about\">");
+
+        if (details.Artwork is { } cover)
+        {
+            html.AppendLine($"<img class=\"cover\" src=\"{DesignMediums.Escape(cover)}\" alt=\"\">");
+        }
+
+        var said = new List<string>();
+
+        if (details.Artist.Length > 0)
+        {
+            said.Add(DesignMediums.Escape(details.Artist));
+        }
+
+        if (details.Album.Length > 0)
+        {
+            said.Add(DesignMediums.Escape(details.Album));
+        }
+
+        if (details.Year.Length > 0)
+        {
+            said.Add(DesignMediums.Escape(details.Year));
+        }
+
+        if (said.Count > 0)
+        {
+            html.AppendLine($"<span class=\"by\">{string.Join(" · ", said)}</span>");
+        }
+
+        if (details.Lyrics.Length > 0)
+        {
+            // Folded away. Lyrics are long and this is a running order; printing
+            // them would push the next track off the screen.
+            html.AppendLine("<details class=\"words\"><summary>Words</summary><pre>");
+            html.AppendLine(DesignMediums.Escape(details.Lyrics));
+            html.AppendLine("</pre></details>");
+        }
+
+        html.AppendLine("</div>");
+    }
+
     private const string Style = """
         .list { padding: clamp(1rem, 4vw, 2rem); display: flex; flex-direction: column; gap: .6rem; }
         .all {
@@ -132,6 +203,19 @@ public static class SoundRenderer
         .grp { flex: 1; display: flex; flex-direction: column; gap: .4rem; }
         .nm { font-weight: 600; font-size: .9rem; }
         .t { font-size: .85rem; opacity: .8; margin: 0; }
+
+        /* What a track knows about itself. Sits beside the player rather than
+           above it, so the running order still reads as a list. */
+        .about { display: flex; align-items: center; gap: .55rem; flex-wrap: wrap; }
+        .cover {
+          width: 44px; height: 44px; object-fit: cover;
+          border-radius: calc(var(--radius) / 2); flex: none;
+        }
+        .by { font-size: .78rem; opacity: .65; }
+        .words { font-size: .78rem; opacity: .75; width: 100%; }
+        .words summary { cursor: pointer; }
+        .words pre { margin: .35rem 0 0; white-space: pre-wrap; font: inherit; opacity: .85; }
+
         .pad { padding: 2rem; }
         """;
 }

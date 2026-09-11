@@ -132,6 +132,33 @@ public static class ConciergeToolsServiceCollectionExtensions
         services.AddSingleton<IAgentTool, TodoReadTool>();
         services.AddSingleton<IAgentTool, TodoWriteTool>();
         services.TryAddSingleton<IGoalStore>(_ => new FileGoalStore(Path.Combine(dataRoot, "goals.json")));
+
+        // The canvas kept everything in memory, so closing the app threw the work
+        // away — while DesignDocumentFormat, which exists to write a design down,
+        // was referenced by nothing at all.
+        services.TryAddSingleton<Design.IDesignStore>(_ =>
+            new Design.FileDesignStore(Path.Combine(dataRoot, "design.json")));
+
+        // A short memory of what has been made, so the next one differs. A model
+        // driving a canvas picks the same look every time otherwise — not because
+        // it is right, but because it is first in the list.
+        services.TryAddSingleton<Design.IDesignLog>(_ =>
+            new Design.FileDesignLog(Path.Combine(dataRoot, "designs-made.json")));
+
+        // Whether the room was drawn by the 3D engine or by the fallback. Kept
+        // because the fallback is silent by design: a machine that cannot run the
+        // engine shows a room that works, forever, and nothing anywhere says so.
+        services.TryAddSingleton<Design.SceneEngineReport>();
+
+        // Turning a design into a file somebody keeps. Registered only where there
+        // is an encoder to do it with, so `design_save` is absent on a machine
+        // without one rather than offered and always failing — the rule the device
+        // capabilities already follow.
+        if (File.Exists(Design.FfmpegMediaExport.Find()))
+        {
+            services.TryAddSingleton<Design.IMediaExport>(_ => new Design.FfmpegMediaExport());
+        }
+
         services.TryAddSingleton<Settings.IScheduledTaskStore>(_ =>
             new Settings.FileScheduledTaskStore(Path.Combine(dataRoot, "schedule.json")));
         services.TryAddSingleton<IFeedbackChannel>(_ =>

@@ -10,6 +10,37 @@ public enum WatchScreen
     Speak,
 }
 
+/// <summary>
+/// Whether a surface belongs on a watch at all.
+///
+/// Written down as a rule because the alternative is each head deciding for
+/// itself, and the failure mode of that is a canvas rendered onto a 192dp face
+/// because nothing said not to.
+/// </summary>
+public static class WatchSurfaces
+{
+    /// <summary>
+    /// The design canvas does not go on a watch, and the reason is not screen size.
+    ///
+    /// A watch could carry the useful half of designing — "no, not like that" —
+    /// without carrying the canvas. Glancing at your wrist, seeing what changed and
+    /// saying no is a better fit for the product's actual claim than any attempt to
+    /// draw on it would be.
+    ///
+    /// It is not built because the correction has no way home. Answering on the
+    /// wrist needs approvals to ride the mesh, and that is held behind packet
+    /// signature verification — putting it on an unauthenticated channel would let
+    /// anyone on the café wifi say "allowed". So a design screen today would be a
+    /// button that appears to work and does not, which is the one thing this file
+    /// already refuses to ship: its own decisions are held per session rather than
+    /// persisted, for exactly that reason.
+    ///
+    /// When the transport lands, the screen to build is the last change plus undo.
+    /// Not a canvas. Deciding that now is cheaper than deciding it under pressure.
+    /// </summary>
+    public const bool Design = false;
+}
+
 /// <summary>What the watch should be showing right now.</summary>
 /// <param name="Screen">Which of the two.</param>
 /// <param name="Waiting">The approval being asked about, when there is one.</param>

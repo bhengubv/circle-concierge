@@ -65,6 +65,7 @@ public static class ConfinedProcess
         nint outRead = 0, outWrite = 0, errRead = 0, errWrite = 0;
         nint attributes = 0;
         nint jobHandleBuffer = 0;
+        nint environment = 0;
         var info = new ProcessInformation();
 
         try
@@ -96,14 +97,22 @@ public static class ConfinedProcess
             // people assume.
             var commandLine = new StringBuilder(CommandLineFor(executable, arguments));
 
+            // A filtered copy of our environment rather than a wholesale
+            // inheritance. Passing zero here hands the command everything this
+            // process holds — on a developer's machine that routinely means their
+            // GitHub token, their NuGet credentials, their cloud keys. Nothing in
+            // Concierge needed a model-written command to have those, and nothing
+            // was stopping it.
+            environment = BuildEnvironment();
+
             var created = CreateProcess(
                 null,
                 commandLine,
                 nint.Zero,
                 nint.Zero,
                 bInheritHandles: true,
-                dwCreationFlags: CreateNoWindow | ExtendedStartupInfoPresent,
-                lpEnvironment: nint.Zero,
+                dwCreationFlags: CreateNoWindow | ExtendedStartupInfoPresent | CreateUnicodeEnvironment,
+                lpEnvironment: environment,
                 lpCurrentDirectory: workingDirectory,
                 lpStartupInfo: ref startup,
                 lpProcessInformation: out info);
@@ -149,7 +158,69 @@ public static class ConfinedProcess
             {
                 Marshal.FreeHGlobal(jobHandleBuffer);
             }
+
+            if (environment != 0)
+            {
+                Marshal.FreeHGlobal(environment);
+            }
         }
+    }
+
+    /// <summary>
+    /// Names whose value is almost certainly a secret.
+    ///
+    /// Matched as substrings, case-insensitively, because the interesting ones are
+    /// never spelled the same twice: `GITHUB_TOKEN`, `NUGET_AUTH_TOKEN`,
+    /// `AWS_SECRET_ACCESS_KEY`, `ANTHROPIC_API_KEY`, `npm_config__authToken`.
+    ///
+    /// Deliberately a denylist and not an allowlist, which is the weaker choice
+    /// and the right one here. An allowlist would have to name every variable a
+    /// build tool needs — PATH, TEMP, USERPROFILE, PROCESSOR_ARCHITECTURE,
+    /// VSINSTALLDIR, half of MSBuild's surface — and the first one missed turns a
+    /// working command into a mysterious failure. A denylist fails the other way:
+    /// it can miss a secret nobody thought of. That is a real limitation and it is
+    /// why this is a reduction in blast radius rather than a guarantee.
+    /// </summary>
+    private static readonly string[] Secretish =
+    [
+        "TOKEN", "SECRET", "PASSWORD", "PASSWD", "CREDENTIAL",
+        "APIKEY", "API_KEY", "_KEY", "PRIVATE", "SESSION",
+    ];
+
+    /// <summary>
+    /// This process's environment, minus anything that looks like a secret,
+    /// laid out the way CreateProcess wants it.
+    ///
+    /// The block is NAME=VALUE pairs, each null-terminated, with a second null at
+    /// the end. Unicode, which is why the call adds CREATE_UNICODE_ENVIRONMENT —
+    /// without that flag Windows reads the same bytes as ANSI and the command gets
+    /// an environment of mojibake.
+    /// </summary>
+    private static nint BuildEnvironment()
+    {
+        var block = new StringBuilder();
+
+        foreach (System.Collections.DictionaryEntry entry in Environment.GetEnvironmentVariables())
+        {
+            if (entry.Key is not string name || entry.Value is not string value)
+            {
+                continue;
+            }
+
+            if (Secretish.Any(mark => name.Contains(mark, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            // Variables whose name starts with '=' are Windows' per-drive current
+            // directories (`=C:`). They are legal, they matter to cmd, and a
+            // naive writer that skips them changes where a relative path resolves.
+            block.Append(name).Append('=').Append(value).Append(' ');
+        }
+
+        block.Append(' ');
+
+        return Marshal.StringToHGlobalUni(block.ToString());
     }
 
     /// <summary>
@@ -264,6 +335,7 @@ public static class ConfinedProcess
     private const int HandleFlagInherit = 0x00000001;
     private const int StartFUseStdHandles = 0x00000100;
     private const uint CreateNoWindow = 0x08000000;
+    private const uint CreateUnicodeEnvironment = 0x00000400;
     private const uint ExtendedStartupInfoPresent = 0x00080000;
     private const int StdInput = -10;
     private static readonly nint ProcThreadAttributeJobList = 0x0002000D;

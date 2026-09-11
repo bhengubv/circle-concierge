@@ -23,10 +23,11 @@ namespace Concierge.Devices;
 /// is simply not told about them. The whole reason the capability interface has an
 /// availability check is that this file cannot know which head it is running on.
 ///
-/// The riskier things a phone can do — sending a message, placing a call, paying
-/// someone — are deliberately not here yet. They are the ones where "it asks first"
-/// has to be exactly right, and they belong with the Android head where they can be
-/// tested on a device rather than asserted from Windows.
+/// The two that reach another person — a message and a call — now live in
+/// `ReachingPeopleCapabilities`, and the thing that made them safe enough to write
+/// is that **neither of them sends anything**: they open the messaging app and the
+/// dialler with everything filled in, and a person presses the button. Paying
+/// somebody stays absent entirely.
 /// </summary>
 public static class MauiDeviceCapabilities
 {
@@ -46,6 +47,12 @@ public static class MauiDeviceCapabilities
         services.AddSingleton<IDeviceCapability, OpenLinkCapability>();
         services.AddSingleton<IDeviceCapability, FlashlightCapability>();
         services.AddSingleton<IDeviceCapability, ScreenshotCapability>();
+
+        // The two that reach another person. Both prepare and hand over rather
+        // than send — see ReachingPeopleCapabilities — and both are simply absent
+        // off a phone, like every other capability that cannot do its job here.
+        services.AddSingleton<IDeviceCapability, ComposeMessageCapability>();
+        services.AddSingleton<IDeviceCapability, PlaceCallCapability>();
 
         return services;
     }

@@ -16,12 +16,36 @@ public interface ISkillRuntime
     /// <summary>Compose multiple skills into a single system-prompt addendum.
     /// Skills stack — picking "code review" + "security audit" gives both
     /// instruction sets to the assistant. The runtime de-dupes obvious overlap
-    /// (e.g. shared style guidance) and orders by descriptor.Name.</summary>
-    string ComposeSystemPrompt(IEnumerable<string> skillIds);
+    /// (e.g. shared style guidance) and orders by descriptor.Name.
+    ///
+    /// Bodies are included until the budget runs out; everything past it is named
+    /// rather than dropped. See <see cref="SkillRuntime.DefaultBudgetTokens"/>.</summary>
+    string ComposeSystemPrompt(IEnumerable<string> skillIds, int budgetTokens = SkillRuntime.DefaultBudgetTokens);
 }
 
 public sealed class SkillRuntime : ISkillRuntime
 {
+    /// <summary>
+    /// How much of the prompt the switched-on skills may take before the rest are
+    /// named rather than quoted.
+    ///
+    /// Every activation has computed an `EstimatedTokens` since the day it was
+    /// written and nothing has ever read it, so there was no budget at all: switch
+    /// on twenty skills and twenty full bodies went into every message, for the
+    /// whole conversation, whether or not any of them applied.
+    ///
+    /// Hallmark's rule is "index-then-pick" — load the index, then only the few
+    /// entries you actually need, because pre-loading the rest "costs ~7K tokens
+    /// for nothing". Its 69-gate quality checklist is loaded at step 7 rather than
+    /// step 1 for exactly this reason: the gates inform fixes, not generation.
+    ///
+    /// 8,000 is about a quarter of a small local model's window and a rounding
+    /// error on a large cloud one, which is the right place to put it: the budget
+    /// exists to stop the pathological case, not to police ordinary use. Two or
+    /// three skills will never reach it.
+    /// </summary>
+    public const int DefaultBudgetTokens = 8_000;
+
     private readonly ISkillCatalogService _catalog;
     private readonly IEnumerable<ISkillSource> _sources;
     private readonly ILogger<SkillRuntime>? _log;
@@ -76,7 +100,7 @@ public sealed class SkillRuntime : ISkillRuntime
         return new SkillActivation(descriptor, body, addendum, tokens);
     }
 
-    public string ComposeSystemPrompt(IEnumerable<string> skillIds)
+    public string ComposeSystemPrompt(IEnumerable<string> skillIds, int budgetTokens = DefaultBudgetTokens)
     {
         var activations = skillIds
             .Where(id => !string.IsNullOrWhiteSpace(id))
@@ -90,13 +114,36 @@ public sealed class SkillRuntime : ISkillRuntime
         if (activations.Count == 0) return string.Empty;
         if (activations.Count == 1) return activations[0].SystemPromptAddendum;
 
+        // Spend the budget in the order they are shown, so which skills get
+        // quoted in full is something a person can predict from the list in front
+        // of them rather than an internal ranking they cannot see.
+        var quoted = new List<SkillActivation>();
+        var named = new List<SkillActivation>();
+        var spent = 0;
+
+        foreach (var activation in activations)
+        {
+            // The first is always quoted whatever it costs. A budget that can
+            // reject everything produces a prompt that mentions skills and
+            // contains none of them, which is worse than being over.
+            if (quoted.Count == 0 || spent + activation.EstimatedTokens <= budgetTokens)
+            {
+                quoted.Add(activation);
+                spent += activation.EstimatedTokens;
+            }
+            else
+            {
+                named.Add(activation);
+            }
+        }
+
         // Multi-skill stack: surround each with a header so the model can
         // identify which instructions apply when.
         var sb = new System.Text.StringBuilder();
         sb.AppendLine("You have been equipped with the following specialist skill profiles.");
         sb.AppendLine("Apply them in combination — each profile's guidance is concurrently in force.");
         sb.AppendLine();
-        foreach (var a in activations)
+        foreach (var a in quoted)
         {
             sb.AppendLine($"## Skill: {a.Descriptor.Name}");
             if (!string.IsNullOrWhiteSpace(a.Descriptor.Description))
@@ -107,6 +154,29 @@ public sealed class SkillRuntime : ISkillRuntime
             sb.AppendLine(a.Body);
             sb.AppendLine();
         }
+
+        // Named rather than dropped. A skill that vanished silently would leave
+        // somebody who switched it on watching it do nothing, with no way to tell
+        // that from a skill that simply did not help — and the honest answer costs
+        // one line each.
+        if (named.Count > 0)
+        {
+            sb.AppendLine("## Also switched on, not quoted here");
+            sb.AppendLine(
+                "These are active but their full instructions were left out to keep the prompt within "
+                + "budget. Ask for one by name if you need its detail.");
+            sb.AppendLine();
+
+            foreach (var a in named)
+            {
+                sb.AppendLine(string.IsNullOrWhiteSpace(a.Descriptor.Description)
+                    ? $"- {a.Descriptor.Name}"
+                    : $"- {a.Descriptor.Name} — {a.Descriptor.Description}");
+            }
+
+            sb.AppendLine();
+        }
+
         return sb.ToString();
     }
 
