@@ -218,7 +218,12 @@ public sealed class WorkspaceSkillsTests : BunitContext
 
         cut.Find(".comp-inner .chips .chip").Click();
 
-        Assert.Empty(cut.FindAll(".comp-inner .chips .chip"));
+        // Waited for rather than read once. Turning a skill off re-renders the
+        // composer, and on a loaded machine the assertion can run first — this
+        // passed ten times in a row on its own and failed inside the full suite,
+        // which is the fourth test in this repository to be wrong in exactly that
+        // way. The shape to watch for is an assertion on the line after a Click.
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll(".comp-inner .chips .chip")));
     }
 
     /// <summary>

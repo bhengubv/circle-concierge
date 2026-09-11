@@ -1086,6 +1086,14 @@ two commits behind `HEAD` before anyone noticed.
 
       Verified the only way this can be: **six consecutive full runs, all green.**
 
+      A fourth surfaced the moment the branch merged — `WorkspaceSkillsTests`
+      asserting on the line after a `Click()`, passing ten times alone and failing
+      inside the full suite. Same shape as the other two bUnit ones, and worth
+      naming as a shape rather than three separate fixes: **an assertion on the
+      line after a Click is a race.** Blazor re-renders after the event; a loaded
+      machine gets there second. If a fifth turns up, that is where to look before
+      anything else.
+
       **Stop the web head before running it** — a running `Concierge.Web` holds the
       shared DLLs and the build fails with MSB3027 rather than anything about tests. One of them is
       a tripwire rather than a test of this code — it goes red when there is no
