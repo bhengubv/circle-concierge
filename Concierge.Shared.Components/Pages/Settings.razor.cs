@@ -17,6 +17,19 @@ public partial class Settings
     private string? _selectedProviderId;
     private IReadOnlyList<SafetyAuditEntry> _auditEntries = Array.Empty<SafetyAuditEntry>();
 
+    /// <summary>
+    /// Set when the log could not be read, which is not the same as nothing having been
+    /// caught — and until this existed the two looked identical. The section is hidden when
+    /// there are no entries, correctly; a `catch` that swallowed the failure and left the
+    /// list empty hid it in exactly the same way. So a parent whose audit file was corrupt,
+    /// locked, or on a drive that had gone away saw a clean panel and concluded the filter
+    /// had stopped nothing.
+    ///
+    /// The worst version of this product's signature defect: two different facts rendering
+    /// the same, on the screen a parent opens precisely to find out which one is true.
+    /// </summary>
+    private string? _auditUnreadable;
+
     private async Task OnKidModeChanged(ChangeEventArgs args)
     {
         SafetySettings.KidMode = args.Value is bool b && b;
@@ -48,11 +61,14 @@ public partial class Settings
         try
         {
             _auditEntries = await SafetyAudit.ReadAsync(null, limit: 20);
+            _auditUnreadable = null;
         }
-        catch
+        catch (Exception failure)
         {
             _auditEntries = Array.Empty<SafetyAuditEntry>();
+            _auditUnreadable = failure.Message;
         }
+
         StateHasChanged();
     }
 

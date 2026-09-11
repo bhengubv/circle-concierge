@@ -74,13 +74,21 @@ public sealed class IntegrationContractTests
         var snapshot = studio.GetSnapshot();
 
         Assert.Equal("aether-media", snapshot.Engine);
-        Assert.True(snapshot.LibraryItemCount >= 2, "Demo seed should produce at least two items.");
-        Assert.Contains(snapshot.RecentItems, item => item.ContentType.StartsWith("video/", StringComparison.Ordinal));
-        Assert.Contains(snapshot.RecentItems, item => item.ContentType.StartsWith("audio/", StringComparison.Ordinal));
-        Assert.Contains("video", snapshot.SupportedKinds, StringComparer.OrdinalIgnoreCase);
-        Assert.Contains("audio", snapshot.SupportedKinds, StringComparer.OrdinalIgnoreCase);
+
+        // This asserted "Demo seed should produce at least two items", plus a video and an
+        // audio file among them — all of which described two fabricated entries the service
+        // planted at start-up and the Business APIs room displayed as a real library. The
+        // seed is gone, so what this test can honestly check is that the real library is
+        // wired in place of the null one and that it starts empty.
+        Assert.Empty(snapshot.RecentItems);
+        Assert.Equal(0, snapshot.LibraryItemCount);
     }
 
+    /// <summary>
+    /// Written when the library seeded itself on first read, to catch it doing that twice.
+    /// Nothing seeds anything now, so what this holds is the weaker and still useful claim:
+    /// reading the library does not change it.
+    /// </summary>
     [Fact]
     public void Repeated_media_snapshot_calls_do_not_reseed_the_library()
     {

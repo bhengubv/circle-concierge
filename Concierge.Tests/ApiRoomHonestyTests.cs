@@ -73,17 +73,16 @@ public sealed class ApiRoomHonestyTests : BunitContext
 
     /// <summary>
     /// The media library showed two named files with durations, codecs and creation times
-    /// recomputed on every launch, so they always looked freshly added. They are sample
-    /// entries the service seeds; nothing plays them and no such files exist. The room says
-    /// that above the list now — it only ever said anything when the list was empty, which is
-    /// exactly backwards, because an empty list makes no claim and two named files do.
+    /// recomputed on every launch, so they always looked freshly added. No such files exist
+    /// and nothing plays them: they were seeded by the service at start-up so the room had
+    /// something to show. The room had a correct empty state the whole time and could never
+    /// reach it.
+    ///
+    /// The seed is gone, on the owner's say-so, so the room says what is true.
     /// </summary>
     [Fact]
-    public void And_the_media_library_says_its_entries_are_samples()
+    public void And_the_media_library_is_empty_rather_than_full_of_files_that_do_not_exist()
     {
-        // With the real media service rather than the null one — the null studio holds
-        // nothing, so the room draws its (correct) empty state and proves nothing about the
-        // two seeded rows a person actually sees on the desktop app.
         Services.AddLogging();
         Services.AddConciergeCore();
         Concierge.Media.ConciergeMediaServiceCollectionExtensions.AddConciergeMedia(Services);
@@ -95,6 +94,8 @@ public sealed class ApiRoomHonestyTests : BunitContext
             .Single(head => head.TextContent.Contains("Media library", StringComparison.Ordinal))
             .Click();
 
-        Assert.Contains("sample entries", room.Markup, StringComparison.Ordinal);
+        Assert.Contains("Nothing in it yet", room.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("Concierge onboarding", room.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("Safe approvals", room.Markup, StringComparison.Ordinal);
     }
 }

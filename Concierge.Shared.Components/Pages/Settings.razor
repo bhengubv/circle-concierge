@@ -189,7 +189,9 @@
         }
     </section>
 
-    @if (_auditEntries.Count > 0)
+    @* Shown when there is something to show, or when the log could not be read —
+       which used to be swallowed and look exactly like nothing having been caught. *@
+    @if (_auditEntries.Count > 0 || _auditUnreadable is not null)
     {
         <section class="sheet-group">
             <button class="sheet-head-btn" type="button" @onclick="@(() => Toggle("audit"))">
@@ -198,6 +200,13 @@
             </button>
             @if (IsOpen("audit"))
             {
+            @if (_auditUnreadable is not null)
+            {
+                <p class="row-sub">
+                    The record could not be read, so this is not "nothing was caught" —
+                    it is "nobody can tell". @_auditUnreadable
+                </p>
+            }
             <div class="rows">
                 @foreach (var entry in _auditEntries.Take(10))
                 {

@@ -6,22 +6,25 @@ namespace Concierge.Media;
 
 /// <summary>
 /// Aether-media-backed implementation of <see cref="IMediaStudioService"/>. Wraps an
-/// <see cref="IMediaLibrary"/> (in-memory by default) and seeds it with two demo content
-/// items so the Concierge UI has something concrete to render until a real catalogue is wired.
+/// <see cref="IMediaLibrary"/>, in-memory by default.
 ///
-/// **The UI never said they were demo items.** The Business APIs room drew "Media library 2"
-/// over two named files with durations, codecs, sizes and creation times 23 and 7 minutes ago
-/// — recomputed on every launch, so they always looked freshly added. The room already has a
-/// correct empty state, so the only thing producing those rows is the seed below.
+/// **It used to seed two demo items, and the UI never said they were demo items.** The
+/// Business APIs room drew "Media library 2" over two named files — "Concierge onboarding
+/// (intro)", 2:18, h264, 18.2 MB, and "Safe approvals — walkthrough", 1:35, opus — with
+/// creation times recomputed on every launch, so they always looked freshly added twenty-three
+/// and seven minutes ago. No such files exist and nothing plays them.
 ///
-/// The summary now says what they are and the room prints it above the list. Whether the seed
-/// should exist at all is a separate question and somebody else's to answer: it is deliberate
-/// demo data, a test asserts it, and deleting it is not a decision to take in passing.
+/// The seed is gone, on the owner's say-so. The room already had a correct empty state and
+/// had simply never been able to reach it: it now says "Nothing in it yet", which is true.
+///
+/// Worth keeping the reason rather than only the change. Demo data exists so a screen has
+/// something to show, and the cost is that the screen stops being a report and becomes an
+/// illustration of one — with nothing on it marking which. That is the same defect as an
+/// approvals badge that always said two, arrived at from the friendlier direction.
 /// </summary>
 public sealed class AetherMediaStudioService : IMediaStudioService
 {
     private readonly IMediaLibrary _library;
-    private int _seeded;
 
     public AetherMediaStudioService(IMediaLibrary library)
     {
@@ -30,8 +33,6 @@ public sealed class AetherMediaStudioService : IMediaStudioService
 
     public MediaStudioSnapshot GetSnapshot()
     {
-        EnsureSeeded();
-
         // The default in-memory library wraps Task.FromResult — no SynchronizationContext is
         // captured, so .GetAwaiter().GetResult() never deadlocks and completes synchronously.
         // If a future library implementation performs real async I/O, switch this to async and
@@ -59,43 +60,7 @@ public sealed class AetherMediaStudioService : IMediaStudioService
             LibraryItemCount: items.Count,
             RecentItems: recent,
             SupportedKinds: kinds,
-            Summary: _seeded == 1 && items.Count == 2
-                ? "These two are sample entries this service seeds at start-up. They are not files on this machine, and nothing plays them."
-                : "Aether Media library is active; production hosts replace InMemoryMediaLibrary with a persistent store.");
+            Summary: "Aether Media library is active; production hosts replace InMemoryMediaLibrary with a persistent store.");
     }
 
-    private void EnsureSeeded()
-    {
-        if (Interlocked.CompareExchange(ref _seeded, 1, 0) != 0)
-        {
-            return;
-        }
-
-        const string creator = "K2X8M-RT5VP";
-        var now = DateTimeOffset.UtcNow;
-
-        _library.AddAsync(new MediaContent(
-            ContentHash: Guid.NewGuid().ToString("N"),
-            Title: "Concierge onboarding (intro)",
-            DurationMs: 138_000,
-            Codec: "h264",
-            ContentType: "video/mp4",
-            CreatorUhid: creator,
-            SizeBytes: 18_200_000,
-            CreatedAtMs: now.AddMinutes(-23).ToUnixTimeMilliseconds(),
-            ThumbnailHash: null,
-            Tags: ["onboarding", "intro"])).GetAwaiter().GetResult();
-
-        _library.AddAsync(new MediaContent(
-            ContentHash: Guid.NewGuid().ToString("N"),
-            Title: "Safe approvals — walkthrough",
-            DurationMs: 95_000,
-            Codec: "opus",
-            ContentType: "audio/ogg",
-            CreatorUhid: creator,
-            SizeBytes: 1_400_000,
-            CreatedAtMs: now.AddMinutes(-7).ToUnixTimeMilliseconds(),
-            ThumbnailHash: null,
-            Tags: ["walkthrough", "approvals"])).GetAwaiter().GetResult();
-    }
 }
