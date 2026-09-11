@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **147 boxes ticked, 14 open, ten
+`main`. What replaces it is the working list: **148 boxes ticked, 13 open, ten
 partial**, ordered so the next person can pick one up.
 
 **Thirty-six of those forty arrived at once**, on 2026-09-11, when the six
@@ -1335,7 +1335,26 @@ hole. The rest is a video editor.
       travels. It does not ask, like everything else on this canvas: nothing about it leaves
       the device, and going back is free. Nothing coming back is a failure rather than a
       silent track — a silent track looks exactly like one that worked.
-- [ ] Built-in free stock footage
+- [x] Built-in free stock footage — **from an archive that asks for nothing.** Every one
+      people reach for first (Pexels, Pixabay, Storyblocks) wants an account and a key, which
+      is one of the four things recorded as missing at the top of this section. Wikimedia
+      Commons wants neither and writes a licence beside everything in it.
+
+      `stock_footage` searches it and `stock_fetch` brings one clip down. **A clip with no
+      free licence is never offered** — anything marked non-commercial or no-derivatives is
+      dropped rather than returned with a warning nobody reads, because a clip somebody puts
+      in a film and then cannot show is worse than no clip at all. "cc-by-nc-4.0" starts with
+      "cc-by" and is checked for first, which is the trap in this.
+
+      **Who made it comes back with it**, without the markup the archive wraps it in: nearly
+      every free licence here requires attribution, and a result that omits the author quietly
+      sets somebody up to breach it. The licence is written down beside the downloaded file,
+      because a clip on a disk six months later says nothing about what may be done with it,
+      and the moment somebody needs that is the moment they publish.
+
+      Both ask first, because both leave the device. The licence is checked again at the
+      download, since a model can write any string into it. Parsed against the archive's real
+      answer rather than an imagined one. 22 tests.
 - [x] Motion graphics — **the useful half, without the half that makes the category
       unusable.** A still picture held for four seconds looks like a fault, and that is
       what a composition engine is actually wanted for here. `design_move` gives a shot a
