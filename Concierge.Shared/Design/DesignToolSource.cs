@@ -112,6 +112,8 @@ public sealed class DesignToolSource : IAgentToolSource
                 new CutTheShot(_workbench),
                 new ColourTheShot(_workbench),
                 new BlendTheShots(_workbench),
+                new BuildTheRoom(_workbench),
+                new CutAnOpening(_workbench),
                 .. _workbench.Web is null || _workbench.Approval is null
                     ? Array.Empty<IAgentTool>()
                     : [new BringASoundIn(_workbench)],
@@ -1118,6 +1120,214 @@ public sealed class DesignToolSource : IAgentToolSource
             return Task.FromResult(new AgentToolResult(
                 true, $"The shot before it now fades into this one over {Number(seconds)}s."));
         }
+    }
+
+    /// <summary>
+    /// A wall, a floor, a ceiling or a roof.
+    ///
+    /// Space drew four shapes on a floor until now, which is furniture without a
+    /// building. Pascal is an architectural editor and this is the part of it worth
+    /// having: the things a room is actually made of, said rather than drawn with a
+    /// mouse.
+    ///
+    /// A wall runs between two points because that is how somebody describes one —
+    /// "a wall along the back", "a wall from the corner to the door" — and not as a
+    /// width and a rotation, which is how a box is described and is the reason
+    /// putting up a wall with `design_add` never worked.
+    /// </summary>
+    private sealed class BuildTheRoom(DesignWorkbench workbench) : IAgentTool
+    {
+        public string Name => "design_build";
+
+        public string Description =>
+            "Put up a wall, lay a floor or a ceiling, or add a roof. A wall runs between two "
+            + "points on the floor; a floor, ceiling or roof covers an area.";
+
+        public JsonNode? ArgumentsSchema => new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject
+            {
+                ["what"] = new JsonObject
+                {
+                    ["type"] = "string",
+                    ["description"] = "wall, floor, ceiling or roof.",
+                },
+                ["text"] = new JsonObject { ["type"] = "string", ["description"] = "What to call it." },
+                ["x"] = new JsonObject { ["type"] = "number", ["description"] = "Where it starts across." },
+                ["y"] = new JsonObject { ["type"] = "number", ["description"] = "Where it starts back." },
+                ["x2"] = new JsonObject { ["type"] = "number", ["description"] = "Where a wall ends across." },
+                ["y2"] = new JsonObject { ["type"] = "number", ["description"] = "Where a wall ends back." },
+                ["width"] = new JsonObject { ["type"] = "number", ["description"] = "How wide a floor, ceiling or roof is." },
+                ["depth"] = new JsonObject { ["type"] = "number", ["description"] = "How deep it is." },
+                ["height"] = new JsonObject { ["type"] = "number", ["description"] = "How tall a wall is, or how high a ceiling sits." },
+            },
+            ["required"] = new JsonArray("what"),
+        };
+
+        public bool IsReadOnly => false;
+
+        public Task<AgentToolResult> InvokeAsync(
+            JsonNode? arguments, CancellationToken cancellationToken = default)
+        {
+            if (workbench.Session is not { } session)
+            {
+                return Task.FromResult(NoCanvas());
+            }
+
+            var what = Text(arguments, "what").ToLowerInvariant();
+
+            if (what is not ("wall" or "floor" or "ceiling" or "roof"))
+            {
+                return Task.FromResult(new AgentToolResult(
+                    false, string.Empty, "Say wall, floor, ceiling or roof."));
+            }
+
+            var props = new List<(string Key, string Value)>
+            {
+                ("shape", what),
+                ("text", Text(arguments, "text") is { Length: > 0 } named ? named : what),
+                ("x", Number(Amount(arguments, "x") ?? 0)),
+                ("y", Number(Amount(arguments, "y") ?? 0)),
+            };
+
+            if (what == "wall")
+            {
+                // A wall needs somewhere to end. Without one it would be drawn as
+                // nothing at all, so it runs two metres along rather than being
+                // refused — a wall in roughly the right place can be moved, and a
+                // refusal leaves somebody with nothing to move.
+                props.Add(("x2", Number(Amount(arguments, "x2") ?? (Amount(arguments, "x") ?? 0) + 200)));
+                props.Add(("y2", Number(Amount(arguments, "y2") ?? (Amount(arguments, "y") ?? 0))));
+                props.Add(("height", Number(Amount(arguments, "height") ?? 240)));
+                props.Add(("thickness", Number(Amount(arguments, "thickness") ?? 12)));
+            }
+            else
+            {
+                props.Add(("width", Number(Amount(arguments, "width") ?? 400)));
+                props.Add(("depth", Number(Amount(arguments, "depth") ?? 400)));
+                props.Add(("height", Number(Amount(arguments, "height") ?? (what == "roof" ? 90 : 240))));
+            }
+
+            var room = Room(session);
+            var piece = DesignNode.New(DesignNodeKind.Solid, room, [.. props]);
+
+            session.Record(session.Current.Add(piece), $"Put up a {what}");
+
+            return Task.FromResult(new AgentToolResult(true, $"Added a {what}."));
+        }
+    }
+
+    /// <summary>
+    /// A door or a window, cut into a wall.
+    ///
+    /// It belongs to the wall rather than standing beside it, which is what makes
+    /// the hole real: the wall is built as the stretches of solid either side of
+    /// the opening and the piece over it, so there is nothing to cut and no CSG
+    /// library to carry.
+    /// </summary>
+    private sealed class CutAnOpening(DesignWorkbench workbench) : IAgentTool
+    {
+        public string Name => "design_opening";
+
+        public string Description =>
+            "Cut a door or a window into a wall. Say which wall, how far along it starts, "
+            + "and how big it is.";
+
+        public JsonNode? ArgumentsSchema => new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = new JsonObject
+            {
+                ["wall"] = new JsonObject { ["type"] = "string", ["description"] = "Which wall." },
+                ["what"] = new JsonObject { ["type"] = "string", ["description"] = "door or window." },
+                ["at"] = new JsonObject { ["type"] = "number", ["description"] = "How far along the wall it starts." },
+                ["width"] = new JsonObject { ["type"] = "number", ["description"] = "How wide the opening is." },
+                ["height"] = new JsonObject { ["type"] = "number", ["description"] = "How tall it is." },
+                ["sill"] = new JsonObject
+                {
+                    ["type"] = "number",
+                    ["description"] = "How far off the floor a window sits. Nought for a door.",
+                },
+            },
+            ["required"] = new JsonArray("wall", "what"),
+        };
+
+        public bool IsReadOnly => false;
+
+        public Task<AgentToolResult> InvokeAsync(
+            JsonNode? arguments, CancellationToken cancellationToken = default)
+        {
+            if (workbench.Session is not { } session)
+            {
+                return Task.FromResult(NoCanvas());
+            }
+
+            var wallId = Text(arguments, "wall");
+            var wall = session.Current.Find(wallId);
+
+            if (wall is null)
+            {
+                return Task.FromResult(new AgentToolResult(
+                    false, string.Empty, $"There is nothing called {wallId} on the canvas."));
+            }
+
+            // Checked rather than assumed. A door hung on a chair would be added
+            // happily and drawn nowhere, which looks exactly like nothing happening.
+            if (!wall.Props.TryGetValue("shape", out var shape)
+                || !shape.Equals("wall", StringComparison.OrdinalIgnoreCase))
+            {
+                return Task.FromResult(new AgentToolResult(
+                    false, string.Empty, "That is not a wall, so nothing can be cut into it."));
+            }
+
+            var what = Text(arguments, "what").ToLowerInvariant();
+
+            if (what is not ("door" or "window"))
+            {
+                return Task.FromResult(new AgentToolResult(false, string.Empty, "Say door or window."));
+            }
+
+            var door = what == "door";
+
+            var opening = DesignNode.New(
+                DesignNodeKind.Solid,
+                wall.Id,
+                ("shape", what),
+                ("text", what),
+                ("at", Number(Amount(arguments, "at") ?? 60)),
+                ("width", Number(Amount(arguments, "width") ?? (door ? 90 : 120))),
+                ("height", Number(Amount(arguments, "height") ?? (door ? 200 : 120))),
+                ("sill", Number(door ? 0 : Amount(arguments, "sill") ?? 90)));
+
+            session.Record(session.Current.Add(opening), $"Cut a {what}");
+
+            return Task.FromResult(new AgentToolResult(true, $"Cut a {what} into that wall."));
+        }
+    }
+
+    /// <summary>
+    /// Which room a new piece belongs to, making one if there is not one yet.
+    ///
+    /// Somebody who says "put up a wall" on an empty canvas means a wall in a room,
+    /// not a wall and then a puzzle about why nothing appeared.
+    /// </summary>
+    private static string? Room(DesignSession session)
+    {
+        var rooms = DesignMediums.FramesOf(session.Current);
+
+        if (rooms.Count > 0)
+        {
+            return rooms[^1].Id;
+        }
+
+        var room = DesignNode.New(DesignNodeKind.Frame, null, ("text", "A room"));
+
+        session.Record(
+            session.Current.As(DesignMedium.Scene).Add(room),
+            "Started a room");
+
+        return room.Id;
     }
 
     /// <summary>Changes what is being made.</summary>

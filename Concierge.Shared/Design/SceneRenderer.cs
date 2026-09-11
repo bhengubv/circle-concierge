@@ -257,11 +257,166 @@ public static class SceneRenderer
 
                   for (var i = 0; i < room.things.length; i++) {
                     var thing = room.things[i];
-                    var mesh = thing.kind === 'solid' ? solidOf(thing) : signOf(thing);
+                    var mesh =
+                      thing.kind !== 'solid' ? signOf(thing)
+                      : thing.shape === 'wall' ? wallOf(thing)
+                      : thing.shape === 'floor' ? slabOf(thing, false)
+                      : thing.shape === 'ceiling' ? slabOf(thing, true)
+                      : thing.shape === 'roof' ? roofOf(thing)
+                      : solidOf(thing);
                     if (!mesh) { continue; }
                     mesh.userData.id = thing.id;
                     scene.add(mesh);
                     pickable.push(mesh);
+                  }
+
+                  // ── Walls, floors and ceilings ──────────────────────────
+
+                  // A wall is a box laid along the line between two points, and a
+                  // wall with a door in it is three boxes: one either side of the
+                  // hole and one over it.
+                  //
+                  // **That is why there is no CSG library here.** Cutting a real
+                  // hole out of a solid needs one, and a door or a window is a
+                  // rectangle — so the hole can be left rather than cut, by simply
+                  // not building that part of the wall. It is exact for the shapes
+                  // people actually ask for and costs nothing.
+                  function wallOf(thing) {
+                    var group = new THREE.Group();
+
+                    var dx = thing.x2 - thing.x;
+                    var dz = thing.y2 - thing.y;
+                    var run = Math.sqrt(dx * dx + dz * dz);
+
+                    if (run < 1) { return null; }
+
+                    var thick = Math.max(2, thing.thickness);
+                    var tall = Math.max(1, thing.height);
+
+                    // Each stretch of solid wall, measured along the run.
+                    var solids = [];
+                    var holes = (thing.openings || []).slice().sort(function (a, b) { return a.at - b.at; });
+                    var at = 0;
+
+                    for (var h = 0; h < holes.length; h++) {
+                      var hole = holes[h];
+                      var from = Math.max(0, Math.min(run, hole.at));
+                      var to = Math.max(from, Math.min(run, hole.at + hole.width));
+
+                      if (from > at) { solids.push({ from: at, to: from, bottom: 0, top: tall }); }
+
+                      // Over the opening, and under it for a window.
+                      if (hole.sill > 0) { solids.push({ from: from, to: to, bottom: 0, top: hole.sill }); }
+
+                      var head = hole.sill + hole.height;
+                      if (head < tall) { solids.push({ from: from, to: to, bottom: head, top: tall }); }
+
+                      at = to;
+                    }
+
+                    if (at < run) { solids.push({ from: at, to: run, bottom: 0, top: tall }); }
+
+                    var material = new THREE.MeshStandardMaterial({
+                      color: new THREE.Color(room.raised),
+                      roughness: 0.9,
+                      metalness: 0,
+                    });
+
+                    for (var s = 0; s < solids.length; s++) {
+                      var part = solids[s];
+                      var length = part.to - part.from;
+                      var height = part.top - part.bottom;
+
+                      if (length <= 0.5 || height <= 0.5) { continue; }
+
+                      var box = new THREE.Mesh(new THREE.BoxGeometry(length, height, thick), material);
+
+                      box.castShadow = true;
+                      box.receiveShadow = true;
+
+                      // Placed along the run, then the whole group is turned to
+                      // face the way the wall actually goes.
+                      box.position.set(
+                        part.from + (length / 2) - (run / 2),
+                        part.bottom + (height / 2),
+                        0);
+
+                      group.add(box);
+                    }
+
+                    group.position.set(thing.x + (dx / 2), 0, thing.y + (dz / 2));
+                    group.rotation.y = -Math.atan2(dz, dx);
+
+                    return group;
+                  }
+
+                  /// A floor or a ceiling: a flat slab, thin, at a height.
+                  function slabOf(thing, ceiling) {
+                    var thick = Math.max(2, thing.thickness);
+
+                    var slab = new THREE.Mesh(
+                      new THREE.BoxGeometry(Math.max(1, thing.width), thick, Math.max(1, thing.depth)),
+                      new THREE.MeshStandardMaterial({
+                        color: new THREE.Color(room.raised),
+                        roughness: 1,
+                        metalness: 0,
+                      }));
+
+                    slab.castShadow = !!ceiling;
+                    slab.receiveShadow = true;
+
+                    // A floor sits on the ground; a ceiling hangs at the height it
+                    // was given, which is the height of the walls it belongs to.
+                    slab.position.set(
+                      thing.x,
+                      ceiling ? Math.max(1, thing.height) : thick / 2,
+                      thing.y);
+
+                    return slab;
+                  }
+
+                  /// A pitched roof: two slopes meeting at a ridge down the middle.
+                  function roofOf(thing) {
+                    var wide = Math.max(1, thing.width);
+                    var deep = Math.max(1, thing.depth);
+                    var rise = Math.max(1, thing.height);
+                    var base = Math.max(0, thing.level);
+
+                    // Six points: four at the eaves, two at the ridge. Written out
+                    // rather than reached for in a helper, because a roof is the
+                    // one shape here that is not a primitive and the arithmetic is
+                    // the whole of it.
+                    var half = wide / 2;
+                    var back = deep / 2;
+
+                    var points = new Float32Array([
+                      // near slope
+                      -half, base, back, half, base, back, half, base + rise, 0,
+                      -half, base, back, half, base + rise, 0, -half, base + rise, 0,
+                      // far slope
+                      half, base, -back, -half, base, -back, -half, base + rise, 0,
+                      half, base, -back, -half, base + rise, 0, half, base + rise, 0,
+                      // the two gable ends
+                      -half, base, back, -half, base + rise, 0, -half, base, -back,
+                      half, base, -back, half, base + rise, 0, half, base, back,
+                    ]);
+
+                    var geometry = new THREE.BufferGeometry();
+                    geometry.setAttribute('position', new THREE.BufferAttribute(points, 3));
+                    geometry.computeVertexNormals();
+
+                    var roof = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({
+                      color: new THREE.Color(room.accent),
+                      roughness: 0.8,
+                      metalness: 0,
+                      side: THREE.DoubleSide,
+                    }));
+
+                    roof.castShadow = true;
+                    roof.receiveShadow = true;
+                    roof.position.set(thing.x, 0, thing.y);
+
+                    return roof;
                   }
 
                   function solidOf(thing) {
@@ -459,7 +614,39 @@ public static class SceneRenderer
                 DesignMediums.Number(thing, "y", 0),
                 DesignMediums.Number(thing, "width", 120),
                 DesignMediums.Number(thing, "depth", 120),
-                DesignMediums.Number(thing, "height", 80)))
+                DesignMediums.Number(thing, "height", 80),
+
+                // Where a wall ends. Only a wall uses these, and a wall with no
+                // end is two metres of nothing — so it falls back to a straight
+                // run rather than drawing a wall with no length.
+                DesignMediums.Number(thing, "x2", DesignMediums.Number(thing, "x", 0) + 200),
+                DesignMediums.Number(thing, "y2", DesignMediums.Number(thing, "y", 0)),
+                DesignMediums.Number(thing, "thickness", 12),
+                DesignMediums.Number(thing, "level", 0),
+
+                // Doors and windows, which live on the wall they are cut into.
+                document.ChildrenOf(thing.Id)
+                    .Where(hole => hole.Kind == DesignNodeKind.Solid
+                        && hole.Props.TryGetValue("shape", out var kind)
+                        && (kind.Equals("door", StringComparison.OrdinalIgnoreCase)
+                            || kind.Equals("window", StringComparison.OrdinalIgnoreCase)))
+                    .Select(hole => new Opening(
+                        hole.Props["shape"].Trim().ToLowerInvariant(),
+                        DesignMediums.Number(hole, "at", 60),
+                        DesignMediums.Number(hole, "width", 80),
+                        DesignMediums.Number(
+                            hole,
+                            "height",
+                            hole.Props["shape"].Trim().Equals("door", StringComparison.OrdinalIgnoreCase)
+                                ? 200
+                                : 120),
+                        DesignMediums.Number(
+                            hole,
+                            "sill",
+                            hole.Props["shape"].Trim().Equals("door", StringComparison.OrdinalIgnoreCase)
+                                ? 0
+                                : 90)))
+                    .ToList()))
             .ToList();
 
         // Named the way the script that reads them names them. Left to the
@@ -483,7 +670,19 @@ public static class SceneRenderer
 
     private sealed record Thing(
         string Id, string Kind, string Text, string Shape,
-        int X, int Y, int Width, int Depth, int Height);
+        int X, int Y, int Width, int Depth, int Height,
+        int X2, int Y2, int Thickness, int Level,
+        IReadOnlyList<Opening> Openings);
+
+    /// <summary>
+    /// A door or a window, as a hole in the wall it belongs to.
+    /// </summary>
+    /// <param name="Kind">door or window.</param>
+    /// <param name="At">How far along the wall it starts.</param>
+    /// <param name="Width">How wide the hole is.</param>
+    /// <param name="Height">How tall.</param>
+    /// <param name="Sill">How far off the floor the bottom sits. Nought for a door.</param>
+    private sealed record Opening(string Kind, int At, int Width, int Height, int Sill);
 
     private const string Style = """
         .stage { position: absolute; inset: 0; display: grid; place-items: center; perspective: 1100px; overflow: hidden; }
