@@ -3,7 +3,7 @@
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on
-`main`. What replaces it is the working list: **141 boxes ticked, 22 open, eight
+`main`. What replaces it is the working list: **142 boxes ticked, 21 open, eight
 partial**, ordered so the next person can pick one up.
 
 **Thirty-six of those forty arrived at once**, on 2026-09-11, when the six
@@ -1386,7 +1386,30 @@ there is nothing to take from it short of the model itself.
       what somebody said in their own words — nobody says "artifact type: presentation",
       they say "a deck for Thursday". A guide somebody wrote wins over one of ours with the
       same name; a broken file costs the file and never the built-ins. 22 tests.
-- [ ] Plug into the other coding tools, the way it reaches sixteen of them
+- [x] Plug into the other coding tools. **Their shape inverted, which is the honest
+      version of it.** open-design is a harness that drives sixteen coding assistants;
+      Concierge *is* the assistant. The useful half survives the inversion: somebody with
+      Claude Code, Codex or Aider already installed has already chosen their tool for large
+      code changes, and an assistant that cannot acknowledge that is one they leave in
+      order to go and use it.
+
+      `coding_tools` says which of nine are actually on this machine — claude, codex,
+      gemini, cursor-agent, aider, opencode, crush, goose, qwen — and nothing is installed,
+      downloaded or mentioned when it is not there. `ask_coding_tool` hands one a job.
+
+      **It asks every time and the card carries the tool and the job in full**, because
+      this is further from reversible than anything else here: it starts another agent, in
+      the workspace, that edits files on its own judgement and not ours. Nobody can decide
+      about "run a coding tool"; everybody can decide about "aider — rewrite the export to
+      stream". With no way to ask, the listing is still offered and the handing over is
+      not.
+
+      Confined like every other command — job object on Windows, `unshare` and `prlimit` on
+      Linux — and given twenty minutes, because an agent that has misunderstood its job can
+      run for an afternoon. Each entry carries the way that tool takes a job with nobody
+      watching, and one whose non-interactive form nobody here is sure of is **left out
+      rather than guessed at**: a wrong flag opens an interactive session nothing is
+      sitting in front of and hangs until the time limit. 13 tests.
 
 **What Concierge has that none of the six has**, kept here so the list above is
 not read as a scoreboard: one document across five media on one agent loop, with

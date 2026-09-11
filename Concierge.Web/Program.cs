@@ -58,6 +58,7 @@ builder.Services
     // Looking inside a media file, where there is an encoder to look with.
     .AddConciergeMediaLook()
     .AddConciergeTranscription()
+    .AddConciergeCodingTools()
     // Parental controls / content-filter pipeline. Wraps the IChatRuntime
     // registered above so every chat call routes through the filter when
     // Family Mode is on. Off-mode is a zero-cost pass-through.
