@@ -64,7 +64,9 @@ public sealed class ProductSurfaceContractTests
         var page = File.ReadAllText(Path.Combine(root, "Concierge.Shared.Components", "Pages", "BusinessApis.razor"));
 
         Assert.Contains("@inject IScalarApiService", page, StringComparison.Ordinal);
-        Assert.Contains("API Room with Scalar-style workflows", page, StringComparison.Ordinal);
+        // Was "API Room with Scalar-style workflows", the old lede — which invited somebody
+        // to read a reference, try a call and keep the result, none of which the room can do.
+        Assert.Contains("None of it is built yet", page, StringComparison.Ordinal);
         Assert.Contains("scalar.Capabilities", page, StringComparison.Ordinal);
     }
 

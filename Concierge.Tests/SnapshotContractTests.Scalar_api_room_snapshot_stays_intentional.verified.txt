@@ -2,14 +2,14 @@
   Name: Scalar,
   Repository: https://github.com/scalar/scalar,
   License: MIT,
-  IntegrationMode: Built-in API Room capability with optional external Scalar tooling adapters.,
+  IntegrationMode: Planned as an API Room in the app, with optional external Scalar tooling adapters.,
   Capabilities: [
     {
       Id: api-reference,
       Name: Beautiful API reference,
       Summary: Render OpenAPI and Swagger documents as readable API documentation.,
       ConciergeUse: Concierge can show a business-friendly API manual beside build, release, and integration work.,
-      BuiltInByDefault: true,
+      BuiltInByDefault: false,
       SafetyBoundary: Rendered docs are read-only until the user approves edits to the underlying OpenAPI file.
     },
     {
@@ -18,7 +18,7 @@
       Kind: ApiClient,
       Summary: Send test requests from an API workspace instead of jumping between tools.,
       ConciergeUse: Concierge can help teams test business integrations like Xero, Meta, Kakao, Parcel Ninja, and internal APIs.,
-      BuiltInByDefault: true,
+      BuiltInByDefault: false,
       SafetyBoundary: Requests must use approved endpoints, stored credentials, and visible request history.
     },
     {
@@ -27,7 +27,7 @@
       Kind: OpenApiValidation,
       Summary: Validate API descriptions before they become docs, SDKs, tests, or release evidence.,
       ConciergeUse: Concierge can stop broken contracts before integrations reach customers.,
-      BuiltInByDefault: true,
+      BuiltInByDefault: false,
       SafetyBoundary: Validation is local-first and never uploads private API specs without explicit approval.
     },
     {
@@ -36,7 +36,7 @@
       Kind: CodeExamples,
       Summary: Generate request examples for common languages and frameworks.,
       ConciergeUse: Concierge can turn an API into copyable examples for web, mobile, backend, support, and partner teams.,
-      BuiltInByDefault: true,
+      BuiltInByDefault: false,
       SafetyBoundary: Examples are labelled as generated guidance and must not include live secrets.
     },
     {
@@ -45,7 +45,7 @@
       Kind: MockServer,
       Summary: Run a local mock from an OpenAPI document for safe testing before a live provider is connected.,
       ConciergeUse: Concierge can let teams build and QA integrations before credentials or vendor approval exist.,
-      BuiltInByDefault: true,
+      BuiltInByDefault: false,
       SafetyBoundary: Mocks bind locally by default and cannot impersonate a live third-party endpoint without review.
     },
     {
@@ -54,7 +54,7 @@
       Kind: SdkGeneration,
       Summary: Generate client libraries from an OpenAPI contract.,
       ConciergeUse: Concierge can create starter clients for internal APIs and partner integrations.,
-      BuiltInByDefault: true,
+      BuiltInByDefault: false,
       SafetyBoundary: Generated code lands in reviewable generated zones and requires approval before replacing hand-written code.
     },
     {
@@ -63,7 +63,7 @@
       Kind: ApiAgent,
       Summary: Let an agent explain endpoints, payloads, auth, errors, and workflows from the API contract.,
       ConciergeUse: Concierge can make APIs understandable to non-developers without hiding the contract.,
-      BuiltInByDefault: true,
+      BuiltInByDefault: false,
       SafetyBoundary: The agent can explain and prepare requests, but live calls still go through approval and credential policy.
     },
     {
@@ -72,7 +72,7 @@
       Kind: OfflineClient,
       Summary: Keep API exploration useful when a user is away from a network.,
       ConciergeUse: Concierge can support travel, field work, and low-connectivity teams.,
-      BuiltInByDefault: true,
+      BuiltInByDefault: false,
       SafetyBoundary: Offline state stays local and sync/export remains user controlled.
     }
   ],

@@ -41,7 +41,9 @@ public sealed class ScalarApiServiceTests
 
         Assert.All(snapshot.Capabilities, capability =>
         {
-            Assert.True(capability.BuiltInByDefault);
+            // This asserted BuiltInByDefault was true on all eight, which is how a test comes
+            // to hold a claim in place instead of checking it: none of the eight exists. What
+            // this test is actually about is the safety boundary, and that is still pinned.
             Assert.False(string.IsNullOrWhiteSpace(capability.SafetyBoundary));
             Assert.DoesNotContain("secret", capability.ConciergeUse, StringComparison.OrdinalIgnoreCase);
         });

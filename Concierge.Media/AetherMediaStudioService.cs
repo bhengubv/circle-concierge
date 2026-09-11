@@ -8,6 +8,15 @@ namespace Concierge.Media;
 /// Aether-media-backed implementation of <see cref="IMediaStudioService"/>. Wraps an
 /// <see cref="IMediaLibrary"/> (in-memory by default) and seeds it with two demo content
 /// items so the Concierge UI has something concrete to render until a real catalogue is wired.
+///
+/// **The UI never said they were demo items.** The Business APIs room drew "Media library 2"
+/// over two named files with durations, codecs, sizes and creation times 23 and 7 minutes ago
+/// — recomputed on every launch, so they always looked freshly added. The room already has a
+/// correct empty state, so the only thing producing those rows is the seed below.
+///
+/// The summary now says what they are and the room prints it above the list. Whether the seed
+/// should exist at all is a separate question and somebody else's to answer: it is deliberate
+/// demo data, a test asserts it, and deleting it is not a decision to take in passing.
 /// </summary>
 public sealed class AetherMediaStudioService : IMediaStudioService
 {
@@ -50,7 +59,9 @@ public sealed class AetherMediaStudioService : IMediaStudioService
             LibraryItemCount: items.Count,
             RecentItems: recent,
             SupportedKinds: kinds,
-            Summary: "Aether Media library is active; production hosts replace InMemoryMediaLibrary with a persistent store.");
+            Summary: _seeded == 1 && items.Count == 2
+                ? "These two are sample entries this service seeds at start-up. They are not files on this machine, and nothing plays them."
+                : "Aether Media library is active; production hosts replace InMemoryMediaLibrary with a persistent store.");
     }
 
     private void EnsureSeeded()

@@ -129,14 +129,31 @@ public static class ConfinedProcess
             CloseHandle(errWrite);
             outWrite = errWrite = 0;
 
-            using var process = Process.GetProcessById(info.dwProcessId);
-
+            // Waited on by the handle we already own, not by looking the process up again.
+            //
+            // This was `Process.GetProcessById(info.dwProcessId)`, which throws
+            // "Process with an Id of N is not running" when the child has already finished —
+            // and a fast command finishes well inside the time it takes to get here. So
+            // `run_command` did not return a fast command's output, it threw: an exception
+            // out of the sandbox, for a command that worked perfectly. It surfaced about one
+            // run in three under a loaded machine and would do the same to anybody running
+            // `echo` on a busy laptop.
+            //
+            // The handle cannot race. We hold it from CreateProcess until the finally closes
+            // it, it stays valid after the child exits, and it is signalled the moment the
+            // child ends.
             var output = ReadAllAsync(outRead, cancellationToken);
             var error = ReadAllAsync(errRead, cancellationToken);
 
-            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            await WaitAsync(info.hProcess, cancellationToken).ConfigureAwait(false);
 
-            return new ConfinedResult(process.ExitCode, await output + await error);
+            if (!GetExitCodeProcess(info.hProcess, out var exitCode))
+            {
+                throw new InvalidOperationException(
+                    $"The command ended and its exit code could not be read: {Marshal.GetLastWin32Error()}.");
+            }
+
+            return new ConfinedResult(exitCode, await output + await error);
         }
         finally
         {
@@ -414,4 +431,42 @@ public static class ConfinedProcess
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool CloseHandle(nint handle);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GetExitCodeProcess(nint process, out int exitCode);
+
+    /// <summary>
+    /// Waits for a process handle to be signalled, without a thread parked on it.
+    ///
+    /// `ThreadPool.RegisterWaitForSingleObject` hands the wait to the operating system and
+    /// calls back when the handle is signalled, so a long-running command costs no thread.
+    /// The registration is unregistered on both paths — a wait left registered holds the
+    /// handle and fires against a closed one later.
+    /// </summary>
+    private static async Task WaitAsync(nint process, CancellationToken cancellationToken)
+    {
+        var finished = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        using var handle = new Microsoft.Win32.SafeHandles.SafeWaitHandle(process, ownsHandle: false);
+        using var waitHandle = new ManualResetEvent(false) { SafeWaitHandle = handle };
+
+        var registration = ThreadPool.RegisterWaitForSingleObject(
+            waitHandle,
+            (_, _) => finished.TrySetResult(),
+            state: null,
+            millisecondsTimeOutInterval: Timeout.Infinite,
+            executeOnlyOnce: true);
+
+        try
+        {
+            using (cancellationToken.Register(() => finished.TrySetCanceled(cancellationToken)))
+            {
+                await finished.Task.ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            registration.Unregister(null);
+        }
+    }
 }

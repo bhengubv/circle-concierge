@@ -352,7 +352,7 @@ public sealed class RoomTests : BunitContext
     public void Business_apis_says_what_is_built_in_and_what_is_not()
     {
         var cut = Open<Concierge.Shared.Components.Pages.BusinessApis>();
-        SectionHeader(cut, "What it does").Click();
+        SectionHeader(cut, "What it would do").Click();
 
         var states = cut.FindAll(".room-card .state").Select(e => e.TextContent.Trim()).ToArray();
         Assert.NotEmpty(states);

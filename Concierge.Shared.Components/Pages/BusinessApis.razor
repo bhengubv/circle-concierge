@@ -8,8 +8,15 @@
 
     The groups at the bottom are the honest part of this room — they name the
     kinds of system a business actually runs on rather than implying that all
-    of them are wired. What is built in and what is not is stated per
-    capability, not averaged into a claim.
+    of them are wired.
+
+    This comment used to end by saying that what is built and what is not was
+    stated per capability rather than averaged into a claim. It was not: all
+    eight carried BuiltInByDefault: true and the room drew a green dot beside
+    every one, for a reference renderer, a request client, a validator, an
+    example generator, a mock server, an SDK generator, an agent that explains
+    an API, and offline support. None of those exist. The word "Not yet" was
+    already written here and had never once been reached.
 *@
 
 @{
@@ -27,8 +34,9 @@
     </div>
 
     <p class="room-lede">
-        An API Room with Scalar-style workflows: read the reference, try a call, and
-        keep the result beside the work it belongs to.
+        What an API room here would do: read the reference, try a call, and keep the
+        result beside the work it belongs to. None of it is built yet — this room says
+        what is planned and what a business actually runs on.
     </p>
 
     <div class="room-body">
@@ -40,7 +48,9 @@
             </div>
         </RoomSection>
 
-        <RoomSection Title="What it does" Count="@scalar.Capabilities.Count">
+        @* "What it does", over eight rows each saying "Not yet". A heading that
+           contradicts every row under it is the same claim in a larger font. *@
+        <RoomSection Title="What it would do" Count="@scalar.Capabilities.Count">
             <div class="room-grid">
                 @foreach (var capability in scalar.Capabilities)
                 {
@@ -81,6 +91,10 @@
             }
             else
             {
+                @* The summary is printed here as well as in the empty case. It was shown
+                   only when the list was empty, which is exactly backwards: an empty list
+                   makes no claim, and a list of two named files with durations does. *@
+                <p class="room-note">@media.Summary</p>
                 <div class="rows">
                     @foreach (var item in media.RecentItems)
                     {
