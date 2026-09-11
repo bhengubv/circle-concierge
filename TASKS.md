@@ -556,7 +556,18 @@ includes `run_command`, and the answer was: whatever it likes.
       The denylist fails the other way: it can miss a secret nobody thought of. So
       this reduces blast radius, it does not guarantee anything, and the comment in
       the code says so. Two tests: a token is invisible, and `PATH` still is not.
-- [~] Cap what a command may write. **Done on Linux; still not doable on Windows.**
+- [~] Cap what a command may write. **Done on Linux. On Windows there is no route
+      left, and that is now a decision rather than an absence.**
+
+      Two ways existed. A container is one, and **containers are ruled out for this
+      project entirely** — said plainly on 2026-09-11, so it is not an option to be
+      weighed again. The other is a filesystem filter driver, which means writing,
+      signing and installing a kernel driver on somebody's machine to stop a command
+      filling a disk. That is wildly out of proportion to the problem.
+
+      So this stays open only in the sense that Windows cannot do it, not in the
+      sense that somebody should try. Whoever reads this next should not go looking
+      for a third way; there is not one that is worth what it costs.
       `prlimit --fsize` sets RLIMIT_FSIZE and the kernel enforces it: writing 400MB
       under a 256MB cap stops at exactly 268,435,456 bytes, measured. It caps any
       one file rather than everything written in total, so a command determined to
