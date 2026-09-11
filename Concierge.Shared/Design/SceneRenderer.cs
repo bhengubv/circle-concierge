@@ -258,6 +258,57 @@ public static class SceneRenderer
                   var showing = room.showing || 'whole';
                   var only = room.only || 0;
 
+                  // ── Floors of a building ────────────────────────────────
+
+                  // Everything on the first floor sits at the first floor's
+                  // height, and a building with three of them can be looked at
+                  // whole, pulled apart, or one at a time.
+                  //
+                  // **Pulled apart is the one worth having.** A house seen from
+                  // outside is a box; a house with its floors lifted away from
+                  // each other is a thing you can actually read, and it is the one
+                  // view no physical model gives you. Pascal calls it exploded and
+                  // is right to.
+                  var levels = {};
+
+                  for (var t = 0; t < room.things.length; t++) {
+                    levels[Math.max(0, room.things[t].level)] = true;
+                  }
+
+                  var storeys = Object.keys(levels).map(Number).sort(function (a, b) { return a - b; });
+
+                  // How high a floor sits, and how far it is lifted when the
+                  // building is pulled apart.
+                  function riseOf(level) {
+                    var at = storeys.indexOf(Math.max(0, level));
+                    if (at < 0) { at = 0; }
+
+                    var stacked = at * 280;
+                    var apart = showing === 'apart' ? at * 240 : 0;
+
+                    return stacked + apart;
+                  }
+
+                  // Which floors are drawn at all. Showing one at a time is how
+                  // somebody works on the kitchen without the bedroom in the way.
+                  function shown(level) {
+                    if (showing !== 'one') { return true; }
+                    return Math.max(0, level) === storeys[Math.min(only, storeys.length - 1)];
+                  }
+
+                  // **This has to be worked out before anything is drawn, and it
+                  // was not.** `riseOf` is called for every thing in the loop
+                  // below, and `var storeys` is hoisted — so with anything at all
+                  // in the room the very first solid called `undefined.indexOf`
+                  // and the whole engine fell over to the flat fallback.
+                  //
+                  // It survived being verified because it was verified on an
+                  // *empty* room: no things, no call, no throw, and a report
+                  // saying the engine drew. The engine did draw — there was
+                  // nothing in it. Anything put in a room after that has been
+                  // flat ever since, and the report said so on the one screen
+                  // built to say it.
+
                   var pickable = [];
 
                   for (var i = 0; i < room.things.length; i++) {
@@ -402,44 +453,6 @@ public static class SceneRenderer
                     // Turned to face the way the wall does, so a bookcase is flat
                     // against it rather than sticking out corner-first.
                     mesh.rotation.y = -Math.atan2(dz, dx);
-                  }
-
-                  // ── Floors of a building ────────────────────────────────
-
-                  // Everything on the first floor sits at the first floor's
-                  // height, and a building with three of them can be looked at
-                  // whole, pulled apart, or one at a time.
-                  //
-                  // **Pulled apart is the one worth having.** A house seen from
-                  // outside is a box; a house with its floors lifted away from
-                  // each other is a thing you can actually read, and it is the one
-                  // view no physical model gives you. Pascal calls it exploded and
-                  // is right to.
-                  var levels = {};
-
-                  for (var t = 0; t < room.things.length; t++) {
-                    levels[Math.max(0, room.things[t].level)] = true;
-                  }
-
-                  var storeys = Object.keys(levels).map(Number).sort(function (a, b) { return a - b; });
-
-                  // How high a floor sits, and how far it is lifted when the
-                  // building is pulled apart.
-                  function riseOf(level) {
-                    var at = storeys.indexOf(Math.max(0, level));
-                    if (at < 0) { at = 0; }
-
-                    var stacked = at * 280;
-                    var apart = showing === 'apart' ? at * 240 : 0;
-
-                    return stacked + apart;
-                  }
-
-                  // Which floors are drawn at all. Showing one at a time is how
-                  // somebody works on the kitchen without the bedroom in the way.
-                  function shown(level) {
-                    if (showing !== 'one') { return true; }
-                    return Math.max(0, level) === storeys[Math.min(only, storeys.length - 1)];
                   }
 
                   // ── Walls, floors and ceilings ──────────────────────────

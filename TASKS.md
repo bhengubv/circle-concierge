@@ -1753,7 +1753,31 @@ two commits behind `HEAD` before anyone noticed.
       container that throws while it is being built, which is what the three bare-factory
       registrations would have done. What is on screen with the new tools is **not**
       checked: Engineering has not been opened since
-- [x] **The 3D engine works on the desktop head. Measured, not assumed.**
+- [x] **The 3D engine works on the desktop head — and for two months it did not, which
+      the entry below was wrong about.**
+
+      Looked at on 2026-09-11 with a room that had things in it, and the room was **flat**.
+      Engineering said so in its own words: *"The engine loaded and the room did not draw.
+      This is a fault, not a limit."*
+
+      The cause: `riseOf` reads `storeys`, the drawing loop calls `riseOf` for every thing in
+      the room, and `var storeys` was assigned **after** the loop. `var` hoists, so it was
+      `undefined` when the first solid asked for it — "Cannot read properties of undefined
+      (reading 'indexOf')" — the whole engine threw, and the flat room stayed on screen.
+
+      **And this is why it passed verification: the verification used an empty room.** No
+      things, no loop, no call, no throw, and a report saying the engine drew. It did draw.
+      There was nothing in it. Every room with anything in it has been flat since.
+
+      Fixed by working the floors out before anything is drawn. 3 tests pin the order —
+      crude, reading generated JavaScript, and the only thing available since nothing here
+      runs a browser. Verified on the desktop head with a room of walls, a desk, a chair, a
+      lamp, a shelf and a sphere: the sphere is round, the shadows are there, and Engineering
+      now says **"With a 3D engine — solid shapes, lights and shadows."**
+
+      The lesson is the one this file keeps writing down: **an empty case is not a case.**
+      The self-report earned its place — it is the only thing that said the engine was
+      failing, and it said it plainly on the one screen built to say it.
 
       The only genuinely head-specific thing about it was whether WebView2 loads an
       ES module by absolute path from inside a srcdoc frame, on the origin MAUI
