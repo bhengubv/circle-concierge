@@ -92,9 +92,122 @@ public static class SoundRenderer
 
         html.AppendLine("</main>");
 
+        // The track stack: one lane per track, at its real length.
+        //
+        // **Built from what the audio reports, never from a guess.** A stack drawn before the
+        // durations are known would have to invent them, and an invented measurement is slop
+        // the moment it is invented — the rule the board renderer already follows with its
+        // labelled blank. So the lanes appear as each track says how long it is, and a track
+        // that never says stays a labelled blank.
+        html.AppendLine("<div class=\"stack\" id=\"stack\" aria-label=\"The running order\"></div>");
+
         html.AppendLine("""
             <script>
               (function () {
+                // ── The waveform ──────────────────────────────────────────────
+                //
+                // Real peaks off the decoded samples. Where the audio cannot be decoded —
+                // a track pointing at a file on somebody's disk, a format this browser will
+                // not take — the canvas is left empty and says so. Drawing a plausible shape
+                // would be inventing a measurement, which is the one thing this medium must
+                // not do.
+                var Ctx = window.AudioContext || window.webkitAudioContext;
+
+                [].forEach.call(document.querySelectorAll('canvas.wave'), function (c) {
+                  var src = c.dataset.src;
+                  if (!src || !Ctx) { c.classList.add('no'); return; }
+
+                  fetch(src)
+                    .then(function (r) { return r.arrayBuffer(); })
+                    .then(function (bytes) { return new Ctx().decodeAudioData(bytes); })
+                    .then(function (buffer) { draw(c, buffer); })
+                    .catch(function () { c.classList.add('no'); });
+                });
+
+                function draw(canvas, buffer) {
+                  var width = canvas.clientWidth || 300;
+                  var height = canvas.height;
+                  canvas.width = width;
+
+                  var pen = canvas.getContext('2d');
+                  var samples = buffer.getChannelData(0);
+                  var per = Math.max(1, Math.floor(samples.length / width));
+
+                  pen.clearRect(0, 0, width, height);
+                  pen.fillStyle = getComputedStyle(canvas).color;
+
+                  for (var x = 0; x < width; x++) {
+                    var top = 0;
+                    for (var i = 0; i < per; i++) {
+                      var v = Math.abs(samples[(x * per) + i] || 0);
+                      if (v > top) { top = v; }
+                    }
+                    var tall = Math.max(1, top * height);
+                    pen.fillRect(x, (height - tall) / 2, 1, tall);
+                  }
+
+                  canvas.classList.add('drawn');
+                }
+
+                // ── The track stack ───────────────────────────────────────────
+                //
+                // One lane per track at its real length, filled in as each track says how
+                // long it is. A lane drawn before the duration is known would be a guess.
+                var stack = document.getElementById('stack');
+
+                function lanes() {
+                  if (!stack) { return; }
+
+                  var tracks = [].slice.call(document.querySelectorAll('.track'));
+                  var known = tracks.map(function (t) {
+                    var a = t.querySelector('audio');
+                    return a && isFinite(a.duration) ? a.duration : 0;
+                  });
+
+                  if (!tracks.length) { return; }
+
+                  // Nothing known is still six tracks. The first version returned here when
+                  // no duration had been reported, so a running order of six tracks pointing
+                  // at files on this machine — which is what importing a music folder gives
+                  // you — showed no stack at all. An empty case is not a case: the lanes are
+                  // drawn as labelled blanks instead, which is what the board does with a
+                  // panel that has no number.
+                  var whole = known.reduce(function (a, b) { return a + b; }, 0);
+
+                  stack.innerHTML = '';
+
+                  tracks.forEach(function (t, i) {
+                    // A placeholder track carries its name as its own text rather than in a
+                    // caption, so a lane read "Track 3" for something called "Sinnerman" —
+                    // which is the one thing a running order must not do.
+                    var cap = t.querySelector('figcaption, .nm, .snd.ph');
+                    var lane = document.createElement('div');
+                    lane.className = 'lane';
+
+                    var run = document.createElement('div');
+                    run.className = 'run';
+                    run.textContent = cap ? cap.textContent : ('Track ' + (i + 1));
+
+                    if (known[i] && whole > 0) {
+                      run.style.width = ((known[i] / whole) * 100) + '%';
+                    } else {
+                      // No length reported, so no width can be honest. Full-bleed and marked,
+                      // rather than a bar sized from a number nobody has.
+                      run.classList.add('no');
+                      run.style.width = '100%';
+                      run.textContent += ' — length unknown';
+                    }
+
+                    lane.appendChild(run);
+                    stack.appendChild(lane);
+                  });
+                }
+
+                [].forEach.call(document.querySelectorAll('audio'), function (a) {
+                  a.addEventListener('loadedmetadata', lanes);
+                });
+                lanes();
+
                 var all = [].slice.call(document.querySelectorAll('audio'));
                 var button = document.getElementById('all');
                 if (!button || !all.length) { return; }
@@ -201,6 +314,21 @@ public static class SoundRenderer
         .snd audio { width: 100%; }
         .ph { opacity: .6; font-size: .85rem; }
         .grp { flex: 1; display: flex; flex-direction: column; gap: .4rem; }
+
+        /* A waveform, when there is one to draw. Empty until the samples are read, and
+           marked when they cannot be — never a plausible shape standing in for sound. */
+        .wave { display: block; width: 100%; height: 48px; color: var(--accent); opacity: .75; }
+        .wave.no { display: none; }
+
+        /* The running order as lanes, each at its real length. */
+        .stack { display: flex; flex-direction: column; gap: 3px; margin-top: .9rem; }
+        .lane { height: 1.15rem; background: var(--raised); border-radius: 3px; overflow: hidden; }
+        .run {
+          height: 100%; display: flex; align-items: center;
+          padding: 0 .4rem; font-size: .6rem; white-space: nowrap; overflow: hidden;
+          background: color-mix(in srgb, var(--accent) 30%, var(--raised));
+        }
+        .run.no { background: none; opacity: .45; font-style: italic; }
         .nm { font-weight: 600; font-size: .9rem; }
         .t { font-size: .85rem; opacity: .8; margin: 0; }
 

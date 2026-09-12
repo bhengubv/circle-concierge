@@ -230,6 +230,14 @@ public static class DesignMediums
 
         html.AppendLine($"<figure class=\"snd{picked}\"{attr}>");
         html.AppendLine($"<figcaption>{Escape(name)}</figcaption>");
+
+        // A real waveform, drawn from the decoded audio, or nothing.
+        //
+        // Nothing is drawn here — the canvas is filled in by script once the samples have
+        // actually been read. A shape invented to look like sound is the same defect as a
+        // number invented to look like a measurement, and this medium is the one where it
+        // would be least noticed and most dishonest.
+        html.AppendLine($"<canvas class=\"wave\" height=\"48\" data-src=\"{Escape(src)}\"></canvas>");
         html.AppendLine($"<audio controls preload=\"metadata\" src=\"{Escape(src)}\"></audio>");
         html.AppendLine("</figure>");
     }
