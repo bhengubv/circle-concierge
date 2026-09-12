@@ -15,6 +15,7 @@ using Concierge.Devices;
 using Concierge.Shared;
 using Concierge.Shared.Devices;
 using Concierge.Shared.Hooks;
+using Concierge.Shared.Away;
 using Concierge.Shared.Chat;
 using Concierge.Shared.Safety;
 using Concierge.Shared.Diagrams;
@@ -162,6 +163,9 @@ public static class MauiProgram
 				sp.GetRequiredService<InteractiveToolApprovalService>(),
 				sp.GetRequiredService<IToolApprovalAuditLog>()));
 		builder.Services.AddConciergeRuntime();
+		// A device that is not here can reach the making. Registering it opens nothing;
+		// only a head with an endpoint can actually be reached.
+		builder.Services.AddConciergeAway();
 		builder.Services.AddConciergeState(Path.Combine(FileSystem.AppDataDirectory, "state"));
 
 		// Work that runs end to end, keeping its place on disk so an interrupted run

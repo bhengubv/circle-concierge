@@ -22,6 +22,7 @@ using CircleAI.Core;
 using Microsoft.AspNetCore.RateLimiting;
 using MudBlazor.Services;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Concierge.Shared.Away;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -73,6 +74,9 @@ builder.Services.AddSingleton<IToolApprovalService>(sp =>
         sp.GetRequiredService<InteractiveToolApprovalService>(),
         sp.GetRequiredService<IToolApprovalAuditLog>()));
 builder.Services.AddConciergeRuntime();
+
+// The door a watch, a phone or anything else not here comes in through.
+builder.Services.AddConciergeAway();
 builder.Services.AddConciergeState(
     Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Concierge", "web"));
 // Work that runs end to end, keeping its place on disk.
@@ -178,6 +182,7 @@ app.UseConciergeApiKeyAuth(apiKeyOptions);
 
 app.MapConciergeHealth();
 app.MapConciergeVoice();
+app.MapConciergeAway();
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode()
