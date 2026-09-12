@@ -109,4 +109,70 @@ public sealed class SayingABoardTests
         Assert.False(heard.Understood);
         Assert.Contains("board", heard.Reply, StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>
+    /// **Every panel on a board was called "A PANEL".**
+    ///
+    /// The small name above the number is the frame's own text and nothing set it — "add a
+    /// title saying Signups" puts a heading *inside* the panel instead. So a board of four
+    /// panels read A PANEL four times over four different numbers, which is the one thing a
+    /// board must never do: it is read at a glance by whoever is walking past.
+    ///
+    /// Found by building a board on the running app and looking at it.
+    /// </summary>
+    [Theory]
+    [InlineData("call the panel Signups", "Signups")]
+    [InlineData("name this panel Monthly churn", "Monthly churn")]
+    public void A_panel_can_be_named(string said, string expected)
+    {
+        var heard = Say(ABoard(), said);
+
+        Assert.True(heard.Understood, $"'{said}' was not understood");
+        Assert.Equal(expected, PropOf(heard.Document, "text"));
+    }
+
+    /// <summary>
+    /// And naming it does not clear what it says — the two are separate facts about one
+    /// panel, and the sentences must not be what breaks that.
+    /// </summary>
+    [Fact]
+    public void And_naming_it_keeps_its_number()
+    {
+        var filled = Say(ABoard(), "set the panel to 48,200").Document;
+        var named = Say(filled, "call the panel Signups").Document;
+
+        Assert.Equal("Signups", PropOf(named, "text"));
+        Assert.Equal("48,200", PropOf(named, "value"));
+    }
+
+    /// <summary>
+    /// **A panel showing 48,200 said "Nothing on this panel yet" directly underneath it.**
+    ///
+    /// A panel's number, direction and note are properties of the frame rather than children,
+    /// and the only emptiness test counted children — so on the one medium built entirely
+    /// around a number, the number was not counted as content. Seen on the running app the
+    /// day panels became sayable.
+    /// </summary>
+    [Fact]
+    public void A_panel_with_a_number_on_it_is_not_described_as_empty()
+    {
+        var filled = Say(ABoard(), "set the panel to 48,200").Document;
+
+        var html = DesignMediums.Render(filled);
+
+        Assert.Contains("48,200", html, StringComparison.Ordinal);
+        Assert.DoesNotContain("Nothing on this panel yet", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// And a panel with genuinely nothing on it still says so — the empty state is right, it
+    /// was only ever wrong when there was something to show. Same shape as the canvas restore
+    /// defect, and worth pinning for the same reason.
+    /// </summary>
+    [Fact]
+    public void But_a_panel_with_nothing_on_it_still_says_so()
+        => Assert.Contains(
+            "Nothing on this panel yet",
+            DesignMediums.Render(ABoard()),
+            StringComparison.Ordinal);
 }

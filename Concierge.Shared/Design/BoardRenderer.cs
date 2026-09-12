@@ -74,7 +74,16 @@ public static class BoardRenderer
             }
 
             // Anything else somebody put on the panel, drawn the ordinary way.
-            DesignMediums.WriteContents(html, document, panel, selectedId);
+            //
+            // A number, a direction or a note counts as something already drawn: without
+            // that, a panel reading 48,200 printed "Nothing on this panel yet" immediately
+            // under the number.
+            DesignMediums.WriteContents(
+                html,
+                document,
+                panel,
+                selectedId,
+                alreadyDrawn: value.Length > 0 || moving.Length > 0 || note.Length > 0);
 
             html.AppendLine("</section>");
         }

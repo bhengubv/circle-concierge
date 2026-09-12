@@ -146,14 +146,32 @@ public static class DesignMediums
     }
 
     /// <summary>The content of one frame, drawn the way a page draws things.</summary>
+    /// <param name="alreadyDrawn">
+    /// Whether the caller has already drawn something for this frame out of its own
+    /// properties, so an empty child list is not an empty frame.
+    ///
+    /// **A board panel showing 48,200 said "Nothing on this panel yet" directly underneath
+    /// it.** A panel's number, direction and note are properties of the frame, not children,
+    /// so the only test for emptiness here counted nought and said so — on the one medium
+    /// built entirely around a number, under the number. Seen on the running app the day
+    /// panels became sayable.
+    /// </param>
     internal static void WriteContents(
-        StringBuilder html, DesignDocument document, DesignNode frame, string? selectedId)
+        StringBuilder html,
+        DesignDocument document,
+        DesignNode frame,
+        string? selectedId,
+        bool alreadyDrawn = false)
     {
         var children = document.ChildrenOf(frame.Id);
 
         if (children.Count == 0)
         {
-            html.AppendLine($"<p class=\"nothing\">Nothing on this {Escape(PieceOf(document.Medium))} yet.</p>");
+            if (!alreadyDrawn)
+            {
+                html.AppendLine($"<p class=\"nothing\">Nothing on this {Escape(PieceOf(document.Medium))} yet.</p>");
+            }
+
             return;
         }
 

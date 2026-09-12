@@ -315,6 +315,28 @@ public static class DesignSpeech
             return new DesignHeard(true, design.Add(node), $"Added a {NameFor(kind, design.Medium)}");
         }
 
+        // Naming the thing you are on, which is what a board's small name is.
+        if (Match(said, Naming) is { } naming)
+        {
+            var frames = design.Frames;
+
+            if (frames.Count == 0)
+            {
+                return new DesignHeard(false, design, string.Empty,
+                    $"There is no {naming.Groups["kind"].Value} to name yet.", Final: true);
+            }
+
+            var named = pointedAt is { Length: > 0 }
+                                && design.Find(pointedAt) is { Kind: DesignNodeKind.Frame } picked
+                ? picked
+                : frames[^1];
+
+            var name = Clean(naming.Groups["name"].Value);
+
+            return new DesignHeard(
+                true, design.Set(named.Id, "text", name), $"Called it {name}");
+        }
+
         // What a panel on a board says.
         if (Match(said, PanelChange) is { } change)
         {
@@ -526,6 +548,18 @@ public static class DesignSpeech
     /// "panel" is required for the same reason "shot" is: without it, "set it to 48,200"
     /// competes with every other sentence on the surface.
     /// </summary>
+    /// <summary>
+    /// "call the panel Signups", "name this slide Introduction".
+    ///
+    /// **Every panel on a board was called "A PANEL".** The small name above the number is
+    /// the frame's own text, nothing set it, and "add a title saying Signups" puts a heading
+    /// *inside* the panel rather than naming it — so a board of four panels read A PANEL four
+    /// times over four different numbers, which is the one thing a board must never do.
+    /// </summary>
+    private const string Naming =
+        @"^(?:call|name)\s+(?:the|this|that)\s+(?<kind>panel|slide|shot|room|screen|track|section)\s+"
+        + @"(?<name>.+?)[.!]?$";
+
     private const string PanelValue =
         @"^(?:set|make|put)\s+(?:the|this|that)\s+panel\s+(?:to\s+|at\s+)?(?<value>.+?)[.!]?$";
 

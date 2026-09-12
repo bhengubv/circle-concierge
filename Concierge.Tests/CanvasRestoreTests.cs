@@ -129,9 +129,27 @@ public sealed class CanvasRestoreTests : BunitContext
         return cut;
     }
 
+    /// <summary>
+    /// What the canvas frame is showing.
+    ///
+    /// `FindAll` rather than `Find`, so a frame that is not there yet comes back as an empty
+    /// string and the surrounding `WaitForAssertion` simply waits — `Find` throws an
+    /// ElementNotFoundException, which is not an assertion failure and may not be retried.
+    ///
+    /// **Said plainly: this is a plausible cause, not a diagnosed one.** These tests failed
+    /// twice in about fifteen full-suite runs and passed alone every time, and neither
+    /// failure message was captured before it stopped happening. Five consecutive green runs
+    /// after this change prove nothing at that rate. If it returns, the message is the thing
+    /// to get — this repository's history is four rounds of confident reasoning about timing
+    /// that were all wrong until somebody measured.
+    /// </summary>
     private static string Canvas(
         IRenderedComponent<Concierge.Shared.Components.Workspace.Desktop.Workspace> cut)
-        => cut.Find("iframe.dz-frame").GetAttribute("srcdoc") ?? string.Empty;
+    {
+        var frames = cut.FindAll("iframe.dz-frame");
+
+        return frames.Count == 0 ? string.Empty : frames[0].GetAttribute("srcdoc") ?? string.Empty;
+    }
 
     [Fact]
     public void The_canvas_shows_the_design_that_was_saved()

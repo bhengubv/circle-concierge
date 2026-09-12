@@ -36,6 +36,7 @@ public sealed class CanvasSaysWhyTests
     [InlineData(DesignMedium.Scene, "put a door in the wall", "no wall")]
     [InlineData(DesignMedium.Motion, "make the shot warm", "no shots")]
     [InlineData(DesignMedium.Board, "set the panel to 4", "no panels")]
+    [InlineData(DesignMedium.Board, "call the panel Signups", "no panel")]
     public void The_canvas_says_why_rather_than_going_quiet(
         DesignMedium medium, string said, string expected)
     {

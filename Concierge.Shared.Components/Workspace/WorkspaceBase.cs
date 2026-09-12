@@ -905,6 +905,13 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
                 Concierge.Shared.Design.DesignMedium.Motion => "Say what you would like in the shot",
                 Concierge.Shared.Design.DesignMedium.Scene => "Say what you would like in the room",
                 Concierge.Shared.Design.DesignMedium.Sound => "Say what you would like to hear",
+
+                // Handheld and Board arrived after this list and never joined it, so both
+                // fell to "on the page" — the two media that are least like a page. The
+                // comment above claims the invitation follows the medium; it followed four of
+                // seven.
+                Concierge.Shared.Design.DesignMedium.Handheld => "Say what you would like on the screen",
+                Concierge.Shared.Design.DesignMedium.Board => "Say what you would like on the board",
                 _ => "Say what you would like on the page",
             };
 
