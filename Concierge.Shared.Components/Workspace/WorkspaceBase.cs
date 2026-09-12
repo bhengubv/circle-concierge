@@ -749,6 +749,34 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
             var source = $"data:{kind};base64,{Convert.ToBase64String(bytes)}";
 
+            // In a room a picture lies flat on the floor as a plan to build over.
+            //
+            // **It used to become a sign.** Both renderers draw an Image in a room as a text
+            // label — the CSS one writes the alt text on the floor, and the engine sends it
+            // over as kind "sign" — so paperclipping a floor plan into a room produced the
+            // words "holiday.png" lying on the ground and no picture at all. Nothing said so.
+            //
+            // `design_plan` has drawn exactly this properly the whole time and needed a
+            // picture to work on, which only the paperclip can supply and only a model could
+            // ask for. Item 17's "trace over a photo" is reachable by a person for the first
+            // time because of these six lines.
+            if (_design.Current.Medium == Concierge.Shared.Design.DesignMedium.Scene)
+            {
+                _design.Record(
+                    _design.Current.Add(Concierge.Shared.Design.DesignNode.New(
+                        Concierge.Shared.Design.DesignNodeKind.Solid,
+                        null,
+                        ("shape", "plan"),
+                        ("text", "The plan"),
+                        ("src", source),
+                        ("width", "400"),
+                        ("depth", "400"))),
+                    "Laid the plan down");
+
+                added++;
+                continue;
+            }
+
             // Onto whatever is being pointed at, if that is a picture — so
             // "swap this one out" is choosing a file rather than deleting and
             // re-adding. Otherwise a new picture at the end.

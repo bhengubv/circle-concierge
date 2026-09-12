@@ -255,6 +255,33 @@ public static class DesignMediums
         var x = Number(node, "x", 0);
         var y = Number(node, "y", 0);
 
+        // A plan lies flat on the floor with the picture on it, rather than standing up as a
+        // box labelled "The plan".
+        //
+        // The engine has drawn it properly since it was written; this renderer never learned
+        // the shape, and this renderer is the default — it is what a machine with no WebGL
+        // shows, and the whole ordering argument is that the fallback is the one that has to
+        // work. A solid where a flat tracing sheet should be does not merely look worse; it
+        // stands in front of the walls somebody is drawing over it.
+        if (node.Props.TryGetValue("shape", out var kind)
+            && kind.Equals("plan", StringComparison.OrdinalIgnoreCase))
+        {
+            var picture = node.Props.TryGetValue("src", out var src) && DesignRenderer.IsSafeSource(src)
+                ? src
+                : string.Empty;
+
+            var flat =
+                $"position:absolute;width:{w}px;height:{d}px;"
+                + $"transform:translate3d({x}px,0,{y}px) rotateX(90deg);transform-origin:top left;"
+                + "opacity:.85;border-radius:2px;"
+                + (picture.Length > 0
+                    ? $"background-image:url('{Escape(picture)}');background-size:cover;"
+                    : "background:rgba(128,128,128,.25);");
+
+            html.AppendLine($"<div class=\"plan{picked}\" style=\"{flat}\"{attr}></div>");
+            return;
+        }
+
         var style =
             $"--w:{w}px;--d:{d}px;--h:{h}px;transform:translate3d({x}px,0,{y}px)";
 
