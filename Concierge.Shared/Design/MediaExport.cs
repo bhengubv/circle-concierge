@@ -7,9 +7,18 @@ namespace Concierge.Shared.Design;
 /// <param name="Ok">Whether there is a file at the end of it.</param>
 /// <param name="Path">Where it is.</param>
 /// <param name="Problem">What went wrong, in words a person can act on.</param>
-public sealed record ExportResult(bool Ok, string? Path, string? Problem)
+/// <param name="Left">
+/// What did not make it into the file, when something did not.
+///
+/// **Tracks that could not be read were dropped in silence.** Six in a running order, three
+/// readable, and the answer was "Saved to …\design.m4a" — a file containing half the work,
+/// reported as a success. Somebody publishes that and finds out from whoever downloads it.
+///
+/// Null when everything went in.
+/// </param>
+public sealed record ExportResult(bool Ok, string? Path, string? Problem, string? Left = null)
 {
-    public static ExportResult Made(string path) => new(true, path, null);
+    public static ExportResult Made(string path, string? left = null) => new(true, path, null, left);
 
     public static ExportResult Failed(string problem) => new(false, null, problem);
 }
@@ -198,12 +207,28 @@ public sealed class FfmpegMediaExport : IMediaExport
         {
             var pieces = new List<string>();
 
+            // Counted, not just collected. A track that cannot be read is a track missing
+            // from the file, and the person holding that file has to be told — see the note
+            // on ExportResult.Left.
+            var missed = 0;
+
             foreach (var sound in sounds)
             {
-                if (await MaterialiseAsync(sound, workspace, pieces.Count, cancellationToken).ConfigureAwait(false)
-                    is { } piece)
+                var piece = await MaterialiseAsync(sound, workspace, pieces.Count, cancellationToken)
+                    .ConfigureAwait(false);
+
+                // Written out is not the same as readable, and that distinction is the whole
+                // defect. A track carried as a data URI always materialises — the bytes are
+                // right there — and can still be something no decoder will take. The concat
+                // step then drops it without a word, so six tracks became a file holding
+                // three and the answer was "Saved to …" with nothing else.
+                if (piece is not null && await DecodesAsync(piece, cancellationToken).ConfigureAwait(false))
                 {
                     pieces.Add(piece);
+                }
+                else
+                {
+                    missed++;
                 }
             }
 
@@ -257,7 +282,11 @@ public sealed class FfmpegMediaExport : IMediaExport
             var ran = await RunAsync(arguments, cancellationToken).ConfigureAwait(false);
 
             return ran.Ok && File.Exists(outputPath)
-                ? ExportResult.Made(outputPath)
+                ? ExportResult.Made(
+                    outputPath,
+                    missed == 0
+                        ? null
+                        : $"{missed} of {sounds.Count} could not be read and are not in it.")
                 : ExportResult.Failed(ran.Problem ?? "The sound could not be saved.");
         }
         finally
@@ -1087,6 +1116,22 @@ public sealed class FfmpegMediaExport : IMediaExport
             // that produced a file because the scratch could not be tidied would
             // be losing the work over the housekeeping.
         }
+    }
+
+    /// <summary>
+    /// Whether the encoder can actually read this file.
+    ///
+    /// Decoding it to nowhere is the cheapest honest test — a file that claims to be an mp3
+    /// and holds two kilobytes of zeros passes every check made of its name, its extension and
+    /// its size, and fails this one. It costs one encoder run per track, which against an
+    /// export that re-encodes everything is nothing.
+    /// </summary>
+    private async Task<bool> DecodesAsync(string path, CancellationToken cancellationToken)
+    {
+        var (ok, _) = await RunAsync(
+            ["-v", "error", "-i", path, "-f", "null", "-"], cancellationToken).ConfigureAwait(false);
+
+        return ok;
     }
 
     private async Task<(bool Ok, string? Problem)> RunAsync(

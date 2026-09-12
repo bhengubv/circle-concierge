@@ -613,8 +613,15 @@ public sealed class DesignToolSource : IAgentToolSource
                 ? await encoder.SoundAsync(document, path, cancellationToken).ConfigureAwait(false)
                 : await encoder.VideoAsync(document, path, cancellationToken).ConfigureAwait(false);
 
+            // What did not make it goes in the same breath as where the file is. A file that
+            // is missing half the work, reported as a plain success, is found out by whoever
+            // downloads it — which on a marketplace is the worst possible reader.
             return result.Ok
-                ? new AgentToolResult(true, $"Saved to {result.Path}.")
+                ? new AgentToolResult(
+                    true,
+                    result.Left is { Length: > 0 } left
+                        ? $"Saved to {result.Path}. {left}"
+                        : $"Saved to {result.Path}.")
                 : new AgentToolResult(false, result.Problem ?? "It could not be saved.");
         }
 
