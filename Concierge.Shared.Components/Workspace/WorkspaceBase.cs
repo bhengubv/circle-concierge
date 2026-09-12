@@ -1031,6 +1031,60 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     }
 
     /// <summary>
+    /// Whether this was "bring in my pictures", and if so, bringing them in.
+    /// </summary>
+    /// <remarks>
+    /// Everything a creator already has is the reason this exists. They arrive with forty
+    /// photographs and a folder of stems, and until now the only door was a paperclip that
+    /// takes one picture at a time.
+    /// </remarks>
+    private async Task<bool> BringItInAsync()
+    {
+        if (_design is null || string.IsNullOrWhiteSpace(_composerText))
+        {
+            return false;
+        }
+
+        if (Concierge.Shared.Design.DesignSpeech.HeardAnImport(_composerText) is not { } asked)
+        {
+            return false;
+        }
+
+        if (Tools.Tools.FirstOrDefault(tool => tool.Name == "design_bring_in") is not { } bring)
+        {
+            _composerHint = "Nothing on this device can bring files in yet.";
+            StateHasChanged();
+            return true;
+        }
+
+        _composerText = string.Empty;
+        _composerHint = $"Looking in {asked.Folder}…";
+        StateHasChanged();
+
+        try
+        {
+            var result = await bring.InvokeAsync(new System.Text.Json.Nodes.JsonObject
+            {
+                ["folder"] = asked.Folder,
+                ["what"] = asked.What,
+            });
+
+            _composerHint = result.Success
+                ? result.Output
+                : string.IsNullOrWhiteSpace(result.FailureMessage)
+                    ? "Nothing could be brought in."
+                    : result.FailureMessage;
+        }
+        catch (Exception failure)
+        {
+            _composerHint = $"That could not be brought in: {failure.Message}";
+        }
+
+        StateHasChanged();
+        return true;
+    }
+
+    /// <summary>
     /// Whether this was "save it", and if so, saving it.
     /// </summary>
     /// <remarks>
@@ -1303,6 +1357,15 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         // Nothing did; there was no fall-through and there never had been. That
         // is the fifth comment in this repository found describing behaviour that
         // did not exist, and the one that kept the canvas outside the harness.
+        // "bring in the music from D:\Albums" reaches `design_bring_in`, for the same reason
+        // saving does: it reads a folder off the disk, and DesignSpeech is a document in and a
+        // document out. Before the save check because "load the pictures from ..." would
+        // otherwise have to be told apart from a save by accident of wording.
+        if (_designOpen && await BringItInAsync())
+        {
+            return;
+        }
+
         // "save it" reaches `design_save` before anything else does.
         //
         // `DesignSpeech` cannot carry this one: it is pure and synchronous — a document in, a

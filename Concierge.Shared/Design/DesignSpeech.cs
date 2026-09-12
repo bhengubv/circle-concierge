@@ -872,6 +872,62 @@ public static class DesignSpeech
         + @"(?:(?:as|to|in)\s+(?:an?\s+)?(?<as>pdf|powerpoint|pptx|slides file|file))?[.!]?$"
         + @"|^(?:give|hand)\s+me\s+(?:the|a)\s+(?<as>pdf|powerpoint|pptx|file)[.!]?$";
 
+    /// <summary>
+    /// Whether somebody asked to bring their own things in, and what from where.
+    ///
+    /// Beside <see cref="HeardASave"/> and for the same reason: this reads a folder off the
+    /// disk, and everything in <see cref="Hear"/> is a document in and a document out.
+    ///
+    /// **Said rather than browsed.** A file dialog needs a mouse and a desk, and the whole
+    /// argument for this surface is that you should need neither — somebody talking into a
+    /// watch has no dialog to click.
+    /// </summary>
+    /// <returns>
+    /// What to bring and where from, or null when this was not that. The kind is whatever
+    /// word they used; the tool decides what it means.
+    /// </returns>
+    public static (string What, string Folder)? HeardAnImport(string? sentence)
+    {
+        var said = (sentence ?? string.Empty).Trim();
+
+        if (said.Length == 0)
+        {
+            return null;
+        }
+
+        var match = System.Text.RegularExpressions.Regex.Match(
+            said,
+            ImportPattern,
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase,
+            TimeSpan.FromSeconds(1));
+
+        if (!match.Success)
+        {
+            return null;
+        }
+
+        var folder = Clean(match.Groups["folder"].Value);
+
+        return folder.Length == 0
+            ? null
+            : (Clean(match.Groups["what"].Value).ToLowerInvariant(), folder);
+    }
+
+    /// <summary>
+    /// "bring in the music from D:\Albums", "use the pictures in C:\Photos",
+    /// "import everything from my footage folder".
+    ///
+    /// The folder is taken as written to the end of the sentence, because paths have spaces
+    /// in them and a pattern that stopped at the first one would fail on every Windows path
+    /// anybody actually has.
+    /// </summary>
+    private const string ImportPattern =
+        @"^(?:bring|pull|take|get|import|use|add|load)\s+(?:in\s+|over\s+)?"
+        + @"(?:the\s+|my\s+|all\s+(?:the\s+|my\s+)?)?"
+        + @"(?<what>pictures|picture|photos|photo|images|art|music|songs|tracks|audio|sounds?"
+        + @"|video|videos|footage|films|clips|everything|files|stuff)"
+        + @"\s+(?:from|in|at|out of|under)\s+(?:the\s+|my\s+)?(?<folder>.+?)[.!]?$";
+
     private static Match? Match(string input, string pattern)
     {
         var match = Regex.Match(input, pattern, Options, Patience);

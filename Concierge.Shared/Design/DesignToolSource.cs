@@ -147,6 +147,10 @@ public sealed class DesignToolSource : IAgentToolSource
                 new FurnishTheRoom(_workbench),
                 new SetAPanel(_workbench),
                 new ReadTheGuide(_workbench),
+
+                // Reads files on this machine and reaches nothing off it, so it needs no web
+                // access and nothing to ask with — it is here unconditionally.
+                new BringItIn(_workbench),
                 .. _workbench.Speech is null || !_workbench.Speech.SupportsSynthesis
                     ? Array.Empty<IAgentTool>()
                     : [new NarrateTheWords(_workbench)],

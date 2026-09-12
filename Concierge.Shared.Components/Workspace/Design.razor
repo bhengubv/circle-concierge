@@ -333,12 +333,33 @@
             : null;
     }
 
-    private async void OnSessionChanged(object? sender, EventArgs e)
-    {
-        Describe();
-        await InvokeAsync(StateHasChanged);
-        await Changed.InvokeAsync();
-    }
+    /// <summary>
+    /// The session changed, possibly from a thread that is not the renderer's.
+    ///
+    /// **This killed the whole app.** `await InvokeAsync(StateHasChanged)` marshals that one
+    /// call correctly — and then the continuation resumes on whatever thread raised the
+    /// event, so `Changed.InvokeAsync()` reached the workspace's own StateHasChanged off the
+    /// dispatcher and threw "The current thread is not associated with the Dispatcher". In an
+    /// `async void` that is an unhandled exception on a thread-pool thread, which does not
+    /// fail the edit — it takes the process down. Concierge vanished from the screen twice
+    /// before the trace was captured.
+    ///
+    /// It only shows when a tool does real asynchronous work before recording: reading files
+    /// off a disk, fetching a sound, generating a picture, speaking words. Everything that
+    /// records synchronously stays on the dispatcher by luck, which is why a surface this old
+    /// had never done it.
+    ///
+    /// Everything is inside one `InvokeAsync` now, so the whole handler — including the
+    /// parent's callback — runs where the renderer lives. And it is no longer `async void`,
+    /// so a future fault in here costs the update rather than the application.
+    /// </summary>
+    private void OnSessionChanged(object? sender, EventArgs e)
+        => _ = InvokeAsync(async () =>
+        {
+            Describe();
+            StateHasChanged();
+            await Changed.InvokeAsync();
+        });
 
     public void Dispose()
     {
