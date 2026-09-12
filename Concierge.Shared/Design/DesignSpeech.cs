@@ -315,6 +315,31 @@ public static class DesignSpeech
             return new DesignHeard(true, design.Add(node), $"Added a {NameFor(kind, design.Medium)}");
         }
 
+        // When a shot happens and how fast it runs.
+        if (Match(said, HowLong) is { } lasts)
+        {
+            return Timed(design, pointedAt, "seconds", lasts, 0.1, 600,
+                amount => $"Held the shot for {amount} seconds");
+        }
+
+        if (Match(said, StartsAt) is { } starts)
+        {
+            return Timed(design, pointedAt, "trim", starts, 0, 86_400,
+                amount => $"Started the shot at {amount} seconds");
+        }
+
+        if (Match(said, WaitsFor) is { } waits)
+        {
+            return Timed(design, pointedAt, "delay", waits, 0, 600,
+                amount => $"Waited {amount} seconds first");
+        }
+
+        if (Match(said, HowFast) is { } fast)
+        {
+            return Timed(design, pointedAt, "rate", fast, 0.1, 8,
+                amount => $"Played the shot at {amount}x");
+        }
+
         // Naming the thing you are on, which is what a board's small name is.
         if (Match(said, Naming) is { } naming)
         {
@@ -556,6 +581,36 @@ public static class DesignSpeech
     /// *inside* the panel rather than naming it — so a board of four panels read A PANEL four
     /// times over four different numbers, which is the one thing a board must never do.
     /// </summary>
+    /// <summary>
+    /// How long a shot stays, where it starts, how fast it plays, how long it waits.
+    ///
+    /// `DesignTiming` reads all four off a shot and none of them could be said. `design_cut`
+    /// reached two and only a model could call it — so a medium whose entire subject is
+    /// *when* things happen had no sentence about time.
+    ///
+    /// Four patterns rather than one clever one. The first attempt was a single expression
+    /// with everything optional, and nobody reading it could say what it matched; a rule you
+    /// cannot predict is how "make the panel 12" quietly becomes a duration.
+    ///
+    /// The noun is required in all four, for the same reason "shot" is required for grading:
+    /// "make it four seconds" has to keep meaning whatever it meant before.
+    /// </summary>
+    private const string HowLong =
+        @"^(?:make|hold|keep|give)\s+(?:the|this|that)\s+(?<piece>shot|clip|slide|track)\s+"
+        + @"(?:last\s+|run\s+for\s+|for\s+)?(?<value>[\w.]+)\s*(?:seconds?|secs?)[.!]?$";
+
+    private const string StartsAt =
+        @"^(?:start|begin|cut)\s+(?:the|this|that)\s+(?<piece>shot|clip)\s+"
+        + @"(?:at|from)\s+(?<value>[\w.]+)\s*(?:seconds?|secs?)?[.!]?$";
+
+    private const string HowFast =
+        @"^(?:play|run)\s+(?:the|this|that)\s+(?<piece>shot|clip|track)\s+"
+        + @"(?:at\s+)?(?<value>[\w.]+)\s*(?:speed)?[.!]?$";
+
+    private const string WaitsFor =
+        @"^(?:wait|pause|delay)\s+(?<value>[\w.]+)\s*(?:seconds?|secs?)?\s+"
+        + @"before\s+(?:the|this|that)\s+(?<piece>shot|clip|slide|track)[.!]?$";
+
     private const string Naming =
         @"^(?:call|name)\s+(?:the|this|that)\s+(?<kind>panel|slide|shot|room|screen|track|section)\s+"
         + @"(?<name>.+?)[.!]?$";
@@ -601,6 +656,77 @@ public static class DesignSpeech
     /// use. Guessing wrong leaves a door in the wrong wall, which can be seen and undone;
     /// refusing leaves nothing on screen at all.
     /// </summary>
+    /// <summary>
+    /// Sets one timing property on the shot somebody means.
+    /// </summary>
+    /// <remarks>
+    /// Bounded rather than trusted, the same way the tools bound what a model asks for: a
+    /// shot of nought seconds is a shot nobody can see, and one of four hours is a mistake
+    /// rather than a wish. Out-of-range is clamped, not refused — somebody who said "half a
+    /// second" and got a tenth can see it and say it again, and a refusal leaves nothing on
+    /// screen to correct.
+    /// </remarks>
+    private static DesignHeard Timed(
+        DesignDocument design,
+        string? pointedAt,
+        string property,
+        Match match,
+        double least,
+        double most,
+        Func<string, string> said)
+    {
+        if (Amount(match.Groups["value"].Value) is not { } value)
+        {
+            return new DesignHeard(false, design, string.Empty,
+                $"I did not catch how {(property == "rate" ? "fast" : "long")} that should be.",
+                Final: true);
+        }
+
+        var frames = design.Frames;
+
+        if (frames.Count == 0)
+        {
+            return new DesignHeard(false, design, string.Empty,
+                $"There is nothing to time yet. Say 'add a {match.Groups["piece"].Value}' first.",
+                Final: true);
+        }
+
+        var piece = pointedAt is { Length: > 0 }
+                    && design.Find(pointedAt) is { Kind: DesignNodeKind.Frame } picked
+            ? picked
+            : frames[^1];
+
+        var bounded = Math.Clamp(value, least, most);
+        var written = bounded.ToString("0.###", Culture);
+
+        return new DesignHeard(true, design.Set(piece.Id, property, written), said(written));
+    }
+
+    /// <summary>
+    /// A number, written however somebody writes one.
+    ///
+    /// "four seconds" and "half speed" are what people say, and a number nobody can write in
+    /// words is a syntax — which is the one thing this surface is built to avoid.
+    /// </summary>
+    private static double? Amount(string word) => word.ToLowerInvariant() switch
+    {
+        "a" or "an" or "one" => 1,
+        "two" or "twice" or "double" => 2,
+        "three" => 3,
+        "four" => 4,
+        "five" => 5,
+        "six" => 6,
+        "seven" => 7,
+        "eight" => 8,
+        "nine" => 9,
+        "ten" => 10,
+        "half" => 0.5,
+        "normal" or "normally" => 1,
+        var other when double.TryParse(
+            other.TrimEnd('x'), System.Globalization.NumberStyles.Float, Culture, out var parsed) => parsed,
+        _ => null,
+    };
+
     /// <summary>
     /// Sets one field on the panel somebody means — the one being pointed at, or the last.
     /// </summary>
