@@ -300,6 +300,38 @@ public static class DesignSpeech
             return new DesignHeard(true, design.Add(node), $"Added a {NameFor(kind, design.Medium)}");
         }
 
+        // How a shot looks, how it moves, and how it joins the one before it. All three take
+        // a shot as their subject and had no sentence at all — `design_colour`, `design_move`
+        // and `design_blend` were reachable only by a model calling them.
+        if (Match(said, Grading) is { } graded)
+        {
+            return AboutAShot(design, pointedAt, "colour", graded.Groups["colour"].Value switch
+            {
+                "warmer" => "warm",
+                "cooler" => "cool",
+                "brighter" => "bright",
+                "darker" => "dark",
+                "gray" => "grey",
+                "normal" or "none" => string.Empty,
+                var other => other,
+            });
+        }
+
+        if (Match(said, Moving) is { } moved)
+        {
+            var how = moved.Groups["move"].Value;
+
+            return AboutAShot(design, pointedAt, "move", how == "still" ? string.Empty : how);
+        }
+
+        if (Match(said, Blending) is { } blended)
+        {
+            // Half a second, the same default the tool uses. Long enough to read as a
+            // dissolve and short enough not to become the point of the film.
+            return AboutAShot(
+                design, pointedAt, "blend", blended.Groups["cut"].Success ? string.Empty : "0.5");
+        }
+
         // Furniture comes last, and that ordering is the whole of it. This pattern matches
         // almost any noun, so in front of the branch above it swallowed "add a sphere" and
         // every other word the canvas already knew — nine tests went red at once saying so.
@@ -403,6 +435,40 @@ public static class DesignSpeech
     /// Deliberately narrow on the verb side — "put in", "add", "put" — because a pattern that
     /// swallowed every unknown noun would stop anything ever reaching a model.
     /// </summary>
+    /// <summary>
+    /// "make the shot warm", "grade this shot cooler", "make the clip faded".
+    ///
+    /// **The word "shot" is required, and that is not fussiness.** The six looks are called
+    /// Calm, Bold, Warm, Night, Plain and Fresh, so "make it warm" already means the Warm
+    /// look and has since looks existed. Grading a shot and dressing a whole design are
+    /// different acts that happen to share a word, and the only honest way to tell them apart
+    /// is to make one of them say what it is about.
+    /// </summary>
+    private const string Grading =
+        @"^(?:make|grade|turn)\s+(?:the|this|that)\s+(?:shot|clip|footage)\s+"
+        + @"(?<colour>warmer|warm|cooler|cool|brighter|bright|darker|dark|grey|gray|faded|vivid|normal|none)"
+        + @"(?:\s+again)?[.!]?$";
+
+    /// <summary>
+    /// "make the shot grow", "let the shot drift", "hold the shot still".
+    ///
+    /// A still picture held for four seconds looks like a fault, which is the whole reason
+    /// `design_move` exists — and it could only be reached by a model calling it.
+    /// </summary>
+    private const string Moving =
+        @"^(?:make|let|hold|keep)\s+(?:the|this|that)\s+(?:shot|clip|picture)\s+"
+        + @"(?<move>still|fade|grow|drift)(?:\s+(?:in|out|across))?[.!]?$";
+
+    /// <summary>
+    /// "fade into the next shot", "fade between the shots", "cut to it instead".
+    ///
+    /// A dissolve on every join is what a first attempt looks like, so a cut stays the
+    /// default and this is how somebody asks for the other thing.
+    /// </summary>
+    private const string Blending =
+        @"^(?:(?<cut>cut)|fade|dissolve|blend)\s+(?:into|to|between|in to)?\s*"
+        + @"(?:the\s+)?(?:next\s+|last\s+|this\s+)?(?:shot|clip|one|shots|it)(?:\s+instead)?[.!]?$";
+
     private const string Furnishing =
         @"^(?:add|put in|put|place|bring in)\s+(?:a|an|the|some)?\s*(?<what>[a-z][a-z \-]{1,28}?)"
         + @"(?:\s+(?:in|into|to)(?:\s+the)?(?:\s+room)?)?[.!]?$";
@@ -434,6 +500,44 @@ public static class DesignSpeech
     /// use. Guessing wrong leaves a door in the wrong wall, which can be seen and undone;
     /// refusing leaves nothing on screen at all.
     /// </summary>
+    /// <summary>
+    /// Sets one property on the shot somebody means, and says what happened in their words.
+    ///
+    /// The shot being pointed at, or the last one — the same guess <c>WallToCut</c> makes and
+    /// for the same reason: there is nothing on this surface that gives a shot a name a
+    /// person could use, so refusing until one is named would mean naming shots.
+    /// </summary>
+    private static DesignHeard AboutAShot(
+        DesignDocument design, string? pointedAt, string property, string value)
+    {
+        if (design.Medium is not (DesignMedium.Motion or DesignMedium.Deck))
+        {
+            return new DesignHeard(false, design, string.Empty,
+                "Shots are in a video. Say 'video' first.");
+        }
+
+        var shots = design.Frames;
+
+        if (shots.Count == 0)
+        {
+            return new DesignHeard(false, design, string.Empty,
+                "There are no shots yet. Say 'add a shot' first.");
+        }
+
+        var shot = pointedAt is { Length: > 0 } && design.Find(pointedAt) is { Kind: DesignNodeKind.Frame } picked
+            ? picked
+            : shots[^1];
+
+        var what = property switch
+        {
+            "colour" => value.Length == 0 ? "Ungraded the shot" : $"Graded the shot {value}",
+            "move" => value.Length == 0 ? "Held the shot still" : $"Made the shot {value}",
+            _ => value.Length == 0 ? "Cut to the shot" : "Faded into the shot",
+        };
+
+        return new DesignHeard(true, design.Set(shot.Id, property, value), what);
+    }
+
     private static DesignNode? WallToCut(DesignDocument design, string? pointedAt)
     {
         static bool IsWall(DesignNode node)
