@@ -306,4 +306,22 @@ public sealed class SayingARoomTests
         Assert.Equal("42", thing.Props["x"]);
         Assert.Equal("7", thing.Props["y"]);
     }
+
+    /// <summary>
+    /// **The strip said "Added a words".**
+    ///
+    /// A paragraph is called "words", which reads correctly everywhere that name is used with
+    /// "the" and wrongly in the one place it is used with "a" — so every paragraph anybody
+    /// has ever added was recorded under a picture in the history strip with that on it.
+    /// Small, on the surface whose whole argument is that a five-year-old and a
+    /// ninety-seven-year-old can both read it. Both of them can see it.
+    /// </summary>
+    [Theory]
+    [InlineData("add some words saying hello", "Added words")]
+    [InlineData("add a title saying hello", "Added a title")]
+    [InlineData("add a picture", "Added a picture")]
+    public void What_was_added_is_said_in_English(string said, string expected)
+        => Assert.Equal(
+            expected,
+            DesignSpeech.Hear(DesignDocument.Blank(medium: DesignMedium.Page), said, null).What);
 }

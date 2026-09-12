@@ -312,7 +312,7 @@ public static class DesignSpeech
                 ? Standing(design, where, words, shape)
                 : DesignNode.New(kind, where, ("text", words));
 
-            return new DesignHeard(true, design.Add(node), $"Added a {NameFor(kind, design.Medium)}");
+            return new DesignHeard(true, design.Add(node), $"Added {AnA(NameFor(kind, design.Medium))}");
         }
 
         // When a shot happens and how fast it runs.
@@ -816,6 +816,62 @@ public static class DesignSpeech
         return design.ChildrenOf(room).LastOrDefault(IsWall);
     }
 
+    /// <summary>
+    /// Whether somebody asked for the design as a file, and in what form.
+    ///
+    /// Separate from <see cref="Hear"/> because saving is the one thing on this surface that
+    /// is not a document going in and a document coming out — it writes a file and changes
+    /// nothing. So it cannot be a <see cref="DesignHeard"/>, and the workspace calls this,
+    /// awaits the tool, and says where the file went.
+    ///
+    /// **"save it" had nowhere to go at all** until this existed: `design_save` was reachable
+    /// only by a model, on the surface whose whole answer to open-design is "real files", and
+    /// a page, a deck and a room need no encoder to produce one.
+    /// </summary>
+    /// <returns>
+    /// The form asked for — "pdf", "pptx" — or an empty string for whatever suits the medium.
+    /// Null when this was not a save at all.
+    /// </returns>
+    public static string? HeardASave(string? sentence)
+    {
+        var said = (sentence ?? string.Empty).Trim();
+
+        if (said.Length == 0)
+        {
+            return null;
+        }
+
+        var match = System.Text.RegularExpressions.Regex.Match(
+            said,
+            SavingPattern,
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase,
+            TimeSpan.FromSeconds(1));
+
+        if (!match.Success)
+        {
+            return null;
+        }
+
+        return match.Groups["as"].Value.ToLowerInvariant() switch
+        {
+            "pdf" => "pdf",
+            "powerpoint" or "pptx" or "slides file" => "pptx",
+            _ => string.Empty,
+        };
+    }
+
+    /// <summary>
+    /// "save it", "save it as a pdf", "give me the file", "export it to powerpoint".
+    ///
+    /// "Export" is in there reluctantly — it is the word every other tool uses and the one
+    /// people will type, and refusing to understand it to make a point about vocabulary would
+    /// be the surface being clever at somebody's expense.
+    /// </summary>
+    private const string SavingPattern =
+        @"^(?:save|export|download|keep)\s+(?:it|this|the\s+\w+)?\s*"
+        + @"(?:(?:as|to|in)\s+(?:an?\s+)?(?<as>pdf|powerpoint|pptx|slides file|file))?[.!]?$"
+        + @"|^(?:give|hand)\s+me\s+(?:the|a)\s+(?<as>pdf|powerpoint|pptx|file)[.!]?$";
+
     private static Match? Match(string input, string pattern)
     {
         var match = Regex.Match(input, pattern, Options, Patience);
@@ -924,6 +980,22 @@ public static class DesignSpeech
         DesignNodeKind.Frame => DesignMediums.PieceOf(medium),
         _ => "page",
     };
+
+    /// <summary>
+    /// A name with the right word in front of it.
+    ///
+    /// **The strip said "Added a words".** `NameFor` answers "words" for a paragraph, which
+    /// reads correctly everywhere it is used with "the" and wrongly in the one place it is
+    /// used with "a" — so every paragraph anybody has ever added has been recorded under a
+    /// picture in the history strip with that on it.
+    ///
+    /// Small, and on the surface whose whole argument is that it can be read by a five-year-
+    /// old and a ninety-seven-year-old. Both of them can see it.
+    /// </summary>
+    private static string AnA(string name)
+        => name.EndsWith('s')
+            ? name
+            : (name.Length > 0 && "aeiou".Contains(char.ToLowerInvariant(name[0])) ? "an " : "a ") + name;
 
     /// <summary>
     /// Strips the quotes and the trailing full stop people type around a phrase

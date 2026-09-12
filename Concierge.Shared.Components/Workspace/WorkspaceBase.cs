@@ -1003,6 +1003,73 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     }
 
     /// <summary>
+    /// Whether this was "save it", and if so, saving it.
+    /// </summary>
+    /// <remarks>
+    /// Handled here rather than in <see cref="Concierge.Shared.Design.DesignSpeech"/> because
+    /// that class is synchronous and takes no services, and this writes a file. Everything
+    /// else about it follows the canvas's rules: it acts without asking, because
+    /// <c>design_save</c> never writes over anything — a name already taken gets a number —
+    /// and it says where it put the file, since a file somebody cannot find was not given to
+    /// them.
+    /// </remarks>
+    private async Task<bool> SaveTheDesignAsync()
+    {
+        if (_design is null || string.IsNullOrWhiteSpace(_composerText))
+        {
+            return false;
+        }
+
+        var asked = Concierge.Shared.Design.DesignSpeech.HeardASave(_composerText);
+
+        if (asked is null)
+        {
+            return false;
+        }
+
+        // Absent rather than failing when nothing published it — the design tools are only in
+        // the registry while a canvas is open, and a head that never registered them should
+        // say so rather than throw.
+        if (Tools.Tools.FirstOrDefault(tool => tool.Name == "design_save") is not { } save)
+        {
+            _composerHint = "Nothing on this device can save a design yet.";
+            StateHasChanged();
+            return true;
+        }
+
+        _composerText = string.Empty;
+        _composerHint = "Saving…";
+        StateHasChanged();
+
+        var arguments = new System.Text.Json.Nodes.JsonObject();
+
+        if (asked.Length > 0)
+        {
+            arguments["as"] = asked;
+        }
+
+        try
+        {
+            var result = await save.InvokeAsync(arguments);
+
+            _composerHint = result.Success
+                ? result.Output
+                : string.IsNullOrWhiteSpace(result.FailureMessage)
+                    ? "That could not be saved."
+                    : result.FailureMessage;
+        }
+        catch (Exception failure)
+        {
+            // Said rather than swallowed. A save that silently did nothing is the worst
+            // outcome here: somebody believes they have a file and finds out later.
+            _composerHint = $"That could not be saved: {failure.Message}";
+        }
+
+        StateHasChanged();
+        return true;
+    }
+
+    /// <summary>
     /// What to say under the canvas when a turn that went to the model has finished.
     ///
     /// The canvas shows the design and nothing else, so this line is the only place a reply
@@ -1208,6 +1275,18 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         // Nothing did; there was no fall-through and there never had been. That
         // is the fifth comment in this repository found describing behaviour that
         // did not exist, and the one that kept the canvas outside the harness.
+        // "save it" reaches `design_save` before anything else does.
+        //
+        // `DesignSpeech` cannot carry this one: it is pure and synchronous — a document in, a
+        // document out — and saving is file I/O that changes no document at all. So the
+        // sentence everybody says about a finished thing was the one sentence with nowhere to
+        // go, on a surface whose answer to open-design is "real files". A page, a deck and a
+        // room need no encoder at all; the bytes on screen are the bytes written.
+        if (_designOpen && await SaveTheDesignAsync())
+        {
+            return;
+        }
+
         if (_designOpen && SayToTheCanvas())
         {
             return;
