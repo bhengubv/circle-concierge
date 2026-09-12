@@ -84,6 +84,29 @@ public static class SceneRenderer
                 var x = DesignMediums.Number(thing, "x", 0);
                 var y = DesignMediums.Number(thing, "y", 0);
 
+                // A picture is a picture, lying flat like a plan.
+                //
+                // **It used to be its own filename.** Everything that is not a solid was
+                // drawn as a text label, so a photograph put in a room showed the words
+                // "The field" on the floor and no photograph — the document held it, the page
+                // rendered it nowhere, and nothing said so. The same shape as the paperclip
+                // defect fixed earlier today, one door along.
+                if (thing.Kind == DesignNodeKind.Image
+                    && thing.Props.TryGetValue("src", out var source)
+                    && DesignRenderer.IsSafeSource(source))
+                {
+                    var wide = DesignMediums.Number(thing, "width", 240);
+                    var deep = DesignMediums.Number(thing, "depth", 180);
+
+                    html.AppendLine(
+                        $"<img class=\"lying{picked}\"{attr} alt=\"{DesignMediums.Escape(thing.Text)}\" "
+                        + $"src=\"{DesignMediums.Escape(source)}\" "
+                        + $"style=\"width:{wide}px;height:{deep}px;"
+                        + $"transform:translate3d({x}px,{y}px,2px) rotateX(0deg)\" />");
+
+                    continue;
+                }
+
                 // Flat on the floor, like writing on a plan. Standing them up was
                 // the obvious thing and the wrong one: the room is seen at a steep
                 // tilt, so a vertical plane is nearly edge-on and rendered 112x0 —
@@ -104,6 +127,36 @@ public static class SceneRenderer
         // changed.
         html.AppendLine("<canvas id=\"deep\" hidden></canvas>");
         html.AppendLine($"<script type=\"application/json\" id=\"room\">{RoomJson(document, showing, selectedId)}</script>");
+
+        // Sound in the room.
+        //
+        // **A room drew nothing at all for a track it was holding.** Every other kind of
+        // content lies flat on the floor as a sign; sound was simply not in that list, so
+        // turning a running order into a room made six tracks vanish — the document still
+        // held them, switching back brought them up, and the room said nothing.
+        //
+        // They are not objects, so they are not drawn as objects. A track has no physical
+        // form and a speaker standing on the floor would be inventing one. They sit outside
+        // the stage as what is playing in this room, which is honest and can be heard.
+        var sounds = document
+            .ChildrenOf(showing.Id)
+            .Where(thing => thing.Kind == DesignNodeKind.Sound)
+            .ToList();
+
+        if (sounds.Count > 0)
+        {
+            html.AppendLine("<div class=\"heard\">");
+
+            foreach (var sound in sounds)
+            {
+                var picked = string.Equals(sound.Id, selectedId, StringComparison.Ordinal) ? " picked" : string.Empty;
+                var attr = $" data-node=\"{DesignMediums.Escape(sound.Id)}\"";
+
+                DesignMediums.WriteSound(html, sound, picked, attr);
+            }
+
+            html.AppendLine("</div>");
+        }
 
         html.AppendLine($"<div class=\"hint\">{DesignMediums.Escape(showing.Text.Length > 0 ? showing.Text : "A room")} · arrow keys to look around</div>");
 
@@ -947,6 +1000,19 @@ public static class SceneRenderer
         #deep { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: pointer; }
         #deep[hidden] { display: none; }
         .stage[hidden] { display: none; }
+
+        /* What is playing in this room. Along the top, outside the stage — a track has no
+           physical form, and a speaker standing on the floor would be inventing one. */
+        .heard {
+          position: absolute; top: .6rem; left: .6rem; right: .6rem; z-index: 3;
+          display: flex; flex-direction: column; gap: .3rem;
+          max-height: 40%; overflow-y: auto;
+        }
+        .heard .snd { background: color-mix(in srgb, var(--raised) 88%, transparent); border-radius: 6px; padding: .3rem .5rem; }
+
+        /* A picture on the floor of the room, flat, like a plan — not its own filename. */
+        .lying { position: absolute; object-fit: cover; border-radius: 3px; }
+        .lying.picked { outline: 2px solid var(--accent); }
 
         .hint { position: absolute; left: 0; right: 0; bottom: .75rem; text-align: center; font-size: .78rem; opacity: .5; }
         .pad { padding: 2rem; }

@@ -65,6 +65,17 @@ public sealed class PopulatedMediaTests
         Assert.Contains("Races start at ten.", html, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// **This list had six media in it and seven exist.** Scene was missing, so the one test
+    /// written to catch "a sound is drawn rather than named" never looked at a room — and a
+    /// room drew nothing at all for a track it was holding. Turning a running order into a
+    /// room made six tracks vanish: the document still held them, switching back brought them
+    /// up, and the room said nothing.
+    ///
+    /// Found by switching media on the running app and reading what each one showed. The test
+    /// looked complete — six rows of InlineData is a convincing shape — which is exactly how a
+    /// hole like this survives.
+    /// </summary>
     [Theory]
     [InlineData(DesignMedium.Page)]
     [InlineData(DesignMedium.Deck)]
@@ -72,6 +83,7 @@ public sealed class PopulatedMediaTests
     [InlineData(DesignMedium.Sound)]
     [InlineData(DesignMedium.Handheld)]
     [InlineData(DesignMedium.Board)]
+    [InlineData(DesignMedium.Scene)]
     public void A_picture_and_a_sound_are_drawn_rather_than_named(DesignMedium medium)
     {
         var html = DesignMediums.Render(Full(medium));
@@ -81,6 +93,28 @@ public sealed class PopulatedMediaTests
         // quiet failure this is looking for.
         Assert.Contains("<img", html, StringComparison.Ordinal);
         Assert.Contains("<audio", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Every medium, counted rather than listed. The theory above is a hand-written list and
+    /// the last one grew a hole the moment a seventh medium arrived; this one cannot, because
+    /// it asks the enum.
+    /// </summary>
+    [Fact]
+    public void Every_medium_there_is_draws_what_it_was_given()
+    {
+        foreach (var medium in Enum.GetValues<DesignMedium>())
+        {
+            var html = DesignMediums.Render(Full(medium));
+
+            Assert.True(
+                html.Contains("<img", StringComparison.Ordinal),
+                $"{medium} drew no picture");
+
+            Assert.True(
+                html.Contains("<audio", StringComparison.Ordinal),
+                $"{medium} drew nothing for a track it was holding");
+        }
     }
 
     [Theory]
