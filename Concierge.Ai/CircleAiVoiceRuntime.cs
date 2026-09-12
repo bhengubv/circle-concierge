@@ -68,16 +68,86 @@ public sealed class CircleAiVoiceRuntime : IVoiceRuntime, IAsyncDisposable
 
     public bool IsReady => SupportsTranscription || SupportsSynthesis;
 
-    public string StatusMessage => Files.Listener is not null && Encoder is null
-        ? Files.Why + " Transcription also needs the encoder (ffmpeg), which is not on this "
-          + "machine, so only speaking works."
-        : Files.Why;
+    /// <summary>
+    /// What this device can do about speech, and everything standing in the way.
+    ///
+    /// **Everything, not the first thing.** The first version named one blocker and stopped,
+    /// so a machine missing both ffmpeg and the native library would send somebody to install
+    /// ffmpeg — after which it still would not work, and they would have no idea why. A
+    /// status that fixes half a problem is how somebody loses an evening.
+    /// </summary>
+    public string StatusMessage
+    {
+        get
+        {
+            if (Files.Listener is null)
+            {
+                return Files.Why;
+            }
+
+            var blocking = new List<string>();
+
+            if (!WhisperIsHere.Value)
+            {
+                // Named first because it is the one nobody can solve by downloading a model:
+                // CircleAI.Voice 1.2.0 ships no runtimes folder, so the library it calls into
+                // is on no machine that merely installed the package.
+                blocking.Add(
+                    "the native whisper library is missing — CircleAI.Voice ships no runtimes "
+                    + "folder, so nothing here can run the model");
+            }
+
+            if (Encoder is null)
+            {
+                blocking.Add("the encoder (ffmpeg) is not on this machine, so a recording "
+                    + "cannot be turned into samples");
+            }
+
+            return blocking.Count == 0
+                ? Files.Why
+                : $"{Files.Why} Listening is not working: {string.Join("; and ", blocking)}.";
+        }
+    }
 
     /// <summary>
     /// Listening needs both halves: the model, and something that can turn a file into the
     /// samples it reads. One without the other is a capability that fails when used.
     /// </summary>
-    public bool SupportsTranscription => Files.Listener is not null && Encoder is not null;
+    /// <summary>
+    /// Whether this device can actually write down what was said.
+    ///
+    /// **A model file and an encoder are not enough, and believing they were cost a whole
+    /// afternoon's claim.** `CircleAI.Voice` 1.2.0 ships one managed assembly and no
+    /// `runtimes/` folder at all, so `whisper` — the native library it P/Invokes — is not on
+    /// any machine that merely installed the package. Whisper-tiny downloaded, the file sat
+    /// there at 77,691,713 bytes, `media_transcribe` appeared in Engineering, and every
+    /// recording came back empty with "Unable to load DLL 'whisper'".
+    ///
+    /// That is this repository's oldest rule broken by its own capability gate: a head that
+    /// cannot do a thing must not advertise it. Presence of a file is not presence of a
+    /// capability, and the check now asks the question that actually decides it.
+    /// </summary>
+    public bool SupportsTranscription
+        => Files.Listener is not null && Encoder is not null && WhisperIsHere.Value;
+
+    /// <summary>
+    /// Whether the native whisper library can be loaded at all, asked once.
+    ///
+    /// Cheap and decisive — the load either resolves or it does not, and it costs nothing
+    /// like opening a model. Cached because this is read on every render of the tool list.
+    /// </summary>
+    private static readonly Lazy<bool> WhisperIsHere = new(() =>
+    {
+        try
+        {
+            return System.Runtime.InteropServices.NativeLibrary.TryLoad(
+                "whisper", typeof(CircleAI.Voice.WhisperTranscriber).Assembly, null, out _);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    });
 
     public bool SupportsSynthesis => Files.Speaker is not null;
 
@@ -107,21 +177,31 @@ public sealed class CircleAiVoiceRuntime : IVoiceRuntime, IAsyncDisposable
 
         if (!SupportsTranscription)
         {
-            return new Written(Id, string.Empty, null, null);
+            return new Written(Id, string.Empty, null, null, "Nothing on this device can listen.");
         }
 
         var samples = await SamplesFromAsync(audio, fileName, cancellationToken).ConfigureAwait(false);
 
         if (samples.Length == 0)
         {
-            return new Written(Id, string.Empty, null, null);
+            // Almost always the encoder: whisper wants 16kHz mono samples and a recording is
+            // webm or wav, so ffmpeg converts it first. No ffmpeg, no samples — and until
+            // this sentence existed that was indistinguishable from a quiet room.
+            return new Written(
+                Id,
+                string.Empty,
+                null,
+                null,
+                Encoder is null
+                    ? "There is no encoder on this device, so the recording could not be converted."
+                    : "That recording could not be converted into something the model can read.");
         }
 
         var listener = await ListenerAsync(cancellationToken).ConfigureAwait(false);
 
         if (listener is null)
         {
-            return new Written(Id, string.Empty, null, null);
+            return new Written(Id, string.Empty, null, null, "The listening model would not open.");
         }
 
         CircleAI.Voice.TranscriptionResult heard;
@@ -130,13 +210,16 @@ public sealed class CircleAiVoiceRuntime : IVoiceRuntime, IAsyncDisposable
         {
             heard = await listener.TranscribeAsync(samples, cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception) when (NotCancelled(cancellationToken))
+        catch (Exception trouble) when (NotCancelled(cancellationToken))
         {
             // Both packages open their model on first use rather than in the constructor, so
             // a file that is not a model fails here rather than where it was opened. A test
             // with four bytes in a .onnx found this: the exception came straight back out
             // through the seam and would have taken a turn down with it.
-            return new Written(Id, string.Empty, null, null);
+            //
+            // Carried out rather than swallowed. Without the reason, a broken model reads as
+            // a quiet room.
+            return new Written(Id, string.Empty, null, null, $"The model could not read it: {trouble.Message}");
         }
 
         // 16kHz, mono, two bytes a sample — so the length is the duration.
