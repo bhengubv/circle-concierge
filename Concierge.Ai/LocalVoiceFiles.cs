@@ -5,8 +5,16 @@ namespace Concierge.Ai;
 ///
 /// `CircleAI.Voice` ships the code for both directions — `WhisperTranscriber` writes out
 /// what is said, `OnnxTtsEngine` speaks — and neither can do anything without a model file
-/// beside it. Those files are large, they are not ours to redistribute, and nobody has put
-/// them here yet.
+/// beside it.
+///
+/// **This used to look in one place: a `voice` folder somebody had to fill by hand.** Its own
+/// comment said the files "are not ours to redistribute", which was out of date — CircleAI
+/// catalogues eighty-eight models and the chat runtime has downloaded its own since the day
+/// it was written. So it also looks where <see cref="VoiceModels"/> puts what it fetched, and
+/// speech stops depending on somebody knowing to copy a file.
+///
+/// The hand-placed folder is still searched, and searched first: somebody who has dropped a
+/// particular voice in there meant it.
 ///
 /// So this is a look on disk rather than a configuration setting. A capability that is
 /// present when its files are and absent otherwise is the same rule every device capability
@@ -37,8 +45,17 @@ public sealed record LocalVoiceFiles(string? Listener, string? Speaker, string F
     {
         var folder = FolderUnder(modelsDirectory);
 
+        // By hand first — somebody who dropped a particular voice in there meant it.
         var listener = Newest(folder, "*.bin");
         var speaker = Newest(folder, "*.onnx");
+
+        if (listener is null || speaker is null)
+        {
+            var fetched = new VoiceModels(modelsDirectory).Look();
+
+            listener ??= fetched.Listener;
+            speaker ??= fetched.Speaker;
+        }
 
         return new LocalVoiceFiles(listener, speaker, folder, Sentence(listener, speaker, folder));
     }
@@ -77,7 +94,7 @@ public sealed record LocalVoiceFiles(string? Listener, string? Speaker, string F
             + $"model (.bin) in {folder}.",
 
         _ =>
-            $"No speech files. Put a whisper model (.bin) and a voice model (.onnx) in {folder}, "
-            + "and this works on the device with no key and nothing to configure.",
+            "No speech files yet. They can be downloaded — about 110 MB — and then this works "
+            + $"on the device with no key and no network. Or put them in {folder} by hand.",
     };
 }

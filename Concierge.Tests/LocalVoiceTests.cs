@@ -66,9 +66,12 @@ public sealed class LocalVoiceTests : IDisposable
     {
         var found = LocalVoiceFiles.Look(_models);
 
+        // The folder is still named, because somebody may want to place a particular voice
+        // there. What changed is what it leads with: these can be downloaded now, and telling
+        // somebody to go and find two files by hand when the app can fetch them was an
+        // instruction to do the app's job for it.
         Assert.Contains(found.Folder, found.Why, StringComparison.Ordinal);
-        Assert.Contains(".bin", found.Why, StringComparison.Ordinal);
-        Assert.Contains(".onnx", found.Why, StringComparison.Ordinal);
+        Assert.Contains("downloaded", found.Why, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
