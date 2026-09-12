@@ -69,10 +69,13 @@ public static class PdfExport
             Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
 
             var pdf = new Pdf();
+            var dropped = new Counted();
 
             foreach (var page in pages)
             {
-                var picture = await PictureAsync(document, page, encoder, cancellationToken).ConfigureAwait(false);
+                var picture = await PictureAsync(document, page, encoder, dropped, cancellationToken)
+                    .ConfigureAwait(false);
+
                 pdf.AddPage(Draw(document, page, look, picture is not null), picture);
             }
 
@@ -82,7 +85,14 @@ public static class PdfExport
             await File.WriteAllBytesAsync(beside, pdf.Finish(), cancellationToken).ConfigureAwait(false);
             File.Move(beside, outputPath, overwrite: true);
 
-            return ExportResult.Made(outputPath);
+            return ExportResult.Made(
+                outputPath,
+                dropped.Total == 0
+                    ? null
+                    : $"{dropped.Total} picture{(dropped.Total == 1 ? " is" : "s are")} not in it — "
+                      + (encoder is null
+                          ? "a PDF can only carry a JPEG, and there is no encoder here to convert one."
+                          : "they could not be converted into something a PDF can carry."));
         }
         catch (Exception problem) when (problem is IOException or UnauthorizedAccessException)
         {
@@ -257,6 +267,28 @@ public static class PdfExport
         611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584,
     ];
 
+    /// <summary>
+    /// How many pictures did not make it into the file.
+    ///
+    /// **They were left out in silence.** A PDF carries a JPEG as it is; a PNG needs the
+    /// encoder, and without one — or when the conversion fails, or the bytes are not really a
+    /// picture — it is dropped. Leaving it out is right: bytes a reader renders as noise are
+    /// worse than a gap. Saying nothing about it is not, and the answer was "Saved to
+    /// …\deck.pdf" either way.
+    ///
+    /// Somebody sends that to a client. They find out from the client.
+    ///
+    /// A small mutable counter rather than a return value because the picture search already
+    /// has one thing to say and this is a second, and threading a tuple through four exits
+    /// reads worse than this does.
+    /// </summary>
+    private sealed class Counted
+    {
+        public int Total { get; private set; }
+
+        public void One() => Total++;
+    }
+
     // ── Pictures ──────────────────────────────────────────────────────────
 
     /// <summary>
@@ -268,7 +300,11 @@ public static class PdfExport
     /// missing than embedded as bytes a reader will render as noise.
     /// </summary>
     private static async Task<Picture?> PictureAsync(
-        DesignDocument document, DesignNode page, FfmpegMediaExport? encoder, CancellationToken cancellationToken)
+        DesignDocument document,
+        DesignNode page,
+        FfmpegMediaExport? encoder,
+        Counted dropped,
+        CancellationToken cancellationToken)
     {
         foreach (var node in document.ChildrenOf(page.Id))
         {
@@ -279,10 +315,13 @@ public static class PdfExport
                 continue;
             }
 
+            // From here on this node is a picture somebody put on the page. Every way out
+            // below leaves it out of the file, so every one of them counts — see Counted.
             var comma = src.IndexOf(',');
 
             if (comma < 0)
             {
+                dropped.One();
                 continue;
             }
 
@@ -294,6 +333,7 @@ public static class PdfExport
             }
             catch (FormatException)
             {
+                dropped.One();
                 continue;
             }
 
@@ -304,6 +344,8 @@ public static class PdfExport
             {
                 if (encoder is null)
                 {
+                    // No encoder, so a PNG cannot become a JPEG and a PDF cannot carry it.
+                    dropped.One();
                     continue;
                 }
 
@@ -311,6 +353,7 @@ public static class PdfExport
 
                 if (converted is null)
                 {
+                    dropped.One();
                     continue;
                 }
 
@@ -319,6 +362,7 @@ public static class PdfExport
 
             if (SizeOfJpeg(bytes) is not { } size)
             {
+                dropped.One();
                 continue;
             }
 

@@ -560,7 +560,11 @@ public sealed class DesignToolSource : IAgentToolSource
                     document, pdf, encoder as FfmpegMediaExport, cancellationToken).ConfigureAwait(false);
 
                 return wrote.Ok
-                    ? new AgentToolResult(true, $"Saved to {wrote.Path}.")
+                    ? new AgentToolResult(
+                        true,
+                        wrote.Left is { Length: > 0 } missing
+                            ? $"Saved to {wrote.Path}. {missing}"
+                            : $"Saved to {wrote.Path}.")
                     : new AgentToolResult(false, string.Empty, wrote.Problem ?? "It could not be saved.");
             }
 
