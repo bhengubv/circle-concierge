@@ -188,6 +188,45 @@ public sealed class DesignSession
     /// </summary>
     public string HtmlAt(int position)
         => position >= 0 && position < _moments.Count
-            ? DesignMediums.Render(_moments[position].Document)
+            ? DesignMediums.Render(Light(_moments[position].Document))
             : string.Empty;
+
+    /// <summary>
+    /// The same document with its carried audio left out, for a thumbnail.
+    ///
+    /// **A thumbnail is 64 pixels drawn at eight per cent, and audio contributes nothing to
+    /// it at all** — there is no player to see and nothing to hear. It was contributing its
+    /// full weight in base64 regardless: measured on the running app at 2,086 KB of markup
+    /// across three moments, about 700 KB each, for a design carrying only 390 KB of sound.
+    ///
+    /// Thirty moments is the limit, so at the import budget of eight megabytes of audio a
+    /// history strip would hold something like three hundred megabytes of string. That cost
+    /// arrived this morning with inline audio and nothing else changed to meet it.
+    ///
+    /// Pictures stay. They are the only thing that makes a thumbnail recognisable, which is
+    /// the whole reason the strip is pictures rather than a list of sentences.
+    ///
+    /// The renderer already draws a track with no source as a named placeholder rather than a
+    /// dead player, so this needs no special case anywhere else.
+    /// </summary>
+    private static DesignDocument Light(DesignDocument document)
+    {
+        var heavy = document.Nodes.Values
+            .Where(node => node.Kind == DesignNodeKind.Sound
+                           && node.Props.TryGetValue("src", out var src)
+                           && src.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        if (heavy.Count == 0)
+        {
+            return document;
+        }
+
+        foreach (var node in heavy)
+        {
+            document = document.Set(node.Id, "src", string.Empty);
+        }
+
+        return document;
+    }
 }
