@@ -35,6 +35,12 @@
     <script src="_content/MudBlazor/MudBlazor.min.js"></script>
     <script src="_content/Concierge.Shared.Components/concierge-formfactor.js"></script>
     <script src="_content/Concierge.Shared.Components/concierge-design.js"></script>
+
+    <!-- The microphone. Loaded in the web head's App.razor since it was written and never
+         here, so pressing Speak on the desktop app failed at the first step with
+         "conciergeVoice was undefined" - the module that wraps MediaRecorder had simply
+         never been on the page. Voice is meant to be how this product is used. -->
+    <script src="_content/Concierge.Shared.Components/concierge-voice.js"></script>
     <script src="sense.js"></script>
     <script src="camera.js"></script>
 

@@ -824,9 +824,131 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     }
 
     /// <summary>
-    /// Toggles mic capture via the JS interop module that wraps MediaRecorder. The module
-    /// returns a base64 webm blob which we POST to <c>/api/voice/transcribe</c>; the
-    /// resulting text is appended to the composer so the user can edit before send.
+    /// Whatever on this device can hear, or nothing.
+    ///
+    /// Resolved rather than injected, because a head with no voice runtime registered must
+    /// still render — a nullable <c>[Inject]</c> is not optional, which cost seventy-six tests
+    /// once already.
+    /// </summary>
+    protected Concierge.Shared.Media.IVoiceRuntime? Ears
+        => Services.GetService(typeof(Concierge.Shared.Media.IVoiceRuntime))
+                is Concierge.Shared.Media.IVoiceRuntime { SupportsTranscription: true, IsReady: true } ready
+            ? ready
+            : null;
+
+    /// <summary>
+    /// Turns the captured audio into words — on the device when it can, over HTTP when it
+    /// cannot. Null means it has already said why.
+    /// </summary>
+    /// <remarks>
+    /// **On the desktop head this used to post into nothing.**
+    /// <c>/api/voice/transcribe</c> is mapped in <c>Concierge.Web</c> and nowhere else, so the
+    /// microphone on the app most people run reached a route that does not exist and reported
+    /// "Transcription failed (404)" — while a runtime that transcribes on the device, with no
+    /// key and no network, sat in the container two feet away.
+    ///
+    /// The device is asked first. The browser head has no local runtime and keeps the
+    /// endpoint; the desktop head has one and never needs it.
+    /// </remarks>
+    private async Task<string?> WhatWasSaidAsync(string base64)
+    {
+        byte[] audio;
+
+        try
+        {
+            audio = Convert.FromBase64String(base64);
+        }
+        catch (FormatException)
+        {
+            _composerHint = "That recording could not be read.";
+            return null;
+        }
+
+        if (Ears is { } ears)
+        {
+            try
+            {
+                using var sound = new MemoryStream(audio, writable: false);
+
+                var said = await ears.TranscribeAsync(sound, "capture.webm");
+
+                if (!string.IsNullOrWhiteSpace(said.Text))
+                {
+                    return said.Text;
+                }
+
+                // Silence is a real answer and a common one — a muted microphone, a loud
+                // room, a press that caught nothing. Said as itself rather than as a failure,
+                // because there is nothing here for anybody to fix.
+                _composerHint = "Nothing was said in that.";
+                return null;
+            }
+            catch (Exception failure) when (failure is not OperationCanceledException)
+            {
+                _composerHint = $"That could not be written down: {failure.Message}";
+                return null;
+            }
+        }
+
+        try
+        {
+            var http = VoiceClient(Nav.BaseUri);
+
+            using var response = await http.PostAsJsonAsync(
+                "api/voice/transcribe", new { audioBase64 = base64, fileName = "capture.webm" });
+
+            if (!response.IsSuccessStatusCode)
+            {
+                // A status code is not an answer. Somebody reading "failed (404)" goes looking
+                // for a network fault, and the truth is that this device cannot hear yet.
+                _composerHint = response.StatusCode == System.Net.HttpStatusCode.NotFound
+                    ? "Nothing on this device can listen yet."
+                    : $"That could not be written down ({(int)response.StatusCode}).";
+
+                return null;
+            }
+
+            var transcript = await response.Content.ReadFromJsonAsync<TranscriptResponse>();
+
+            if (!string.IsNullOrWhiteSpace(transcript?.Text))
+            {
+                return transcript.Text;
+            }
+
+            _composerHint = "Nothing was said in that.";
+            return null;
+        }
+        catch (Exception failure) when (failure is HttpRequestException or TaskCanceledException)
+        {
+            // Which is what the desktop head did every time: no server, no route, and a
+            // message about a status code from something that was never listening.
+            _composerHint = "Nothing on this device can listen yet.";
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Puts what was heard into the box, after whatever is already there.
+    /// </summary>
+    /// <remarks>
+    /// Not sent. Speech misreads words, and a surface that acted on every sentence the moment
+    /// it heard one would be unusable in a room with other people in it. The correction is the
+    /// whole product, and you cannot correct something that has already happened.
+    /// </remarks>
+    private void Wrote(string words)
+    {
+        _composerText = string.IsNullOrWhiteSpace(_composerText)
+            ? words
+            : _composerText.TrimEnd() + " " + words;
+
+        _composerHint = "Heard that. Send it, or say more.";
+    }
+
+    /// <summary>
+    /// Press, talk, press again — and the words land in the box.
+    ///
+    /// The capture is MediaRecorder through a small interop module; where the words come from
+    /// is <see cref="WhatWasSaidAsync"/>, which asks this device before it asks a server.
     /// </summary>
     protected async Task ToggleMicAsync()
     {
@@ -848,26 +970,17 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
                     return;
                 }
 
-                _composerHint = "Transcribing…";
-                var http = VoiceClient(Nav.BaseUri);
-                using var response = await http.PostAsJsonAsync("api/voice/transcribe", new { audioBase64 = base64, fileName = "capture.webm" });
-                if (!response.IsSuccessStatusCode)
+                _composerHint = "Writing that down…";
+                StateHasChanged();
+
+                var heard = await WhatWasSaidAsync(base64);
+
+                if (heard is null)
                 {
-                    _composerHint = $"Transcription failed ({(int)response.StatusCode}).";
                     return;
                 }
-                var transcript = await response.Content.ReadFromJsonAsync<TranscriptResponse>();
-                if (!string.IsNullOrWhiteSpace(transcript?.Text))
-                {
-                    _composerText = string.IsNullOrWhiteSpace(_composerText)
-                        ? transcript.Text
-                        : _composerText.TrimEnd() + "\n" + transcript.Text;
-                    _composerHint = "Transcribed — edit and send when ready.";
-                }
-                else
-                {
-                    _composerHint = "Whisper returned empty text.";
-                }
+
+                Wrote(heard);
             }
         }
         catch (JSException ex)
