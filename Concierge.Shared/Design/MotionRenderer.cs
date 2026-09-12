@@ -74,16 +74,42 @@ public static class MotionRenderer
             html.AppendLine("</div>");
         }
 
-        // A progress bar rather than a scrubber. It says where you are and cannot
-        // be dragged, which is the whole difference.
-        html.AppendLine($"<div class=\"bar\"><span></span></div>");
+        // A timeline, because somebody making a four-minute film needs to see where they are
+        // in it. Clips laid out at their real proportions, the playhead crossing the whole
+        // film, each one named and measured.
+        //
+        // **Read-only, and that is the design rather than a shortfall.** Nothing here can be
+        // dragged: the verb on this surface is speech, and "make the shot four seconds" is
+        // how a length changes. What a timeline is for is *looking* — you cannot drag a clip
+        // while driving, and you can say that sentence.
+        //
+        // Clicking one points at it, which is not dragging. Pointing supplies the subject the
+        // way it does everywhere else here, so "that one — make it warmer" works.
+        html.AppendLine("<div class=\"tl\">");
+
+        for (var i = 0; i < shots.Count; i++)
+        {
+            var length = Math.Max(1, seconds[i]);
+            var named = shots[i].Text.Length > 0 ? shots[i].Text : $"Shot {i + 1}";
+            var picked = string.Equals(shots[i].Id, selectedId, StringComparison.Ordinal) ? " picked" : string.Empty;
+
+            html.AppendLine(
+                $"<div class=\"clip{picked}\" data-node=\"{DesignMediums.Escape(shots[i].Id)}\" "
+                + $"style=\"flex:{length} 0 0%\">"
+                + $"<span class=\"clip-name\">{DesignMediums.Escape(named)}</span>"
+                + $"<span class=\"clip-len\">{length}s</span>"
+                + "</div>");
+        }
+
+        html.AppendLine("<div class=\"head\"></div>");
+        html.AppendLine("</div>");
+
         html.AppendLine($"<div class=\"len\">{seconds.Sum()} seconds</div>");
 
         html.AppendLine("""
             <script>
               (function () {
                 var shots = [].slice.call(document.querySelectorAll('.shot'));
-                var fill = document.querySelector('.bar span');
                 if (!shots.length) { return; }
                 var at = 0, started = Date.now();
 
@@ -102,10 +128,29 @@ public static class MotionRenderer
                   if (here) { here.play().catch(function () { }); }
                 }
 
+                // Where each shot starts inside the whole film, so the playhead crosses the
+                // timeline rather than restarting inside every clip.
+                var lengths = shots.map(function (s) {
+                  return Math.max(1, parseInt(s.dataset.seconds, 10) || 4);
+                });
+                var whole = lengths.reduce(function (a, b) { return a + b; }, 0) || 1;
+                var starts = [];
+                lengths.reduce(function (a, b, i) { starts[i] = a; return a + b; }, 0);
+
+                var clips = [].slice.call(document.querySelectorAll('.clip'));
+                var head = document.querySelector('.head');
+
                 function tick() {
-                  var length = (parseInt(shots[at].dataset.seconds, 10) || 4) * 1000;
+                  var length = lengths[at] * 1000;
                   var gone = Date.now() - started;
-                  if (fill) { fill.style.width = Math.min(100, (gone / length) * 100) + '%'; }
+
+                  if (head) {
+                    var across = (starts[at] + Math.min(lengths[at], gone / 1000)) / whole;
+                    head.style.left = (across * 100) + '%';
+                  }
+
+                  clips.forEach(function (c, n) { c.classList.toggle('on', n === at); });
+
                   if (gone >= length) { play(at + 1); }
                   requestAnimationFrame(tick);
                 }
@@ -166,8 +211,44 @@ public static class MotionRenderer
         .snd figcaption { font-size: .8rem; opacity: .65; }
 
         /* Where you are, not something to drag. */
-        .bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--raised); }
-        .bar span { display: block; height: 100%; width: 0; background: var(--accent); }
-        .len { position: absolute; right: 1rem; bottom: .75rem; font-size: .75rem; opacity: .45; }
+        /* The timeline. Clips at their real proportions, so four seconds looks like twice
+           two — a row of equal boxes would say nothing about the shape of the film. */
+        /* Along the bottom, where a timeline goes.
+         *
+         * The first version left it in normal flow, which put it at the top of the document
+         * — under the canvas's own caption overlay, half hidden, above the picture it
+         * describes. Shots are absolutely positioned, so "after the shots" is not "below
+         * them". Seen on the running app. */
+        .tl {
+          /* Clear of the canvas's own resting controls, which float over this document at
+             its bottom-left. They are two pills at rest; when they open they cover the
+             timeline, which is fair — at that moment you are choosing a medium, not watching
+             a film. */
+          position: absolute; left: 1rem; right: 1rem; bottom: 3.7rem;
+          display: flex; gap: 2px;
+          height: 2.4rem;
+          border-radius: 4px; overflow: hidden;
+          background: var(--raised);
+        }
+        .clip {
+          position: relative; overflow: hidden;
+          display: flex; flex-direction: column; justify-content: center;
+          padding: 0 .4rem; min-width: 0;
+          background: color-mix(in srgb, var(--accent) 18%, var(--raised));
+          cursor: pointer;
+        }
+        .clip.on { background: color-mix(in srgb, var(--accent) 42%, var(--raised)); }
+        .clip.picked { outline: 2px solid var(--accent); outline-offset: -2px; }
+        .clip-name {
+          font-size: .62rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .clip-len { font-size: .55rem; opacity: .65; }
+
+        /* Where you are in the whole film, not inside one clip. */
+        .head {
+          position: absolute; top: 0; bottom: 0; width: 2px; left: 0;
+          background: var(--ink); pointer-events: none;
+        }
+        .len { position: absolute; right: 1rem; bottom: .55rem; font-size: .75rem; opacity: .45; }
         """;
 }

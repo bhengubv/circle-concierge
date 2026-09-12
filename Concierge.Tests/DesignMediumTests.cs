@@ -235,19 +235,32 @@ public sealed class DesignMediumTests
     }
 
     /// <summary>
-    /// The decision this renderer turns on. A timeline is the single most
-    /// excluding thing in video software — scrubbing, tracks, keyframes, a
-    /// playhead — and what replaces it is a progress bar that cannot be dragged.
+    /// **This test used to be called `There_is_no_timeline_to_get_wrong`, and the decision it
+    /// encoded has been reversed by the owner.**
+    ///
+    /// It asserted a 3px progress bar and no timeline, on the grounds that a timeline is the
+    /// most excluding thing in video software. That confused the display with the verb.
+    /// Somebody trying to earn a living from a four-minute film needs to see its shape — and
+    /// they will learn a timeline, because people learn far harder things for far less. What
+    /// they will not tolerate is a cockpit with no way in.
+    ///
+    /// So there is a timeline now (see <c>TimelineTests</c>), and what survives from the
+    /// original decision is the half that was always right: **nothing on it can be dragged.**
+    /// A length changes by saying "make the shot four seconds", which works while driving and
+    /// dragging does not.
+    ///
+    /// The progress bar went with it. Two things saying where you are is one too many.
     /// </summary>
     [Fact]
-    public void There_is_no_timeline_to_get_wrong()
+    public void Nothing_on_the_timeline_can_be_dragged()
     {
         var html = DesignMediums.Render(DesignDocument.Blank(medium: DesignMedium.Motion)
             .Add(DesignNode.New(DesignNodeKind.Frame, null, ("text", "Opening"))));
 
-        Assert.DoesNotContain("range", html);
+        Assert.DoesNotContain("type=\"range\"", html);
         Assert.DoesNotContain("scrub", html);
-        Assert.Contains("class=\"bar\"", html);
+        Assert.DoesNotContain("draggable", html);
+        Assert.Contains("class=\"tl\"", html);
     }
 
     // ── Space ─────────────────────────────────────────────────────────────
