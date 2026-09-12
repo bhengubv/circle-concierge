@@ -7,7 +7,22 @@ namespace Concierge.Shared.Design;
 /// <param name="Document">The design afterwards.</param>
 /// <param name="What">What changed, in words, for the history strip.</param>
 /// <param name="Reply">What to say back, when nothing was understood.</param>
-public sealed record DesignHeard(bool Understood, DesignDocument Document, string What, string? Reply = null);
+/// <param name="Reply">
+/// What the canvas has to say, when it has something to say. Read by nobody for most of this
+/// file's life — every sentence in it was dropped and the words handed to a model instead.
+/// </param>
+/// <param name="Final">
+/// Whether that reply is the last word. True when the canvas understood the intent and is
+/// explaining — "say 'board' first", "there is no wall yet" — and sending it on to a model
+/// would replace a correct four-word answer with a minute of unrelated prose.
+///
+/// False when the canvas simply did not place the sentence. Then the reply is a fallback for
+/// a host with no model at all, and anywhere there is one the model gets its turn: answering
+/// everything here would quietly cut the model out of the canvas, which is the opposite
+/// mistake and a worse one. A test holds that line.
+/// </param>
+public sealed record DesignHeard(
+    bool Understood, DesignDocument Document, string What, string? Reply = null, bool Final = false);
 
 /// <summary>
 /// Understanding the ordinary sentences without asking a model.
@@ -112,7 +127,7 @@ public static class DesignSpeech
             if (design.Find(pointedAt) is not { } doomed)
             {
                 return new DesignHeard(false, design, string.Empty,
-                    "Touch the thing you want gone first, then say delete.");
+                    "Touch the thing you want gone first, then say delete.", Final: true);
             }
 
             return new DesignHeard(true, design.Remove(doomed.Id), $"Removed the {NameFor(doomed.Kind, design.Medium)}");
@@ -160,7 +175,7 @@ public static class DesignSpeech
             if (design.Find(pointedAt) is not { } sized)
             {
                 return new DesignHeard(false, design, string.Empty,
-                    "Touch the thing you want changed first, then say bigger or smaller.");
+                    "Touch the thing you want changed first, then say bigger or smaller.", Final: true);
             }
 
             var bigger = size.Value.StartsWith('b') || size.Value.StartsWith('l');
@@ -185,7 +200,7 @@ public static class DesignSpeech
             if (design.Medium != DesignMedium.Scene)
             {
                 return new DesignHeard(false, design, string.Empty,
-                    "Walls and floors go in a room. Say 'space' first.");
+                    "Walls and floors go in a room. Say 'space' first.", Final: true);
             }
 
             var piece = built.Groups["piece"].Value.ToLowerInvariant();
@@ -205,7 +220,7 @@ public static class DesignSpeech
             if (design.Medium != DesignMedium.Scene)
             {
                 return new DesignHeard(false, design, string.Empty,
-                    "Doors and windows go in a room. Say 'space' first.");
+                    "Doors and windows go in a room. Say 'space' first.", Final: true);
             }
 
             var wall = WallToCut(design, pointedAt);
@@ -215,7 +230,7 @@ public static class DesignSpeech
                 // Said rather than swallowed: without this the sentence goes to a model and,
                 // on a machine with none that can act, produces nothing and no reason.
                 return new DesignHeard(false, design, string.Empty,
-                    "There is no wall to cut into yet. Say 'add a wall' first.");
+                    "There is no wall to cut into yet. Say 'add a wall' first.", Final: true);
             }
 
             var opening = cut.Groups["opening"].Value.ToLowerInvariant();
@@ -235,7 +250,7 @@ public static class DesignSpeech
             if (rooms.Count == 0)
             {
                 return new DesignHeard(false, design, string.Empty,
-                    "There is no building to look at yet. Say 'add a room' first.");
+                    "There is no building to look at yet. Say 'add a room' first.", Final: true);
             }
 
             var phrase = levels.Groups["how"].Value.ToLowerInvariant()
@@ -275,7 +290,7 @@ public static class DesignSpeech
             if (kind == DesignNodeKind.Frame && design.Medium == DesignMedium.Page)
             {
                 return new DesignHeard(false, design, string.Empty,
-                    "A page is one surface. Say 'slides' or 'video' first, then add one.");
+                    "A page is one surface. Say 'slides' or 'video' first, then add one.", Final: true);
             }
 
             // In a room, a thing is a thing you can walk round. "Add a box" on a
@@ -298,6 +313,38 @@ public static class DesignSpeech
                 : DesignNode.New(kind, where, ("text", words));
 
             return new DesignHeard(true, design.Add(node), $"Added a {NameFor(kind, design.Medium)}");
+        }
+
+        // What a panel on a board says.
+        if (Match(said, PanelChange) is { } change)
+        {
+            var way = change.Groups["change"].Value.ToLowerInvariant();
+            var amount = change.Groups["amount"].Value;
+
+            var reads = way switch
+            {
+                "steady" or "flat" or "unchanged" => "steady",
+                _ when amount.Length == 0 => way == "up" ? "+" : "-",
+                _ => (way == "up" ? "+" : "-") + amount.TrimStart('+', '-'),
+            };
+
+            return AboutAPanel(design, pointedAt, "change", reads, $"Panel {reads}");
+        }
+
+        if (Match(said, PanelValue) is { } panel)
+        {
+            var value = Clean(panel.Groups["value"].Value);
+
+            // A blank is a real answer and the one this medium is built around: an invented
+            // metric is slop the moment it is invented, so "nothing" has to be sayable.
+            var blank = value.ToLowerInvariant() is "blank" or "nothing" or "unknown" or "empty";
+
+            return AboutAPanel(
+                design,
+                pointedAt,
+                "value",
+                blank ? string.Empty : value,
+                blank ? "Left the panel blank" : $"Set the panel to {value}");
         }
 
         // How a shot looks, how it moves, and how it joins the one before it. All three take
@@ -343,7 +390,7 @@ public static class DesignSpeech
             if (design.Medium != DesignMedium.Scene)
             {
                 return new DesignHeard(false, design, string.Empty,
-                    "Furniture goes in a room. Say 'space' first.");
+                    "Furniture goes in a room. Say 'space' first.", Final: true);
             }
 
             // No catalogue is not the same as nothing called that, and the two must not both
@@ -351,7 +398,7 @@ public static class DesignSpeech
             if (catalogue is null)
             {
                 return new DesignHeard(false, design, string.Empty,
-                    "Nothing is set up to furnish a room on this device.");
+                    "Nothing is set up to furnish a room on this device.", Final: true);
             }
 
             if (catalogue.Find(what) is not { } thing)
@@ -469,6 +516,26 @@ public static class DesignSpeech
         @"^(?:(?<cut>cut)|fade|dissolve|blend)\s+(?:into|to|between|in to)?\s*"
         + @"(?:the\s+)?(?:next\s+|last\s+|this\s+)?(?:shot|clip|one|shots|it)(?:\s+instead)?[.!]?$";
 
+    /// <summary>
+    /// "set the panel to 48,200", "make the panel blank", "the panel is up 12%".
+    ///
+    /// A board is a small name, an enormous number and which way it is moving. `design_panel`
+    /// could set all three and no sentence reached any of them, so the one medium built
+    /// entirely around a number could be given empty panels by talking and nothing else.
+    ///
+    /// "panel" is required for the same reason "shot" is: without it, "set it to 48,200"
+    /// competes with every other sentence on the surface.
+    /// </summary>
+    private const string PanelValue =
+        @"^(?:set|make|put)\s+(?:the|this|that)\s+panel\s+(?:to\s+|at\s+)?(?<value>.+?)[.!]?$";
+
+    /// <summary>
+    /// Which way it is moving, said the way somebody says it.
+    /// </summary>
+    private const string PanelChange =
+        @"^(?:the\s+|this\s+)?panel\s+is\s+(?<change>up|down|steady|flat|unchanged)"
+        + @"(?:\s+(?<amount>[-+]?[\d][\d.,]*%?))?[.!]?$";
+
     private const string Furnishing =
         @"^(?:add|put in|put|place|bring in)\s+(?:a|an|the|some)?\s*(?<what>[a-z][a-z \-]{1,28}?)"
         + @"(?:\s+(?:in|into|to)(?:\s+the)?(?:\s+room)?)?[.!]?$";
@@ -501,6 +568,34 @@ public static class DesignSpeech
     /// refusing leaves nothing on screen at all.
     /// </summary>
     /// <summary>
+    /// Sets one field on the panel somebody means — the one being pointed at, or the last.
+    /// </summary>
+    private static DesignHeard AboutAPanel(
+        DesignDocument design, string? pointedAt, string field, string value, string what)
+    {
+        if (design.Medium != DesignMedium.Board)
+        {
+            return new DesignHeard(false, design, string.Empty,
+                "Panels are on a board. Say 'board' first.", Final: true);
+        }
+
+        var panels = design.Frames;
+
+        if (panels.Count == 0)
+        {
+            return new DesignHeard(false, design, string.Empty,
+                "There are no panels yet. Say 'add a panel' first.", Final: true);
+        }
+
+        var panel = pointedAt is { Length: > 0 }
+                    && design.Find(pointedAt) is { Kind: DesignNodeKind.Frame } picked
+            ? picked
+            : panels[^1];
+
+        return new DesignHeard(true, design.Set(panel.Id, field, value), what);
+    }
+
+    /// <summary>
     /// Sets one property on the shot somebody means, and says what happened in their words.
     ///
     /// The shot being pointed at, or the last one — the same guess <c>WallToCut</c> makes and
@@ -513,7 +608,7 @@ public static class DesignSpeech
         if (design.Medium is not (DesignMedium.Motion or DesignMedium.Deck))
         {
             return new DesignHeard(false, design, string.Empty,
-                "Shots are in a video. Say 'video' first.");
+                "Shots are in a video. Say 'video' first.", Final: true);
         }
 
         var shots = design.Frames;
@@ -521,7 +616,7 @@ public static class DesignSpeech
         if (shots.Count == 0)
         {
             return new DesignHeard(false, design, string.Empty,
-                "There are no shots yet. Say 'add a shot' first.");
+                "There are no shots yet. Say 'add a shot' first.", Final: true);
         }
 
         var shot = pointedAt is { Length: > 0 } && design.Find(pointedAt) is { Kind: DesignNodeKind.Frame } picked

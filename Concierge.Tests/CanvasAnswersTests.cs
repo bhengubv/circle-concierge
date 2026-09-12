@@ -12,8 +12,11 @@ namespace Concierge.Tests;
 ///
 /// **Found by typing "add a wall" into a room and watching nothing happen.** Nothing is the
 /// right word: no wall, no new moment, no error, no sign a turn had even run. "add a sphere"
-/// works instantly, so the local path was fine — "wall" is simply not in the canvas
-/// vocabulary, and the sentence fell through to the model exactly as designed.
+/// works instantly, so the local path was fine — "wall" was simply not in the canvas
+/// vocabulary then, and the sentence fell through to the model exactly as designed.
+///
+/// "add a wall" is a canvas sentence now, so these drive the model with one the canvas
+/// genuinely cannot place — which is the case this is actually about.
 ///
 /// The model answered with nothing at all, and the thread behind the canvas held "YOU: add a
 /// wall" followed by an empty Concierge turn. None of it was visible, because with the canvas
@@ -113,7 +116,7 @@ public sealed class CanvasAnswersTests : BunitContext
     {
         var cut = Canvas(new Says("I cannot add a wall to this room."));
 
-        Say(cut, "add a wall");
+        Say(cut, "make it feel like a school newsletter");
 
         cut.WaitForAssertion(
             () => Assert.Contains("I cannot add a wall", cut.Markup, StringComparison.Ordinal),
@@ -129,7 +132,7 @@ public sealed class CanvasAnswersTests : BunitContext
     {
         var cut = Canvas(new Says(string.Empty));
 
-        Say(cut, "add a wall");
+        Say(cut, "make it feel like a school newsletter");
 
         cut.WaitForAssertion(
             () => Assert.Contains("had no answer for that", cut.Markup, StringComparison.Ordinal),

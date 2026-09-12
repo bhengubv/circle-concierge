@@ -957,10 +957,40 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
             return true;
         }
 
-        // Not understood here, so it goes to the model with the design tools in
-        // its hand. The words stay in the box until the send path clears them,
-        // because somebody who was misunderstood wants to fix what they said
-        // rather than type it again.
+        // The canvas understood what was meant and is answering: "a page is one surface, say
+        // slides first", "there is no wall to cut into yet", "panels are on a board".
+        //
+        // **Every one of those was written and shown to nobody.** `DesignHeard.Reply` was
+        // read by no file in the repository — the field has carried helpful sentences since
+        // before the medium switch existed, and the send path dropped them on the floor and
+        // handed the words to a model instead. So the one case where the canvas knows exactly
+        // what is wrong, and can say it in a sentence, was the case where it stayed silent
+        // and a model answered about something else entirely.
+        //
+        // Answered here rather than sent on, because sending it on is what made it silent.
+        // The words stay in the box: somebody told to say "board" first wants to fix that
+        // sentence, not retype it.
+        if (heard is { Final: true, Reply: { Length: > 0 } reply })
+        {
+            _composerHint = reply;
+            StateHasChanged();
+            return true;
+        }
+
+        // Not final: the canvas could not place the sentence at all, so the model gets its
+        // turn — answering everything here would quietly cut the model out of the canvas,
+        // which is the opposite mistake and a worse one. Its reply is the fallback for a host
+        // with no model, where otherwise nothing at all is said.
+        if (_activeRuntime is null && heard.Reply is { Length: > 0 } fallback)
+        {
+            _composerHint = fallback;
+            StateHasChanged();
+            return true;
+        }
+
+        // Genuinely not understood, so it goes to the model with the design tools in its
+        // hand. The words stay in the box until the send path clears them, because somebody
+        // who was misunderstood wants to fix what they said rather than type it again.
         StateHasChanged();
         return false;
     }
