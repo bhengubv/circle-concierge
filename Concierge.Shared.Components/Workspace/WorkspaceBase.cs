@@ -73,6 +73,9 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     [Inject] protected Concierge.Shared.Tools.IToolApprovalService Approval { get; set; } = default!;
     [Inject] protected Concierge.Shared.Chat.BackgroundRuns Runs { get; set; } = default!;
 
+    /// <summary>One turn, shared with every head that is not a screen.</summary>
+    [Inject] protected Concierge.Shared.Chat.TurnRunner Turn { get; set; } = default!;
+
 
     [Parameter] public Guid? ConversationId { get; set; }
 
@@ -1618,10 +1621,6 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
         var fullPrompt = string.Join("\n\n", attachmentBlocks.Append(input).Where(s => !string.IsNullOrEmpty(s)));
 
-        await Store.AppendEventAsync(_active.Id, ConversationEventType.UserMessage, fullPrompt);
-        _active = await Store.GetAsync(_active.Id);
-        await RefreshSidebarAsync();
-        StateHasChanged();
 
         _streaming = true;
         _streamingBuffer = string.Empty;
@@ -1650,133 +1649,32 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
         try
         {
-            // Outer loop drives the tool-call cycle: stream → persist → if the assistant
-            // emitted ```tool-call``` blocks AND the user opted in, execute them, append the
-            // synthetic user turn with the results, and stream again. Cap at MaxToolIterations
-            // so a buggy reply can't pin the chat in a tight loop.
-            for (var iteration = 0; iteration <= MaxToolIterations; iteration++)
-            {
-                _toolLoopIteration = iteration;
-                StateHasChanged();
+            // The turn is no longer here.
+            //
+            // It was roughly three hundred and seventy lines of model, plan, tool calls
+            // and failover tangled with render state, which meant a head with no component
+            // to render into — a watch — could not reach any of it. TurnRunner holds it now;
+            // what is left here reads what it reports and draws.
+            var result = await Turn.RunAsync(
+                new Concierge.Shared.Chat.TurnRequest(
+                    _active!.Id,
+                    fullPrompt,
+                    _activeRuntime!,
+                    _orderedRuntimes,
+                    _pendingImages.ToArray(),
+                    new Concierge.Shared.Chat.TurnSettings(
+                        ExecuteTools: _executeToolCalls,
+                        IncludeToolCatalog: _includeToolCatalog,
+                        SkillIds: _activeSkillIds.ToArray(),
+                        SystemPrompt: !string.IsNullOrWhiteSpace(_active.SystemPrompt)
+                            ? _active.SystemPrompt
+                            : _systemPromptDraft)),
+                new TurnWatcher(this),
+                _streamCts.Token);
 
-                var assistantText = await StreamOnceAsync(_streamCts.Token);
-                if (assistantText is null)
-                {
-                    // Cancelled or empty — caller has already persisted whatever it could.
-                    break;
-                }
-
-                // Stated before the work, so it can be read before anything
-                // has happened rather than reconstructed from what did.
-                if (Concierge.Shared.Tools.PlanProtocol.Extract(assistantText) is { Count: > 0 } stated)
-                {
-                    // A revision is worth saying out loud. The strip resets to
-                    // zero when the plan changes, and without a word for it that
-                    // looks like progress being lost rather than a plan being
-                    // rethought.
-                    if (_plan.State(stated))
-                    {
-                        await Store.AppendEventAsync(_active!.Id, ConversationEventType.ToolResult,
-                            $"The plan was revised ({_plan.Revisions} so far this turn).");
-                    }
-
-                    _planSteps = _plan.Steps;
-                    _planDone = _plan.Done;
-                    StateHasChanged();
-                }
-
-                if (!_executeToolCalls || Tools.Tools.Count == 0)
-                {
-                    break;
-                }
-
-                var calls = ToolCallProtocol.Extract(assistantText);
-                if (calls.Count == 0)
-                {
-                    break;
-                }
-
-                if (iteration == MaxToolIterations)
-                {
-                    await Store.AppendEventAsync(_active!.Id, ConversationEventType.ToolResult,
-                        $"The tool loop stopped after {MaxToolIterations} rounds without finishing.");
-                    break;
-                }
-
-                // Each call is recorded before it runs, so a turn abandoned half way still
-                // leaves a log that says what was asked for.
-                foreach (var call in calls)
-                {
-                    await Store.AppendEventAsync(
-                        _active!.Id,
-                        ConversationEventType.ToolCall,
-                        call.Name + " " + (call.Arguments?.ToJsonString() ?? "{}"));
-                }
-
-                // The scheduler overlaps read-only calls, runs the rest alone, and returns a
-                // result for every call — including ones a cancellation stopped.
-                var planned = calls
-                    .Select(call => new PlannedToolCall(call.Name, call.Arguments))
-                    .ToList();
-
-                var outcomes = await ToolScheduler.ExecuteAsync(planned, _streamCts.Token);
-
-                // One round of calls is one step done — but only a round where
-                // something actually worked. This used to tick forward regardless,
-                // so a run where every call failed still showed "3 of 5": the strip
-                // asserting progress nobody had made, in the place a person looks
-                // precisely because they are deciding whether to let it carry on.
-                var verdict = _plan.Round(outcomes.Select(o => o.Result.Success).ToList());
-                _planDone = _plan.Done;
-
-                var results = new List<(string ToolName, AgentToolResult Result)>();
-                foreach (var outcome in outcomes)
-                {
-                    // Oversized output is trimmed once here, rather than paid for on every
-                    // later request in this conversation.
-                    var pruned = ResultPruner.Prune(outcome.Result.Output);
-                    var result = pruned.WasPruned
-                        ? new AgentToolResult(outcome.Result.Success, pruned.Text, outcome.Result.FailureMessage)
-                        : outcome.Result;
-
-                    results.Add((outcome.ToolName, result));
-
-                    await Store.AppendEventAsync(
-                        _active!.Id,
-                        ConversationEventType.ToolResult,
-                        ToolCallProtocol.FormatResult(outcome.ToolName, result));
-
-                    // A model going round in circles is told so, rather than left to spend
-                    // the whole iteration budget discovering it.
-                    var reminder = RepeatReminder.Observe(outcome.ToolName, outcome.Result.Output);
-                    if (reminder is not null)
-                    {
-                        await Store.AppendEventAsync(_active.Id, ConversationEventType.UserMessage, reminder);
-                    }
-                }
-
-                // After the results, not before: the model should read what went
-                // wrong and then be asked to rethink, in that order. A nudge that
-                // arrives ahead of the failures is a non-sequitur.
-                if (verdict.Note is not null)
-                {
-                    await Store.AppendEventAsync(
-                        _active!.Id,
-                        verdict.AskForRevision ? ConversationEventType.UserMessage : ConversationEventType.ToolResult,
-                        verdict.Note);
-                }
-
-                _active = await Store.GetAsync(_active!.Id);
-                StateHasChanged();
-
-                // Enough rounds failing in a row, or enough rewrites, and it stops.
-                // The round cap would eventually catch this, but only after
-                // spending every remaining request discovering the same thing.
-                if (verdict.ShouldStop)
-                {
-                    break;
-                }
-            }
+            _pendingImages.Clear();
+            _planSteps = result.PlanSteps;
+            _planDone = result.PlanDone;
         }
         finally
         {
@@ -1822,232 +1720,65 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     }
 
     /// <summary>
-    /// Streams one assistant turn over the active conversation history. Returns the
-    /// assembled assistant text (also persisted to the store) or <c>null</c> if the
-    /// stream was cancelled or the runtime emitted nothing.
+    /// Draws whatever the turn reports.
+    ///
+    /// The turn runs on its own async flow and resumes wherever the runtime leaves it, so
+    /// every redraw is put back on the renderer's queue rather than called where it lands.
+    /// An off-dispatcher StateHasChanged is the fault that took the whole app down when the
+    /// canvas did it, and it is not worth rediscovering here.
     /// </summary>
-    protected async Task<string?> StreamOnceAsync(CancellationToken cancellationToken)
+    private sealed class TurnWatcher(WorkspaceBase page) : IProgress<Concierge.Shared.Chat.TurnStep>
     {
-        if (_active is null || _activeRuntime is null)
+        public void Report(Concierge.Shared.Chat.TurnStep step)
         {
-            return null;
-        }
-
-        // Derived from the log rather than read off the message rows: the log is what is
-        // true, and it is the only place a tool result is distinguishable from something a
-        // person typed.
-        var turns = (await Store.DeriveMessagesAsync(_active.Id, cancellationToken)).ToList();
-
-        // Compact before spending a request, not after one is refused for length. On the
-        // smallest on-device model this is the difference between a conversation that keeps
-        // going and one that stops after a handful of turns.
-        var compacted = await Compaction.CompactIfNeededAsync(
-            turns, LoopOptions.ContextBudgetTokens, cancellationToken);
-
-        if (compacted.WasCompacted)
-        {
-            turns = compacted.Turns.ToList();
-            await Store.AppendEventAsync(
-                _active.Id,
-                ConversationEventType.CompactionReplace,
-                $"Summarised the earlier part of this conversation, reclaiming about {compacted.TokensReclaimed} tokens.");
-        }
-
-        var systemParts = new List<string>();
-
-        // ── Active skills first ────────────────────────────────────────────
-        // Skills come BEFORE custom system prompt + tool catalog so the
-        // assistant reads the specialist guidance as its primary identity for
-        // the turn, then layers user-specific overrides on top.
-        if (_activeSkillIds.Count > 0)
-        {
-            var skillPrompt = SkillRuntime.ComposeSystemPrompt(_activeSkillIds);
-            if (!string.IsNullOrWhiteSpace(skillPrompt))
+            switch (step.Stage)
             {
-                systemParts.Add(skillPrompt);
-            }
-        }
+                case Concierge.Shared.Chat.TurnStage.Streaming:
+                    page._streamingBuffer = step.Text ?? string.Empty;
+                    break;
 
-        var persisted = _active.SystemPrompt;
-        var systemText = !string.IsNullOrWhiteSpace(persisted) ? persisted : _systemPromptDraft;
-        if (!string.IsNullOrWhiteSpace(systemText))
-        {
-            systemParts.Add(systemText);
-        }
-        // Asking for a plan only makes sense when there is work to plan: with
-        // no tools, or in Plan only mode where nothing runs, it is noise.
-        if (_includeToolCatalog && Tools.Tools.Count > 0 && _permission.RunsTools())
-        {
-            systemParts.Add(Concierge.Shared.Tools.PlanProtocol.SystemPromptAddendum);
-        }
+                case Concierge.Shared.Chat.TurnStage.Round:
+                    page._toolLoopIteration = step.Iteration;
+                    break;
 
-        if (_includeToolCatalog && Tools.Tools.Count > 0)
-        {
-            systemParts.Add(Tools.BuildSystemPromptAddendum());
-        }
-        if (systemParts.Count > 0)
-        {
-            turns.Insert(0, new ChatTurn("system", string.Join("\n\n", systemParts)));
-        }
+                case Concierge.Shared.Chat.TurnStage.Plan:
+                    page._planSteps = step.PlanSteps ?? [];
+                    page._planDone = step.PlanDone;
+                    break;
 
-        // Pictures ride on the last user turn, which is the one they were
-        // attached to. Done here rather than in the store because the
-        // transcript keeps what was said, and an image is not a message — it
-        // is something handed over with one.
-        // Anything a capability captured since the last turn joins what the person
-        // attached. Drained, not read: a picture rides on exactly one turn, and a
-        // screenshot from ten minutes ago silently attached to an unrelated
-        // question is worse than no screenshot at all.
-        var caught = Captured.TakeAll();
+                case Concierge.Shared.Chat.TurnStage.Answered:
+                    page._answeredBy = step.Answered;
+                    break;
 
-        // Drained either way, and only carried to something that can look. A model that
-        // cannot see is told a picture was taken rather than handed one it ignores — the
-        // filmstrip a tool just produced would otherwise be reported as looked at by a model
-        // that never saw it, which is this repository's signature defect on the one surface
-        // whose whole job is showing what happened.
-        if (caught.Count > 0
-            && _activeRuntime is IVisionCapableRuntime { SupportedImageMediaTypes.Count: > 0 })
-        {
-            _pendingImages.AddRange(caught);
-        }
-        else if (caught.Count > 0)
-        {
-            turns.Add(new ChatTurn(
-                "user",
-                $"[{string.Join(", ", caught.Select(picture => picture.FileName))} was produced, "
-                + $"but {_activeRuntime?.EngineLabel ?? "this model"} cannot look at pictures.]"));
-        }
-
-        if (_pendingImages.Count > 0)
-        {
-            var lastUser = turns.FindLastIndex(t =>
-                string.Equals(t.Role, "user", StringComparison.OrdinalIgnoreCase));
-
-            if (lastUser >= 0)
-            {
-                turns[lastUser] = turns[lastUser] with { Images = _pendingImages.ToArray() };
-            }
-        }
-
-        var buffer = new StringBuilder();
-        _streamingBuffer = string.Empty;
-        var cancelled = false;
-
-        // Cleared per turn. Left standing, a failover on one turn would credit the
-        // wrong engine on every turn after it.
-        _answeredBy = null;
-
-        // Recorded so a thread you have left still shows as working, and so it
-        // can be stopped from somewhere other than here.
-        if (_active is not null && _streamCts is not null)
-        {
-            Runs.Started(_active.Id, _streamCts);
-        }
-
-        // The reply was written down only after the last token arrived, so
-        // anything that stopped the process mid-generation lost all of it. Not
-        // hypothetical: the demo conversations on this machine each hold a
-        // question and no answer, because generation died before reaching the
-        // single append at the end of this method.
-        //
-        // A checkpoint file carries the partial text while it exists only in
-        // memory. Throttled, because a write per token is hundreds of writes
-        // for one reply and the point is durability, not a transcript.
-        var lastCheckpoint = DateTimeOffset.UtcNow;
-        var checkpointedLength = 0;
-
-        try
-        {
-            // Through the failover chain rather than straight at the chosen
-            // runtime. A provider having a bad afternoon used to be a dead turn:
-            // a stream error pasted into the thread with two other configured
-            // providers sitting idle. It only moves on from a failure before the
-            // first token, and never from a local runtime to a remote one.
-            // Resolved rather than listed. Failover decides who *may* be asked —
-            // never off the device, never past a refusal, never after the first
-            // token — and the resolver decides the order: recently-failed
-            // providers to the back rather than out, and rotation among the
-            // healthy ones so the same one is not hammered every turn.
-            await foreach (var chunk in Concierge.Shared.Chat.RuntimeFailover.StreamAsync(
-                _activeRuntime,
-                _resolver.Order(_orderedRuntimes),
-                turns,
-                outcome =>
-                {
-                    _answeredBy = outcome;
-
-                    // What actually happened, recorded so the next turn is
-                    // ordered by it: whoever answered is healthy, and everything
-                    // it fell back past failed.
-                    _resolver.RecordSuccess(outcome.Runtime);
-
-                    // Matched on EngineLabel, because that is what FellBackFrom
-                    // carries — it is built for the sentence shown in the thread,
-                    // not for lookups. Matching on Id here compiles, runs, and
-                    // silently never fires, which would have left the resolver
-                    // learning nothing while looking wired up.
-                    foreach (var label in outcome.FellBackFrom)
-                    {
-                        if (_orderedRuntimes.FirstOrDefault(r =>
-                                string.Equals(r.EngineLabel, label, StringComparison.OrdinalIgnoreCase)) is { } failed)
-                        {
-                            _resolver.RecordFailure(failed);
-                        }
-                    }
-                },
-                cancellationToken))
-            {
-                buffer.Append(chunk);
-                _streamingBuffer = buffer.ToString();
-                StateHasChanged();
-
-                var now = DateTimeOffset.UtcNow;
-                if (buffer.Length - checkpointedLength >= 240
-                    || (now - lastCheckpoint).TotalMilliseconds >= 1000)
-                {
-                    await WriteDraftAsync(_active.Id, _streamingBuffer);
-                    lastCheckpoint = now;
-                    checkpointedLength = buffer.Length;
-                }
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            cancelled = true;
-        }
-        catch (Exception ex)
-        {
-            buffer.AppendLine();
-            buffer.Append("[stream error: ").Append(ex.Message).Append(']');
-            _streamingBuffer = buffer.ToString();
-        }
-
-        var assistantText = buffer.ToString();
-        if (cancelled)
-        {
-            if (assistantText.Length > 0)
-            {
-                await Store.AppendEventAsync(_active.Id, ConversationEventType.AssistantMessage,
-                    assistantText + "\n[stream cancelled before completion]",
-                    AnsweringLabel());
+                case Concierge.Shared.Chat.TurnStage.Recorded:
+                    _ = page.InvokeAsync(page.RefreshActiveAsync);
+                    return;
             }
 
-            // Whatever happened, the text is in the log now, so the checkpoint
-            // has nothing left to protect.
-            DeleteDraft(_active.Id);
-            return null;
+            _ = page.InvokeAsync(page.Redraw);
         }
+    }
 
-        if (!string.IsNullOrWhiteSpace(assistantText))
+    /// <summary>The thread gained something, so re-read it and the sidebar with it.</summary>
+    private async Task RefreshActiveAsync()
+    {
+        if (_gone || _active is null)
         {
-            await Store.AppendEventAsync(_active.Id, ConversationEventType.AssistantMessage, assistantText, AnsweringLabel());
-            DeleteDraft(_active.Id);
-            _active = await Store.GetAsync(_active.Id);
-            return assistantText;
+            return;
         }
 
-        DeleteDraft(_active.Id);
-        return null;
+        _active = await Store.GetAsync(_active.Id);
+        await RefreshSidebarAsync();
+        StateHasChanged();
+    }
+
+    /// <summary>Guarded, because a turn can outlive the component that started it.</summary>
+    private void Redraw()
+    {
+        if (!_gone)
+        {
+            StateHasChanged();
+        }
     }
 
     protected static string FormatRole(string role) => role switch
@@ -2452,44 +2183,17 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         await SessionState.SaveAsync(_session);
     }
 
-    protected static string DraftDirectory => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "Concierge",
-        "drafts");
-
+    // One place decides where a draft lives. The turn writes these and the workspace
+    // recovers them, and they are two different files now — two ideas of the path is a
+    // draft nobody finds.
     protected static string DraftPath(Guid conversationId)
-        => Path.Combine(DraftDirectory, $"{conversationId:N}.partial");
+        => Concierge.Shared.Chat.TurnDrafts.PathFor(conversationId);
 
-    protected static async Task WriteDraftAsync(Guid conversationId, string text)
-    {
-        try
-        {
-            Directory.CreateDirectory(DraftDirectory);
-            await File.WriteAllTextAsync(DraftPath(conversationId), text);
-        }
-        catch
-        {
-            // A checkpoint that cannot be written must never interrupt the reply
-            // still arriving. Losing durability is bad; losing the generation to
-            // a disk error is worse.
-        }
-    }
+    protected static Task WriteDraftAsync(Guid conversationId, string text)
+        => Concierge.Shared.Chat.TurnDrafts.WriteAsync(conversationId, text);
 
     protected static void DeleteDraft(Guid conversationId)
-    {
-        try
-        {
-            var path = DraftPath(conversationId);
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-        catch
-        {
-            // Left behind, and picked up by recovery on next open. Harmless.
-        }
-    }
+        => Concierge.Shared.Chat.TurnDrafts.Delete(conversationId);
 
     /// <summary>
     /// A draft still on disk when a conversation opens means the last

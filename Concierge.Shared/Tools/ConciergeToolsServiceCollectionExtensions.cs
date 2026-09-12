@@ -96,6 +96,24 @@ public static class ConciergeToolsServiceCollectionExtensions
         services.TryAddSingleton<IToolTimeoutPolicy>(provider =>
             new FixedToolTimeoutPolicy(provider.GetRequiredService<ConciergeToolLoopOptions>().ToolTimeout));
 
+        // One turn, for whoever is asking.
+        //
+        // Scoped rather than singleton to match IRepeatToolReminder, which is per-conversation
+        // on purpose: one runaway loop must not be remembered against the next. A workspace
+        // resolves this from its own scope and so does a request from a device that is not
+        // here, which is the whole reason it was lifted out of the component.
+        services.TryAddScoped(provider => new Chat.TurnRunner(
+            provider.GetRequiredService<Chat.IConversationStore>(),
+            provider.GetRequiredService<IAgentToolRegistry>(),
+            provider.GetRequiredService<IToolCallScheduler>(),
+            provider.GetRequiredService<Context.ICompactionEngine>(),
+            provider.GetRequiredService<Context.IToolResultPruner>(),
+            provider.GetRequiredService<IRepeatToolReminder>(),
+            provider.GetRequiredService<Skills.ISkillRuntime>(),
+            provider.GetRequiredService<ConciergeToolLoopOptions>(),
+            provider.GetRequiredService<Chat.BackgroundRuns>(),
+            provider.GetRequiredService<Chat.CapturedImages>()));
+
         services.TryAddSingleton<IJobRuntime, InMemoryJobRuntime>();
         services.TryAddSingleton<IRetryPolicy>(_ => new BoundedRetryPolicy());
         services.TryAddSingleton<IRuntimeDiagnostics, RuntimeDiagnostics>();
