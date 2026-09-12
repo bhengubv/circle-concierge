@@ -453,9 +453,28 @@ a:hover { text-decoration: underline; }
 }
 .comp-box:focus-within { border-color: #3A3A3B; }
 
+/* The box grows to fit what is in it, up to a limit.
+ *
+ * **Measured on both heads: 32px tall holding 79px of text.** A textarea does not
+ * grow on its own, and nothing here made it — so the second line of anything was
+ * behind a scrollbar that is hidden app-wide. On a desktop that mostly went
+ * unnoticed because the box is wide enough for one line of most sentences.
+ *
+ * On a phone it is not: at 411px the composer's own invitation — "Say what you
+ * would like in the room" — wraps, and the screen showed "Say what you would
+ * like in the" and nothing else. The surface whose entire interface is saying
+ * what you want could not finish asking.
+ *
+ * `field-sizing: content` is the whole fix, and it was checked rather than
+ * assumed: Chrome 151 in the Android WebView and Chrome 152 in WebView2 both
+ * answer true to CSS.supports. An engine that does not know it ignores the line
+ * and behaves exactly as it does today, so there is nothing to fall back to.
+ * min-height keeps an empty box the size it has always been; max-height still
+ * stops a pasted essay taking the window. */
 .comp-input {
     flex: 1;
     min-width: 0;
+    field-sizing: content;
     min-height: 30px;
     max-height: 200px;
     padding: var(--s1) 0;
@@ -1331,6 +1350,31 @@ button.row:hover { color: var(--ink); }
    do must not change with the width of the glass — only how much room it takes. */
 @media (max-width: 760px) {
   .dz { padding: var(--s2) var(--s2) var(--s1); }
+
+  /* **The drawing starts below the strip here, rather than under it.**
+   *
+   * Floating everything over the canvas is right on a desktop because the design
+   * letterboxes inside its own frame — the strip sits over margin and covers
+   * nothing. A phone has no margin to spare: the page fills the glass edge to
+   * edge, so the first line of it lands under the chip. Measured on the running
+   * Android head with the canvas open: the strip is 44px tall and the frame
+   * starts at exactly the same pixel, so a title reading "Sports Day" came out
+   * with "Sports" behind the words "Added a title".
+   *
+   * 2.75rem is that 44px at the 16px root, not a number picked to look right.
+   *
+   * It costs the drawing 44px of 620 — seven per cent — and buys back the line
+   * somebody is most likely to be reading. The handheld padding above does
+   * nothing for this: an absolutely positioned inset:0 is measured from the
+   * padding box, so it never moved the canvas at all.
+   *
+   * **The bottom is deliberately left alone.** The controls float over the last
+   * 48px the same way, and a page grows downward from the top, so the top is
+   * where content actually is. If a long page turns out to hide its last line
+   * under the pills, that is the same fix again and it should be measured before
+   * it is made. */
+  .dz-canvas { top: 2.75rem; }
+
   .dz-thumb { width: 4.25rem; height: 2.75rem; }
   .dz-thumb-frame { transform: scale(.062); }
   .dz-moment-what { display: none; }

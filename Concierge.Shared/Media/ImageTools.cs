@@ -3,6 +3,7 @@ using Concierge.Shared.Tools;
 using Concierge.Shared.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Concierge.Shared;
 
 namespace Concierge.Shared.Media;
 
@@ -51,7 +52,7 @@ public sealed class ImageToolSource : IAgentToolSource
         _web = web;
         _into = string.IsNullOrWhiteSpace(into)
             ? Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "Concierge")
+                WhereThingsGo.Pictures, "Concierge")
             : into;
     }
 

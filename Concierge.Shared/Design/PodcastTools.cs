@@ -3,6 +3,7 @@ using Concierge.Shared.Tools;
 using Concierge.Shared.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Concierge.Shared;
 
 namespace Concierge.Shared.Design;
 
@@ -34,7 +35,7 @@ public sealed class PodcastToolSource : IAgentToolSource
         _approval = approval;
         _follows = follows ?? new PodcastFollows();
         _into = string.IsNullOrWhiteSpace(into)
-            ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyMusic), "Podcasts")
+            ? Path.Combine(WhereThingsGo.Music, "Podcasts")
             : into;
     }
 

@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json.Nodes;
 using Concierge.Shared.Tools;
+using Concierge.Shared;
 
 namespace Concierge.Shared.Design;
 
@@ -554,7 +555,7 @@ public sealed class DesignToolSource : IAgentToolSource
                 && document.Medium is not (DesignMedium.Sound or DesignMedium.Motion))
             {
                 var pdf = Free(
-                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), stem, ".pdf");
+                    Documents(), stem, ".pdf");
 
                 var wrote = await PdfExport.WriteAsync(
                     document, pdf, encoder as FfmpegMediaExport, cancellationToken).ConfigureAwait(false);
@@ -575,7 +576,7 @@ public sealed class DesignToolSource : IAgentToolSource
                 && string.Equals(Text(arguments, "as"), "pptx", StringComparison.OrdinalIgnoreCase))
             {
                 var deck = Free(
-                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), stem, ".pptx");
+                    Documents(), stem, ".pptx");
 
                 var made = DeckExport.Write(document, deck);
 
@@ -587,7 +588,7 @@ public sealed class DesignToolSource : IAgentToolSource
             if (document.Medium is not (DesignMedium.Sound or DesignMedium.Motion))
             {
                 var page = Free(
-                    Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                    Documents(),
                     stem,
                     ".html");
 
@@ -629,18 +630,25 @@ public sealed class DesignToolSource : IAgentToolSource
                 : new AgentToolResult(false, result.Problem ?? "It could not be saved.");
         }
 
+        /// <summary>
+        /// Where a document goes, with the same fallback the audio and video path
+        /// has had all along.
+        ///
+        /// **Three call sites read MyDocuments raw** — the PDF, the .pptx and the
+        /// page — while `Folder` three lines below went to the trouble of saying
+        /// that not every platform has these and a file nobody can find is the same
+        /// as no file. On a platform where it comes back empty, `Path.Combine("",
+        /// name)` is a relative path, so a deck a person asked to save landed in
+        /// whatever the working directory happened to be and the answer still read
+        /// "Saved to design.pdf".
+        ///
+        /// Found by reading the handheld rather than by somebody losing a deck.
+        /// </summary>
+        private static string Documents() => WhereThingsGo.Documents;
+
         /// <summary>Where a person already looks for this kind of thing.</summary>
         private static string Folder(bool sound)
-        {
-            var folder = Environment.GetFolderPath(
-                sound ? Environment.SpecialFolder.MyMusic : Environment.SpecialFolder.MyVideos);
-
-            // Not every platform has those, and a saved file nobody can find is
-            // the same as no saved file.
-            return string.IsNullOrWhiteSpace(folder)
-                ? Environment.GetFolderPath(Environment.SpecialFolder.Personal)
-                : folder;
-        }
+            => sound ? WhereThingsGo.Music : WhereThingsGo.Video;
 
         /// <summary>
         /// A name from a sentence, made safe for a filename. Kept plain rather

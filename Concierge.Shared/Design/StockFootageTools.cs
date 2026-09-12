@@ -3,6 +3,7 @@ using Concierge.Shared.Tools;
 using Concierge.Shared.Web;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Concierge.Shared;
 
 namespace Concierge.Shared.Design;
 
@@ -33,7 +34,7 @@ public sealed class StockFootageToolSource : IAgentToolSource
         _approval = approval;
         _into = string.IsNullOrWhiteSpace(into)
             ? Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.MyVideos), "Concierge", "Footage")
+                WhereThingsGo.Video, "Concierge", "Footage")
             : into;
     }
 

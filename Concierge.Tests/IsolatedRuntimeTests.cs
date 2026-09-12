@@ -97,6 +97,57 @@ public sealed class IsolatedRuntimeTests
     }
 
     /// <summary>
+    /// **And on a platform with no child processes it replaces nothing.**
+    ///
+    /// Found by reading what the handheld would actually do rather than by
+    /// running it: an APK carries no executable beside the app, Android will not
+    /// run one out of the app's own data directory, and iOS forbids child
+    /// processes outright. So the isolation deleted the in-process runtime — the
+    /// only one that could reach the arm64 inference library sitting in the same
+    /// APK — and installed one that could never start. Every turn on the phone
+    /// answered "The model host is missing from this install."
+    ///
+    /// Nobody decided that. It fell out of a registration written for a desktop.
+    /// </summary>
+    [Fact]
+    public void But_where_a_child_process_is_impossible_it_leaves_the_runtime_alone()
+    {
+        var services = new ServiceCollection();
+        var inProcess = new StubRuntime();
+        services.AddSingleton<IChatRuntime>(inProcess);
+
+        services.AddConciergeAiIsolated(childProcessesArePossible: false);
+
+        using var provider = services.BuildServiceProvider();
+
+        Assert.Same(inProcess, Assert.Single(provider.GetServices<IChatRuntime>()));
+    }
+
+    /// <summary>
+    /// And it registers nothing at all on that platform — a hosted service that
+    /// hunts for a host on every start-up is work for nobody, and a runtime in
+    /// the container that cannot run is the next person's hour.
+    /// </summary>
+    [Fact]
+    public void And_adds_nothing_of_its_own_there()
+    {
+        var services = new ServiceCollection();
+
+        services.AddConciergeAiIsolated(childProcessesArePossible: false);
+
+        Assert.Empty(services);
+    }
+
+    /// <summary>
+    /// The platform answer itself, on the machine this runs on. A desktop can
+    /// host a child process, which is why the tests above have to say otherwise
+    /// out loud rather than waiting for somebody to run them on a phone.
+    /// </summary>
+    [Fact]
+    public void A_desktop_can_host_one()
+        => Assert.True(IsolatedAiServiceCollectionExtensions.CanHostAChildProcess);
+
+    /// <summary>
     /// Same id as the runtime it replaces, so the provider picker, the settings
     /// panel and anything routing by id keep working.
     /// </summary>
