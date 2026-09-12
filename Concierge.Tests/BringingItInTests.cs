@@ -105,15 +105,15 @@ public sealed class BringingItInTests
     }
 
     /// <summary>
-    /// Music is pointed at rather than carried, because a folder of albums is gigabytes and
-    /// design.json is rewritten whenever anybody edits a heading. The same rule footage
-    /// already follows, and the cost — a design that points at this machine — is stated in
-    /// the tool rather than left to be discovered.
+    /// **Short audio travels, which is the difference between a track you can hear back and a
+    /// name on a list.** A page can decode a data URI and cannot open a file on a disk, so a
+    /// carried track plays and can be drawn as a waveform while a pointed-at one is a
+    /// placeholder. A voice note, a demo, a stinger — what people actually send on.
     /// </summary>
     [Fact]
-    public async Task Music_is_pointed_at_rather_than_swallowed()
+    public async Task Short_audio_travels_inside_the_design()
     {
-        var folder = AFolder(("song.mp3", new byte[64]));
+        var folder = AFolder(("note.mp3", new byte[64]));
 
         var brought = await Bring(folder);
 
@@ -121,8 +121,53 @@ public sealed class BringingItInTests
 
         var track = brought.Document.Nodes.Values.Single(node => node.Kind == DesignNodeKind.Sound);
 
-        Assert.Equal(Path.Combine(folder, "song.mp3"), track.Props["src"]);
-        Assert.Equal("song", track.Text);
+        Assert.StartsWith("data:audio/mpeg;base64,", track.Props["src"], StringComparison.Ordinal);
+        Assert.Equal("note", track.Text);
+    }
+
+    /// <summary>
+    /// And anything bigger points at where it is, because a folder of albums is gigabytes and
+    /// design.json is rewritten whenever anybody edits a heading. The same rule footage
+    /// already follows.
+    /// </summary>
+    [Fact]
+    public async Task But_a_long_one_is_pointed_at_rather_than_swallowed()
+    {
+        var folder = AFolder(("album.mp3", new byte[BringItIn.BiggestSound + 1]));
+
+        var brought = await Bring(folder);
+
+        var track = brought.Document.Nodes.Values.Single(node => node.Kind == DesignNodeKind.Sound);
+
+        Assert.Equal(Path.Combine(folder, "album.mp3"), track.Props["src"]);
+        Assert.Contains("stay on this machine", brought.Output, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// **A per-file cap on its own is not a bound.** Forty two-megabyte tracks is eighty
+    /// megabytes of base64 in a document rewritten on every keystroke, so one sentence has a
+    /// budget: the first travel, the rest point.
+    /// </summary>
+    [Fact]
+    public async Task And_one_sentence_cannot_carry_an_unbounded_amount()
+    {
+        var each = BringItIn.BiggestSound;
+        var enough = (int)(BringItIn.SoundBudget / each) + 2;
+
+        var many = Enumerable.Range(0, enough)
+            .Select(i => ($"track{i:00}.mp3", new byte[each - 1]))
+            .ToArray();
+
+        var brought = await Bring(AFolder(many));
+
+        var tracks = brought.Document.Nodes.Values
+            .Where(node => node.Kind == DesignNodeKind.Sound)
+            .ToList();
+
+        var travelling = tracks.Count(t => t.Props["src"].StartsWith("data:", StringComparison.Ordinal));
+
+        Assert.True(travelling > 0, "nothing travelled at all");
+        Assert.True(travelling < tracks.Count, "the budget did not stop anything");
     }
 
     /// <summary>
