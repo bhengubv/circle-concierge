@@ -1144,13 +1144,87 @@ button.row:hover { color: var(--ink); }
    so nothing here may overflow: the strips scroll sideways inside themselves and
    the canvas fits what it is given. */
 
+/* The canvas is the application.
+ *
+ * It used to be one row of a four-row stack - a caption bar, the drawing, a strip of
+ * history, then two rows of pickers - and at 1350x680 that left the drawing 1024x341.
+ * Thirty-eight per cent of the window, and only half its height, for the one thing
+ * somebody is actually looking at.
+ *
+ * Everything except the drawing now floats over its edges. Nothing was removed and nothing
+ * hides: the controls are the same controls, at the top and bottom, over a design that
+ * letterboxes inside its own frame anyway. What changes is that the drawing gets the room. */
 .dz {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto auto;
-  gap: var(--s2);
+  position: relative;
   min-height: 0;
   height: 100%;
-  padding: var(--s3) var(--s4) var(--s2);
+  padding: 0;
+}
+
+/* Over the work, so they cost no height. A gradient rather than a solid bar: a hard edge
+   across a design reads as part of the design. */
+.dz-top,
+.dz-controls {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  padding: var(--s2) var(--s3);
+}
+
+.dz-top {
+  top: 0;
+  background: linear-gradient(to bottom, var(--ground) 40%, transparent);
+}
+
+/* One stack, so nothing has to know how tall anything else is. */
+.dz-controls {
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  background: linear-gradient(to top, var(--ground) 72%, transparent);
+}
+
+/* Resting, it shows what you are making and how it looks, and nothing else.
+ *
+ * Floating the controls over the drawing made the rectangle bigger without making much of
+ * it visible: the stack is 173px tall and sits on top of the work, so the honest gain was
+ * 341px of drawing to about 389. Collapsed, the stack is roughly forty.
+ *
+ * The chosen medium and the chosen look stay in words, which is the rule the narrow-window
+ * behaviour already follows and the whole argument for calling a look "Calm" rather than
+ * "#F4F5F7" — the screen always answers "what am I making, and how does it look?". The other
+ * eleven are one hover away, which is the same bargain. */
+.dz-controls .dz-past,
+.dz-controls .dz-look:not(.is-on) { display: none; }
+
+/* Resting, the two survivors sit side by side rather than stacked, which is another forty
+   pixels of drawing for nothing. Opened, they go back to being rows of pills. */
+.dz-controls { flex-direction: row; align-items: flex-end; }
+
+.dz-controls:hover,
+.dz-controls:focus-within { flex-direction: column; align-items: stretch; }
+
+.dz-controls:hover .dz-past,
+.dz-controls:focus-within .dz-past { display: flex; }
+
+.dz-controls:hover .dz-look,
+.dz-controls:focus-within .dz-look { display: flex; }
+
+/* Legible over a white page and a black one. The controls carry their own ground rather
+   than borrowing the canvas's, which is whatever the design happens to be. */
+.dz-past .dz-moment,
+.dz-looks .dz-look {
+  backdrop-filter: blur(6px);
+  background: color-mix(in srgb, var(--ground) 78%, transparent);
+}
+
+.dz-what {
+  backdrop-filter: blur(6px);
+  background: color-mix(in srgb, var(--ground) 78%, transparent);
+  border-radius: 999px;
+  padding: .1rem .5rem;
 }
 
 .dz-top { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); min-height: 1.5rem; }
@@ -1169,7 +1243,7 @@ button.row:hover { color: var(--ink); }
    it, and a person reaching for it finds something else under their finger. */
 .dz-step:disabled { opacity: .3; cursor: default; }
 
-.dz-canvas { position: relative; min-height: 0; border-radius: var(--r-md); overflow: hidden; background: var(--raised); }
+.dz-canvas { position: absolute; inset: 0; min-height: 0; border-radius: var(--r-md); overflow: hidden; background: var(--raised); }
 .dz-frame { width: 100%; height: 100%; border: 0; display: block; background: #fff; }
 
 /* What you are pointing at, named in words. Sits over the canvas rather than

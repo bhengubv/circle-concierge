@@ -99,6 +99,15 @@
         liked is looking for the one that looked right, not the one described
         correctly.
     *@
+    @*
+        One stack along the bottom edge, over the drawing.
+
+        These used to be three rows of the page's own grid, which cost the drawing half its
+        height. Hanging them individually off the bottom was worse: each needed to know how
+        tall the others were, and the first attempt had the history strip sitting on top of
+        the media picker. One flex column knows its own height.
+    *@
+    <div class="dz-controls">
     <div class="dz-past" role="group" aria-label="How it looked before">
         @for (var i = 0; i < _session.Moments.Count; i++)
         {
@@ -155,6 +164,7 @@
                 <span class="dz-look-name">@name</span>
             </button>
         }
+    </div>
     </div>
 </div>
 
