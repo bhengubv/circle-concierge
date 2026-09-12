@@ -64,14 +64,23 @@ public sealed record AudioQuality(
 /// </summary>
 public sealed class MediaLook
 {
-    private readonly string _ffmpeg;
+    private readonly IEncoderRunner _encoder;
 
     /// <param name="ffmpegPath">Where the encoder is. Found when not given.</param>
     public MediaLook(string? ffmpegPath = null)
-        => _ffmpeg = string.IsNullOrWhiteSpace(ffmpegPath) ? FfmpegMediaExport.Find() : ffmpegPath;
+        => _encoder = string.IsNullOrWhiteSpace(ffmpegPath)
+            ? Encoders.Runner
+            : new ProcessEncoder(ffmpegPath);
 
-    /// <summary>Whether this machine can look inside anything.</summary>
-    public static bool Possible => File.Exists(FfmpegMediaExport.Find());
+    /// <summary>
+    /// Whether this machine can look inside anything.
+    ///
+    /// Asked of the encoder rather than of the filesystem. It was a file check, which
+    /// is the same question on every head that runs a program and the wrong one on a
+    /// phone, where the encoder is a library inside the APK and there is no path to
+    /// test — so the answer was always no and eight tools were absent.
+    /// </summary>
+    public static bool Possible => Encoders.Here;
 
     /// <summary>
     /// What is in the file.
@@ -446,43 +455,21 @@ public sealed class MediaLook
     /// Its report goes to standard error even when nothing is wrong, which is why
     /// this keeps both rather than treating one as the failure channel.
     /// </summary>
+    /// <summary>
+    /// Ask the encoder, however this head asks it.
+    ///
+    /// This was a `Process.Start` of its own, beside an identical one in the export.
+    /// Both go through the one seam now, so a head where the encoder is not a program
+    /// needed one implementation rather than two.
+    /// </summary>
     private async Task<(bool Ok, string Said)> RunAsync(
         IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
-        var start = new ProcessStartInfo(_ffmpeg)
-        {
-            RedirectStandardError = true,
-            RedirectStandardOutput = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
+        var run = await _encoder.RunAsync(arguments, cancellationToken).ConfigureAwait(false);
 
-        foreach (var argument in arguments)
-        {
-            start.ArgumentList.Add(argument);
-        }
-
-        try
-        {
-            using var process = Process.Start(start);
-
-            if (process is null)
-            {
-                return (false, "The encoder would not start.");
-            }
-
-            var errors = process.StandardError.ReadToEndAsync(cancellationToken);
-            var output = process.StandardOutput.ReadToEndAsync(cancellationToken);
-
-            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-
-            return (process.ExitCode == 0,
-                await errors.ConfigureAwait(false) + await output.ConfigureAwait(false));
-        }
-        catch (System.ComponentModel.Win32Exception)
-        {
-            return (false, "There is no encoder on this machine.");
-        }
+        return run.Started
+            ? (run.Ok, run.Said)
+            : (false, "There is no encoder on this machine.");
     }
 
     /// <summary>How long it runs, from the encoder's own line.</summary>

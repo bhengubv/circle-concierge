@@ -73,6 +73,31 @@
                         })
                     </span>
                 </div>
+
+                @*
+                    The encoder, because eight tools and design_save are absent without
+                    one and this is the room where somebody finds out why.
+
+                    It also says what it is rather than only that it exists, and on one
+                    head that matters legally as well as practically: everywhere else
+                    ffmpeg is somebody else's install found on the machine, and on
+                    Android it ships inside the app — the first thing this product
+                    redistributes rather than finds. LGPL, so it has to be named.
+                *@
+                <div class="row">
+                    <span class="row-name">
+                        Media read and written
+                        <span class="row-sub">
+                            @(Concierge.Shared.Design.Encoders.Here
+                                ? Concierge.Shared.Design.Encoders.Runner.What
+                                : "Without one, nothing can read a media file or save a design as one.")
+                        </span>
+                    </span>
+                    <span class="state">
+                        <span class="dot @(Concierge.Shared.Design.Encoders.Here ? "dot-done" : "dot-danger")" aria-hidden="true"></span>
+                        @(Concierge.Shared.Design.Encoders.Here ? "With an encoder" : "No encoder")
+                    </span>
+                </div>
             </div>
         </RoomSection>
 

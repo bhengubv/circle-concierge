@@ -55,6 +55,21 @@ public static class MauiProgram
 			// first-choice path.
 		}
 
+#if ANDROID
+		// The encoder, named before anything is registered.
+		//
+		// This has to happen here rather than anywhere later, and the ordering is the
+		// whole of it: AddConciergeTools decides at registration time whether there is
+		// an encoder, and registers design_save, the three media tools and the five
+		// music ones only if there is. That decision is never revisited, so an encoder
+		// announced after the container is built announces itself to nobody.
+		//
+		// Android is the one head where ffmpeg is a library rather than a program.
+		// Everywhere else the default already starts a process and this is not run.
+		Concierge.Shared.Design.Encoders.Runner =
+			new Concierge.Platforms.Android.FFmpegKitEncoder();
+#endif
+
 		var builder = MauiApp.CreateBuilder();
 		builder
 			.UseMauiApp<App>()

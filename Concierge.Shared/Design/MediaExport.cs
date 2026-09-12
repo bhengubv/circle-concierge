@@ -62,14 +62,26 @@ public interface IMediaExport
 public sealed class FfmpegMediaExport : IMediaExport
 {
     private readonly string _ffmpeg;
+    private readonly IEncoderRunner _encoder;
+
+    /// <summary>
+    /// Which codec this encoder turned out to have, once it has been asked. Held for
+    /// the life of the export rather than re-derived per shot.
+    /// </summary>
+    private IReadOnlyList<string>? _videoCodec;
 
     /// <param name="ffmpegPath">
     /// Where the encoder is. Resolved by <see cref="Find"/> when not given.
     /// </param>
     public FfmpegMediaExport(string? ffmpegPath = null)
-        => _ffmpeg = string.IsNullOrWhiteSpace(ffmpegPath) ? Find() : ffmpegPath;
+    {
+        _encoder = string.IsNullOrWhiteSpace(ffmpegPath)
+            ? Encoders.Runner
+            : new ProcessEncoder(ffmpegPath);
+        _ffmpeg = _encoder.What;
+    }
 
-    /// <summary>Where the encoder is on this machine.</summary>
+    /// <summary>Where the encoder is on this machine, or what it is where it has no path.</summary>
     public string EncoderPath => _ffmpeg;
 
     /// <summary>
@@ -471,7 +483,7 @@ public sealed class FfmpegMediaExport : IMediaExport
         arguments.AddRange([
             "-filter_complex", chain.ToString().TrimEnd(';'),
             "-map", $"[{video}]", "-map", $"[{audio}]",
-            "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+            .. await VideoCodecAsync(cancellationToken).ConfigureAwait(false),
             "-c:a", "aac", "-ar", "44100", "-ac", "2",
             outputPath,
         ]);
@@ -693,7 +705,7 @@ public sealed class FfmpegMediaExport : IMediaExport
             "-t", Number(held),
             "-vf", picture,
             "-r", "30",
-            "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+            .. await VideoCodecAsync(cancellationToken).ConfigureAwait(false),
             "-c:a", "aac", "-ar", "44100", "-ac", "2",
             piece,
         ]);
@@ -724,7 +736,7 @@ public sealed class FfmpegMediaExport : IMediaExport
                 "-t", Number(held),
                 "-vf", picture,
                 "-r", "30",
-                "-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p",
+                .. await VideoCodecAsync(cancellationToken).ConfigureAwait(false),
                 "-c:a", "aac", "-ar", "44100", "-ac", "2",
                 "-shortest",
                 piece,
@@ -988,9 +1000,25 @@ public sealed class FfmpegMediaExport : IMediaExport
         var ground = look.Ground.TrimStart('#');
         var ink = look.Ink.TrimStart('#');
 
+        // `-update 1` says "this one path is the whole output", which is what writing
+        // a single still means and what was missing.
+        //
+        // **Every card came out empty on the phone, and the desktop had been warning
+        // about this the whole time.** Without it ffmpeg treats the output path as a
+        // numbered sequence with no pattern in it — "Use a pattern such as %03d for an
+        // image sequence or use the -update option" — and whether it then writes the
+        // frame anyway is a matter of how forgiving that particular build is. The
+        // desktop's is; ffmpeg-kit's Android build, configured --enable-small, is not:
+        // "Finishing stream without any data written to it", frame=0, and an export
+        // that failed three steps later complaining about a missing file.
+        //
+        // So this is not an Android fix. It is a command that was wrong everywhere and
+        // only ever punished on the strictest build, which is the useful kind of thing
+        // a second platform finds.
         var arguments = new List<string>
         {
-            "-y", "-f", "lavfi", "-i", $"color=c=0x{ground}:s=1280x720:d=1", "-frames:v", "1",
+            "-y", "-f", "lavfi", "-i", $"color=c=0x{ground}:s=1280x720:d=1",
+            "-frames:v", "1", "-update", "1",
         };
 
         var face = Typeface();
@@ -1059,6 +1087,52 @@ public sealed class FfmpegMediaExport : IMediaExport
     /// which is a worse export than it should be and still an export. Losing a
     /// whole film over a typeface would be the wrong trade.
     /// </summary>
+    /// <summary>
+    /// What to make the picture with, asked of the encoder rather than assumed.
+    ///
+    /// **`libx264` was written in three places as though every ffmpeg has it, and
+    /// the phone's does not.** x264 is GPL, so an LGPL build cannot carry it — and
+    /// an LGPL build is exactly what ships inside the app on Android, because this
+    /// is the one head where the encoder is redistributed rather than found on
+    /// somebody's machine. The failure was not a missing codec message either: it
+    /// was *"Unrecognized option 'preset'"*, because `-preset` is an x264 option,
+    /// so the export died on a flag rather than on the thing the flag belonged to.
+    ///
+    /// Asked once and remembered, because `-encoders` lists several hundred lines
+    /// and an export runs this per shot.
+    ///
+    /// The order is quality first. `libopenh264` is Cisco's, LGPL-compatible, and
+    /// makes a genuine H.264 file that plays everywhere — it simply wants a bitrate
+    /// where x264 takes a preset. `mpeg4` is the floor: every build has it, it is
+    /// nobody's first choice, and a film in an older codec is better than no film.
+    /// </summary>
+    private async Task<IReadOnlyList<string>> VideoCodecAsync(CancellationToken cancellationToken)
+    {
+        if (_videoCodec is { } already)
+        {
+            return already;
+        }
+
+        var run = await _encoder
+            .RunAsync(["-hide_banner", "-encoders"], cancellationToken)
+            .ConfigureAwait(false);
+
+        var said = run.Said;
+
+        // Matched with a leading space so "libx264" does not match "libx264rgb" and
+        // so a codec named inside somebody's build string is not read as a codec.
+        IReadOnlyList<string> chosen =
+            said.Contains(" libx264", StringComparison.Ordinal)
+                ? ["-c:v", "libx264", "-preset", "veryfast", "-pix_fmt", "yuv420p"]
+                : said.Contains(" libopenh264", StringComparison.Ordinal)
+                    ? ["-c:v", "libopenh264", "-b:v", "2M", "-pix_fmt", "yuv420p"]
+                    : ["-c:v", "mpeg4", "-q:v", "3", "-pix_fmt", "yuv420p"];
+
+        _videoCodec = chosen;
+
+        return chosen;
+    }
+
     private static string? Typeface()
     {
         foreach (var candidate in TypefaceCandidates())
@@ -1072,7 +1146,7 @@ public sealed class FfmpegMediaExport : IMediaExport
         return null;
     }
 
-    private static IEnumerable<string> TypefaceCandidates()
+    internal static IEnumerable<string> TypefaceCandidates()
     {
         if (OperatingSystem.IsWindows())
         {
@@ -1084,9 +1158,27 @@ public sealed class FfmpegMediaExport : IMediaExport
                 yield return System.IO.Path.Combine(fonts, "arial.ttf");
                 yield return System.IO.Path.Combine(fonts, "tahoma.ttf");
             }
-
-            yield break;
         }
+
+        // Everything else follows whatever platform this is, unconditionally.
+        //
+        // It used to stop after the Windows names. Nothing was wrong with that —
+        // `File.Exists` settles which one applies anyway — but it meant the list a
+        // phone would use could not be read on the machine the tests run on, and a
+        // list nobody can check is how the Android names came to be missing in the
+        // first place. Eight File.Exists calls on a miss is not a cost worth an
+        // untestable branch.
+
+        // Android, and it has to be named like everything else here.
+        //
+        // A shot whose font cannot be found keeps its ground and loses its words, so
+        // without this every card on the phone came out a plain coloured rectangle —
+        // a video that exports and says nothing, which is worse than one that fails.
+        // Android ships no fontconfig and no DejaVu; Roboto is on every device, and
+        // the two names cover the split where it was repackaged as a variable font.
+        yield return "/system/fonts/Roboto-Regular.ttf";
+        yield return "/system/fonts/RobotoStatic-Regular.ttf";
+        yield return "/system/fonts/DroidSans.ttf";
 
         yield return "/System/Library/Fonts/Helvetica.ttc";
         yield return "/System/Library/Fonts/Supplemental/Arial.ttf";
@@ -1134,53 +1226,34 @@ public sealed class FfmpegMediaExport : IMediaExport
         return ok;
     }
 
+    /// <summary>
+    /// Ask the encoder, however this head asks it.
+    ///
+    /// This was a `Process.Start` of its own, beside an identical one in `MediaLook`.
+    /// Both go through the one seam now — Android has no executable to start, and two
+    /// copies of that assumption would have needed fixing twice.
+    /// </summary>
     private async Task<(bool Ok, string? Problem)> RunAsync(
         IReadOnlyList<string> arguments, CancellationToken cancellationToken)
     {
-        var start = new ProcessStartInfo(_ffmpeg)
-        {
-            RedirectStandardError = true,
-            RedirectStandardOutput = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
+        var run = await _encoder.RunAsync(arguments, cancellationToken).ConfigureAwait(false);
 
-        foreach (var argument in arguments)
+        if (run.Ok)
         {
-            start.ArgumentList.Add(argument);
+            return (true, null);
         }
 
-        try
+        if (!run.Started)
         {
-            using var process = Process.Start(start);
-
-            if (process is null)
-            {
-                return (false, "The encoder would not start.");
-            }
-
-            var errors = process.StandardError.ReadToEndAsync(cancellationToken);
-            var output = process.StandardOutput.ReadToEndAsync(cancellationToken);
-
-            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-            await output.ConfigureAwait(false);
-
-            if (process.ExitCode == 0)
-            {
-                return (true, null);
-            }
-
-            // The last line of ffmpeg's output is the reason; the rest is the
-            // build banner and stream detail nobody reading an error wants.
-            var said = (await errors.ConfigureAwait(false))
-                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .LastOrDefault();
-
-            return (false, $"The encoder refused: {said ?? $"exit code {process.ExitCode}"}");
+            return (false, $"The encoder could not be run: {run.Said}");
         }
-        catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException)
-        {
-            return (false, $"The encoder could not be run: {error.Message}");
-        }
+
+        // The last line of ffmpeg's output is the reason; the rest is the
+        // build banner and stream detail nobody reading an error wants.
+        var said = run.Said
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .LastOrDefault();
+
+        return (false, $"The encoder refused: {said ?? "it said nothing"}");
     }
 }

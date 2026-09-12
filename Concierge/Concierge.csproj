@@ -88,6 +88,32 @@
         <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
     </ItemGroup>
 
+    <!--
+      The encoder, for the one head that cannot run a program.
+
+      Every other head finds ffmpeg on disk and starts it. An APK carries no
+      executables beside the app and Android refuses to run a binary out of the
+      app's own data directory, so eight tools that read a media file and
+      design_save were simply absent on the phone — the whole measured gap
+      between the handheld and the desktop.
+
+      This carries the same ffmpeg as a library called through JNI, for arm64-v8a
+      and x86_64. The x86_64 half matters more than it looks: it is what lets the
+      emulator prove this rather than only a handset.
+
+      **The LGPL build, not the GPL one**, which is the difference between
+      Full and FullGpl in this package's naming. The rest of this repository is
+      held to MIT/Apache/BSD/OFL/PD; ffmpeg is LGPL-2.1+ and this is the closest
+      it gets. It is also the first thing here that is *redistributed* rather
+      than found on the machine — on a desktop ffmpeg is somebody else's install
+      — so the licence text ships with it and About says so.
+
+      About 31 MB per ABI, which is the price and is why it is Android-only.
+    -->
+    <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+        <PackageReference Include="FFmpegKit.Net.Full.Android" Version="8.1.2.5" />
+    </ItemGroup>
+
     <ItemGroup>
       <ProjectReference Include="..\Concierge.Shared\Concierge.Shared.csproj" />
       <ProjectReference Include="..\Concierge.Shared.Components\Concierge.Shared.Components.csproj" />

@@ -164,7 +164,7 @@ public static class ConciergeToolsServiceCollectionExtensions
         // is an encoder to do it with, so `design_save` is absent on a machine
         // without one rather than offered and always failing — the rule the device
         // capabilities already follow.
-        if (File.Exists(Design.FfmpegMediaExport.Find()))
+        if (Design.Encoders.Here)
         {
             services.TryAddSingleton<Design.IMediaExport>(_ => new Design.FfmpegMediaExport());
         }
