@@ -238,7 +238,7 @@
                         *@
                         <button class="ws-room ws-room-btn @(_designOpen ? "is-on" : null)"
                                 type="button" @onclick="OpenDesignFromDrawer">
-                            @(_designOpen ? "Design — close" : "Design")
+                            @(_designOpen ? "Creator — close" : "Creator")
                         </button>
                         @foreach (var tool in ToolLinks)
                         {
@@ -290,7 +290,7 @@
                 something not on screen, in the place a person looks to know where
                 they are.
             *@
-            <h1 class="ws-title">@(_designOpen ? "Design" : _active?.Title ?? "Concierge")</h1>
+            <h1 class="ws-title">@(_designOpen ? "Creator" : _active?.Title ?? "Concierge")</h1>
             <span class="ws-top-meta">
                 @if (_designOpen && _streaming)
                 {

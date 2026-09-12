@@ -72,7 +72,7 @@ public sealed class CanvasSpeechTests : BunitContext
             .Click();
 
         cut.WaitForState(() => cut.FindAll("button.ws-room-btn").Count > 0);
-        cut.FindAll("button.ws-room-btn").First(room => room.TextContent.Contains("Design")).Click();
+        cut.FindAll("button.ws-room-btn").First(room => room.TextContent.Contains("Creator")).Click();
         cut.WaitForState(() => cut.FindAll(".dz").Count > 0);
 
         return cut;

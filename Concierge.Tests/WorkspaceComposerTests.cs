@@ -292,7 +292,7 @@ public sealed class WorkspaceComposerTests : BunitContext
         tools.Click();
 
         cut.WaitForState(() => cut.FindAll("button.ws-room-btn").Count > 0);
-        cut.FindAll("button.ws-room-btn").First(b => b.TextContent.Contains("Design")).Click();
+        cut.FindAll("button.ws-room-btn").First(b => b.TextContent.Contains("Creator")).Click();
         cut.WaitForState(() => cut.FindAll(".dz").Count > 0);
     }
 
@@ -315,9 +315,9 @@ public sealed class WorkspaceComposerTests : BunitContext
         var moments = cut.FindAll(".dz-moment").Count;
 
         // Away, and back again.
-        cut.FindAll("button.ws-room-btn").First(b => b.TextContent.Contains("Design")).Click();
+        cut.FindAll("button.ws-room-btn").First(b => b.TextContent.Contains("Creator")).Click();
         cut.WaitForState(() => cut.FindAll(".dz").Count == 0);
-        cut.FindAll("button.ws-room-btn").First(b => b.TextContent.Contains("Design")).Click();
+        cut.FindAll("button.ws-room-btn").First(b => b.TextContent.Contains("Creator")).Click();
         cut.WaitForState(() => cut.FindAll(".dz").Count > 0);
 
         Assert.Equal(moments, cut.FindAll(".dz-moment").Count);

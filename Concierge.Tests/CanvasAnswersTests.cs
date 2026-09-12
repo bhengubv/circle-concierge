@@ -90,7 +90,7 @@ public sealed class CanvasAnswersTests : BunitContext
         cut.WaitForState(() => cut.FindAll("button.ws-room-btn").Count > 0);
 
         cut.FindAll("button.ws-room-btn")
-            .Single(button => button.TextContent.Contains("Design", StringComparison.Ordinal))
+            .Single(button => button.TextContent.Contains("Creator", StringComparison.Ordinal))
             .Click();
 
         cut.WaitForState(() => cut.FindAll(".dz").Count > 0);
