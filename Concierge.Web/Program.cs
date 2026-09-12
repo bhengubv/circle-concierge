@@ -23,6 +23,8 @@ using Microsoft.AspNetCore.RateLimiting;
 using MudBlazor.Services;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Concierge.Shared.Away;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -77,6 +79,8 @@ builder.Services.AddConciergeRuntime();
 
 // The door a watch, a phone or anything else not here comes in through.
 builder.Services.AddConciergeAway();
+// And says where it is, so a watch does not have to be told. Silent without a key.
+builder.Services.AddHostedService<Concierge.Web.Hosting.AwayBeacon>();
 builder.Services.AddConciergeState(
     Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Concierge", "web"));
 // Work that runs end to end, keeping its place on disk.

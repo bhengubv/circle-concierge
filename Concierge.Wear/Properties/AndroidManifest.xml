@@ -8,6 +8,16 @@
 	<uses-feature android:name="android.hardware.type.watch" />
 	<uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+	<!-- The watch has to reach the machine that does the making. Without this it is a
+	     dictaphone: it hears you, draws it on the face, and the words go nowhere. -->
+	<uses-permission android:name="android.permission.INTERNET" />
+	<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+	<!-- Light and motion need no permission on Android, and neither is asked for here.
+	     BODY_SENSORS would be needed for heart rate and is deliberately absent: nothing
+	     reads it yet, and a permission requested before it is used is one nobody can
+	     judge when the dialog appears. -->
+
 	<application android:label="Concierge" android:allowBackup="false" android:supportsRtl="true">
 		<meta-data android:name="com.google.android.wearable.standalone" android:value="true" />
 	</application>

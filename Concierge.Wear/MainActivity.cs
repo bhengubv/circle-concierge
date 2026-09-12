@@ -2,6 +2,7 @@ using Android.App;
 using Android.Content;
 using Android.Content.PM;
 using Android.Graphics;
+using Android.Hardware;
 using Android.OS;
 using Android.Runtime;
 using Android.Speech;
@@ -34,7 +35,7 @@ namespace Concierge.Wear;
 /// </summary>
 [Activity(Label = "Concierge", MainLauncher = true, Theme = "@android:style/Theme.DeviceDefault.NoActionBar",
     ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.ScreenLayout)]
-public class MainActivity : Activity
+public class MainActivity : Activity, ISensorEventListener
 {
     // The palette, from concierge.css. Chrome is greyscale; the accent is the
     // only saturated colour, and status is a dot and a word.
@@ -50,7 +51,18 @@ public class MainActivity : Activity
 
     private const int SpeechRequest = 1;
 
-    private readonly IConciergeStateService _state = new ConciergeStateService();
+    /// <summary>
+    /// The machine that does the making.
+    ///
+    /// **This used to be `new ConciergeStateService()`** — the watch's own fresh, empty copy
+    /// of everything. So its approvals queue was always empty, its decisions were held in
+    /// memory and reached nobody, and what it heard was drawn on the face and dropped. A
+    /// second Concierge that agreed with the first about nothing.
+    /// </summary>
+    private readonly Concierge.Away.AwayClient _desk = new();
+
+    /// <summary>What is actually waiting, read from the desk rather than invented here.</summary>
+    private IReadOnlyList<Concierge.Away.AwayWaiting> _waiting = [];
 
     /// <summary>
     /// Which screen, and what has been answered. Held apart from the drawing
@@ -74,6 +86,12 @@ public class MainActivity : Activity
         SetContentView(_root);
 
         Render();
+
+        // Nothing blocks on this. The microphone works before the desk has been found —
+        // finding it is what the first sentence does anyway — and a face that sat blank for
+        // six seconds on every wake would be worse than one that occasionally says it could
+        // not reach home.
+        _ = RefreshWaitingAsync();
     }
 
     // ── Which screen ──────────────────────────────────────────────────────
@@ -87,7 +105,8 @@ public class MainActivity : Activity
 
         _root.RemoveAllViews();
 
-        var view = _face.Next(_state.GetSnapshot().Approvals);
+        var view = _face.Next([.. _waiting.Select(a =>
+            new ApprovalRequest(a.Id.ToString(), a.Tool, a.Risk, a.Summary, a.AskedAt))]);
 
         _root.AddView(view.Screen == WatchScreen.Decision
             ? BuildDecision(view.Waiting!)
@@ -125,8 +144,65 @@ public class MainActivity : Activity
 
     private void Decide(string approvalId, bool allowed)
     {
+        // Held locally as well, so the face stops offering it the instant it is pressed. The
+        // desk is the truth; this is only so the wrist does not sit there looking unanswered
+        // while a request crosses the room.
         _face.Decide(approvalId, allowed);
         Render();
+
+        if (Guid.TryParse(approvalId, out var id))
+        {
+            _ = AnswerAsync(id, allowed);
+        }
+    }
+
+    private async Task AnswerAsync(Guid id, bool allowed)
+    {
+        var landed = await _desk.AnswerAsync(id, allowed).ConfigureAwait(false);
+
+        // Said out loud when it did not land. A watch that reported "allowed" for a call
+        // that had already given up would be the approvals badge that always said two, on
+        // the one screen with room for a single sentence.
+        if (!landed)
+        {
+            RunOnUiThread(() =>
+            {
+                _lastHeard = "That one had already gone.";
+                Render();
+            });
+        }
+
+        await RefreshWaitingAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>Send what was said, and put the answer on the face.</summary>
+    private async Task SendAsync(string said)
+    {
+        var answer = await _desk
+            .SayAsync(said, new Concierge.Away.Situation(DateTimeOffset.Now, Motion: Moving(), AmbientLux: Light()))
+            .ConfigureAwait(false);
+
+        RunOnUiThread(() =>
+        {
+            // Whatever came back, in the words it came back in. The one thing this screen
+            // must never do is look the same whether it worked or not.
+            _lastHeard = answer.Reply ?? (answer.Understood ? answer.What ?? "Done." : "Nothing came back.");
+            Render();
+        });
+
+        await RefreshWaitingAsync().ConfigureAwait(false);
+    }
+
+    /// <summary>Ask the desk what is waiting, and draw it.</summary>
+    private async Task RefreshWaitingAsync()
+    {
+        var waiting = await _desk.WaitingAsync().ConfigureAwait(false);
+
+        RunOnUiThread(() =>
+        {
+            _waiting = waiting;
+            Render();
+        });
     }
 
     // ── Speaking ──────────────────────────────────────────────────────────
@@ -197,11 +273,129 @@ public class MainActivity : Activity
         }
 
         var heard = data.GetStringArrayListExtra(RecognizerIntent.ExtraResults);
-        if (heard is { Count: > 0 })
+
+        if (heard is { Count: > 0 } && heard[0] is { Length: > 0 } said)
         {
-            _lastHeard = heard[0] ?? string.Empty;
+            // Shown first, then sent. A wrist held up mid-sentence should confirm it was
+            // understood before anything slower happens — and what happens next takes a
+            // network, which on a train takes a while or never.
+            _lastHeard = said;
             Render();
+
+            _ = SendAsync(said);
         }
+    }
+
+    // ── What the watch knows when you speak into it ───────────────────────
+
+    /// <summary>
+    /// How light it is, or null.
+    ///
+    /// **This is the free half of seeing.** A watch has no camera worth the name, but it
+    /// knows whether you are in the dark or outdoors in daylight, and "make it warmer" said
+    /// at 6am walking is a different sentence from the same words at midnight at a desk.
+    ///
+    /// Read once, from the sensor's last value, rather than by subscribing: a reading taken
+    /// at the moment somebody speaks is what the sentence was said in, and a listener left
+    /// running to be a fraction more accurate costs battery on the one device that has none.
+    /// </summary>
+    private double? Light() => _lastLux;
+
+    /// <summary>
+    /// Still, walking, or nothing at all.
+    ///
+    /// Android's own answer via the step counter's recent movement is more than this needs;
+    /// what is wanted is the difference between a wrist at rest and a wrist in motion, which
+    /// the accelerometer settles. Null where there is no accelerometer or nothing has been
+    /// read yet — never a guess, because "still" asserted about somebody on a train is worse
+    /// than saying nothing.
+    /// </summary>
+    private string? Moving()
+        => _lastMotion;
+
+    /// <summary>What the sensors last said. Null until something has said it.</summary>
+    private double? _lastLux;
+
+    private string? _lastMotion;
+
+    private SensorManager? _sensors;
+
+    /// <summary>
+    /// Start listening while the face is on, and stop the moment it is not.
+    ///
+    /// A watch has one small battery and no mains. A sensor left registered while the screen
+    /// is off is the classic way to flatten one by lunchtime, and nothing here needs a
+    /// reading taken while nobody is looking — the situation that matters is the one the
+    /// sentence was said in.
+    /// </summary>
+    protected override void OnResume()
+    {
+        base.OnResume();
+
+        _sensors = GetSystemService(SensorService) as SensorManager;
+
+        if (_sensors is null)
+        {
+            return;
+        }
+
+        // Absent sensors are simply not registered for, and their readings stay null. Most
+        // watches have an accelerometer; rather fewer have a light sensor.
+        foreach (var kind in new[] { SensorType.Light, SensorType.Accelerometer })
+        {
+            if (_sensors.GetDefaultSensor(kind) is { } sensor)
+            {
+                _sensors.RegisterListener(this, sensor, SensorDelay.Normal);
+            }
+        }
+    }
+
+    protected override void OnPause()
+    {
+        _sensors?.UnregisterListener(this);
+        base.OnPause();
+    }
+
+    public void OnAccuracyChanged(Sensor? sensor, [GeneratedEnum] SensorStatus accuracy)
+    {
+        // Nothing here is precise enough for accuracy to change the answer: "in the dark"
+        // and "walking" survive a poorly calibrated sensor.
+    }
+
+    public void OnSensorChanged(SensorEvent? e)
+    {
+        if (e?.Sensor is null || e.Values is null || e.Values.Count == 0)
+        {
+            return;
+        }
+
+        if (e.Sensor.Type == SensorType.Light)
+        {
+            _lastLux = e.Values[0];
+            return;
+        }
+
+        if (e.Sensor.Type != SensorType.Accelerometer || e.Values.Count < 3)
+        {
+            return;
+        }
+
+        // Gravity alone reads about 9.81 on a still wrist. How far the total is from that is
+        // how much the arm is actually doing — which is all this needs, and it needs no
+        // filtering to tell a wrist at rest from one swinging.
+        var magnitude = Math.Sqrt(
+            (e.Values[0] * e.Values[0]) + (e.Values[1] * e.Values[1]) + (e.Values[2] * e.Values[2]));
+
+        var moving = Math.Abs(magnitude - 9.81);
+
+        // Two thresholds and a gap between them, so a wrist hovering at the boundary does not
+        // flicker between two words on every reading.
+        _lastMotion = moving switch
+        {
+            < 0.6 => "still",
+            > 2.5 => "moving",
+            _ => _lastMotion,
+        };
     }
 
     // ── What a risk level means in reach ──────────────────────────────────

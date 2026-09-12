@@ -24,7 +24,44 @@ public sealed class WatchFootageTests : BunitContext
     /// <summary>A runtime that keeps the turns it was given.</summary>
     private sealed class Watching(bool sees) : IChatRuntime, IVisionCapableRuntime
     {
-        public IReadOnlyList<ChatTurn> Saw { get; private set; } = [];
+        /// <summary>
+        /// Every call, not only the last one.
+        ///
+        /// **It used to keep only the most recent**, which made the assertions here depend on
+        /// nothing else having spoken to the runtime since — and this test flaked twice in
+        /// nine full-suite runs with no message captured. A stub that overwrites its own
+        /// record cannot tell "the second turn carried a picture" from "something wrote over
+        /// what the second turn carried", and the first is a product defect while the second
+        /// is the stub's.
+        ///
+        /// Keeping them all means the assertion names which call it is about, and a stray one
+        /// shows up as an extra rather than as a mystery.
+        /// </summary>
+        private readonly List<IReadOnlyList<ChatTurn>> _calls = [];
+
+        /// <summary>The turns of the most recent call, or nothing if it has not been called.</summary>
+        public IReadOnlyList<ChatTurn> Saw
+        {
+            get
+            {
+                lock (_calls)
+                {
+                    return _calls.Count == 0 ? [] : _calls[^1];
+                }
+            }
+        }
+
+        /// <summary>How many times it has been asked anything.</summary>
+        public int Times
+        {
+            get
+            {
+                lock (_calls)
+                {
+                    return _calls.Count;
+                }
+            }
+        }
 
         public string Id => "watching";
         public string EngineLabel => "Watching (stub)";
@@ -37,7 +74,11 @@ public sealed class WatchFootageTests : BunitContext
             IReadOnlyList<ChatTurn> messages,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
-            Saw = messages;
+            lock (_calls)
+            {
+                _calls.Add(messages);
+            }
+
             await Task.CompletedTask;
             yield return "Looked.";
         }
@@ -190,6 +231,11 @@ public sealed class WatchFootageTests : BunitContext
         Eventually(cut, () => Assert.Contains(model.Saw, turn => turn.Images is { Count: > 0 }));
 
         Ask(cut, "And what about the music?");
+
+        // Waited for by call count rather than by content, so the assertion below is about
+        // the second turn and cannot be satisfied — or broken — by the first one still
+        // finishing. That distinction is the whole reason the stub keeps every call.
+        Eventually(cut, () => Assert.Equal(2, model.Times));
 
         Eventually(cut, () =>
         {
