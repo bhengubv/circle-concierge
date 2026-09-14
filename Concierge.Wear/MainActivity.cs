@@ -196,6 +196,20 @@ public class MainActivity : Activity, ISensorEventListener
     /// <summary>Ask the desk what is waiting, and draw it.</summary>
     private async Task RefreshWaitingAsync()
     {
+        // Anything said while there was nowhere to send it goes first. A wrist is out of
+        // range constantly, and the moment the face comes back on is the moment worth trying
+        // again — before anybody has to think about it.
+        var sent = await _desk.FlushAsync().ConfigureAwait(false);
+
+        if (sent > 0)
+        {
+            RunOnUiThread(() =>
+            {
+                _lastHeard = sent == 1 ? "Sent what was waiting." : $"Sent {sent} that were waiting.";
+                Render();
+            });
+        }
+
         var waiting = await _desk.WaitingAsync().ConfigureAwait(false);
 
         RunOnUiThread(() =>
@@ -211,7 +225,15 @@ public class MainActivity : Activity, ISensorEventListener
     {
         var column = Column();
 
-        var said = string.IsNullOrWhiteSpace(_lastHeard) ? "Tap to talk" : _lastHeard;
+        // A held sentence is said out loud. A face that looked the same whether something
+        // went or is sitting on the wrist unsent would be this product's signature defect on
+        // the one screen with room for a single line.
+        var held = _desk.Waiting;
+
+        var said = !string.IsNullOrWhiteSpace(_lastHeard) ? _lastHeard
+            : held == 1 ? "1 waiting to go"
+            : held > 1 ? $"{held} waiting to go"
+            : "Tap to talk";
         var text = Label(said, string.IsNullOrWhiteSpace(_lastHeard) ? 13f : 15f,
                          string.IsNullOrWhiteSpace(_lastHeard) ? InkFaint : Ink);
         text.SetMaxLines(5);

@@ -37,7 +37,16 @@ public sealed class AwayClient
 
     private readonly HttpClient _http = new() { Timeout = TimeSpan.FromMinutes(2) };
 
+    /// <param name="outbox">Where unsent sentences are kept. Its own default when not given.</param>
+    public AwayClient(AwayOutbox? outbox = null) => _outbox = outbox ?? new AwayOutbox();
+
+    /// <summary>How many sentences are waiting to go.</summary>
+    public int Waiting => _outbox.Count();
+
     private string? _where;
+
+    /// <summary>What was said while there was nowhere to send it.</summary>
+    private readonly AwayOutbox _outbox;
 
     /// <summary>
     /// The key, when there is one. Held rather than typed: a watch has no keyboard worth
@@ -55,7 +64,22 @@ public sealed class AwayClient
     /// which is the only way the wire gets checked at all: a watch emulator has no speech
     /// recogniser, so the microphone cannot drive this loop there.
     /// </summary>
-    public void PointAt(string where) => _where = where;
+    public void PointAt(string where)
+    {
+        _where = where;
+        _told = where;
+    }
+
+    /// <summary>
+    /// An address given outright, remembered past a failure.
+    ///
+    /// A failed attempt forgets <see cref="Where"/> so the next one looks again rather than
+    /// retrying a machine that has gone to sleep. **That was right for a discovered address
+    /// and wrong for a given one**: a head told where the desk is would forget permanently
+    /// the first time the laptop slept, and then spend six seconds listening for a beacon
+    /// before every sentence for the rest of the day.
+    /// </summary>
+    private string? _told;
 
     /// <summary>
     /// Listen for the desk saying where it is.
@@ -111,11 +135,90 @@ public sealed class AwayClient
     }
 
     /// <summary>Say something, and hear what came of it.</summary>
+    /// <summary>
+    /// Say something.
+    ///
+    /// **Anything that cannot go now is kept and goes later.** A wrist is out of range
+    /// constantly — a lift, a basement, a train, a walk with the phone left at home — and a
+    /// sentence lost to that is the product failing at the moment it claims to be useful.
+    ///
+    /// Whatever is already waiting goes first, and a new sentence joins the back of the
+    /// queue rather than jumping it. Out of order is worse than late: "make it bigger"
+    /// arriving before "add a title" is two changes in the wrong sequence, which on a design
+    /// is a different design.
+    /// </summary>
     public async Task<AwayReply> SayAsync(string text, Situation situation, CancellationToken cancellationToken = default)
     {
+        // Nothing is waiting, so this can go straight out and be answered properly. The
+        // common case, and the only one where a person hears a real reply rather than a
+        // receipt.
+        if (_outbox.Count() == 0)
+        {
+            var straight = await TryOnceAsync(text, situation, cancellationToken).ConfigureAwait(false);
+
+            if (straight.Reached)
+            {
+                return straight.Reply;
+            }
+
+            _outbox.Keep(text, situation);
+
+            return new AwayReply(false, null, "Kept. It will go when Concierge is back.");
+        }
+
+        // Something is already waiting, so this joins the back before anything is tried.
+        _outbox.Keep(text, situation);
+
+        var delivered = await FlushAsync(cancellationToken).ConfigureAwait(false);
+
+        return delivered == 0
+            ? new AwayReply(false, null, $"Kept. {_outbox.Count()} waiting to go.")
+            : new AwayReply(true, null, $"Sent {delivered}.");
+    }
+
+    /// <summary>
+    /// Deliver what is waiting, oldest first, and stop at the first one that will not go.
+    ///
+    /// Stopping matters: carrying on past a failure would deliver later sentences ahead of
+    /// earlier ones the next time the network returns, which is the one thing the queue
+    /// exists to prevent.
+    /// </summary>
+    public async Task<int> FlushAsync(CancellationToken cancellationToken = default)
+    {
+        var sent = 0;
+
+        foreach (var pending in _outbox.Waiting())
+        {
+            var went = await TryOnceAsync(pending.Text, pending.Situation, cancellationToken).ConfigureAwait(false);
+
+            if (!went.Reached)
+            {
+                break;
+            }
+
+            _outbox.Done(pending.Id);
+            sent++;
+        }
+
+        return sent;
+    }
+
+    /// <summary>
+    /// One attempt.
+    ///
+    /// <c>Reached</c> is a different question from whether the answer was a happy one: a 401
+    /// means this watch is not allowed and saying it again tomorrow will not help, so it is
+    /// reached and not queued. Only genuinely not getting there is worth keeping for later.
+    /// </summary>
+    private async Task<(bool Reached, AwayReply Reply)> TryOnceAsync(
+        string text, Situation situation, CancellationToken cancellationToken)
+    {
+        // What was given comes back before anything is listened for.
+        _where ??= _told;
+
         if (_where is null && !await FindAsync(cancellationToken: cancellationToken).ConfigureAwait(false))
         {
-            return new AwayReply(false, null, "Concierge is not on this network.");
+            return (false, new AwayReply(false, null, "Concierge is not on this network."));
         }
 
         try
@@ -143,22 +246,22 @@ public sealed class AwayClient
             {
                 // The status is said in words rather than as a number. 401 on a wrist means
                 // "this watch is not allowed", which is a thing a person can act on.
-                return new AwayReply(false, null, answered.StatusCode == HttpStatusCode.Unauthorized
+                return (true, new AwayReply(false, null, answered.StatusCode == HttpStatusCode.Unauthorized
                     ? "This watch is not allowed yet."
-                    : $"Concierge could not answer ({(int)answered.StatusCode}).");
+                    : $"Concierge could not answer ({(int)answered.StatusCode})."));
             }
 
-            return await answered.Content
+            return (true, await answered.Content
                 .ReadFromJsonAsync<AwayReply>(cancellationToken: cancellationToken)
                 .ConfigureAwait(false)
-                ?? new AwayReply(false, null, "Nothing came back.");
+                ?? new AwayReply(false, null, "Nothing came back."));
         }
         catch (Exception failure) when (failure is HttpRequestException or TaskCanceledException or JsonException)
         {
             // The address is forgotten so the next attempt looks again rather than retrying
             // a machine that has gone to sleep — which on a laptop is most of the day.
             _where = null;
-            return new AwayReply(false, null, "Concierge did not answer.");
+            return (false, new AwayReply(false, null, "Concierge did not answer."));
         }
     }
 

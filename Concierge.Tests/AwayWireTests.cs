@@ -26,6 +26,9 @@ public sealed class AwayWireTests : IDisposable
     private readonly CancellationTokenSource _stopping = new();
     private readonly string _where;
 
+    private readonly string _outbox = Path.Combine(
+        Path.GetTempPath(), $"wire-outbox-{Guid.NewGuid():N}");
+
     public AwayWireTests()
     {
         var port = FreePort();
@@ -41,6 +44,18 @@ public sealed class AwayWireTests : IDisposable
         _stopping.Cancel();
         _listener.Close();
         _stopping.Dispose();
+
+        try
+        {
+            if (Directory.Exists(_outbox))
+            {
+                Directory.Delete(_outbox, recursive: true);
+            }
+        }
+        catch (IOException)
+        {
+            // A temp folder left behind is nobody's problem.
+        }
     }
 
     private static int FreePort()
@@ -90,10 +105,19 @@ public sealed class AwayWireTests : IDisposable
         }
     }
 
-    /// <summary>A client already told where the desk is, so discovery is a separate question.</summary>
+    /// <summary>
+    /// A client already told where the desk is, so discovery is a separate question — and
+    /// with an outbox of its own.
+    ///
+    /// **Its own matters.** Without it these used the real queue folder on whatever machine
+    /// the suite runs on: a test that could not reach its listener queued into somebody's
+    /// actual outbox, and the next test to point at a live listener delivered it. Which is
+    /// how a passing assertion here started depending on what an earlier test had left lying
+    /// about on disk.
+    /// </summary>
     private AwayClient Pointed()
     {
-        var client = new AwayClient { Key = "watchtest" };
+        var client = new AwayClient(new AwayOutbox(_outbox)) { Key = "watchtest" };
         client.PointAt(_where);
         return client;
     }
@@ -181,7 +205,7 @@ public sealed class AwayWireTests : IDisposable
     [Fact]
     public async Task With_nothing_listening_it_says_so()
     {
-        var client = new AwayClient();
+        var client = new AwayClient(new AwayOutbox(_outbox));
         client.PointAt($"http://127.0.0.1:{FreePort()}");
 
         var answer = await client.SayAsync("make it night", new Situation(DateTimeOffset.UtcNow));
@@ -200,7 +224,7 @@ public sealed class AwayWireTests : IDisposable
     {
         var began = DateTimeOffset.UtcNow;
 
-        var found = await new AwayClient().FindAsync(TimeSpan.FromMilliseconds(400));
+        var found = await new AwayClient(new AwayOutbox(_outbox)).FindAsync(TimeSpan.FromMilliseconds(400));
 
         Assert.False(found);
         Assert.True(DateTimeOffset.UtcNow - began < TimeSpan.FromSeconds(5), "it waited far longer than it was told to");
