@@ -38,7 +38,63 @@ public sealed class AwayClient
     private readonly HttpClient _http = new() { Timeout = TimeSpan.FromMinutes(2) };
 
     /// <param name="outbox">Where unsent sentences are kept. Its own default when not given.</param>
-    public AwayClient(AwayOutbox? outbox = null) => _outbox = outbox ?? new AwayOutbox();
+    public AwayClient(AwayOutbox? outbox = null)
+    {
+        _outbox = outbox ?? new AwayOutbox();
+
+        var (where, key) = Written();
+
+        _told = where;
+        _where = where;
+
+        if (key is { Length: > 0 })
+        {
+            Key = key;
+        }
+    }
+
+    /// <summary>
+    /// An address somebody wrote down for this device, or null.
+    ///
+    /// **Multicast is not everywhere.** Guest wifi, a corporate network, an emulator behind a
+    /// virtual router — all of them carry HTTP perfectly well and drop a beacon on the floor,
+    /// and a watch that can only be found by shouting is a watch that does not work on those.
+    /// One line in a file, beside the outbox, and the shouting becomes the convenience it was
+    /// meant to be rather than the only way in.
+    ///
+    /// It is also how a pairing hand-off will deliver an address later without this changing.
+    /// </summary>
+    private static (string? Where, string? Key) Written()
+    {
+        try
+        {
+            var path = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Concierge",
+                "desk.txt");
+
+            if (!File.Exists(path))
+            {
+                return (null, null);
+            }
+
+            // Address on the first line, key on the second.
+            //
+            // **Both, because one without the other is useless** — and that was not obvious
+            // until the watch was pointed at a guarded desk and every request came back 401
+            // with nothing on the face to say why. The address was tellable and the key was
+            // not, which is a device that can find home and cannot get in.
+            var lines = File.ReadAllLines(path);
+            var where = lines.Length > 0 ? lines[0].Trim() : string.Empty;
+            var key = lines.Length > 1 ? lines[1].Trim() : null;
+
+            return Uri.TryCreate(where, UriKind.Absolute, out _) ? (where, key) : (null, null);
+        }
+        catch (Exception failure) when (failure is IOException or UnauthorizedAccessException)
+        {
+            return (null, null);
+        }
+    }
 
     /// <summary>How many sentences are waiting to go.</summary>
     public int Waiting => _outbox.Count();
@@ -265,6 +321,54 @@ public sealed class AwayClient
         }
     }
 
+    /// <summary>What changed last, or null when nothing has.</summary>
+    public Task<AwayChanged?> LastChangeAsync(CancellationToken cancellationToken = default)
+        => AskAsync<AwayChanged>(HttpMethod.Get, "change", cancellationToken);
+
+    /// <summary>Take the last change back, and hear what stands now.</summary>
+    public Task<AwayChanged?> UndoAsync(CancellationToken cancellationToken = default)
+        => AskAsync<AwayChanged>(HttpMethod.Post, "undo", cancellationToken);
+
+    /// <summary>
+    /// One small question with no body, answered or not.
+    ///
+    /// No content is a real answer here and not an error: nothing has changed yet, or there
+    /// was nothing to take back. A wrist told "nothing yet" can say so; one shown a failure
+    /// would have somebody checking their network over a design nobody has touched.
+    /// </summary>
+    private async Task<T?> AskAsync<T>(HttpMethod how, string what, CancellationToken cancellationToken)
+        where T : class
+    {
+        _where ??= _told;
+
+        if (_where is null && !await FindAsync(cancellationToken: cancellationToken).ConfigureAwait(false))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var request = new HttpRequestMessage(how, $"{_where}/api/away/{what}");
+            Sign(request);
+
+            using var answered = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+
+            if (!answered.IsSuccessStatusCode || answered.StatusCode == HttpStatusCode.NoContent)
+            {
+                return null;
+            }
+
+            return await answered.Content
+                .ReadFromJsonAsync<T>(cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception failure) when (failure is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _where = null;
+            return null;
+        }
+    }
+
     /// <summary>What is waiting on a person, oldest first.</summary>
     public async Task<IReadOnlyList<AwayWaiting>> WaitingAsync(CancellationToken cancellationToken = default)
     {
@@ -345,6 +449,12 @@ public sealed class AwayClient
         }
     }
 }
+
+/// <summary>
+/// The last thing that changed, as a device that is not here sees it.
+/// </summary>
+/// <param name="Deep">How many steps back there are — one, or a canvas's own thirty.</param>
+public sealed record AwayChanged(string What, bool CanUndo, int Deep, DateTimeOffset At);
 
 /// <summary>
 /// What a device was looking at.

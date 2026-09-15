@@ -174,16 +174,88 @@ public sealed class WatchFaceTests
     }
 
     /// <summary>
-    /// The watch does not carry the design canvas, and the reason is the transport
-    /// rather than the screen. A correction made on the wrist has no way back to
-    /// the phone until approvals can ride the mesh, so a design screen today would
-    /// be a button that appears to work and does not — the one thing WatchFace
-    /// already refuses to ship, which is why its own decisions are not persisted.
+    /// **The watch carries designing now, and this test is how that happened.**
     ///
-    /// Asserted rather than left as an absence, so adding it is a decision somebody
-    /// takes deliberately with the transport in hand.
+    /// It read `Assert.False` for months, holding a decision open: a design screen was
+    /// refused because a correction made on the wrist had no way back — approvals needed the
+    /// mesh, and the mesh cannot sign a packet, so the button would have appeared to work and
+    /// not worked. The constant existed so that turning it on was somebody's deliberate act
+    /// rather than something that happened because nothing said not to.
+    ///
+    /// It went red the moment the constant changed, which is exactly what it was written to
+    /// do. The blocker was answered a different way: the wrist reaches the desk over the
+    /// ordinary network, guarded by the key the web head already had.
     /// </summary>
     [Fact]
-    public void Design_is_not_a_watch_surface()
-        => Assert.False(WatchSurfaces.Design);
+    public void Design_is_a_watch_surface_now_that_a_correction_has_a_way_home()
+        => Assert.True(WatchSurfaces.Design);
+
+    /// <summary>
+    /// And it is the small one. Not a canvas, not a moments strip — one sentence and a way to
+    /// say no, because everything done on a wrist is done while the other arm is busy.
+    /// </summary>
+    [Fact]
+    public void And_it_is_the_last_change_rather_than_a_canvas()
+    {
+        Assert.Contains("last change", WatchSurfaces.DesignIs, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("canvas", WatchSurfaces.DesignIs, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ── What changed, and when it is worth showing ────────────────────────
+
+    /// <summary>Something changed and nobody has looked at it, so that is the screen.</summary>
+    [Fact]
+    public void A_change_nobody_has_seen_is_the_screen()
+    {
+        var view = new WatchFace().Next([], "Added a title");
+
+        Assert.Equal(WatchScreen.Change, view.Screen);
+        Assert.Equal("Added a title", view.Changed);
+    }
+
+    /// <summary>
+    /// **But something waiting beats it.** An approval is holding a turn open; a change has
+    /// already happened and will still be there in a minute. A watch interrupting you had
+    /// better be interrupting about the thing it is holding.
+    /// </summary>
+    [Fact]
+    public void But_something_waiting_comes_first()
+        => Assert.Equal(
+            WatchScreen.Decision,
+            new WatchFace().Next([Asking("a")], "Added a title").Screen);
+
+    /// <summary>
+    /// Seen once, gone. A wrist that showed the same sentence every time you raised it would
+    /// be a notification that does not clear, which is the thing everybody turns off first.
+    /// </summary>
+    [Fact]
+    public void A_change_that_has_been_seen_goes_away()
+    {
+        var face = new WatchFace();
+
+        Assert.Equal(WatchScreen.Change, face.Next([], "Added a title").Screen);
+
+        face.Seen("Added a title");
+
+        Assert.Equal(WatchScreen.Speak, face.Next([], "Added a title").Screen);
+    }
+
+    /// <summary>
+    /// And the next one shows itself. Held by what the change was rather than by a flag, so a
+    /// different change interrupts and the same one arriving twice — a screen coming back on,
+    /// a reconnect — does not.
+    /// </summary>
+    [Fact]
+    public void But_the_next_change_shows_itself()
+    {
+        var face = new WatchFace();
+        face.Seen("Added a title");
+
+        Assert.Equal(WatchScreen.Change, face.Next([], "Made it night").Screen);
+    }
+
+    /// <summary>Nothing changed is the microphone, which is the resting state.</summary>
+    [Fact]
+    public void And_nothing_changed_is_still_the_microphone()
+        => Assert.Equal(WatchScreen.Speak, new WatchFace().Next([], null).Screen);
 }

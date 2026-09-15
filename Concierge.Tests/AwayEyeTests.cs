@@ -54,7 +54,7 @@ public sealed class AwayEyeTests
     public async Task A_sentence_with_a_picture_never_goes_to_the_canvas()
     {
         var designs = new Nothing();
-        var desk = new AwayDesk(designs, turn: null!, conversations: null!, runtimes: []);
+        var desk = new AwayDesk(designs, turn: () => null, conversations: null!, runtimes: []);
 
         // A sentence the canvas would certainly have understood on its own.
         var answer = await desk.SayAsync(WithAPicture("make it night"));
@@ -71,7 +71,7 @@ public sealed class AwayEyeTests
     public async Task But_without_one_the_canvas_still_answers()
     {
         var designs = new Nothing();
-        var desk = new AwayDesk(designs, turn: null!, conversations: null!, runtimes: []);
+        var desk = new AwayDesk(designs, turn: () => null, conversations: null!, runtimes: []);
 
         var answer = await desk.SayAsync(
             new AwaySaid("make it night", new AwayContext(DateTimeOffset.UtcNow, "phone")));

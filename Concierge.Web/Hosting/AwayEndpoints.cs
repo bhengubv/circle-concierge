@@ -66,6 +66,25 @@ public static class AwayEndpoints
             return Results.Json(new { answered });
         });
 
+        // What changed last, and taking it back. **The screen a watch was always for**: a
+        // canvas does not belong on a 192dp face, but glancing at what changed and saying
+        // "no, not like that" fits a wrist better than anything else does.
+        app.MapGet("/api/away/change", async (IAway away, CancellationToken cancellationToken) =>
+        {
+            var change = await away.LastChangeAsync(cancellationToken).ConfigureAwait(false);
+
+            // Nothing has changed, which is a fact rather than a failure — a wrist glancing at
+            // an untouched design should be told so, not shown an error.
+            return change is null ? Results.NoContent() : Results.Json(change);
+        });
+
+        app.MapPost("/api/away/undo", async (IAway away, CancellationToken cancellationToken) =>
+        {
+            var change = await away.UndoAsync(cancellationToken).ConfigureAwait(false);
+
+            return change is null ? Results.NoContent() : Results.Json(change);
+        });
+
         return app;
     }
 

@@ -64,6 +64,9 @@ public class MainActivity : Activity, ISensorEventListener
     /// <summary>What is actually waiting, read from the desk rather than invented here.</summary>
     private IReadOnlyList<Concierge.Away.AwayWaiting> _waiting = [];
 
+    /// <summary>What changed last, read from the desk. Null when nothing has.</summary>
+    private Concierge.Away.AwayChanged? _changed;
+
     /// <summary>
     /// Which screen, and what has been answered. Held apart from the drawing
     /// because it is the only part of this file that decides anything — and
@@ -105,12 +108,16 @@ public class MainActivity : Activity, ISensorEventListener
 
         _root.RemoveAllViews();
 
-        var view = _face.Next([.. _waiting.Select(a =>
-            new ApprovalRequest(a.Id.ToString(), a.Tool, a.Risk, a.Summary, a.AskedAt))]);
+        var view = _face.Next(
+            [.. _waiting.Select(a => new ApprovalRequest(a.Id.ToString(), a.Tool, a.Risk, a.Summary, a.AskedAt))],
+            _changed?.What);
 
-        _root.AddView(view.Screen == WatchScreen.Decision
-            ? BuildDecision(view.Waiting!)
-            : BuildSpeak());
+        _root.AddView(view.Screen switch
+        {
+            WatchScreen.Decision => BuildDecision(view.Waiting!),
+            WatchScreen.Change => BuildChange(view.Changed!),
+            _ => BuildSpeak(),
+        });
     }
 
     // ── A decision, and nothing else ──────────────────────────────────────
@@ -211,10 +218,91 @@ public class MainActivity : Activity, ISensorEventListener
         }
 
         var waiting = await _desk.WaitingAsync().ConfigureAwait(false);
+        var changed = await _desk.LastChangeAsync().ConfigureAwait(false);
 
         RunOnUiThread(() =>
         {
             _waiting = waiting;
+            _changed = changed;
+            Render();
+        });
+    }
+
+    // ── What just changed, and saying no ──────────────────────────────────
+
+    /// <summary>
+    /// The screen this watch was always for.
+    ///
+    /// **Not a canvas.** `WatchSurfaces.Design` refused one and was right to: drawing on a
+    /// 192dp face is a worse version of something that already exists on every other head.
+    /// What a wrist is genuinely better at is the other half of designing — glancing at what
+    /// happened and saying "no, not like that" — and that half needs one sentence and one
+    /// button.
+    ///
+    /// It was held back because the correction had no way home. It has one now.
+    /// </summary>
+    private View BuildChange(string what)
+    {
+        var column = Column();
+
+        column.AddView(Label("Just changed", 11f, InkFaint));
+
+        var said = Label(what, 15f, Ink, bold: true);
+        said.SetMaxLines(3);
+        said.Ellipsize = Android.Text.TextUtils.TruncateAt.End;
+        column.AddView(said, Spaced(4));
+
+        // How far back there is, said rather than implied. One step with nothing else
+        // remembering, up to a canvas's own thirty — and a wrist should not be left assuming
+        // a depth it does not have.
+        if (_changed is { Deep: > 1 } deeper)
+        {
+            column.AddView(Label($"{deeper.Deep} steps back", 11f, InkFaint), Spaced(2));
+        }
+
+        var actions = new LinearLayout(this) { Orientation = Android.Widget.Orientation.Horizontal };
+
+        // "No" rather than "Undo", because that is the word a person actually says to a thing
+        // that just happened in front of them. The whole surface is built on saying what you
+        // mean out loud.
+        actions.AddView(
+            Pill("No", Danger, Ink, TakeItBack),
+            Weighted());
+
+        actions.AddView(
+            Pill("Fine", Raised, Ink, () =>
+            {
+                _face.Seen(what);
+                Render();
+            }),
+            Weighted(leftMargin: Dp(6)));
+
+        column.AddView(actions, Spaced(12));
+
+        return column;
+    }
+
+    private void TakeItBack()
+    {
+        // Marked seen first: whether it goes back or not, this change has been looked at, and
+        // a face that showed it again after the button was pressed would look like the press
+        // did nothing.
+        _face.Seen(_changed?.What);
+        Render();
+
+        _ = UndoAsync();
+    }
+
+    private async Task UndoAsync()
+    {
+        var now = await _desk.UndoAsync().ConfigureAwait(false);
+
+        RunOnUiThread(() =>
+        {
+            // Null means there was nothing behind it. Said, rather than leaving a face that
+            // looks exactly the same whether the change went back or did not.
+            _lastHeard = now is null ? "There was nothing to go back to." : now.What;
+            _changed = null;
             Render();
         });
     }

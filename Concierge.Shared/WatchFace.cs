@@ -8,6 +8,9 @@ public enum WatchScreen
 
     /// <summary>Nothing is waiting, so the microphone is the whole interface.</summary>
     Speak,
+
+    /// <summary>Something changed and has not been looked at. What it was, and a way to say no.</summary>
+    Change,
 }
 
 /// <summary>
@@ -21,6 +24,16 @@ public static class WatchSurfaces
 {
     /// <summary>
     /// The design canvas does not go on a watch, and the reason is not screen size.
+    ///
+    /// **Changed to true on 2026-09-15, deliberately, which is what this constant was for.**
+    /// The blocker recorded below was that the correction had no way home — approvals needed
+    /// the mesh, and the mesh cannot sign a packet. That was answered a different way: the
+    /// wrist reaches the desk over the ordinary network, guarded by the key the web head
+    /// already had, and it already answers approvals over it.
+    ///
+    /// The screen is the one this comment named in its last paragraph, unchanged: the last
+    /// change plus undo. Not a canvas. The reasoning below stands as written and is kept,
+    /// because the decision it records is the reason the screen is this small.
     ///
     /// A watch could carry the useful half of designing — "no, not like that" —
     /// without carrying the canvas. Glancing at your wrist, seeing what changed and
@@ -38,13 +51,23 @@ public static class WatchSurfaces
     /// When the transport lands, the screen to build is the last change plus undo.
     /// Not a canvas. Deciding that now is cheaper than deciding it under pressure.
     /// </summary>
-    public const bool Design = false;
+    public const bool Design = true;
+
+    /// <summary>
+    /// And what it is, so nobody builds the other thing.
+    ///
+    /// The last change and a way to take it back. Not a canvas, not a moments strip, not a
+    /// picker — one sentence saying what happened and one button saying no. Everything a
+    /// person does on a wrist is done while the other arm is holding something.
+    /// </summary>
+    public const string DesignIs = "The last change, and undo.";
 }
 
 /// <summary>What the watch should be showing right now.</summary>
-/// <param name="Screen">Which of the two.</param>
+/// <param name="Screen">Which of the three.</param>
 /// <param name="Waiting">The approval being asked about, when there is one.</param>
-public sealed record WatchView(WatchScreen Screen, ApprovalRequest? Waiting);
+/// <param name="Changed">What changed, when that is the screen.</param>
+public sealed record WatchView(WatchScreen Screen, ApprovalRequest? Waiting, string? Changed = null);
 
 /// <summary>
 /// The watch's whole decision, without the watch.
@@ -84,16 +107,47 @@ public sealed class WatchFace
     /// Oldest first, and anything already answered is behind you.
     /// </summary>
     public WatchView Next(IEnumerable<ApprovalRequest>? approvals)
+        => Next(approvals, null);
+
+    /// <summary>
+    /// What to show, given what is waiting and what changed.
+    ///
+    /// Order matters and is the whole of the rule: **something waiting on you beats something
+    /// that already happened.** An approval is holding a turn open; a change has been made and
+    /// will still be there in a minute. A watch interrupting you had better be interrupting
+    /// about the thing it is holding.
+    ///
+    /// A change is shown once. Seen, it goes away and the microphone comes back — a wrist that
+    /// kept showing the same sentence every time you raised it would be a notification that
+    /// does not clear, which is the thing everybody turns off first.
+    /// </summary>
+    public WatchView Next(IEnumerable<ApprovalRequest>? approvals, string? changed)
     {
         var waiting = (approvals ?? [])
             .Where(a => a is not null && !_decided.ContainsKey(a.Id))
             .OrderBy(a => a.CreatedAt)
             .FirstOrDefault();
 
-        return waiting is null
-            ? new WatchView(WatchScreen.Speak, null)
-            : new WatchView(WatchScreen.Decision, waiting);
+        if (waiting is not null)
+        {
+            return new WatchView(WatchScreen.Decision, waiting, null);
+        }
+
+        return !string.IsNullOrWhiteSpace(changed) && !string.Equals(changed, _seen, StringComparison.Ordinal)
+            ? new WatchView(WatchScreen.Change, null, changed)
+            : new WatchView(WatchScreen.Speak, null, null);
     }
+
+    /// <summary>
+    /// That change has been looked at, so the face goes back to the microphone.
+    ///
+    /// Held by what it was rather than by a flag: the next change says something different
+    /// and shows itself, and the same change arriving twice — a screen coming back on, a
+    /// reconnect — does not.
+    /// </summary>
+    public void Seen(string? changed) => _seen = changed;
+
+    private string? _seen;
 
     /// <summary>
     /// Records an answer. Which answer is kept, not just that one was given:

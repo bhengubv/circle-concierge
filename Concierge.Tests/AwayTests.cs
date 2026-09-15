@@ -1,4 +1,5 @@
 using Concierge.Shared.Away;
+using Microsoft.Extensions.DependencyInjection;
 using Concierge.Shared.Design;
 
 namespace Concierge.Tests;
@@ -41,7 +42,7 @@ public sealed class AwayTests
         => new(at ?? DateTimeOffset.UtcNow, "watch");
 
     private static AwayDesk DeskOver(IDesignStore designs)
-        => new(designs, turn: null!, conversations: null!, runtimes: []);
+        => new(designs, turn: () => null, conversations: null!, runtimes: []);
 
     /// <summary>
     /// The whole point: speak into a watch, and the design on the desk changes.
@@ -150,6 +151,45 @@ public sealed class AwayTests
             expected,
             new AwayContext(DateTimeOffset.UtcNow, "watch", AmbientLux: lux).AsSaid()!,
             StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// **It can actually be built by a container**, which is a different question from whether
+    /// the class works — and the one that was not being asked.
+    ///
+    /// Every test here constructs `AwayDesk` directly, so when it was registered as a
+    /// singleton holding a scoped `TurnRunner` all of them stayed green and the running web
+    /// head answered every request with a 500: *"Cannot resolve scoped service from root
+    /// provider."* Found by curl, not by the suite.
+    ///
+    /// This is the container-resolution shape that already caught three tool sources
+    /// registered with a bare factory. Same lesson: a registration is a thing that can be
+    /// wrong on its own.
+    /// </summary>
+    [Fact]
+    public void It_can_be_resolved_from_a_real_container()
+    {
+        var services = new ServiceCollection();
+
+        services.AddLogging();
+        Concierge.Shared.ConciergeServiceCollectionExtensions.AddConciergeCore(services);
+        Concierge.Shared.Chat.ConciergeChatServiceCollectionExtensions.AddConciergeChat(services, Path.Combine(Path.GetTempPath(), $"away-{Guid.NewGuid():N}.db"));
+        Concierge.Shared.Tools.ConciergeToolsServiceCollectionExtensions.AddConciergeTools(services);
+        Concierge.Shared.Tools.ConciergeToolsServiceCollectionExtensions.AddConciergeRuntime(services);
+        Concierge.Shared.Design.DesignToolRegistration.AddConciergeDesignTools(services);
+
+        // The design store and the rest of what a head keeps on disk. The web head calls this
+        // too, which is the point: what is being checked is the graph a head actually builds.
+        Concierge.Shared.Tools.ConciergeToolsServiceCollectionExtensions.AddConciergeState(
+            services, Path.Combine(Path.GetTempPath(), $"away-state-{Guid.NewGuid():N}"));
+        Concierge.Shared.Away.AwayRegistration.AddConciergeAway(services);
+
+        // Validated on build and on resolve, which is what the web head does. Without both,
+        // a lifetime mistake waits until the first request from a device nobody is watching.
+        using var provider = services.BuildServiceProvider(
+            new ServiceProviderOptions { ValidateScopes = true, ValidateOnBuild = true });
+
+        Assert.NotNull(provider.GetRequiredService<IAway>());
+    }
 
     /// <summary>
     /// With no approver wired, nothing is waiting and nothing can be answered — rather than

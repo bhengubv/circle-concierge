@@ -83,6 +83,27 @@ public sealed record AwayAnswer(bool Understood, string What, string? Reply);
 public sealed record AwayAsk(Guid Id, string Tool, string Summary, string Risk, DateTimeOffset AskedAt);
 
 /// <summary>
+/// The last thing that changed, and whether it can be taken back.
+///
+/// **This is the screen a watch was always for**, and the reason it was not built is gone.
+/// `WatchSurfaces.Design` recorded it: a canvas does not belong on a 192dp face, but the
+/// useful half of designing — glancing at what changed and saying "no, not like that" — fits
+/// a wrist better than anything else does. It was held back because the correction had no way
+/// home, and now it has one.
+/// </summary>
+/// <param name="What">In the words the moments strip uses: "Added a title".</param>
+/// <param name="CanUndo">
+/// False when there is nothing behind this — a fresh design, or a change made with no canvas
+/// open and nothing before it remembered. Said rather than shown as a button that does nothing.
+/// </param>
+/// <param name="Deep">
+/// How many steps back are available. One where only the last away change is remembered,
+/// up to the canvas's own thirty while one is open. A watch shows the number rather than
+/// implying a depth it does not have.
+/// </param>
+public sealed record AwayChange(string What, bool CanUndo, int Deep, DateTimeOffset At);
+
+/// <summary>
 /// What a device that is not here can do.
 ///
 /// **Deliberately says nothing about how it travels.** HTTP today; the mesh at Stage 3,
@@ -100,4 +121,10 @@ public interface IAway
 
     /// <summary>Answer one of them.</summary>
     Task<bool> AnswerAsync(Guid id, bool allowed, CancellationToken cancellationToken = default);
+
+    /// <summary>What changed last, or null when nothing has.</summary>
+    Task<AwayChange?> LastChangeAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Take the last change back. Returns what stands now, or null if nothing could be undone.</summary>
+    Task<AwayChange?> UndoAsync(CancellationToken cancellationToken = default);
 }

@@ -29,11 +29,12 @@ namespace Concierge.Shared.Away;
 /// </remarks>
 public sealed class AwayDesk(
     IDesignStore designs,
-    TurnRunner turn,
+    Func<TurnRunner?> turn,
     IConversationStore conversations,
     IEnumerable<IChatRuntime> runtimes,
     InteractiveToolApprovalService? approvals = null,
-    RoomCatalogue? catalogue = null) : IAway
+    RoomCatalogue? catalogue = null,
+    DesignWorkbench? workbench = null) : IAway
 {
     /// <summary>
     /// Whose conversations these are. The same owner the workspace uses, so what was said
@@ -41,6 +42,20 @@ public sealed class AwayDesk(
     /// opens.
     /// </summary>
     private const string Owner = "local";
+
+    /// <summary>
+    /// What stood before the last change this made, and what that change was called.
+    ///
+    /// **Only needed when no canvas is open.** A canvas holds thirty moments and is the real
+    /// history; this is the one step that exists when nothing else is remembering — a wrist
+    /// on its own, changing a design file with no screen watching it. One step is a small
+    /// claim, and the wrist is told the number rather than left to assume more.
+    /// </summary>
+    private DesignDocument? _before;
+
+    private string _lastWhat = string.Empty;
+
+    private DateTimeOffset _lastAt;
 
     /// <inheritdoc />
     public async Task<AwayAnswer> SayAsync(AwaySaid said, CancellationToken cancellationToken = default)
@@ -73,6 +88,13 @@ public sealed class AwayDesk(
 
         if (heard.Understood)
         {
+            // Kept before it is written over, so "no, not like that" has something to go back
+            // to. Only meaningful with no canvas open; with one, its own moments are deeper
+            // and this is never read.
+            _before = document;
+            _lastWhat = heard.What;
+            _lastAt = DateTimeOffset.UtcNow;
+
             await designs.SaveAsync(heard.Document, cancellationToken).ConfigureAwait(false);
 
             return new AwayAnswer(true, heard.What, heard.What);
@@ -118,6 +140,60 @@ public sealed class AwayDesk(
         return Task.FromResult(waiting);
     }
 
+    /// <inheritdoc />
+    public Task<AwayChange?> LastChangeAsync(CancellationToken cancellationToken = default)
+    {
+        // A canvas open on this machine is the real history — the same thirty moments the
+        // strip shows — so the wrist and the screen never disagree about what just happened.
+        if (workbench?.Session is { } session)
+        {
+            var moment = session.Moments[session.Position];
+
+            return Task.FromResult<AwayChange?>(
+                new AwayChange(moment.What, session.CanGoBack, session.Position, moment.At));
+        }
+
+        return Task.FromResult(_before is null
+            ? null
+            : new AwayChange(_lastWhat, true, 1, _lastAt));
+    }
+
+    /// <inheritdoc />
+    public async Task<AwayChange?> UndoAsync(CancellationToken cancellationToken = default)
+    {
+        if (workbench?.Session is { } session)
+        {
+            if (!session.CanGoBack)
+            {
+                return null;
+            }
+
+            session.Back();
+
+            // Written out as well as stepped back, because the file is what every other head
+            // reads. A canvas that went back on screen and left the old document on disk
+            // would be two answers to "what does this design say".
+            await designs.SaveAsync(session.Current, cancellationToken).ConfigureAwait(false);
+
+            var moment = session.Moments[session.Position];
+
+            return new AwayChange(moment.What, session.CanGoBack, session.Position, moment.At);
+        }
+
+        if (_before is null)
+        {
+            return null;
+        }
+
+        await designs.SaveAsync(_before, cancellationToken).ConfigureAwait(false);
+
+        // One step is all there is here, and once it is taken there is no second one. Said by
+        // handing back CanUndo false rather than by leaving a button that does nothing.
+        _before = null;
+
+        return new AwayChange("Back as you left it", false, 0, DateTimeOffset.UtcNow);
+    }
+
     /// <summary>
     /// Hand it to the model, with the situation it was said in.
     ///
@@ -161,7 +237,22 @@ public sealed class AwayDesk(
               + $"\n\n[{said.Picture!.FileName} was sent, but {runtime.EngineLabel} cannot look at pictures.]"
             : said.Text;
 
-        var result = await turn.RunAsync(
+        // The runner is asked for per turn rather than held.
+        //
+        // **It is scoped and this is not**, which is a real difference rather than a detail:
+        // the repeat reminder inside it is per-conversation on purpose, so one runaway loop is
+        // not remembered against the next. Holding one here would have kept a single reminder
+        // for the life of the process — and, as DI pointed out by refusing to start, a
+        // singleton cannot hold a scoped service at all.
+        //
+        // Found by running it. Every test built this class directly and never once went
+        // through a container, so the first thing to notice was a 500 on the first request.
+        if (turn() is not { } runner)
+        {
+            return new AwayAnswer(false, string.Empty, fallback ?? "Nothing here can answer that.");
+        }
+
+        var result = await runner.RunAsync(
             new TurnRequest(
                 conversation.Id,
                 text,
@@ -210,13 +301,20 @@ public static class AwayRegistration
     /// </summary>
     public static IServiceCollection AddConciergeAway(this IServiceCollection services)
     {
-        services.TryAddScoped<IAway>(provider => new AwayDesk(
+        // Singleton rather than scoped: the one step it remembers with no canvas open has to
+        // outlive the request that made it, or "no, not like that" has nothing to go back to
+        // the moment the connection closes.
+        services.TryAddSingleton<IAway>(provider => new AwayDesk(
             provider.GetRequiredService<IDesignStore>(),
-            provider.GetRequiredService<TurnRunner>(),
+            // A scope per turn, so the scoped pieces inside the runner — the repeat reminder
+            // above all — are per-turn rather than per-process.
+            () => provider.GetRequiredService<IServiceScopeFactory>()
+                .CreateScope().ServiceProvider.GetService<TurnRunner>(),
             provider.GetRequiredService<IConversationStore>(),
             provider.GetServices<IChatRuntime>(),
             provider.GetService<InteractiveToolApprovalService>(),
-            provider.GetService<RoomCatalogue>()));
+            provider.GetService<RoomCatalogue>(),
+            provider.GetService<DesignWorkbench>()));
 
         return services;
     }

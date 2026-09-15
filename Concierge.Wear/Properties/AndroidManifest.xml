@@ -18,7 +18,21 @@
 	     reads it yet, and a permission requested before it is used is one nobody can
 	     judge when the dialog appears. -->
 
-	<application android:label="Concierge" android:allowBackup="false" android:supportsRtl="true">
+	<!--
+	     Cleartext, deliberately, and this was found the hard way.
+
+	     Android has refused cleartext HTTP by default since API 28, silently — no exception,
+	     no log line, the request simply never leaves. So every away request this watch made
+	     was dropped before it reached the network, and the face looked exactly the same as it
+	     does when nothing is running at home. Which is the defect this product exists to
+	     remove, hiding inside a platform default.
+
+	     It is http because the desk is on the same network and a self-signed certificate on a
+	     192dp face is a dialog nobody can read. What guards it is the key, not the transport,
+	     and that decision is written down beside the beacon.
+	-->
+	<application android:label="Concierge" android:allowBackup="false" android:supportsRtl="true"
+	             android:usesCleartextTraffic="true">
 		<meta-data android:name="com.google.android.wearable.standalone" android:value="true" />
 	</application>
 </manifest>
