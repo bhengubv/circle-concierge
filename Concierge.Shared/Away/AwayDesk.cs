@@ -50,6 +50,15 @@ public sealed class AwayDesk(
             return new AwayAnswer(false, string.Empty, "Nothing was said.");
         }
 
+        // **A picture always goes to the model.** `DesignSpeech` is a document in and a
+        // document out and can carry no bytes at all, so letting the canvas answer a sentence
+        // that arrived with a photograph would drop the photograph in silence — the defect
+        // this repository exists to remove, on the one road a camera has into the product.
+        if (said.Picture is not null)
+        {
+            return await AskTheModelAsync(said, null, cancellationToken).ConfigureAwait(false);
+        }
+
         var restored = await designs.LoadAsync(cancellationToken).ConfigureAwait(false);
 
         // A design that cannot be read opens blank rather than refusing — the rule the canvas
@@ -120,6 +129,17 @@ public sealed class AwayDesk(
     {
         var ready = runtimes.Where(r => r.IsReady && !string.Equals(r.Id, "null", StringComparison.Ordinal)).ToList();
 
+        // Something that can see goes first when there is something to see. Asked of the
+        // runtime's own list rather than of the interface: the local runtime declares the
+        // capability because it *can* see, and lists nothing while a text-only model is
+        // loaded — so checking the interface alone sends a photograph to a Qwen model and
+        // says nothing about it.
+        if (said.Picture is not null)
+        {
+            ready = [.. ready.OrderByDescending(r =>
+                r is IVisionCapableRuntime { SupportedImageMediaTypes.Count: > 0 })];
+        }
+
         if (ready.FirstOrDefault() is not { } runtime)
         {
             // Nothing can answer, so the canvas's own guess is better than silence. That
@@ -129,26 +149,41 @@ public sealed class AwayDesk(
 
         var conversation = await FindOrStartAsync(said.Context.Device, cancellationToken).ConfigureAwait(false);
 
+        // A picture handed to something that cannot look at it is worse than no picture: the
+        // reply discusses it as though it had been seen. Said plainly instead, and the
+        // sentence still goes — somebody who photographs a wall and asks about it deserves an
+        // answer about the wall or an honest "I cannot see it", never a confident guess.
+        var blind = said.Picture is not null
+            && runtime is not IVisionCapableRuntime { SupportedImageMediaTypes.Count: > 0 };
+
+        var text = blind
+            ? said.Text
+              + $"\n\n[{said.Picture!.FileName} was sent, but {runtime.EngineLabel} cannot look at pictures.]"
+            : said.Text;
+
         var result = await turn.RunAsync(
             new TurnRequest(
                 conversation.Id,
-                said.Text,
+                text,
                 runtime,
                 ready,
+                Images: said.Picture is not null && !blind
+                    ? [new ChatImage(said.Picture.FileName, said.Picture.MediaType, said.Picture.Bytes)]
+                    : null,
                 Settings: new TurnSettings(SystemPrompt: said.Context.AsSaid())),
             progress: null,
             cancellationToken).ConfigureAwait(false);
 
         // A face has room for a sentence, not a transcript. The last line of what came back
         // is the answer; the rest is in the thread on the desk, where there is room for it.
-        var text = result.Text?
+        var answer = result.Text?
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .LastOrDefault();
 
         return new AwayAnswer(
             result.Text is { Length: > 0 },
             string.Empty,
-            text ?? "Nothing came back.");
+            answer ?? "Nothing came back.");
     }
 
     /// <summary>

@@ -56,8 +56,19 @@ public sealed record AwayContext(
     }
 }
 
-/// <summary>A sentence from a device that is not here.</summary>
-public sealed record AwaySaid(string Text, AwayContext Context);
+/// <summary>
+/// Something a device looked at.
+///
+/// **The eye is the phone.** A watch has no camera worth the name, and a desk sees only what
+/// somebody carries back to it — which is the cost of not seeing: every session starts with
+/// describing your own situation in words. A picture removes that. "Like this one" works when
+/// there is a *this*.
+/// </summary>
+/// <param name="MediaType">Read from the bytes at the door, never trusted from the caller.</param>
+public sealed record AwayPicture(string FileName, string MediaType, byte[] Bytes);
+
+/// <summary>A sentence from a device that is not here, and what it was looking at.</summary>
+public sealed record AwaySaid(string Text, AwayContext Context, AwayPicture? Picture = null);
 
 /// <summary>What came of it.</summary>
 /// <param name="Understood">Whether anything changed.</param>

@@ -37,8 +37,15 @@ public static class AwayEndpoints
                 body.HeartRate,
                 body.AmbientLux);
 
+            var (picture, refused) = PictureIn(body);
+
+            if (refused is not null)
+            {
+                return Results.BadRequest(new AwayAnswer(false, string.Empty, refused));
+            }
+
             return Results.Json(await away
-                .SayAsync(new AwaySaid(body.Text, context), cancellationToken)
+                .SayAsync(new AwaySaid(body.Text, context, picture), cancellationToken)
                 .ConfigureAwait(false));
         });
 
@@ -62,7 +69,63 @@ public static class AwayEndpoints
         return app;
     }
 
+    /// <summary>
+    /// How big a picture may be.
+    ///
+    /// The paperclip's own cap, and the same reasoning: base64 is a third larger than the
+    /// file, and this one crosses a network a watch or a phone is paying for. A phone camera
+    /// makes far more than this, so the device is expected to send something smaller rather
+    /// than the raw frame — and it is told so rather than left wondering.
+    /// </summary>
+    public const int BiggestPicture = 4 * 1024 * 1024;
+
+    /// <summary>
+    /// The picture, if there is one, with its kind read from the bytes.
+    ///
+    /// **Never from what the caller said it was.** A file called photo.jpg that is not a JPEG
+    /// would otherwise be handed to a model as one, and the same helper already guards the
+    /// paperclip and the vision path — one answer to "is this a picture", not a third.
+    /// </summary>
+    private static (AwayPicture? Picture, string? Refused) PictureIn(SaidBody body)
+    {
+        if (string.IsNullOrWhiteSpace(body.PictureBase64))
+        {
+            return (null, null);
+        }
+
+        byte[] bytes;
+
+        try
+        {
+            bytes = Convert.FromBase64String(body.PictureBase64);
+        }
+        catch (FormatException)
+        {
+            return (null, "The picture was not valid base64.");
+        }
+
+        if (bytes.Length == 0)
+        {
+            return (null, "The picture was empty.");
+        }
+
+        if (bytes.Length > BiggestPicture)
+        {
+            return (null, $"That picture is {bytes.Length / (1024 * 1024)} MB. Send one under "
+                + $"{BiggestPicture / (1024 * 1024)} MB.");
+        }
+
+        if (Concierge.Shared.Attachments.AttachmentKind.ImageMediaType(bytes) is not { } kind)
+        {
+            return (null, "Those bytes are not a picture this can read.");
+        }
+
+        return (new AwayPicture(
+            string.IsNullOrWhiteSpace(body.PictureName) ? "picture" : body.PictureName, kind, bytes), null);
+    }
+
     /// <param name="At">When the device heard it. Its clock, not this one's.</param>
+    /// <param name="PictureBase64">What the device was looking at, when it has an eye.</param>
     public sealed record SaidBody(
         string? Text,
         string? Device,
@@ -71,7 +134,9 @@ public static class AwayEndpoints
         double? Longitude,
         string? Motion,
         int? HeartRate,
-        double? AmbientLux);
+        double? AmbientLux,
+        string? PictureBase64 = null,
+        string? PictureName = null);
 
     public sealed record AnswerBody(Guid Id, bool Allowed);
 }

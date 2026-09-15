@@ -347,6 +347,15 @@ public sealed class AwayClient
 }
 
 /// <summary>
+/// What a device was looking at.
+///
+/// The eye is whatever has a camera — a phone, a tablet — and the desk is what does the
+/// looking at it. A watch has none worth the name, which is exactly why this lives here
+/// rather than on the watch: one road in, whichever device found the thing.
+/// </summary>
+public sealed record Looked(string FileName, byte[] Bytes);
+
+/// <summary>
 /// What the watch knew when it heard something.
 ///
 /// Every field but the time is optional and stays null when the sensor did not answer. A
