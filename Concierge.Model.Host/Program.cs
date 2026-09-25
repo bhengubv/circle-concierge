@@ -99,7 +99,23 @@ internal static class Program
     {
         var services = new ServiceCollection();
         services.AddLogging();
-        services.AddConciergeAi();
+
+        // The prefix cache, switchable from outside for the length of one run.
+        //
+        // It is off by default and the reason is written at the call site: the native
+        // generate path faulted whenever a system turn was present, which is every real
+        // turn, and a bare host run by hand sends none — so it looked healthy every time
+        // anybody checked. The comment there ends "turn it back on when the native cache
+        // path is fixed, and re-run the three payloads before believing it."
+        //
+        // This is how those three get re-run without editing a default and forgetting to
+        // put it back. Nothing reads it in normal use, and the default it overrides is
+        // still the careful one.
+        services.AddConciergeAi(new CircleAiChatOptions
+        {
+            UsePrefixCache = string.Equals(
+                Environment.GetEnvironmentVariable("CONCIERGE_PREFIX_CACHE"), "1", StringComparison.Ordinal),
+        });
 
         var provider = services.BuildServiceProvider();
         return provider.GetRequiredService<CircleAiChatRuntime>();

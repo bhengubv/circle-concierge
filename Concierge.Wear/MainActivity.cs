@@ -61,6 +61,9 @@ public class MainActivity : Activity, ISensorEventListener
     /// </summary>
     private readonly Concierge.Away.AwayClient _desk = new();
 
+    /// <summary>What the watch does, where it can be checked.</summary>
+    private readonly Concierge.Away.WatchHands _hands;
+
     /// <summary>What is actually waiting, read from the desk rather than invented here.</summary>
     private IReadOnlyList<Concierge.Away.AwayWaiting> _waiting = [];
 
@@ -79,6 +82,8 @@ public class MainActivity : Activity, ISensorEventListener
     private string _lastHeard = string.Empty;
 
     private FrameLayout? _root;
+
+    public MainActivity() => _hands = new Concierge.Away.WatchHands(_desk);
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
@@ -163,67 +168,40 @@ public class MainActivity : Activity, ISensorEventListener
         }
     }
 
-    private async Task AnswerAsync(Guid id, bool allowed)
-    {
-        var landed = await _desk.AnswerAsync(id, allowed).ConfigureAwait(false);
-
-        // Said out loud when it did not land. A watch that reported "allowed" for a call
-        // that had already given up would be the approvals badge that always said two, on
-        // the one screen with room for a single sentence.
-        if (!landed)
-        {
-            RunOnUiThread(() =>
-            {
-                _lastHeard = "That one had already gone.";
-                Render();
-            });
-        }
-
-        await RefreshWaitingAsync().ConfigureAwait(false);
-    }
+    private Task AnswerAsync(Guid id, bool allowed)
+        => DrawAsync(_hands.AnsweredAsync(id, allowed));
 
     /// <summary>Send what was said, and put the answer on the face.</summary>
-    private async Task SendAsync(string said)
+    private Task SendAsync(string said)
+        => DrawAsync(_hands.SaidAsync(
+            said,
+            new Concierge.Away.Situation(DateTimeOffset.Now, Motion: Moving(), AmbientLux: Light())));
+
+    /// <summary>Deliver anything held, then read what is true now.</summary>
+    private Task RefreshWaitingAsync()
+        => DrawAsync(_hands.LookedAgainAsync());
+
+    /// <summary>
+    /// The only thing this file does with an answer: draw it.
+    ///
+    /// **Everything that decides what the words are moved out**, into `WatchHands`, for the
+    /// reason `WatchFace` already moved which screen shows: an Android `Activity` cannot be
+    /// rendered by a test, so five methods deciding what a person reads were beyond reach.
+    /// The recogniser is hardware. None of this was.
+    /// </summary>
+    private async Task DrawAsync(Task<Concierge.Away.WatchUpdate> work)
     {
-        var answer = await _desk
-            .SayAsync(said, new Concierge.Away.Situation(DateTimeOffset.Now, Motion: Moving(), AmbientLux: Light()))
-            .ConfigureAwait(false);
+        var update = await work.ConfigureAwait(false);
 
         RunOnUiThread(() =>
         {
-            // Whatever came back, in the words it came back in. The one thing this screen
-            // must never do is look the same whether it worked or not.
-            _lastHeard = answer.Reply ?? (answer.Understood ? answer.What ?? "Done." : "Nothing came back.");
-            Render();
-        });
-
-        await RefreshWaitingAsync().ConfigureAwait(false);
-    }
-
-    /// <summary>Ask the desk what is waiting, and draw it.</summary>
-    private async Task RefreshWaitingAsync()
-    {
-        // Anything said while there was nowhere to send it goes first. A wrist is out of
-        // range constantly, and the moment the face comes back on is the moment worth trying
-        // again — before anybody has to think about it.
-        var sent = await _desk.FlushAsync().ConfigureAwait(false);
-
-        if (sent > 0)
-        {
-            RunOnUiThread(() =>
+            if (update.Say is { Length: > 0 } say)
             {
-                _lastHeard = sent == 1 ? "Sent what was waiting." : $"Sent {sent} that were waiting.";
-                Render();
-            });
-        }
+                _lastHeard = say;
+            }
 
-        var waiting = await _desk.WaitingAsync().ConfigureAwait(false);
-        var changed = await _desk.LastChangeAsync().ConfigureAwait(false);
-
-        RunOnUiThread(() =>
-        {
-            _waiting = waiting;
-            _changed = changed;
+            _waiting = update.Waiting;
+            _changed = update.Changed;
             Render();
         });
     }
@@ -293,19 +271,7 @@ public class MainActivity : Activity, ISensorEventListener
         _ = UndoAsync();
     }
 
-    private async Task UndoAsync()
-    {
-        var now = await _desk.UndoAsync().ConfigureAwait(false);
-
-        RunOnUiThread(() =>
-        {
-            // Null means there was nothing behind it. Said, rather than leaving a face that
-            // looks exactly the same whether the change went back or did not.
-            _lastHeard = now is null ? "There was nothing to go back to." : now.What;
-            _changed = null;
-            Render();
-        });
-    }
+    private Task UndoAsync() => DrawAsync(_hands.TookItBackAsync());
 
     // ── Speaking ──────────────────────────────────────────────────────────
 

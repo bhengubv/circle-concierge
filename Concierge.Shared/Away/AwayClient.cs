@@ -226,10 +226,20 @@ public sealed class AwayClient
         _outbox.Keep(text, situation);
 
         var delivered = await FlushAsync(cancellationToken).ConfigureAwait(false);
+        var left = _outbox.Count();
 
-        return delivered == 0
-            ? new AwayReply(false, null, $"Kept. {_outbox.Count()} waiting to go.")
-            : new AwayReply(true, null, $"Sent {delivered}.");
+        // **"Sent 2" while one is still sitting on the wrist is the defect this whole
+        // repository exists to remove**, and it was in this method three hours after the
+        // method was written. Delivery stops at the first one that will not go, so some
+        // going and some not is the ordinary outcome of a network coming back patchily —
+        // not an edge case. A face reading "Sent 2." and nothing else is somebody believing
+        // their morning's work arrived.
+        return (delivered, left) switch
+        {
+            (0, _) => new AwayReply(false, null, $"Kept. {left} waiting to go."),
+            (_, 0) => new AwayReply(true, null, delivered == 1 ? "Sent." : $"Sent {delivered}."),
+            _ => new AwayReply(true, null, $"Sent {delivered}, {left} still waiting."),
+        };
     }
 
     /// <summary>
@@ -266,8 +276,12 @@ public sealed class AwayClient
     /// means this watch is not allowed and saying it again tomorrow will not help, so it is
     /// reached and not queued. Only genuinely not getting there is worth keeping for later.
     /// </summary>
-    private async Task<(bool Reached, AwayReply Reply)> TryOnceAsync(
+    private Task<(bool Reached, AwayReply Reply)> TryOnceAsync(
         string text, Situation situation, CancellationToken cancellationToken)
+        => TryOnceAsync(text, situation, null, cancellationToken);
+
+    private async Task<(bool Reached, AwayReply Reply)> TryOnceAsync(
+        string text, Situation situation, Looked? looked, CancellationToken cancellationToken)
     {
         // What was given comes back before anything is listened for.
         _where ??= _told;
@@ -291,6 +305,11 @@ public sealed class AwayClient
                     motion = situation.Motion,
                     heartRate = situation.HeartRate,
                     ambientLux = situation.AmbientLux,
+
+                    // Base64 here rather than raw bytes because the body is JSON, and paid
+                    // for only when there is actually a picture — which is almost never.
+                    pictureBase64 = looked is null ? null : Convert.ToBase64String(looked.Bytes),
+                    pictureName = looked?.FileName,
                 }),
             };
 
@@ -302,9 +321,22 @@ public sealed class AwayClient
             {
                 // The status is said in words rather than as a number. 401 on a wrist means
                 // "this watch is not allowed", which is a thing a person can act on.
-                return (true, new AwayReply(false, null, answered.StatusCode == HttpStatusCode.Unauthorized
-                    ? "This watch is not allowed yet."
-                    : $"Concierge could not answer ({(int)answered.StatusCode})."));
+                if (answered.StatusCode == HttpStatusCode.Unauthorized)
+                {
+                    return (true, new AwayReply(false, null, "This watch is not allowed yet."));
+                }
+
+                // **And when the desk said why, that is what goes on the face.**
+                //
+                // It refuses a picture in words — "Those bytes are not a picture this can
+                // read", "That picture is 9 MB. Send one under 4 MB" — and every one of them
+                // was being thrown away and replaced with "could not answer (400)". A number,
+                // on the one screen in this product with room for exactly one sentence, in
+                // place of the sentence that was already written for it.
+                var why = await Said(answered, cancellationToken).ConfigureAwait(false);
+
+                return (true, new AwayReply(false, null, why
+                    ?? $"Concierge could not answer ({(int)answered.StatusCode})."));
             }
 
             return (true, await answered.Content
@@ -319,6 +351,32 @@ public sealed class AwayClient
             _where = null;
             return (false, new AwayReply(false, null, "Concierge did not answer."));
         }
+    }
+
+    /// <summary>
+    /// Say something about what this device is looking at.
+    ///
+    /// **A picture is not queued.** Everything else said out of range is kept and delivered
+    /// later, and a photograph is the one thing where that is wrong: it is megabytes on a
+    /// device with a small disk and a paid-for connection, and "what is this?" answered forty
+    /// minutes after you walked away from the thing is not an answer anybody wanted. Tried
+    /// once, and honestly refused.
+    /// </summary>
+    /// <remarks>
+    /// **This method went missing between being written and being committed**, and the commit
+    /// claimed the client could send a picture. The plumbing underneath it was all there —
+    /// TryOnceAsync has taken a picture since that day — so everything compiled and the
+    /// endpoint was proven by hand with curl. There was simply no door, and no test drove the
+    /// client's picture path to notice.
+    /// </remarks>
+    public async Task<AwayReply> LookAsync(
+        string text, Situation situation, Looked looked, CancellationToken cancellationToken = default)
+    {
+        var went = await TryOnceAsync(text, situation, looked, cancellationToken).ConfigureAwait(false);
+
+        return went.Reached
+            ? went.Reply
+            : new AwayReply(false, null, "Concierge did not answer, and a picture is not kept for later.");
     }
 
     /// <summary>What changed last, or null when nothing has.</summary>
@@ -438,6 +496,29 @@ public sealed class AwayClient
         catch (Exception failure) when (failure is HttpRequestException or TaskCanceledException or JsonException)
         {
             return false;
+        }
+    }
+
+    /// <summary>
+    /// What the desk said about a refusal, when it said anything.
+    ///
+    /// Null rather than a guess when the body is not one of ours — a proxy's HTML error page
+    /// on a hotel network is not an explanation, and putting it on a watch face would be
+    /// worse than the status code it replaced.
+    /// </summary>
+    private static async Task<string?> Said(HttpResponseMessage answered, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var reply = await answered.Content
+                .ReadFromJsonAsync<AwayReply>(cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+
+            return string.IsNullOrWhiteSpace(reply?.Reply) ? null : reply.Reply;
+        }
+        catch (Exception failure) when (failure is JsonException or HttpRequestException or NotSupportedException)
+        {
+            return null;
         }
     }
 

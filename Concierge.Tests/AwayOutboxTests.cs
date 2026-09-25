@@ -52,8 +52,21 @@ public sealed class AwayOutboxTests : IDisposable
 
     private string Where => $"http://127.0.0.1:{_port}";
 
+    /// <summary>
+    /// Concierge is there for exactly <paramref name="only"/> requests and then gone.
+    ///
+    /// **A network does not come back all at once.** A lift door opens, two of five go, the
+    /// door shuts. Without a listener that can stop mid-queue there is no way to produce the
+    /// partial delivery this file is about — which is why the first version of that test
+    /// passed against the defect it was written to catch.
+    /// </summary>
+    private void ListenFor(int only)
+    {
+        Listen(only);
+    }
+
     /// <summary>Concierge is running again.</summary>
-    private void Listen()
+    private void Listen(int? only = null)
     {
         _stopping = new CancellationTokenSource();
         _listener = new HttpListener();
@@ -65,6 +78,8 @@ public sealed class AwayOutboxTests : IDisposable
 
         _ = Task.Run(async () =>
         {
+            var served = 0;
+
             while (!stopping.IsCancellationRequested)
             {
                 HttpListenerContext context;
@@ -77,6 +92,16 @@ public sealed class AwayOutboxTests : IDisposable
                 {
                     return;
                 }
+
+                if (only is { } limit && served >= limit)
+                {
+                    // Gone, mid-queue. Aborting rather than answering is what a lift door
+                    // closing looks like to the thing on the other side of it.
+                    context.Response.Abort();
+                    continue;
+                }
+
+                served++;
 
                 using (var body = new StreamReader(context.Request.InputStream, Encoding.UTF8))
                 {
@@ -266,6 +291,51 @@ public sealed class AwayOutboxTests : IDisposable
         Assert.False(answer.Understood);
         Assert.Equal(0, client.Waiting);
         Assert.Contains("not allowed", answer.Reply!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// **Some going and some not says so.**
+    ///
+    /// Delivery stops at the first one that will not go, so a network coming back patchily
+    /// leaves part of the queue behind — the ordinary outcome, not an edge case. This method
+    /// reported "Sent 2." and nothing else, with Understood true, which is somebody on a
+    /// wrist believing their morning's work arrived. Found by reading code three hours after
+    /// writing it, looking for exactly this shape.
+    /// </summary>
+    [Fact]
+    public async Task Some_going_and_some_not_says_both()
+    {
+        var client = Pointed();
+
+        await client.SayAsync("first", At("06:14"));
+        await client.SayAsync("second", At("06:15"));
+
+        Assert.Equal(2, client.Waiting);
+
+        // There for one request and then gone, mid-queue.
+        ListenFor(1);
+
+        var answer = await client.SayAsync("third", At("06:16"));
+
+        Assert.Equal(2, client.Waiting);
+        Assert.True(answer.Understood, answer.Reply);
+        Assert.Contains("still waiting", answer.Reply!, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>And when the queue empties, it says that and nothing about waiting.</summary>
+    [Fact]
+    public async Task But_an_empty_queue_says_only_that_it_went()
+    {
+        var client = Pointed();
+
+        await client.SayAsync("first", At("06:14"));
+
+        Listen();
+
+        var answer = await client.SayAsync("second", At("06:15"));
+
+        Assert.Equal(0, client.Waiting);
+        Assert.DoesNotContain("waiting", answer.Reply!, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>An entry that has gone is forgotten, so it is not said twice.</summary>

@@ -616,12 +616,22 @@ prompts. It is about the surface — which is the product.
       to draw on a 192dp face. That is the screen to build: the last change, plus
       undo.
 
-      It is not built because the correction has no way home. Answering on the
-      wrist needs approvals to ride the mesh, which is held behind packet-signature
+      **Built on 2026-09-15, and the constant is true.** What follows is what it
+      said while it was false, kept because the decision it records is the reason
+      the screen is this small.
+
+      It was not built because the correction had no way home. Answering on the
+      wrist needed approvals to ride the mesh, which is held behind packet-signature
       verification — an unauthenticated channel would let anyone on the café wifi
-      say "allowed". So a design screen today is a button that appears to work and
-      does not, and `WatchFace` already refuses to ship exactly that: its decisions
-      are held per session rather than persisted, for this same reason.
+      say "allowed". So a design screen then was a button that appears to work and
+      does not, and `WatchFace` already refuses to ship exactly that.
+
+      **The blocker was answered a different way rather than waited out**: the wrist
+      reaches the desk over the ordinary network, guarded by the key the web head
+      already had, and it answers approvals over it too. The screen is exactly what
+      the paragraph above specified — the last change, and undo. Not a canvas. The
+      test that read `Assert.False` went red the moment the constant changed, which
+      is what it was written to do.
 - [x] A model driving the canvas — the same edits as agent tools, so "make it feel
       like a school newsletter" reaches it. **Done, and it was the seam the whole
       product turns on rather than one more feature.**
@@ -1891,7 +1901,7 @@ edited.
 | A toggle on the handset (Developer options → Install via USB) | Running the device actions on the Redmi 12 |
 | A second device in the room | BLE or Wi-Fi Direct |
 | macOS, Android and iOS to run on | Confinement on those three — iOS forbids child processes at all, so that one is a fact rather than a gap |
-| Packet signing upstream in Aether | Approvals over the mesh. `Aether.Core` 1.0.1 has fields for a signature and a nonce and **no public API that writes or checks one** |
+| Packet signing upstream in Aether | Approvals over the *mesh*. `Aether.Core` 1.0.1 has fields for a signature and a nonce and **no public API that writes or checks one**. Note this no longer blocks the wrist: approvals reach it over the ordinary network, behind the web head's key |
 | Accounts and keys for seven music services | Pulling from them, exact matching, clean-or-explicit, whole discographies, downloads on a schedule |
 | A model that makes pictures | Image generation, and the generated half of "images, video and voiceover" |
 | A trained model, a Python stack and a GPU | AniGen, both lines. It is a research pipeline, not a feature |
@@ -1899,9 +1909,10 @@ edited.
 **Two things that are not blocked and are not scheduled**, said plainly rather
 than left in a list that implies they are next:
 
-- **What a watch shows instead of a canvas.** Decided and written down as
-  `WatchSurfaces.Design` with a test, so building it is a deliberate act. It needs
-  approvals to ride the mesh, which is the row above.
+- ~~**What a watch shows instead of a canvas.**~~ **Built.** It needed a way home
+  for the correction, and got one that is not the mesh. The last change and undo,
+  on the face, proven on the emulator: pressed No and the heading left the design
+  file on the desk.
 - **Podcasts and peer-to-peer** from Antra's list. Nothing blocks them; nobody has
   asked for them.
 
