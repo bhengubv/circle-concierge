@@ -1,0 +1,15 @@
+CircleMetroUI design tokens
+Source: https://github.com/bhengubv/CircleMetroUI
+Commit: 516c33c35af0d3d32ed515d15827f276f9e08c44
+File:   platforms/web/tokens.generated.css
+Licence: Apache-2.0 (LICENSE beside this file)
+
+Carried rather than fetched, for the reason three.js and mermaid are:
+a product that needs the internet to know what colour it is is not local-first.
+
+Generated upstream from tokens/circlemetro.tokens.json. Never edit here.
+CircleMetroTokensTests fails when this copy drifts from that source.
+
+Also carried: circle-icons.svg
+Source file: platforms/web/assets/circle-icons.svg (same commit)
+Generated upstream from platforms/web/components/icons.js.

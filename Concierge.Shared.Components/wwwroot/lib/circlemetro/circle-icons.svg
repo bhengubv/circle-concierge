@@ -1,0 +1,291 @@
+<!-- Generated from platforms/web/components/icons.js. Do not edit by hand. -->
+<svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+  <symbol id="cm-icon-accessibility" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 4a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"/>
+    <path d="M5 7h14"/>
+    <path d="M12 6v6"/>
+    <path d="m8 21 4-9 4 9"/>
+    <path d="m8 8-2 5"/>
+    <path d="m18 8 2 5"/>
+  </symbol>
+  <symbol id="cm-icon-airplane" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 14.5 21 6l-4 13-4-5-5 2 1-5-6 3Z"/>
+    <path d="m13 14 2 7"/>
+  </symbol>
+  <symbol id="cm-icon-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3 22 20H2L12 3Z"/>
+    <path d="M12 9v5"/>
+    <path d="M12 17h.01"/>
+  </symbol>
+  <symbol id="cm-icon-apps" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 4h6v6H4z"/>
+    <path d="M14 4h6v6h-6z"/>
+    <path d="M4 14h6v6H4z"/>
+    <path d="M14 14h6v6h-6z"/>
+  </symbol>
+  <symbol id="cm-icon-arrowDown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3v14"/>
+    <path d="m6 12 6 6 6-6"/>
+    <path d="M5 21h14"/>
+  </symbol>
+  <symbol id="cm-icon-arrowLeft" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M19 12H5"/>
+    <path d="m12 19-7-7 7-7"/>
+  </symbol>
+  <symbol id="cm-icon-arrowRight" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5 12h14"/>
+    <path d="m12 5 7 7-7 7"/>
+  </symbol>
+  <symbol id="cm-icon-arrowUp" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 21V7"/>
+    <path d="m6 12 6-6 6 6"/>
+    <path d="M5 3h14"/>
+  </symbol>
+  <symbol id="cm-icon-back" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m15 18-6-6 6-6"/>
+  </symbol>
+  <symbol id="cm-icon-battery" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 8h17v10H3z"/>
+    <path d="M21 11v4"/>
+    <path d="M6 11h8v4H6z"/>
+  </symbol>
+  <symbol id="cm-icon-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/>
+    <path d="M10 21h4"/>
+  </symbol>
+  <symbol id="cm-icon-calculator" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5 3h14v18H5z"/>
+    <path d="M8 6h8v3H8z"/>
+    <path d="M8 13h.01"/>
+    <path d="M12 13h.01"/>
+    <path d="M16 13h.01"/>
+    <path d="M8 17h.01"/>
+    <path d="M12 17h.01"/>
+    <path d="M16 17h.01"/>
+  </symbol>
+  <symbol id="cm-icon-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 5h16v16H4z"/>
+    <path d="M8 3v4"/>
+    <path d="M16 3v4"/>
+    <path d="M4 10h16"/>
+    <path d="M8 14h.01"/>
+    <path d="M12 14h.01"/>
+    <path d="M16 14h.01"/>
+    <path d="M8 18h.01"/>
+    <path d="M12 18h.01"/>
+  </symbol>
+  <symbol id="cm-icon-camera" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 7h4l2-3h6l2 3h4v13H3z"/>
+    <path d="M12 17a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/>
+  </symbol>
+  <symbol id="cm-icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m5 12 4 4L19 6"/>
+  </symbol>
+  <symbol id="cm-icon-chevronDown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m6 9 6 6 6-6"/>
+  </symbol>
+  <symbol id="cm-icon-chevronRight" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m9 18 6-6-6-6"/>
+  </symbol>
+  <symbol id="cm-icon-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 12a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"/>
+  </symbol>
+  <symbol id="cm-icon-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 12a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"/>
+    <path d="M12 7v5l3 2"/>
+  </symbol>
+  <symbol id="cm-icon-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m6 6 12 12"/>
+    <path d="m18 6-12 12"/>
+  </symbol>
+  <symbol id="cm-icon-cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7 18a4 4 0 1 1 .5-8A6 6 0 0 1 19 11a3.5 3.5 0 0 1-.5 7H7Z"/>
+  </symbol>
+  <symbol id="cm-icon-compass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 12a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"/>
+    <path d="m15.5 8.5-2 5-5 2 2-5 5-2Z"/>
+  </symbol>
+  <symbol id="cm-icon-contacts" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5 4h14v16H5z"/>
+    <path d="M9 10a3 3 0 1 0 6 0 3 3 0 0 0-6 0Z"/>
+    <path d="M8 17c1-3 7-3 8 0"/>
+  </symbol>
+  <symbol id="cm-icon-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M8 8h12v13H8z"/>
+    <path d="M16 8V4H4v13h4"/>
+  </symbol>
+  <symbol id="cm-icon-device" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6 2h12v20H6z"/>
+    <path d="M10 18h4"/>
+  </symbol>
+  <symbol id="cm-icon-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3v13"/>
+    <path d="m7 11 5 5 5-5"/>
+    <path d="M4 21h16"/>
+  </symbol>
+  <symbol id="cm-icon-edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m4 16-.8 4.8L8 20l11-11-4-4L4 16Z"/>
+    <path d="m13 6 4 4"/>
+  </symbol>
+  <symbol id="cm-icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/>
+    <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/>
+  </symbol>
+  <symbol id="cm-icon-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6 3h8l5 5v13H6z"/>
+    <path d="M14 3v6h5"/>
+    <path d="M9 14h6"/>
+    <path d="M9 17h6"/>
+  </symbol>
+  <symbol id="cm-icon-filter" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 5h16l-6 7v6l-4 2v-8z"/>
+  </symbol>
+  <symbol id="cm-icon-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 12a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"/>
+    <path d="M4 12h16"/>
+    <path d="M12 4a12 12 0 0 1 0 16"/>
+    <path d="M12 4a12 12 0 0 0 0 16"/>
+  </symbol>
+  <symbol id="cm-icon-heart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 8c0 5-8 11-8 11S4 13 4 8a4 4 0 0 1 8-1 4 4 0 0 1 8 1Z"/>
+  </symbol>
+  <symbol id="cm-icon-help" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 20a8 8 0 1 1 0-16 8 8 0 0 1 0 16Z"/>
+    <path d="M9.5 9a2.5 2.5 0 1 1 4.2 1.8c-1.1 1-1.7 1.2-1.7 2.7"/>
+    <path d="M12 16.5h.01"/>
+  </symbol>
+  <symbol id="cm-icon-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m3 11 9-8 9 8"/>
+    <path d="M5 10v10h14V10"/>
+    <path d="M9 20v-6h6v6"/>
+  </symbol>
+  <symbol id="cm-icon-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 4h16v16H4z"/>
+    <path d="M8.5 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"/>
+    <path d="m5 17 5-5 3 3 2-2 4 4"/>
+  </symbol>
+  <symbol id="cm-icon-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 12a8 8 0 1 1-16 0 8 8 0 0 1 16 0Z"/>
+    <path d="M12 11v5"/>
+    <path d="M12 8h.01"/>
+  </symbol>
+  <symbol id="cm-icon-location" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/>
+    <path d="M12 12a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z"/>
+  </symbol>
+  <symbol id="cm-icon-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5 11h14v10H5z"/>
+    <path d="M8 11V7a4 4 0 0 1 8 0v4"/>
+    <path d="M12 15v2"/>
+  </symbol>
+  <symbol id="cm-icon-menu" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 6h16"/>
+    <path d="M4 12h16"/>
+    <path d="M4 18h16"/>
+  </symbol>
+  <symbol id="cm-icon-message" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 4h16v13H9l-5 4z"/>
+    <path d="M8 9h8"/>
+    <path d="M8 13h5"/>
+  </symbol>
+  <symbol id="cm-icon-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z"/>
+    <path d="M5 11a7 7 0 0 0 14 0"/>
+    <path d="M12 18v4"/>
+    <path d="M9 22h6"/>
+  </symbol>
+  <symbol id="cm-icon-minus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5 12h14"/>
+  </symbol>
+  <symbol id="cm-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 14.2A8.5 8.5 0 0 1 9.8 4 8.5 8.5 0 1 0 20 14.2Z"/>
+  </symbol>
+  <symbol id="cm-icon-more" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M5 12h.01"/>
+    <path d="M12 12h.01"/>
+    <path d="M19 12h.01"/>
+  </symbol>
+  <symbol id="cm-icon-music" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M10 18V5l10-2v13"/>
+    <path d="M10 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/>
+    <path d="M20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"/>
+  </symbol>
+  <symbol id="cm-icon-notification" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/>
+    <path d="M10 21h4"/>
+  </symbol>
+  <symbol id="cm-icon-pause" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7 5h3v14H7z"/>
+    <path d="M14 5h3v14h-3z"/>
+  </symbol>
+  <symbol id="cm-icon-phone" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7 3h10v18H7z"/>
+    <path d="M10 18h4"/>
+  </symbol>
+  <symbol id="cm-icon-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m8 5 11 7-11 7z"/>
+  </symbol>
+  <symbol id="cm-icon-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 5v14"/>
+    <path d="M5 12h14"/>
+  </symbol>
+  <symbol id="cm-icon-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 7v5h-5"/>
+    <path d="M4 17v-5h5"/>
+    <path d="M5.5 9A7 7 0 0 1 18 6l2 2"/>
+    <path d="M6 16l2 2a7 7 0 0 0 12-3"/>
+  </symbol>
+  <symbol id="cm-icon-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 20l-4.5-4.5"/>
+    <path d="M17 10a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z"/>
+  </symbol>
+  <symbol id="cm-icon-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m3 11 18-8-8 18-2-8z"/>
+    <path d="m11 13 10-10"/>
+  </symbol>
+  <symbol id="cm-icon-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z"/>
+    <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-1.7 2.9-.2-.1a1.7 1.7 0 0 0-1.9.2 1.7 1.7 0 0 0-.7 1.6V22h-3.4v-.3a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.4l-.2.2-2.9-1.7.1-.3a1.7 1.7 0 0 0-.3-1.8 1.7 1.7 0 0 0-1.6-.6H4v-3.4h.3a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.4-1.9l-.2-.2 1.7-2.9.3.1a1.7 1.7 0 0 0 1.8-.3 1.7 1.7 0 0 0 .6-1.6V5h3.4v.3a1.7 1.7 0 0 0 1.1 1.5 1.7 1.7 0 0 0 1.9-.4l.2-.2 2.9 1.7-.1.3a1.7 1.7 0 0 0 .3 1.8 1.7 1.7 0 0 0 1.6.6h.3V14h-.3a1.7 1.7 0 0 0-1.5 1Z"/>
+  </symbol>
+  <symbol id="cm-icon-share" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 16V3"/>
+    <path d="m7 8 5-5 5 5"/>
+    <path d="M5 13v7h14v-7"/>
+  </symbol>
+  <symbol id="cm-icon-shield" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11Z"/>
+    <path d="m9 12 2 2 4-4"/>
+  </symbol>
+  <symbol id="cm-icon-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/>
+  </symbol>
+  <symbol id="cm-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Z"/>
+    <path d="M12 2v3"/>
+    <path d="M12 19v3"/>
+    <path d="m4.9 4.9 2.1 2.1"/>
+    <path d="m17 17 2.1 2.1"/>
+    <path d="M2 12h3"/>
+    <path d="M19 12h3"/>
+    <path d="m4.9 19.1 2.1-2.1"/>
+    <path d="m17 7 2.1-2.1"/>
+  </symbol>
+  <symbol id="cm-icon-wallet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 5h15a2 2 0 0 1 2 2v12H5a2 2 0 0 1-2-2V6a1 1 0 0 1 1-1Z"/>
+    <path d="M3 8h18"/>
+    <path d="M16 13h2"/>
+  </symbol>
+  <symbol id="cm-icon-wifi" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M3 9a14 14 0 0 1 18 0"/>
+    <path d="M6 12a9 9 0 0 1 12 0"/>
+    <path d="M9 15a4.5 4.5 0 0 1 6 0"/>
+    <path d="M12 19h.01"/>
+  </symbol>
+  <symbol id="cm-icon-wrench" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m14 7 3-3a6 6 0 0 0-8 8L4 17a2 2 0 0 0 3 3l5-5a6 6 0 0 0 8-8l-3 3-3-3Z"/>
+  </symbol>
+  <symbol id="cm-icon-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m6 6 12 12"/>
+    <path d="m18 6-12 12"/>
+  </symbol>
+</svg>

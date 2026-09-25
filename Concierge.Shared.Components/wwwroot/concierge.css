@@ -24,33 +24,74 @@
      4. Nothing is sized in fixed pixels that should respond to the window.
    ============================================================ */
 
+/* The design language every Circle app shares.
+ *
+ * Carried in `lib/circlemetro/`, generated upstream from
+ * `tokens/circlemetro.tokens.json` in CircleMetroUI, with its licence and provenance
+ * beside it — the rule three.js and mermaid already follow here, for the same reason:
+ * a product that needs the internet to know what colour it is is not local-first.
+ *
+ * `CircleMetroTokensTests` goes red when this copy drifts from that source. Without
+ * that, borrowing a design language means quietly forking one. */
+@import url("./lib/circlemetro/tokens.css");
+
 :root {
     /* ── Ground ────────────────────────────────────────────────────────
        Four steps of dark, close together. The distance between them is
        what separates a sidebar from a thread from an input — not borders,
-       and not shadows. */
-    --ground:  #141414;   /* the app itself */
-    --panel:   #191919;   /* sidebar, and anything sitting on the ground */
-    --raised:  #1F1F1F;   /* inputs, chips, the composer */
-    --sunken:  #101011;   /* quoted context, output, anything recessed */
+       and not shadows.
+
+       **Circle's own, not four values of ours that happened to look similar.**
+       The design language names a canvas, a surface and a raised surface; those
+       are the same three jobs. What it has no word for is `--sunken`, because
+       nothing else in Circle recesses anything — a quoted turn and a tool result
+       are Concierge's problem alone, so that one stays local and says so. */
+    --ground:  var(--cm-color-canvas);
+    --panel:   var(--cm-color-surface);
+    --raised:  var(--cm-color-surface-raised);
+
+    /* Local: no counterpart upstream, and the first thing looking at the running app
+       caught.
+
+       It used to be a step *below* the ground — #101011 under #141414 — which worked
+       while Concierge chose its own ground. Circle's dark canvas is true black, and
+       there is nothing below true black: recessed things came out pure black and
+       stopped reading as recessed at all.
+
+       So it sits between the canvas and the surface instead. On a dark theme that is
+       a hair above the ground and still clearly under a panel; on a light one it is a
+       hair below. Either way it is derived rather than picked, so it follows whatever
+       canvas the language hands us instead of assuming one. */
+    --sunken:  color-mix(in srgb, var(--cm-color-canvas) 55%, var(--cm-color-surface));
 
     /* A hairline. Most separation is still space. */
-    --rule:    #2A2A2B;
-    --rule-soft: #212122;
+    --rule:      var(--cm-color-outline);
+    --rule-soft: color-mix(in srgb, var(--cm-color-outline) 55%, var(--cm-color-canvas));
 
     /* ── Ink ───────────────────────────────────────────────────────────
-       Not pure white: #FFFFFF on #141414 vibrates. */
-    --ink:       #EDEDEC;
-    --ink-soft:  #A3A3A1;
-    --ink-faint: #6E6E6C;
+       Three weights, from the language's own text tokens. The note this
+       replaces read "not pure white: #FFFFFF on #141414 vibrates" — which was
+       true of our ground and is a judgement the design language now makes for
+       every Circle app, on whatever ground it chooses. One place to argue it. */
+    --ink:       var(--cm-color-text-primary);
+    --ink-soft:  var(--cm-color-text-secondary);
+    --ink-faint: var(--cm-color-text-disabled);
 
     /* ── The one accent ────────────────────────────────────────────────
-       Brand blue. It appears on the thing you press and nowhere else, so
-       wherever it is, that is the action. --accent-ink is the same hue
-       lifted for text, because #2196F3 on #141414 is under 4.5:1. */
-    --accent:      #2196F3;
-    --accent-ink:  #74BFF9;
-    --accent-wash: rgba(33, 150, 243, 0.14);
+       It appears on the thing you press and nowhere else, so wherever it is,
+       that is the action.
+
+       **Concierge and CircleMetroUI had already agreed on #2196F3 — separately,
+       by hand, in two files.** That agreement is exactly what survives until the
+       day somebody changes one of them, which is the whole argument for a token.
+
+       `--accent-ink` is the same hue lifted for text, because the accent itself
+       is under 4.5:1 on a dark ground. Upstream computes 216 contrast pairs every
+       build and fails on any that miss, so this is the language's answer rather
+       than ours. */
+    --accent:      var(--cm-color-accent);
+    --accent-ink:  var(--cm-brand-circle-blue);
+    --accent-wash: color-mix(in srgb, var(--cm-brand-circle-blue) 14%, transparent);
 
     /* ── Status ────────────────────────────────────────────────────────
        Three states the app genuinely has. These are for DOTS and for the
@@ -62,35 +103,49 @@
     --danger:  #F85149;
 
     /* ── Type ──────────────────────────────────────────────────────────
-       One sans for the interface, one mono for anything the machine wrote. */
-    --font: ui-sans-serif, -apple-system, "Segoe UI Variable Text", "Segoe UI",
-            system-ui, "Helvetica Neue", Arial, sans-serif;
+       The language's own face, with one mono kept back for anything the
+       machine wrote — Circle names no monospace, and a transcript of a tool
+       result set in the interface face is unreadable. Stated rather than
+       assumed. */
+    --font: var(--cm-font-family);
     --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
 
-    /* Fluid, so type grows with the window instead of the column merely
-       getting wider. Floors are phone-legible, ceilings are desktop. */
-    --t-xs: clamp(0.6875rem, 0.66rem + 0.10svmin, 0.75rem);
-    --t-sm: clamp(0.8125rem, 0.79rem + 0.11svmin, 0.875rem);
-    --t-md: clamp(0.9375rem, 0.90rem + 0.17svmin, 1.0625rem);
-    --t-lg: clamp(1.125rem, 1.06rem + 0.31svmin, 1.375rem);
-    --t-xl: clamp(1.5rem, 1.36rem + 0.63svmin, 2rem);
+    /* Circle's sizes, kept fluid.
+       The language names six fixed sizes; this workspace has always grown its
+       type with the window rather than letting the column merely get wider,
+       and a phone at 390px and a desktop at 2560px are both heads it ships on.
+       So each step runs between two of Circle's own values instead of between
+       numbers of ours: the floor and the ceiling are the language's, the
+       travel between them is this app's. */
+    --t-xs: clamp(var(--cm-type-size-caption), 0.70rem + 0.10svmin, var(--cm-type-size-label));
+    --t-sm: clamp(var(--cm-type-size-label),   0.82rem + 0.11svmin, var(--cm-type-size-body));
+    --t-md: clamp(var(--cm-type-size-body),    0.95rem + 0.17svmin, 1.0625rem);
+    --t-lg: clamp(1.125rem,                    1.06rem + 0.31svmin, var(--cm-type-size-title));
+    --t-xl: clamp(var(--cm-type-size-title),   1.55rem + 0.63svmin, var(--cm-type-size-headline));
 
-    /* Rhythm, fluid against the smaller viewport dimension. svmin rather
-       than vw: a wide-but-short window is the case that breaks, and vw
-       would grow the spacing exactly where there is no height for it. */
-    --s1: clamp(3px,  0.25rem + 0.05svmin, 5px);
-    --s2: clamp(6px,  0.45rem + 0.15svmin, 10px);
-    --s3: clamp(8px,  0.60rem + 0.25svmin, 14px);
-    --s4: clamp(11px, 0.75rem + 0.35svmin, 18px);
-    --s5: clamp(15px, 1.00rem + 0.55svmin, 28px);
-    --s6: clamp(19px, 1.30rem + 0.75svmin, 38px);
+    /* Rhythm, from Circle's four-pixel grid, kept fluid against the smaller
+       viewport dimension. svmin rather than vw: a wide-but-short window is the
+       case that breaks, and vw would grow the spacing exactly where there is
+       no height for it. The ceilings are the language's steps; the floors are
+       what stays legible on a 390px phone. */
+    --s1: clamp(3px,  0.25rem + 0.05svmin, var(--cm-space-1));
+    --s2: clamp(6px,  0.45rem + 0.15svmin, var(--cm-space-2));
+    --s3: clamp(8px,  0.60rem + 0.25svmin, var(--cm-space-3));
+    --s4: clamp(11px, 0.75rem + 0.35svmin, var(--cm-space-4));
+    --s5: clamp(15px, 1.00rem + 0.55svmin, var(--cm-space-6));
+    --s6: clamp(19px, 1.30rem + 0.75svmin, var(--cm-space-8));
     --s7: clamp(26px, 1.90rem + 1.20svmin, 56px);
 
-    --radius:    8px;
-    --radius-lg: 14px;
+    /* Circle's corners. `control` is what an input or a chip is; `tile` is what
+       a surface is. */
+    --radius:    var(--cm-radius-control);
+    --radius-lg: var(--cm-radius-tile);
+    --radius-pill: var(--cm-radius-pill);
 
-    /* The smallest thing anyone has to hit. */
-    --tap: 44px;
+    /* The smallest thing anyone has to hit — Circle's number, not ours. It is
+       48px there against the 44px this used, which is the larger claim and the
+       one a design language should win. */
+    --tap: var(--cm-target-min);
     /* One measure for running prose. */
     --measure: 72ch;
 }
