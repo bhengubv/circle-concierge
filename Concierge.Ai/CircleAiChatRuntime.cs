@@ -46,7 +46,7 @@ namespace Concierge.Ai;
 /// </list>
 /// </para>
 /// </remarks>
-public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime, IModelDownloadRequired, IVisionCapableRuntime, IAsyncDisposable
+public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime, IModelDownloadRequired, IChatRuntimeStatusEvents, IVisionCapableRuntime, IAsyncDisposable
 {
     private readonly ILogger<CircleAiChatRuntime> _logger;
     private readonly CircleAiChatOptions _options;
@@ -55,6 +55,7 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
     // thread by LoadAsync and read on the render thread through PendingDownload.
     private ModelSelection? _selected;
     private IChatGenerator? _generator;
+    private ModelDownloadProgress? _currentDownloadProgress;
     private bool _accepting;
     private bool _disposed;
 
@@ -77,6 +78,13 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
     private string _engineLabel = "CircleAI (pending)";
     private bool _isReady;
 
+    public event EventHandler? StatusChanged;
+
+    public ModelDownloadProgress? CurrentDownloadProgress
+    {
+        get { lock (_statusGate) { return _currentDownloadProgress; } }
+    }
+
     public CircleAiChatRuntime(ILogger<CircleAiChatRuntime> logger, CircleAiChatOptions options)
     {
         _logger = logger;
@@ -97,6 +105,9 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
     {
         get
         {
+            if (_options.AllowAutomaticDownload)
+                return null;
+
             ModelSelection? selection;
             lock (_statusGate)
             {
@@ -151,10 +162,17 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
             // right after it finished downloading it, and never comes up ready at all.
             var alreadyHere = IsAlreadyDownloaded(tier.ModelId, modelsDirectory);
 
+            if (tier.Quality == SelectionQuality.NothingFits)
+            {
+                SetStatus($"No Circle AI model fits this device's available resources. {tier.ModelId} is the smallest option; route this work to a more capable connected device.", ready: false);
+                _generatorReady.TrySetResult(null);
+                return;
+            }
+
             // A model that is not on disk is not fetched here. RequiresDownload plus the
             // measured byte count is what the person needs in order to decide, and starting a
             // multi-gigabyte transfer on their connection without asking is not ours to do.
-            if (tier.RequiresDownload && !alreadyHere && !_options.AllowAutomaticDownload)
+            if (tier.RequiresDownload && !alreadyHere)
             {
                 // Before asking anybody to wait an hour: is there a model on this device that
                 // works right now? Best fit is a judgement about quality, and quality is worth
@@ -170,20 +188,25 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
                     _selected = tier;
                 }
 
-                if (usable is null)
+                if (usable is not null)
                 {
-                    var gigabytes = tier.EstimatedBytes / 1024d / 1024d / 1024d;
-                    SetStatus(
-                        $"{tier.ModelId} needs a {gigabytes:0.#} GB download before it can run.",
-                        ready: false);
+                    _engineLabel = $"{usable.ModelId} (CircleAI)";
+                    SetStatus($"Loading {usable.ModelId} into memory (one-time)…", ready: false);
+                    Publish(CreateGenerator(await FetchAsync(usable.ModelId, null, cancellationToken).ConfigureAwait(false)));
+                    SetStatus($"Ready · {usable.ModelId}", ready: true);
+                    return;
+                }
+
+                if (_options.AllowAutomaticDownload)
+                {
+                    SetStatus($"Circle AI selected {tier.ModelId} for this device and is preparing it automatically ({tier.EstimatedBytes / 1024d / 1024d / 1024d:0.#} GB).", ready: false);
                     _generatorReady.TrySetResult(null);
                     return;
                 }
 
-                _engineLabel = $"{usable.ModelId} (CircleAI)";
-                SetStatus($"Loading {usable.ModelId} into memory (one-time)…", ready: false);
-                Publish(CreateGenerator(await FetchAsync(usable.ModelId, null, cancellationToken).ConfigureAwait(false)));
-                SetStatus($"Ready · {usable.ModelId}", ready: true);
+                var gigabytes = tier.EstimatedBytes / 1024d / 1024d / 1024d;
+                SetStatus($"{tier.ModelId} needs a {gigabytes:0.#} GB download before it can run.", ready: false);
+                _generatorReady.TrySetResult(null);
                 return;
             }
 
@@ -254,12 +277,25 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
         try
         {
             var gigabytes = selection.EstimatedBytes / 1024d / 1024d / 1024d;
-            SetStatus($"Downloading {selection.ModelId} ({gigabytes:0.#} GB)…", ready: false);
+            var hasUsableModel = IsReady;
+            var currentEngine = EngineLabel;
+            SetStatus(hasUsableModel
+                ? $"Preparing {selection.ModelId} ({gigabytes:0.#} GB). Continuing with {currentEngine} meanwhile…"
+                : $"Downloading {selection.ModelId} ({gigabytes:0.#} GB)…", ready: hasUsableModel);
 
-            var modelPath = await FetchAsync(selection.ModelId, progress, stopping.Token).ConfigureAwait(false);
+            var transferProgress = new InlineProgress<ModelDownloadProgress>(report =>
+            {
+                lock (_statusGate)
+                    _currentDownloadProgress = report;
+                progress?.Report(report);
+                StatusChanged?.Invoke(this, EventArgs.Empty);
+            });
+            var modelPath = await FetchAsync(selection.ModelId, transferProgress, stopping.Token).ConfigureAwait(false);
             stopping.Token.ThrowIfCancellationRequested();
 
-            SetStatus($"Loading {selection.ModelId} into memory (one-time)…", ready: false);
+            SetStatus(hasUsableModel
+                ? $"Switching to {selection.ModelId}. Continuing with {currentEngine} meanwhile…"
+                : $"Loading {selection.ModelId} into memory (one-time)…", ready: hasUsableModel);
             var generator = CreateGenerator(modelPath);
 
             if (!Publish(generator))
@@ -280,13 +316,17 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
         }
         catch (OperationCanceledException)
         {
-            SetStatus("Download stopped.", ready: false);
+            SetStatus(IsReady
+                ? $"Preparation paused. Continuing with {EngineLabel}."
+                : "Model preparation was interrupted; Circle AI will retry when the app starts again.", ready: IsReady);
             return false;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "CircleAI model download failed.");
-            SetStatus($"Engine offline: {ex.Message}", ready: false);
+            SetStatus(IsReady
+                ? $"Could not prepare {selection.ModelId}; continuing with {EngineLabel}. {ex.Message}"
+                : $"Circle AI could not prepare {selection.ModelId}: {ex.Message}. It will retry when the app starts again.", ready: IsReady);
             return false;
         }
         finally
@@ -294,7 +334,9 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
             lock (_statusGate)
             {
                 _accepting = false;
+                _currentDownloadProgress = null;
             }
+            StatusChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -673,6 +715,12 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
             _statusMessage = message;
             _isReady = ready;
         }
+        StatusChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private sealed class InlineProgress<T>(Action<T> report) : IProgress<T>
+    {
+        public void Report(T value) => report(value);
     }
 }
 

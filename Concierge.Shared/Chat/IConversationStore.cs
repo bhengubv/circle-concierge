@@ -8,6 +8,9 @@ public interface IConversationStore
 
     Task<Conversation> StartAsync(string ownerId, string? title = null, string? systemPrompt = null, CancellationToken cancellationToken = default);
 
+    /// <summary>Create a conversation with an ID already assigned by another client.</summary>
+    Task<Conversation> StartWithIdAsync(Guid id, string ownerId, string? title = null, string? systemPrompt = null, CancellationToken cancellationToken = default);
+
     Task<ChatMessageRow> AppendAsync(Guid conversationId, string role, string content, string? producedBy = null, CancellationToken cancellationToken = default);
 
     Task DeleteAsync(Guid conversationId, CancellationToken cancellationToken = default);
@@ -43,6 +46,9 @@ public interface IConversationStore
 
     /// <summary>The whole log for a conversation, in order. Empty when it does not exist.</summary>
     Task<IReadOnlyList<ConversationEvent>> ReadEventsAsync(Guid conversationId, CancellationToken cancellationToken = default);
+
+    /// <summary>Idempotently apply events received from another device.</summary>
+    Task SynchronizeEventsAsync(Guid conversationId, IReadOnlyList<ConversationEvent> events, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// The history to send a model, derived from the log: the system prompt, then every

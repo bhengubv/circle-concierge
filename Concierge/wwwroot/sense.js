@@ -103,38 +103,116 @@
     function hapticSuccess()  { vibrate([12, 60, 12]); }
     function hapticAttention(){ vibrate([30, 40, 30, 40, 30]); }
 
-    // ── Theme ──────────────────────────────────────────────────────────────
-    function applyTheme(mode) {
-        // mode: "light" | "dark" | "auto"
-        if (mode === 'auto') {
-            document.body.removeAttribute('data-theme');
-            localStorage.removeItem('cu-theme');
-        } else {
-            document.body.setAttribute('data-theme', mode);
-            localStorage.setItem('cu-theme', mode);
-        }
-    }
-    function loadTheme() {
-        const saved = localStorage.getItem('cu-theme');
-        if (saved === 'light' || saved === 'dark') {
-            document.body.setAttribute('data-theme', saved);
-        }
-    }
-    function getTheme() {
-        return localStorage.getItem('cu-theme') ?? 'auto';
+    // ── CircleMetro appearance ────────────────────────────────────────────
+    const THEME_KEY = 'cu-theme';
+    const SKIN_KEY = 'cu-skin';
+    const THEMES = ['light', 'dark', 'auto'];
+    const SKINS = ['circle', 'tide', 'berry'];
+    // CircleMetro is being rolled out to the Windows desktop head first.
+    // Other MAUI heads keep their current theme until their own design pass.
+    const WINDOWS_DESKTOP = Boolean(window.chrome && window.chrome.webview);
+    if (WINDOWS_DESKTOP) {
+        document.documentElement.setAttribute('data-cm-host', 'windows-desktop');
     }
 
-    // Initialise on DOM ready so the persisted theme renders without flash.
+    function readPreference(key, allowed, fallback) {
+        try {
+            const value = localStorage.getItem(key);
+            return allowed.includes(value) ? value : fallback;
+        } catch {
+            return fallback;
+        }
+    }
+
+    function getTheme() { return readPreference(THEME_KEY, THEMES, 'auto'); }
+    function getSkin() {
+        return readPreference(SKIN_KEY, SKINS,
+            SKINS.includes(document.documentElement.dataset.skin) ? document.documentElement.dataset.skin : 'circle');
+    }
+
+    function resolvedTheme(mode) {
+        return mode === 'auto'
+            ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+            : mode;
+    }
+
+    function paintAppearance(theme, skin) {
+        const root = document.documentElement;
+        root.setAttribute('data-theme', theme);
+        root.setAttribute('data-skin', skin);
+        if (document.body) {
+            // Keep body-scoped legacy styles in step; CircleMetro tokens live on :root.
+            document.body.setAttribute('data-theme', theme);
+            document.body.setAttribute('data-skin', skin);
+        }
+
+        const meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) {
+            const canvas = getComputedStyle(root).getPropertyValue('--cm-color-canvas').trim();
+            if (canvas) meta.setAttribute('content', canvas);
+        }
+    }
+
+    function applyAppearance(mode, skin) {
+        if (!WINDOWS_DESKTOP) return;
+        const theme = THEMES.includes(mode) ? mode : 'auto';
+        const nextSkin = SKINS.includes(skin) ? skin : 'circle';
+        try {
+            if (theme === 'auto') localStorage.removeItem(THEME_KEY);
+            else localStorage.setItem(THEME_KEY, theme);
+            localStorage.setItem(SKIN_KEY, nextSkin);
+        } catch { /* Theme still applies for this session when storage is unavailable. */ }
+        paintAppearance(resolvedTheme(theme), nextSkin);
+    }
+
+    function applyTheme(mode) {
+        if (!WINDOWS_DESKTOP) {
+            // Preserve the pre-existing MAUI behaviour on the heads not in this pass.
+            try {
+                if (mode === 'auto') {
+                    document.body?.removeAttribute('data-theme');
+                    localStorage.removeItem(THEME_KEY);
+                } else {
+                    document.body?.setAttribute('data-theme', mode);
+                    localStorage.setItem(THEME_KEY, mode);
+                }
+            } catch { /* Best effort when storage is unavailable. */ }
+            return;
+        }
+        applyAppearance(mode, getSkin());
+    }
+
+    function applySkin(skin) {
+        if (WINDOWS_DESKTOP) applyAppearance(getTheme(), skin);
+    }
+
+    function loadAppearance() {
+        if (!WINDOWS_DESKTOP) {
+            // Keep Android/iOS/Mac Catalyst's previous saved theme behavior.
+            const saved = readPreference(THEME_KEY, ['light', 'dark'], null);
+            if (saved && document.body) document.body.setAttribute('data-theme', saved);
+            return;
+        }
+        paintAppearance(resolvedTheme(getTheme()), getSkin());
+    }
+
+    // This file is loaded in the document head: set :root before its stylesheets
+    // arrive, then bring body-scoped legacy rules along once body exists.
+    loadAppearance();
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', loadTheme);
-    } else {
-        loadTheme();
+        document.addEventListener('DOMContentLoaded', loadAppearance, { once: true });
+    }
+    if (window.matchMedia) {
+        window.matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => {
+            if (getTheme() === 'auto') loadAppearance();
+        });
     }
 
     // Public surface.
     window.conciergeSense = {
         playTing, playWhoosh, playPop,
         hapticTapLight, hapticSuccess, hapticAttention,
-        applyTheme, getTheme,
+        applyTheme, getTheme, applySkin, getSkin, applyAppearance,
+        isWindowsDesktop: () => WINDOWS_DESKTOP,
     };
 })();

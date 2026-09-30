@@ -1,47 +1,5 @@
-<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<!--
-    Concierge app icon — Bell foreground.
-    Sized within the Android adaptive icon safe zone (66% of canvas).
--->
-<svg width="456" height="456" viewBox="0 0 456 456" xmlns="http://www.w3.org/2000/svg">
-    <defs>
-        <linearGradient id="bbody" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%"   stop-color="#FFD76B"/>
-            <stop offset="55%"  stop-color="#E8A93A"/>
-            <stop offset="100%" stop-color="#B97A1A"/>
-        </linearGradient>
-        <linearGradient id="bbase" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%"   stop-color="#3A3A44"/>
-            <stop offset="100%" stop-color="#1D1D24"/>
-        </linearGradient>
-        <radialGradient id="bsheen" cx="38%" cy="35%" r="35%">
-            <stop offset="0%"   stop-color="#FFF8DC" stop-opacity="0.9"/>
-            <stop offset="100%" stop-color="#FFF8DC" stop-opacity="0"/>
-        </radialGradient>
-    </defs>
-
-    <!-- Soft shadow under base. -->
-    <ellipse cx="228" cy="392" rx="140" ry="12" fill="#000" opacity="0.16"/>
-
-    <!-- Base plate. -->
-    <ellipse cx="228" cy="385" rx="138" ry="20" fill="url(#bbase)"/>
-    <rect    x="90" y="352" width="276" height="34" rx="7" fill="url(#bbase)"/>
-
-    <!-- Dome. -->
-    <path d="M90 352 Q90 152 228 142 Q366 152 366 352 Z" fill="url(#bbody)"/>
-    <ellipse cx="178" cy="232" rx="52" ry="74" fill="url(#bsheen)"/>
-
-    <!-- Handle. -->
-    <rect    x="211" y="100" width="34" height="56" rx="7" fill="url(#bbody)"/>
-    <ellipse cx="228" cy="98" rx="28" ry="12" fill="#FFD76B"/>
-    <ellipse cx="228" cy="95" rx="22" ry="6"  fill="#FFF8DC" opacity="0.85"/>
-
-    <!-- Face. -->
-    <ellipse cx="190" cy="270" rx="15" ry="19" fill="#2C3E50"/>
-    <ellipse cx="195" cy="263" rx="5"  ry="6"  fill="#FFF8DC"/>
-    <ellipse cx="266" cy="270" rx="15" ry="19" fill="#2C3E50"/>
-    <ellipse cx="271" cy="263" rx="5"  ry="6"  fill="#FFF8DC"/>
-    <path    d="M196 316 Q228 336 260 316" stroke="#2C3E50" stroke-width="8" fill="none" stroke-linecap="round"/>
-    <circle  cx="164" cy="306" r="11" fill="#FF8A8A" opacity="0.55"/>
-    <circle  cx="292" cy="306" r="11" fill="#FF8A8A" opacity="0.55"/>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Circle ring mark, held inside the Android adaptive-icon safe area. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="456" height="456" viewBox="0 0 456 456">
+  <circle cx="228" cy="228" r="116" fill="none" stroke="#B7E8FF" stroke-width="17"/>
 </svg>

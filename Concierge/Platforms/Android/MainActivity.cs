@@ -6,7 +6,7 @@ using AndroidX.Core.View;
 
 namespace Concierge;
 
-[Activity(Theme = "@style/Maui.SplashTheme", MainLauncher = true, ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density)]
+[Activity(Theme = "@style/Maui.SplashTheme", MainLauncher = true, WindowSoftInputMode = SoftInput.AdjustResize, ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.UiMode | ConfigChanges.ScreenLayout | ConfigChanges.SmallestScreenSize | ConfigChanges.Density)]
 public class MainActivity : MauiAppCompatActivity
 {
     /// <summary>
@@ -57,8 +57,14 @@ public class MainActivity : MauiAppCompatActivity
 
             view.SetPadding(bars.Left, bars.Top, bars.Right, bars.Bottom);
 
-            // Returned unconsumed: the keyboard inset is handled separately by
-            // the WebView, and swallowing everything here would break it.
+            // MAUI's WebView did not shrink its viewport when the Android IME
+            // opened on the Android 16 handset: the keyboard covered the composer
+            // and send button. In edge-to-edge mode, apply the larger bottom inset
+            // here so the WebView lays itself out above the keyboard. Keep the
+            // insets unconsumed so descendants can still react to them.
+            var ime = insets.GetInsets(WindowInsetsCompat.Type.Ime());
+            view.SetPadding(bars.Left, bars.Top, bars.Right, Math.Max(bars.Bottom, ime.Bottom));
+
             return insets;
         }
     }

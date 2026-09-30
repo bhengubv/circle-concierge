@@ -14,6 +14,8 @@ public static class AwayEndpoints
 {
     public static IEndpointRouteBuilder MapConciergeAway(this IEndpointRouteBuilder app)
     {
+        app.MapGet("/api/away/capabilities", (IAway away) => Results.Json(away.Capabilities));
+
         app.MapPost("/api/away/say", async (
             SaidBody body,
             IAway away,
@@ -44,10 +46,18 @@ public static class AwayEndpoints
                 return Results.BadRequest(new AwayAnswer(false, string.Empty, refused));
             }
 
-            return Results.Json(await away
-                .SayAsync(new AwaySaid(body.Text, context, picture), cancellationToken)
-                .ConfigureAwait(false));
+            var answer = await away
+                .SayAsync(new AwaySaid(body.Text, context, picture, body.ConversationId, body.ConversationEvents), cancellationToken)
+                .ConfigureAwait(false);
+            if (answer.ConversationId is { } conversationId)
+                answer = answer with { Events = await away.ReadConversationEventsAsync(conversationId, cancellationToken).ConfigureAwait(false) };
+            return Results.Json(answer);
         });
+
+        app.MapGet("/api/away/conversations/{conversationId:guid}/events", async (
+            Guid conversationId, int? afterSeq, IAway away, CancellationToken cancellationToken) =>
+            Results.Json((await away.ReadConversationEventsAsync(conversationId, cancellationToken).ConfigureAwait(false))
+                .Where(entry => entry.Seq > (afterSeq ?? -1)));
 
         app.MapGet("/api/away/waiting", async (IAway away, CancellationToken cancellationToken) =>
             Results.Json(await away.WaitingAsync(cancellationToken).ConfigureAwait(false)));
@@ -155,7 +165,9 @@ public static class AwayEndpoints
         int? HeartRate,
         double? AmbientLux,
         string? PictureBase64 = null,
-        string? PictureName = null);
+        string? PictureName = null,
+        Guid? ConversationId = null,
+        IReadOnlyList<Concierge.Shared.Chat.ConversationEvent>? ConversationEvents = null);
 
     public sealed record AnswerBody(Guid Id, bool Allowed);
 }

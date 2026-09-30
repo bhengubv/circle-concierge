@@ -72,6 +72,12 @@ public static class MauiProgram
 #endif
 
 		var builder = MauiApp.CreateBuilder();
+
+#if WINDOWS && DEBUG
+		// Development-only unauthenticated LAN bridge for proving phone-to-desktop
+		// hand-off. Release needs paired TLS before this can be enabled there.
+		builder.Services.AddSingleton<DesktopAwayHost>();
+#endif
 		builder
 			.UseMauiApp<App>()
 			.ConfigureFonts(fonts =>
@@ -126,7 +132,10 @@ public static class MauiProgram
 			// uncatchable — so that is what has been moved out. Answering now
 			// costs a process boundary and a JSON line per token; a fault costs
 			// the sentence rather than the application.
-			.AddConciergeAi()
+			// Model choice is deterministic and resource-driven inside CircleAI's
+			// DeviceAwareModelSelector. The client automatically fetches and loads
+			// that choice; it never asks a chat model or the person to pick one.
+			.AddConciergeAi(new CircleAiChatOptions { AllowAutomaticDownload = true })
 			.AddConciergeAiIsolated()
 			.AddConciergeMesh()
 			.AddConciergeMedia()
@@ -166,6 +175,14 @@ public static class MauiProgram
 		// A device that is not here can reach the making. Registering it opens nothing;
 		// only a head with an endpoint can actually be reached.
 		builder.Services.AddConciergeAway();
+		builder.Services.AddSingleton<Concierge.Away.AwayClient>(_ =>
+		{
+			var client = new Concierge.Away.AwayClient { DeviceLabel = "phone" };
+#if ANDROID
+			client.DiscoveryLease = Concierge.Platforms.Android.WifiMulticastLease.Acquire;
+#endif
+			return client;
+		});
 		builder.Services.AddConciergeState(Path.Combine(FileSystem.AppDataDirectory, "state"));
 
 		// Work that runs end to end, keeping its place on disk so an interrupted run

@@ -154,6 +154,16 @@ public sealed class AwayWireTests : IDisposable
         Assert.Contains("\"device\":\"watch\"", sent, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public async Task And_continues_the_phone_conversation_id_on_desktop()
+    {
+        var id = Guid.NewGuid();
+
+        await Pointed().SayInConversationAsync("continue this work", new Situation(DateTimeOffset.UtcNow), id);
+
+        Assert.Contains($"\"conversationId\":\"{id:D}\"", Assert.Single(_bodies), StringComparison.OrdinalIgnoreCase);
+    }
+
     /// <summary>
     /// **And says nothing about what it does not know.** With no location, the fields are
     /// null rather than zero — a location of 0,0 is worse than no location, because whatever

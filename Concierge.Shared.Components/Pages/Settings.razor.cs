@@ -13,8 +13,8 @@ namespace Concierge.Shared.Components.Pages;
 public partial class Settings
 {
 
-    private const string ProviderPreferenceStorageKey = "concierge-provider-id";
-    private string? _selectedProviderId;
+    private string _appearanceTheme = "auto";
+    private string _appearanceSkin = "circle";
     private IReadOnlyList<SafetyAuditEntry> _auditEntries = Array.Empty<SafetyAuditEntry>();
 
     /// <summary>
@@ -77,20 +77,23 @@ public partial class Settings
         if (!firstRender) return;
         try
         {
-            _selectedProviderId = await JS.InvokeAsync<string?>("localStorage.getItem", ProviderPreferenceStorageKey);
+            _appearanceTheme = await JS.InvokeAsync<string>("conciergeSense.getTheme");
+            _appearanceSkin = await JS.InvokeAsync<string>("conciergeSense.getSkin");
         }
         catch { /* localStorage unavailable during prerender or on platforms that block it. */ }
         await RefreshAuditAsync();
     }
 
-    private async Task SelectProviderAsync(string providerId)
+    private async Task SetAppearanceThemeAsync(string theme)
     {
-        _selectedProviderId = providerId;
-        try
-        {
-            await JS.InvokeVoidAsync("localStorage.setItem", ProviderPreferenceStorageKey, providerId);
-        }
-        catch { /* best-effort */ }
-        StateHasChanged();
+        _appearanceTheme = theme;
+        await JS.InvokeVoidAsync("conciergeSense.applyTheme", theme);
     }
+
+    private async Task SetAppearanceSkinAsync(string skin)
+    {
+        _appearanceSkin = skin;
+        await JS.InvokeVoidAsync("conciergeSense.applySkin", skin);
+    }
+
 }

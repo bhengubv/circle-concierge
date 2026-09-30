@@ -1,0 +1,38 @@
+<section class="welcome-panel" aria-labelledby="welcome-title">
+    <div class="welcome-kicker">
+        <span class="welcome-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" /></svg>
+        </span>
+        Circle AI
+    </div>
+    <h2 id="welcome-title">A little help<br />goes a long way.</h2>
+    <p class="welcome-intro">Start with what you need. Circle AI is here across your day.</p>
+    <div class="welcome-tiles">
+        <button class="welcome-tile welcome-tile-primary" type="button"
+                @onclick="@(() => OnPromptSelected.InvokeAsync("Help me think through something"))">
+            <span class="welcome-tile-icon" aria-hidden="true">✳</span>
+            <span class="welcome-tile-title">Ask Circle AI</span>
+            <span class="welcome-tile-copy">Talk it through, simply.</span>
+            <span class="welcome-tile-arrow" aria-hidden="true">↗</span>
+        </button>
+        <button class="welcome-tile welcome-tile-image" type="button"
+                @onclick="@(() => OnPromptSelected.InvokeAsync("Create an image of "))">
+            <span class="welcome-tile-icon" aria-hidden="true">▧</span>
+            <span class="welcome-tile-title">Make a picture</span>
+            <span class="welcome-tile-copy">Bring an idea to life.</span>
+            <span class="welcome-tile-arrow" aria-hidden="true">↗</span>
+        </button>
+        <button class="welcome-tile welcome-tile-plan" type="button"
+                @onclick="@(() => OnPromptSelected.InvokeAsync("Help me make a simple plan for "))">
+            <span class="welcome-tile-icon" aria-hidden="true">☷</span>
+            <span class="welcome-tile-title">Find a next step</span>
+            <span class="welcome-tile-copy">Make the day feel lighter.</span>
+            <span class="welcome-tile-arrow" aria-hidden="true">↗</span>
+        </button>
+    </div>
+    <p class="welcome-footnote">Choose a tile to start a draft. Nothing is sent until you say so.</p>
+</section>
+
+@code {
+    [Parameter] public EventCallback<string> OnPromptSelected { get; set; }
+}

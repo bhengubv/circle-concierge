@@ -12,12 +12,19 @@
     <base href="/" />
     <!-- Pre-paint the dark canvas BEFORE Blazor mounts so first paint isn't
          the white flash-of-unrendered that we caught on the Redmi. -->
+    <script src="sense.js"></script>
     <style>html, body { background: #0b0d12; color: #f3f4f7; margin: 0; }
+           html[data-cm-host="windows-desktop"], html[data-cm-host="windows-desktop"] body {
+               background: var(--cm-color-canvas, #0b0d12); color: var(--cm-color-text-primary, #f3f4f7);
+           }
            #app:empty::before { content: "" }
            .cu-splash { display:flex; align-items:center; justify-content:center;
                         position:fixed; inset:0; background:#0b0d12; color:#f3f4f7;
                         font-family:-apple-system,BlinkMacSystemFont,Inter,Segoe UI,Roboto,sans-serif;
                         letter-spacing:-0.02em; font-weight:600; font-size:1.25rem; }</style>
+    <style>html[data-cm-host="windows-desktop"] .cu-splash {
+               background: var(--cm-color-canvas, #0b0d12); color: var(--cm-color-text-primary, #f3f4f7);
+           }</style>
     <link rel="stylesheet" href="_content/MudBlazor/MudBlazor.min.css" />
     <link rel="stylesheet" href="app.css" />
     <link rel="stylesheet" href="_content/Concierge.Shared.Components/concierge.css" />
@@ -45,7 +52,7 @@
          "conciergeVoice was undefined" - the module that wraps MediaRecorder had simply
          never been on the page. Voice is meant to be how this product is used. -->
     <script src="_content/Concierge.Shared.Components/concierge-voice.js"></script>
-    <script src="sense.js"></script>
+    <script src="_content/Concierge.Shared.Components/concierge-thread.js"></script>
     <script src="camera.js"></script>
 
 </body>

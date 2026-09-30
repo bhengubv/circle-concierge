@@ -19,6 +19,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using System.Text;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 using Concierge.Shared.Chat;
 using Concierge.Shared.Tools;
 
@@ -76,6 +77,9 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     /// <summary>One turn, shared with every head that is not a screen.</summary>
     [Inject] protected Concierge.Shared.Chat.TurnRunner Turn { get; set; } = default!;
 
+    protected Concierge.Away.AwayClient? DesktopClient
+        => Services.GetService(typeof(Concierge.Away.AwayClient)) as Concierge.Away.AwayClient;
+
 
     [Parameter] public Guid? ConversationId { get; set; }
 
@@ -89,6 +93,15 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     protected List<Conversation> _conversations = new();
     protected Conversation? _active;
     protected string _composerText = string.Empty;
+
+    protected void UseStarterPrompt(string prompt)
+    {
+        var hadDraft = !string.IsNullOrWhiteSpace(_composerText);
+        _composerText = hadDraft ? _composerText.TrimEnd() + Environment.NewLine + prompt : prompt;
+        _composerHint = hadDraft
+            ? "Added below your draft. Edit it before sending."
+            : "Added to the composer. Edit it before sending.";
+    }
     protected bool _streaming;
     protected string _streamingBuffer = string.Empty;
     protected CancellationTokenSource? _streamCts;
@@ -209,9 +222,13 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     protected string? _downloadDetail;
     protected CancellationTokenSource? _downloadCancellation;
     protected bool _gone;
+    private IChatRuntimeStatusEvents? _runtimeStatusEvents;
 
     protected PendingModelDownload? PendingModel
         => (_activeRuntime as IModelDownloadRequired)?.PendingDownload;
+
+    protected ModelDownloadProgress? CurrentModelDownload
+        => (_activeRuntime as IChatRuntimeStatusEvents)?.CurrentDownloadProgress;
 
     protected async Task AcceptDownload()
     {
@@ -284,10 +301,14 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     public void Dispose()
     {
         _gone = true;
+        _conversationSyncStop.Cancel();
+        _conversationSyncStop.Dispose();
         Nav.LocationChanged -= OnLocationChanged;
         StopWatchingApprovals();
         Runs.Changed -= OnRunsChanged;
         CancelDownload();
+        if (_runtimeStatusEvents is not null)
+            _runtimeStatusEvents.StatusChanged -= OnRuntimeStatusChanged;
 
         // A run in flight is deliberately NOT cancelled here any more.
         //
@@ -310,6 +331,12 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         }
     }
 
+    private void OnRuntimeStatusChanged(object? sender, EventArgs e)
+    {
+        if (!_gone)
+            _ = InvokeAsync(StateHasChanged);
+    }
+
     protected bool _showSkillPicker;
     protected string _skillFilter = string.Empty;
 
@@ -317,6 +344,14 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     // is no longer there. The field still doubles as the status line for
     // attachments and transcription; only the resting text changed.
     protected string _composerHint = "Shift + Enter for a new line";
+    // Windows Concierge lets CircleAI choose the on-device model. The shared
+    // web and handheld heads retain their explicit runtime preference.
+    protected bool _windowsDesktopUsesCircleAi;
+    protected bool _desktopAvailable;
+    protected bool _desktopCanAnswer;
+    protected bool _searchingDesktop;
+    protected string? _desktopSearchMessage;
+    private readonly CancellationTokenSource _conversationSyncStop = new();
 
     // _active is deliberately not required. Sending from the empty screen
     // creates the conversation; requiring one to exist first is what forced a
@@ -329,10 +364,39 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
             ? !string.IsNullOrWhiteSpace(_composerText)
             : !_streaming
               && (!string.IsNullOrWhiteSpace(_composerText) || _pendingAttachments.Count > 0)
-              && (_activeRuntime?.IsReady ?? false);
+              && (((_activeRuntime?.IsReady ?? false)
+                    && (!_desktopAvailable || !ShouldUseDesktopCapacity(_composerText.Trim())))
+                  || (_desktopAvailable && _desktopCanAnswer && _pendingAttachments.Count == 0));
+
+    protected string? RuntimeReadinessMessage
+        => _designOpen
+            ? null
+            : _desktopAvailable && ShouldUseDesktopCapacity(_composerText.Trim()) && !_desktopCanAnswer
+                ? "This request needs more capacity. Desktop is connected, but Circle AI is not ready there yet."
+            : _desktopAvailable && _desktopCanAnswer && _activeRuntime?.IsReady != true
+                ? "Circle AI can answer on your Desktop. This message will run there."
+                : _activeRuntime is null
+                ? "Circle AI is not available on this device yet."
+                : !_activeRuntime.IsReady
+                    ? _activeRuntime.StatusMessage
+                    : null;
 
     protected override async Task OnInitializedAsync()
     {
+        try
+        {
+            _windowsDesktopUsesCircleAi = await JS.InvokeAsync<bool>("conciergeSense.isWindowsDesktop");
+        }
+        catch
+        {
+            // Non-Windows hosts and prerendering do not expose the MAUI marker.
+        }
+        if (!_windowsDesktopUsesCircleAi && DesktopClient is not null)
+        {
+            _ = FindDesktopAsync(showResult: false);
+        }
+        _ = SyncConversationsAsync(_conversationSyncStop.Token);
+
         _orderedRuntimes = Runtimes
             .GroupBy(r => r.Id, StringComparer.OrdinalIgnoreCase)
             .Select(g => g.First())
@@ -344,7 +408,17 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
             .ThenBy(r => r.EngineLabel, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        _activeRuntime = await ChooseActiveRuntimeAsync();
+        _activeRuntime = _windowsDesktopUsesCircleAi
+            ? _orderedRuntimes.FirstOrDefault(r => string.Equals(r.Id, DefaultProviderId, StringComparison.OrdinalIgnoreCase))
+            : await ChooseActiveRuntimeAsync();
+        _runtimeStatusEvents = _activeRuntime as IChatRuntimeStatusEvents;
+        if (_runtimeStatusEvents is not null)
+            _runtimeStatusEvents.StatusChanged += OnRuntimeStatusChanged;
+
+        // Windows Concierge keeps CircleAI in an isolated child process. Resolve its
+        // initial state before rendering so an unavailable model is surfaced accurately.
+        if (_activeRuntime is IInitializableChatRuntime initializableRuntime)
+            await initializableRuntime.InitializeAsync();
 
         // What you had, before anything is drawn.
         //
@@ -400,6 +474,37 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         Nav.LocationChanged += OnLocationChanged;
 
         await ConsumeHomeHandoffAsync();
+    }
+
+    protected async Task FindDesktopAsync(bool showResult = true)
+    {
+        if (DesktopClient is null || _searchingDesktop)
+            return;
+
+        _searchingDesktop = true;
+        _desktopSearchMessage = null;
+        try
+        {
+            _desktopAvailable = await DesktopClient.FindAsync(TimeSpan.FromSeconds(4));
+            _desktopCanAnswer = _desktopAvailable && await DesktopClient.CanAnswerAsync();
+            if (showResult && !_desktopAvailable)
+                _desktopSearchMessage = "No Desktop found. Keep both devices on the same Wi-Fi, with Concierge open on Desktop.";
+            if (!_gone)
+                await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            _desktopAvailable = false;
+            _desktopCanAnswer = false;
+            if (showResult)
+                _desktopSearchMessage = "Desktop discovery is unavailable on this network.";
+        }
+        finally
+        {
+            _searchingDesktop = false;
+            if (!_gone)
+                await InvokeAsync(StateHasChanged);
+        }
     }
 
     protected void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
@@ -497,6 +602,40 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         }
     }
 
+    /// <summary>
+    /// Once the conversation is on screen, put the person at the end of it.
+    ///
+    /// After the render rather than during it: the thread has no height until it has been
+    /// laid out, and scrolling an element of height zero to its bottom is scrolling it to
+    /// the top. Which is exactly what it looked like this workspace was doing, except it was
+    /// doing nothing at all.
+    ///
+    /// Opening a conversation is a return, not a journey — so it jumps rather than animating.
+    /// </summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await base.OnAfterRenderAsync(firstRender);
+
+        if (!_openedAtTheEnd && _active is not null && !_gone)
+        {
+            _openedAtTheEnd = true;
+
+            try
+            {
+                await JS.InvokeVoidAsync("conciergeThread.toEnd", ".ws-thread");
+            }
+            catch (Exception failure) when (failure is JSException or InvalidOperationException
+                                            or TaskCanceledException or ObjectDisposedException)
+            {
+                // Prerender, or a component already gone. Landing at the top is a worse
+                // morning than it used to be, not a broken one.
+            }
+        }
+    }
+
+    /// <summary>Whether this conversation has been put at its end yet.</summary>
+    private bool _openedAtTheEnd;
+
     protected override async Task OnParametersSetAsync()
     {
         if (ConversationId is { } id)
@@ -507,6 +646,9 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
             _active = await Store.GetAsync(id);
             _systemPromptDraft = _active?.SystemPrompt ?? string.Empty;
+
+            // A different conversation is a different place to be returned to.
+            _openedAtTheEnd = false;
 
             // A half-typed question survives the app closing. Only restored
             // into an empty composer: whatever is being typed now wins over
@@ -582,58 +724,23 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         _ = RememberSessionAsync();
     }
 
-    // The product's local-first identity: CircleAI is the default LLM.
-    // Cloud providers exist as escape hatches when the user explicitly
-    // picks one in Settings or here. Saved choice lives in localStorage
-    // under this key so the page remembers across launches.
+    // The product's local-first identity: CircleAI is the default LLM. Circle AI
+    // chooses the runtime; the client must not preserve an obsolete manual pick.
     protected const string DefaultProviderId = "circleai";
-    protected const string ProviderPreferenceStorageKey = "concierge-provider-id";
 
-    protected async Task<IChatRuntime?> ChooseActiveRuntimeAsync()
+    protected Task<IChatRuntime?> ChooseActiveRuntimeAsync()
     {
-        // 1. User's saved preference (set in Settings or via the picker
-        //    on this page). Only honor it if the runtime is actually
-        //    registered — otherwise the dropdown shows a phantom option.
-        string? savedId = null;
-        try
-        {
-            savedId = await JS.InvokeAsync<string?>("localStorage.getItem", ProviderPreferenceStorageKey);
-        }
-        catch { /* localStorage may not be available during prerender. */ }
-
-        if (!string.IsNullOrWhiteSpace(savedId))
-        {
-            var saved = _orderedRuntimes.FirstOrDefault(r => string.Equals(r.Id, savedId, StringComparison.OrdinalIgnoreCase));
-            if (saved is not null) return saved;
-        }
-
-        // 2. CircleAI — the philosophical default. We don't gate on IsReady
+        // CircleAI — the philosophical default. We don't gate on IsReady
         //    here because CircleAI loads asynchronously in the background;
         //    showing it as the picked engine (with its own "loading…" status)
         //    is more honest than silently demoting to a cloud provider.
         var circleai = _orderedRuntimes.FirstOrDefault(r => string.Equals(r.Id, DefaultProviderId, StringComparison.OrdinalIgnoreCase));
-        if (circleai is not null) return circleai;
+        if (circleai is not null) return Task.FromResult<IChatRuntime?>(circleai);
 
-        // 3. Whatever is actually ready.
-        return _orderedRuntimes.FirstOrDefault(r => r.IsReady)
-            ?? _orderedRuntimes.FirstOrDefault();
-    }
-
-    protected async Task OnProviderChanged(ChangeEventArgs args)
-    {
-        var id = args.Value?.ToString();
-        if (string.IsNullOrEmpty(id))
-        {
-            return;
-        }
-        _activeRuntime = _orderedRuntimes.FirstOrDefault(r => r.Id == id) ?? _activeRuntime;
-        // Persist so the next launch lands on the same provider. Settings
-        // page reads/writes the same key.
-        try
-        {
-            await JS.InvokeVoidAsync("localStorage.setItem", ProviderPreferenceStorageKey, id);
-        }
-        catch { /* best-effort */ }
+        // If CircleAI is not registered, let Circle AI's available runtime
+        // capabilities determine the best ready option without user-facing choice.
+        return Task.FromResult<IChatRuntime?>(_orderedRuntimes.FirstOrDefault(r => r.IsReady)
+            ?? _orderedRuntimes.FirstOrDefault());
     }
 
     protected async Task RefreshSidebarAsync()
@@ -1499,7 +1606,20 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
             return;
         }
 
-        if (!CanSend || _activeRuntime is null)
+        if (!CanSend)
+        {
+            return;
+        }
+
+        var routingText = _composerText.Trim();
+        if (_desktopAvailable && _desktopCanAnswer && DesktopClient is not null
+            && (_activeRuntime?.IsReady != true || ShouldUseDesktopCapacity(routingText)))
+        {
+            await SendToDesktopAsync();
+            return;
+        }
+
+        if (_activeRuntime is null)
         {
             return;
         }
@@ -1719,6 +1839,97 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         }
     }
 
+    private async Task SendToDesktopAsync()
+    {
+        var input = _composerText.Trim();
+        if (input.Length == 0 || DesktopClient is null || _pendingAttachments.Count > 0)
+            return;
+
+        _active ??= await Store.StartAsync(OwnerId, title: "Sent to Desktop");
+        _composerText = string.Empty;
+        _streaming = true;
+        _composerHint = "Sending to Circle AI on your Desktop…";
+        await Store.AppendEventAsync(_active.Id, ConversationEventType.UserMessage, input);
+        _active = await Store.GetAsync(_active.Id);
+        await RefreshSidebarAsync();
+        StateHasChanged();
+
+        try
+        {
+            var snapshot = await Store.ReadEventsAsync(_active.Id);
+            var reply = await DesktopClient.SayInConversationAsync(
+                input,
+                new Concierge.Away.Situation(DateTimeOffset.UtcNow),
+                _active.Id,
+                snapshot);
+            var text = reply.Reply ?? (reply.Understood
+                ? "Circle AI on your Desktop completed the request."
+                : "Circle AI on your Desktop could not complete the request.");
+            if (reply.Events is { Count: > 0 } events)
+                await Store.SynchronizeEventsAsync(_active.Id, events);
+            else if (reply.Understood)
+                await Store.AppendEventAsync(_active.Id, ConversationEventType.AssistantMessage, text, "Circle AI on Desktop");
+            _active = await Store.GetAsync(_active.Id);
+            _composerHint = reply.Understood ? "Answered on your Desktop" : text;
+        }
+        catch (Exception failure)
+        {
+            await Store.AppendEventAsync(_active.Id, ConversationEventType.AssistantMessage,
+                $"Could not reach your Desktop: {failure.Message}", "Connection status");
+            _active = await Store.GetAsync(_active.Id);
+            _composerHint = "Desktop did not answer. Your message remains in this conversation.";
+            _desktopAvailable = false;
+        }
+        finally
+        {
+            _streaming = false;
+            await RefreshSidebarAsync();
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>Capacity policy for choosing between a ready handset and a connected Desktop.</summary>
+    private static bool ShouldUseDesktopCapacity(string input)
+    {
+        var text = input.ToLowerInvariant();
+        const string sustainedWork = @"\b(build|develop|implement|code|app|website|project|workflow|research|analyze|analyse|business plan|marketing campaign|release|deploy|multiple files|sub-agent|subagent|agent team|create a video|make a presentation|compare these|audit this)\b";
+        return Regex.IsMatch(text, sustainedWork, RegexOptions.CultureInvariant)
+            || text.Count(char.IsWhiteSpace) >= 70
+            || text.Split(['\n', ';'], StringSplitOptions.RemoveEmptyEntries).Length >= 4;
+    }
+
+    /// <summary>Keep an open handset conversation current after Desktop has answered.</summary>
+    private async Task SyncConversationsAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(3));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
+            {
+                if (_gone || _active is null)
+                    continue;
+                if (_desktopAvailable && DesktopClient is not null)
+                {
+                    _desktopCanAnswer = await DesktopClient.CanAnswerAsync(cancellationToken).ConfigureAwait(false);
+                    var localLog = await Store.ReadEventsAsync(_active.Id, cancellationToken).ConfigureAwait(false);
+                    var events = await DesktopClient.ReadConversationEventsAsync(_active.Id,
+                        localLog.Count == 0 ? -1 : localLog[^1].Seq, cancellationToken).ConfigureAwait(false);
+                    if (events.Count > 0)
+                        await Store.SynchronizeEventsAsync(_active.Id, events, cancellationToken).ConfigureAwait(false);
+                }
+                var fresh = await Store.GetAsync(_active.Id, cancellationToken).ConfigureAwait(false);
+                if (fresh is not null)
+                {
+                    _active = fresh;
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
     /// <summary>
     /// Draws whatever the turn reports.
     ///
@@ -1770,6 +1981,35 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         _active = await Store.GetAsync(_active.Id);
         await RefreshSidebarAsync();
         StateHasChanged();
+
+        await FollowTheThreadAsync();
+    }
+
+    /// <summary>
+    /// Keep the end of the thread in view while a reply arrives — unless the person has
+    /// scrolled up, in which case leave them alone.
+    ///
+    /// **Nothing scrolled this workspace at all.** Measured on the running app: a restored
+    /// conversation sat at scrollTop 0 of a 2,215-pixel transcript, so it opened on a message
+    /// already read and a streaming answer arrived below the fold.
+    ///
+    /// Yanking somebody back to the newest token while they are rereading what was said a
+    /// minute ago is worse than not scrolling, which is why the decision about whether to
+    /// move lives in the script beside the element rather than here: only it knows where they
+    /// are looking at the moment the token lands.
+    /// </summary>
+    private async Task FollowTheThreadAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("conciergeThread.follow", ".ws-thread");
+        }
+        catch (Exception failure) when (failure is JSException or InvalidOperationException
+                                        or TaskCanceledException or ObjectDisposedException)
+        {
+            // A prerendered circuit has no DOM yet, and a component being torn down has no
+            // JS to call. Neither is worth costing somebody a reply over.
+        }
     }
 
     /// <summary>Guarded, because a turn can outlive the component that started it.</summary>

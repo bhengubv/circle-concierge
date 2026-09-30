@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Keep the Circle ring inside the adaptive-icon safe area. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="456" height="456" viewBox="0 0 456 456">
+  <circle cx="228" cy="228" r="116" fill="none" stroke="#77D0FF" stroke-width="17"/>
+</svg>

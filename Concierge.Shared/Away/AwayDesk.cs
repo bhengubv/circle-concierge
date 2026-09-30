@@ -57,12 +57,30 @@ public sealed class AwayDesk(
 
     private DateTimeOffset _lastAt;
 
+    public AwayCapabilities Capabilities => new(runtimes.Any(runtime => runtime.IsReady
+        && !string.Equals(runtime.Id, "null", StringComparison.OrdinalIgnoreCase)));
+
     /// <inheritdoc />
     public async Task<AwayAnswer> SayAsync(AwaySaid said, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(said.Text))
         {
             return new AwayAnswer(false, string.Empty, "Nothing was said.");
+        }
+
+        // A client-created ID makes this the same durable conversation on both devices.
+        // The phone has already recorded its local copy; this side creates its own copy
+        // under that exact ID before the shared turn is run.
+        if (said.ConversationId is { } sharedId)
+        {
+            var existing = await conversations.GetAsync(sharedId, cancellationToken).ConfigureAwait(false);
+            if (existing is null)
+                await conversations.StartWithIdAsync(sharedId, Owner, cancellationToken: cancellationToken).ConfigureAwait(false);
+            else if (!string.Equals(existing.OwnerId, Owner, StringComparison.Ordinal))
+                return new AwayAnswer(false, string.Empty, "That conversation is not available on this Desktop.", sharedId);
+
+            if (said.ConversationEvents is { Count: > 0 } snapshot)
+                await conversations.SynchronizeEventsAsync(sharedId, snapshot, cancellationToken).ConfigureAwait(false);
         }
 
         // **A picture always goes to the model.** `DesignSpeech` is a document in and a
@@ -97,7 +115,10 @@ public sealed class AwayDesk(
 
             await designs.SaveAsync(heard.Document, cancellationToken).ConfigureAwait(false);
 
-            return new AwayAnswer(true, heard.What, heard.What);
+            if (said.ConversationId is { } directId)
+                await RecordQuickReplyAsync(said, directId, heard.What, "Circle canvas", cancellationToken).ConfigureAwait(false);
+
+            return new AwayAnswer(true, heard.What, heard.What, said.ConversationId);
         }
 
         // The canvas often knows exactly what is wrong — "a page is one surface, say slides
@@ -105,11 +126,16 @@ public sealed class AwayDesk(
         // worth a model's turn.
         if (heard is { Final: true, Reply: { Length: > 0 } reply })
         {
-            return new AwayAnswer(false, string.Empty, reply);
+            if (said.ConversationId is { } directId)
+                await RecordQuickReplyAsync(said, directId, reply, "Circle canvas", cancellationToken).ConfigureAwait(false);
+            return new AwayAnswer(false, string.Empty, reply, said.ConversationId);
         }
 
         return await AskTheModelAsync(said, heard.Reply, cancellationToken).ConfigureAwait(false);
     }
+
+    public Task<IReadOnlyList<ConversationEvent>> ReadConversationEventsAsync(Guid conversationId, CancellationToken cancellationToken = default)
+        => conversations.ReadEventsAsync(conversationId, cancellationToken);
 
     /// <inheritdoc />
     public Task<IReadOnlyList<AwayAsk>> WaitingAsync(CancellationToken cancellationToken = default)
@@ -220,10 +246,15 @@ public sealed class AwayDesk(
         {
             // Nothing can answer, so the canvas's own guess is better than silence. That
             // reply was written for the composer hint and read by nobody for months.
-            return new AwayAnswer(false, string.Empty, fallback ?? "Nothing here understood that.");
+            var unavailable = fallback ?? "Nothing here understood that.";
+            if (said.ConversationId is { } directId)
+                await RecordQuickReplyAsync(said, directId, unavailable, "Desktop fallback", cancellationToken).ConfigureAwait(false);
+            return new AwayAnswer(false, string.Empty, unavailable, said.ConversationId);
         }
 
-        var conversation = await FindOrStartAsync(said.Context.Device, cancellationToken).ConfigureAwait(false);
+        var conversation = said.ConversationId is { } sharedId
+            ? (await conversations.GetAsync(sharedId, cancellationToken).ConfigureAwait(false))!
+            : await FindOrStartAsync(said.Context.Device, cancellationToken).ConfigureAwait(false);
 
         // A picture handed to something that cannot look at it is worse than no picture: the
         // reply discusses it as though it had been seen. Said plainly instead, and the
@@ -249,7 +280,10 @@ public sealed class AwayDesk(
         // through a container, so the first thing to notice was a 500 on the first request.
         if (turn() is not { } runner)
         {
-            return new AwayAnswer(false, string.Empty, fallback ?? "Nothing here can answer that.");
+            var unavailable = fallback ?? "Nothing here can answer that.";
+            if (said.ConversationId is not null)
+                await RecordQuickReplyAsync(said, conversation.Id, unavailable, "Desktop fallback", cancellationToken).ConfigureAwait(false);
+            return new AwayAnswer(false, string.Empty, unavailable, conversation.Id);
         }
 
         var result = await runner.RunAsync(
@@ -261,7 +295,8 @@ public sealed class AwayDesk(
                 Images: said.Picture is not null && !blind
                     ? [new ChatImage(said.Picture.FileName, said.Picture.MediaType, said.Picture.Bytes)]
                     : null,
-                Settings: new TurnSettings(SystemPrompt: said.Context.AsSaid())),
+                Settings: new TurnSettings(SystemPrompt: said.Context.AsSaid()),
+                InputAlreadyRecorded: said.ConversationEvents is { Count: > 0 }),
             progress: null,
             cancellationToken).ConfigureAwait(false);
 
@@ -274,7 +309,8 @@ public sealed class AwayDesk(
         return new AwayAnswer(
             result.Text is { Length: > 0 },
             string.Empty,
-            answer ?? "Nothing came back.");
+            answer ?? "Nothing came back.",
+            conversation.Id);
     }
 
     /// <summary>
@@ -288,6 +324,20 @@ public sealed class AwayDesk(
 
         return existing.FirstOrDefault(c => string.Equals(c.Title, title, StringComparison.OrdinalIgnoreCase))
             ?? await conversations.StartAsync(Owner, title, cancellationToken: cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task RecordQuickReplyAsync(AwaySaid said, Guid conversationId, string reply,
+        string producedBy, CancellationToken cancellationToken)
+    {
+        // Canvas commands do not enter TurnRunner, so record them here to keep the
+        // Desktop and phone transcripts continuous under the shared conversation ID.
+        var promptIsRecorded = said.ConversationEvents?.Any(entry => entry.Type == ConversationEventType.UserMessage
+            && string.Equals(entry.Data, said.Text, StringComparison.Ordinal)) == true;
+        if (!promptIsRecorded)
+            await conversations.AppendEventAsync(conversationId, ConversationEventType.UserMessage,
+                said.Text, said.Context.Device, cancellationToken).ConfigureAwait(false);
+        await conversations.AppendEventAsync(conversationId, ConversationEventType.AssistantMessage,
+            reply, producedBy, cancellationToken).ConfigureAwait(false);
     }
 }
 

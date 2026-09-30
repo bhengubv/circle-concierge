@@ -3,11 +3,14 @@ using System.Net.Http.Json;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using Concierge.Shared.Chat;
 
 namespace Concierge.Away;
 
 /// <summary>What came back.</summary>
-public sealed record AwayReply(bool Understood, string? What, string? Reply);
+public sealed record AwayReply(bool Understood, string? What, string? Reply, Guid? ConversationId = null,
+    IReadOnlyList<ConversationEvent>? Events = null);
+public sealed record AwayDeviceCapabilities(bool CanAnswer);
 
 /// <summary>Something waiting on a person.</summary>
 public sealed record AwayWaiting(Guid Id, string Tool, string Summary, string Risk, DateTimeOffset AskedAt);
@@ -36,6 +39,45 @@ public sealed class AwayClient
     private const string Prefix = "concierge-away|";
 
     private readonly HttpClient _http = new() { Timeout = TimeSpan.FromMinutes(2) };
+
+    /// <summary>Probes an explicitly supplied or discovered Concierge host.</summary>
+    public async Task<bool> CheckConnectionAsync(CancellationToken cancellationToken = default)
+    {
+        _where ??= _told;
+        if (_where is null && !await FindAsync(TimeSpan.FromSeconds(2), cancellationToken).ConfigureAwait(false))
+            return false;
+
+        try
+        {
+            using var response = await _http.GetAsync($"{_where}/healthz", cancellationToken).ConfigureAwait(false);
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception failure) when (failure is HttpRequestException or TaskCanceledException)
+        {
+            _where = null;
+            return false;
+        }
+    }
+
+    public async Task<bool> CanAnswerAsync(CancellationToken cancellationToken = default)
+    {
+        _where ??= _told;
+        if (_where is null && !await FindAsync(TimeSpan.FromSeconds(2), cancellationToken).ConfigureAwait(false))
+            return false;
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"{_where}/api/away/capabilities");
+            Sign(request);
+            using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            var capabilities = await response.Content.ReadFromJsonAsync<AwayDeviceCapabilities>(cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+            return response.IsSuccessStatusCode && capabilities?.CanAnswer == true;
+        }
+        catch (Exception failure) when (failure is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            return false;
+        }
+    }
 
     /// <param name="outbox">Where unsent sentences are kept. Its own default when not given.</param>
     public AwayClient(AwayOutbox? outbox = null)
@@ -110,6 +152,12 @@ public sealed class AwayClient
     /// </summary>
     public string? Key { get; set; } = Environment.GetEnvironmentVariable("CONCIERGE_API_KEY");
 
+    /// <summary>The device name sent to the desk with each request.</summary>
+    public string DeviceLabel { get; set; } = "watch";
+
+    /// <summary>Platform-owned Wi-Fi multicast lock, when the OS requires one for discovery.</summary>
+    public Func<IDisposable?>? DiscoveryLease { get; set; }
+
     /// <summary>Where it is, once it has been heard. Null until then.</summary>
     public string? Where => _where;
 
@@ -146,6 +194,7 @@ public sealed class AwayClient
     /// </summary>
     public async Task<bool> FindAsync(TimeSpan? patience = null, CancellationToken cancellationToken = default)
     {
+        using var discoveryLease = DiscoveryLease?.Invoke();
         using var listen = new UdpClient(AddressFamily.InterNetwork);
 
         try
@@ -204,26 +253,40 @@ public sealed class AwayClient
     /// is a different design.
     /// </summary>
     public async Task<AwayReply> SayAsync(string text, Situation situation, CancellationToken cancellationToken = default)
+        => await SayCoreAsync(text, situation, null, null, cancellationToken).ConfigureAwait(false);
+
+    /// <summary>Continue the same conversation on Desktop while keeping this client distinct.</summary>
+    public Task<AwayReply> SayInConversationAsync(string text, Situation situation, Guid conversationId,
+        CancellationToken cancellationToken = default)
+        => SayCoreAsync(text, situation, conversationId, null, cancellationToken);
+
+    public Task<AwayReply> SayInConversationAsync(string text, Situation situation, Guid conversationId,
+        IReadOnlyList<ConversationEvent> conversationEvents, CancellationToken cancellationToken = default)
+        => SayCoreAsync(text, situation, conversationId, conversationEvents, cancellationToken);
+
+    private async Task<AwayReply> SayCoreAsync(string text, Situation situation, Guid? conversationId,
+        IReadOnlyList<ConversationEvent>? conversationEvents,
+        CancellationToken cancellationToken)
     {
         // Nothing is waiting, so this can go straight out and be answered properly. The
         // common case, and the only one where a person hears a real reply rather than a
         // receipt.
         if (_outbox.Count() == 0)
         {
-            var straight = await TryOnceAsync(text, situation, cancellationToken).ConfigureAwait(false);
+            var straight = await TryOnceAsync(text, situation, null, conversationId, conversationEvents, cancellationToken).ConfigureAwait(false);
 
             if (straight.Reached)
             {
                 return straight.Reply;
             }
 
-            _outbox.Keep(text, situation);
+            _outbox.Keep(text, situation, conversationId, conversationEvents);
 
             return new AwayReply(false, null, "Kept. It will go when Concierge is back.");
         }
 
         // Something is already waiting, so this joins the back before anything is tried.
-        _outbox.Keep(text, situation);
+        _outbox.Keep(text, situation, conversationId, conversationEvents);
 
         var delivered = await FlushAsync(cancellationToken).ConfigureAwait(false);
         var left = _outbox.Count();
@@ -255,7 +318,8 @@ public sealed class AwayClient
 
         foreach (var pending in _outbox.Waiting())
         {
-            var went = await TryOnceAsync(pending.Text, pending.Situation, cancellationToken).ConfigureAwait(false);
+            var went = await TryOnceAsync(pending.Text, pending.Situation, null, pending.ConversationId,
+                pending.ConversationEvents, cancellationToken).ConfigureAwait(false);
 
             if (!went.Reached)
             {
@@ -278,10 +342,11 @@ public sealed class AwayClient
     /// </summary>
     private Task<(bool Reached, AwayReply Reply)> TryOnceAsync(
         string text, Situation situation, CancellationToken cancellationToken)
-        => TryOnceAsync(text, situation, null, cancellationToken);
+        => TryOnceAsync(text, situation, null, null, null, cancellationToken);
 
     private async Task<(bool Reached, AwayReply Reply)> TryOnceAsync(
-        string text, Situation situation, Looked? looked, CancellationToken cancellationToken)
+        string text, Situation situation, Looked? looked, Guid? conversationId,
+        IReadOnlyList<ConversationEvent>? conversationEvents, CancellationToken cancellationToken)
     {
         // What was given comes back before anything is listened for.
         _where ??= _told;
@@ -298,7 +363,7 @@ public sealed class AwayClient
                 Content = JsonContent.Create(new
                 {
                     text,
-                    device = "watch",
+                    device = DeviceLabel,
                     at = situation.At,
                     latitude = situation.Latitude,
                     longitude = situation.Longitude,
@@ -310,6 +375,8 @@ public sealed class AwayClient
                     // for only when there is actually a picture — which is almost never.
                     pictureBase64 = looked is null ? null : Convert.ToBase64String(looked.Bytes),
                     pictureName = looked?.FileName,
+                    conversationId,
+                    conversationEvents,
                 }),
             };
 
@@ -372,7 +439,7 @@ public sealed class AwayClient
     public async Task<AwayReply> LookAsync(
         string text, Situation situation, Looked looked, CancellationToken cancellationToken = default)
     {
-        var went = await TryOnceAsync(text, situation, looked, cancellationToken).ConfigureAwait(false);
+        var went = await TryOnceAsync(text, situation, looked, null, null, cancellationToken).ConfigureAwait(false);
 
         return went.Reached
             ? went.Reply
@@ -386,6 +453,30 @@ public sealed class AwayClient
     /// <summary>Take the last change back, and hear what stands now.</summary>
     public Task<AwayChanged?> UndoAsync(CancellationToken cancellationToken = default)
         => AskAsync<AwayChanged>(HttpMethod.Post, "undo", cancellationToken);
+
+    /// <summary>Fetch the latest durable conversation events from the connected execution device.</summary>
+    public async Task<IReadOnlyList<ConversationEvent>> ReadConversationEventsAsync(Guid conversationId,
+        int afterSeq = -1, CancellationToken cancellationToken = default)
+    {
+        _where ??= _told;
+        if (_where is null && !await FindAsync(cancellationToken: cancellationToken).ConfigureAwait(false))
+            return [];
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get,
+                $"{_where}/api/away/conversations/{conversationId:D}/events?afterSeq={afterSeq}");
+            Sign(request);
+            using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) return [];
+            return await response.Content.ReadFromJsonAsync<List<ConversationEvent>>(cancellationToken: cancellationToken)
+                .ConfigureAwait(false) ?? [];
+        }
+        catch (Exception failure) when (failure is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _where = null;
+            return [];
+        }
+    }
 
     /// <summary>
     /// One small question with no body, answered or not.

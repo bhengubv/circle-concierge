@@ -68,7 +68,8 @@ public sealed record AwayContext(
 public sealed record AwayPicture(string FileName, string MediaType, byte[] Bytes);
 
 /// <summary>A sentence from a device that is not here, and what it was looking at.</summary>
-public sealed record AwaySaid(string Text, AwayContext Context, AwayPicture? Picture = null);
+public sealed record AwaySaid(string Text, AwayContext Context, AwayPicture? Picture = null, Guid? ConversationId = null,
+    IReadOnlyList<Concierge.Shared.Chat.ConversationEvent>? ConversationEvents = null);
 
 /// <summary>What came of it.</summary>
 /// <param name="Understood">Whether anything changed.</param>
@@ -77,7 +78,11 @@ public sealed record AwaySaid(string Text, AwayContext Context, AwayPicture? Pic
 /// What to say back. On a face this is the whole answer, so it has to be a sentence rather
 /// than a status.
 /// </param>
-public sealed record AwayAnswer(bool Understood, string What, string? Reply);
+public sealed record AwayAnswer(bool Understood, string What, string? Reply, Guid? ConversationId = null,
+    IReadOnlyList<Concierge.Shared.Chat.ConversationEvent>? Events = null);
+
+/// <summary>Capabilities currently available on the connected execution device.</summary>
+public sealed record AwayCapabilities(bool CanAnswer);
 
 /// <summary>Something waiting on a person, small enough to decide on a wrist.</summary>
 public sealed record AwayAsk(Guid Id, string Tool, string Summary, string Risk, DateTimeOffset AskedAt);
@@ -113,8 +118,13 @@ public sealed record AwayChange(string What, bool CanUndo, int Deep, DateTimeOff
 /// </summary>
 public interface IAway
 {
+    AwayCapabilities Capabilities { get; }
+
     /// <summary>Say something, and hear what came of it.</summary>
     Task<AwayAnswer> SayAsync(AwaySaid said, CancellationToken cancellationToken = default);
+
+    /// <summary>Read the completed shared conversation log for post-answer synchronization.</summary>
+    Task<IReadOnlyList<Concierge.Shared.Chat.ConversationEvent>> ReadConversationEventsAsync(Guid conversationId, CancellationToken cancellationToken = default);
 
     /// <summary>What is waiting on a person, oldest first.</summary>
     Task<IReadOnlyList<AwayAsk>> WaitingAsync(CancellationToken cancellationToken = default);

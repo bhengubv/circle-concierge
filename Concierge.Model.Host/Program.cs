@@ -23,6 +23,9 @@ internal static class Program
 {
     private static CircleAiChatRuntime? _runtime;
     private static CancellationTokenSource? _current;
+    private static CancellationTokenSource? _downloadCancellation;
+    private static Task? _downloadTask;
+    private static readonly SemaphoreSlim OutputGate = new(1, 1);
 
     private static async Task<int> Main()
     {
@@ -47,7 +50,10 @@ internal static class Program
             await WriteAsync(output, new ModelHostResponse(
                 Ready: _runtime.IsReady,
                 EngineLabel: _runtime.EngineLabel,
-                Status: _runtime.StatusMessage));
+                Status: _runtime.StatusMessage,
+                PendingDownload: null));
+            if (ShouldAutomaticallyPrepareSelectedModel())
+                _downloadTask = DownloadAsync(output, requestId: 0);
         }
         catch (Exception ex)
         {
@@ -84,6 +90,15 @@ internal static class Program
                     _current?.Cancel();
                     break;
 
+                case ModelHostProtocol.Download:
+                    if (_downloadTask is null || _downloadTask.IsCompleted)
+                        _downloadTask = DownloadAsync(output, request.Id);
+                    break;
+
+                case ModelHostProtocol.CancelDownload:
+                    _downloadCancellation?.Cancel();
+                    break;
+
                 case ModelHostProtocol.Stream:
                     await StreamAsync(output, request);
                     break;
@@ -113,6 +128,7 @@ internal static class Program
         // still the careful one.
         services.AddConciergeAi(new CircleAiChatOptions
         {
+            AllowAutomaticDownload = true,
             UsePrefixCache = string.Equals(
                 Environment.GetEnvironmentVariable("CONCIERGE_PREFIX_CACHE"), "1", StringComparison.Ordinal),
         });
@@ -155,9 +171,58 @@ internal static class Program
         }
     }
 
+    private static async Task DownloadAsync(TextWriter output, int requestId)
+    {
+        _downloadCancellation?.Dispose();
+        _downloadCancellation = new CancellationTokenSource();
+        var token = _downloadCancellation.Token;
+        try
+        {
+            var progress = new InlineProgress<ModelDownloadProgress>(report =>
+                WriteAsync(output, new ModelHostResponse(requestId,
+                    ProgressRatio: report.Ratio,
+                    ProgressDescription: report.Description)).GetAwaiter().GetResult());
+            await _runtime!.AcceptDownloadAsync(progress, token);
+            await WriteAsync(output, new ModelHostResponse(requestId,
+                Done: true,
+                Ready: _runtime.IsReady,
+                EngineLabel: _runtime.EngineLabel,
+                Status: _runtime.StatusMessage));
+        }
+        catch (OperationCanceledException)
+        {
+            await WriteAsync(output, new ModelHostResponse(requestId, Done: true,
+                Ready: _runtime!.IsReady, EngineLabel: _runtime.EngineLabel,
+                Status: _runtime.StatusMessage));
+        }
+        catch (Exception ex)
+        {
+            await WriteAsync(output, new ModelHostResponse(requestId, Done: true,
+                Ready: _runtime!.IsReady, EngineLabel: _runtime.EngineLabel,
+                Status: $"Model download failed: {ex.Message}"));
+        }
+    }
+
+    private static bool ShouldAutomaticallyPrepareSelectedModel()
+        => _runtime?.Selected is { Quality: not CircleAI.Inference.SelectionQuality.NothingFits } selected
+            && (!_runtime.IsReady || !_runtime.EngineLabel.Contains(selected.ModelId, StringComparison.OrdinalIgnoreCase));
+
     private static async Task WriteAsync(TextWriter output, ModelHostResponse response)
     {
-        await output.WriteLineAsync(JsonSerializer.Serialize(response, ModelHostProtocol.Json));
-        await output.FlushAsync();
+        await OutputGate.WaitAsync();
+        try
+        {
+            await output.WriteLineAsync(JsonSerializer.Serialize(response, ModelHostProtocol.Json));
+            await output.FlushAsync();
+        }
+        finally
+        {
+            OutputGate.Release();
+        }
+    }
+
+    private sealed class InlineProgress<T>(Action<T> report) : IProgress<T>
+    {
+        public void Report(T value) => report(value);
     }
 }

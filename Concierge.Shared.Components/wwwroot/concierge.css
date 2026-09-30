@@ -564,6 +564,15 @@ a:hover { text-decoration: underline; }
 .icon-btn-send { background: var(--accent); color: #0B1218; }
 .icon-btn-send:hover { background: #3BA5F5; color: #0B1218; }
 .icon-btn-send[aria-disabled="true"] { background: var(--raised); color: var(--ink-faint); cursor: not-allowed; }
+.icon-btn-send:disabled { opacity: .58; filter: saturate(.35); cursor: not-allowed; }
+.runtime-readiness { display:flex; flex-wrap:wrap; align-items:center; gap:.3rem; color: var(--cm-color-text-secondary, var(--ink-muted)); font-size: .78rem; }
+.runtime-readiness .download-model-action { margin-inline-start:.45rem; padding:.28rem .55rem; border:1px solid var(--cm-color-outline, var(--line)); border-radius:999px; color:var(--cm-color-text-primary, var(--ink)); background:var(--cm-color-surface-raised, var(--raised)); font:inherit; font-size:.76rem; font-weight:650; cursor:pointer; }
+.runtime-readiness .download-model-action:hover { border-color:var(--cm-color-accent, var(--accent)); }
+.model-download-status { display:inline-flex; align-items:center; gap:.45rem; min-width:0; }
+.model-download-description { min-width:0; }
+.model-download-status progress { width:5.5rem; height:.5rem; flex:0 0 auto; accent-color:var(--cm-color-accent, var(--accent)); }
+.model-download-percent { flex:0 0 auto; font-variant-numeric:tabular-nums; }
+.runtime-readiness-detail { flex-basis:100%; display:block; }
 
 /* The label stays for a screen reader; only the glyph shows. */
 .sr { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -1483,3 +1492,325 @@ button.row:hover { color: var(--ink); }
   opacity: .85;
 }
 .dz-look.is-on .dz-kind { opacity: 1; }
+
+/* CircleMetro welcome: large type and a compact, useful tile mosaic. The
+   glints and rounded surfaces carry Circle's softness; the unequal tile sizes
+   and confident labels keep the Windows Phone Metro rhythm. */
+.welcome-panel {
+  display: none;
+  width: min(100%, 58rem);
+  margin: auto;
+  padding: clamp(.7rem, 2vw, 1.4rem);
+  color: var(--cm-color-text-primary);
+}
+.welcome-kicker { display:flex; align-items:center; gap:.65rem; color:var(--cm-color-text-secondary); font-size:.82rem; font-weight:650; letter-spacing:.08em; text-transform:uppercase; }
+.welcome-mark { display:grid; place-items:center; width:1.8rem; height:1.8rem; border-radius:50%; color:var(--cm-color-accent-text); background:var(--cm-color-accent); font-size:1rem; font-weight:800; letter-spacing:0; }
+.welcome-panel h2 { margin:.55rem 0 .35rem; font-size:clamp(2.15rem, 4.6vw, 3.65rem); font-weight:300; letter-spacing:-.065em; line-height:.98; }
+.welcome-intro { max-width:34rem; margin:0 0 1rem; color:var(--cm-color-text-secondary); font-size:clamp(.95rem, 1.7vw, 1.1rem); line-height:1.5; }
+.welcome-tiles { display:grid; grid-template-columns:1.25fr 1fr; grid-template-rows:repeat(2, minmax(7rem, auto)); gap:.6rem; }
+.welcome-tile { position:relative; display:flex; min-height:8.5rem; flex-direction:column; align-items:flex-start; justify-content:flex-end; gap:.24rem; overflow:hidden; padding:1.05rem 1.1rem; border:1px solid color-mix(in srgb, var(--cm-color-outline) 75%, transparent); border-radius:var(--cm-radius-card, 1.15rem); color:var(--cm-color-text-primary); background:color-mix(in srgb, var(--cm-color-surface-raised) 84%, transparent); text-align:left; cursor:pointer; transition:transform 180ms ease, border-color 180ms ease, background-color 180ms ease; }
+.welcome-tile:hover { transform:translateY(-2px); border-color:var(--cm-color-accent); background:var(--cm-color-surface-raised); }
+.welcome-tile:focus-visible,.appearance-panel button:focus-visible { outline:2px solid var(--cm-color-accent); outline-offset:3px; }
+.welcome-tile-primary { grid-row:span 2; min-height:14.6rem; color:var(--cm-color-on-tile); background:linear-gradient(145deg, color-mix(in srgb, var(--cm-color-tile) 78%, var(--cm-color-surface)), var(--cm-color-tile)); }
+.welcome-tile-primary:hover { background:linear-gradient(145deg, color-mix(in srgb, var(--cm-color-tile) 88%, var(--cm-color-surface)), var(--cm-color-tile)); }
+.welcome-tile-icon { position:absolute; top:.9rem; left:1rem; font-size:1.8rem; line-height:1; opacity:.86; }
+.welcome-tile-title { font-size:1.15rem; font-weight:650; letter-spacing:-.02em; }
+.welcome-tile-copy { color:color-mix(in srgb, currentColor 78%, transparent); font-size:.88rem; }
+.welcome-tile-arrow { position:absolute; right:1rem; top:.9rem; font-size:1rem; opacity:.78; }
+.welcome-footnote { margin:1rem 0 0; color:var(--cm-color-text-secondary); font-size:.78rem; }
+.appearance-panel { display:none; margin:.2rem 0 .65rem; padding:1rem; border:1px solid var(--cm-color-outline); border-radius:var(--cm-radius-card, 1rem); background:color-mix(in srgb, var(--cm-color-surface-raised) 76%, transparent); }
+.appearance-heading { margin-bottom:.7rem; font-weight:650; }
+.appearance-caption { margin:.65rem 0 .35rem; color:var(--cm-color-text-secondary); font-size:.78rem; }
+.appearance-themes { width:100%; }
+.appearance-themes .seg-opt { flex:1; min-height:2.75rem; }
+.appearance-skins { display:grid; grid-template-columns:repeat(3,1fr); gap:.4rem; }
+.appearance-skin { display:flex; min-height:2.85rem; align-items:center; justify-content:center; gap:.45rem; padding:.35rem; border:1px solid var(--cm-color-outline); border-radius:var(--cm-radius-control, .75rem); color:var(--cm-color-text-primary); background:var(--cm-color-surface); font:inherit; cursor:pointer; }
+.appearance-skin.is-on { border-color:var(--cm-color-accent); box-shadow:inset 0 0 0 1px var(--cm-color-accent); }
+.skin-swatch { width:.8rem; height:.8rem; border-radius:50%; background:var(--cm-skin-circle-accent); }
+.skin-tide .skin-swatch { background:var(--cm-skin-tide-accent); }
+.skin-berry .skin-swatch { background:var(--cm-skin-berry-accent); }
+@media (max-width:600px) { .welcome-panel { padding:1rem .85rem; } .welcome-tiles { grid-template-columns:1fr 1fr; grid-template-rows:auto auto; gap:.5rem; } .welcome-tile-primary { grid-column:span 2; grid-row:auto; min-height:9rem; } .welcome-tile { min-height:7rem; padding:.85rem; } }
+@media (prefers-reduced-motion:reduce) { .welcome-tile { transition:none; } .welcome-tile:hover { transform:none; } }
+html[data-cm-host="windows-desktop"] .welcome-panel { display:block; }
+html[data-cm-host="windows-desktop"] .desktop-legacy-empty { display:none; }
+html[data-cm-host="windows-desktop"] .appearance-panel { display:block; }
+html[data-cm-host="windows-desktop"] .settings-provider-picker { display:none; }
+
+/* Keep the shared component's pre-existing appearance on non-desktop hosts. */
+.ws-brand-mark, .ws-nav-icon, .ws-new-thread-mark, .ws-ai-emblem, .ws-ai-title { display:none; }
+.ws-brand-lockup, .ws-ai-copy { display:contents; }
+.ws-brand-lockup small { display:none; }
+
+/* Windows desktop sidebar: retain the same navigation and behavior while
+   bringing Circle's mark, Metro's grouped rhythm, and the shared skin tokens
+   into the surface. These additions stay host-scoped so other heads keep their
+   current sidebar treatment until they are deliberately brought across. */
+html[data-cm-host="windows-desktop"] .ws-side {
+  position: relative;
+  overflow: hidden;
+  border-right-color: var(--cm-color-outline);
+  background:
+    radial-gradient(ellipse at 0% 0%, color-mix(in srgb, var(--cm-color-accent) 12%, transparent), transparent 48%),
+    color-mix(in srgb, var(--cm-color-surface) 94%, var(--cm-color-surface-raised));
+}
+html[data-cm-host="windows-desktop"] .ws-brand {
+  gap: .8rem;
+  min-height: 5.15rem;
+  padding: .8rem 1.1rem .7rem;
+  border-bottom: 1px solid var(--cm-color-outline);
+}
+html[data-cm-host="windows-desktop"] .ws-brand-dot { display:none; }
+html[data-cm-host="windows-desktop"] .ws-brand-mark {
+  display:grid; place-items:center; flex:0 0 auto;
+  width:2.55rem; height:2.55rem; border:1px solid color-mix(in srgb, var(--cm-color-accent) 35%, var(--cm-color-outline));
+  border-radius:1rem; color:var(--cm-color-accent-text);
+  background:linear-gradient(145deg, color-mix(in srgb, var(--cm-color-accent) 84%, white), var(--cm-color-accent));
+  box-shadow:0 5px 14px color-mix(in srgb, var(--cm-color-accent) 20%, transparent);
+}
+html[data-cm-host="windows-desktop"] .ws-brand-mark svg { width:1.55rem; height:1.55rem; fill:none; stroke:currentColor; stroke-width:1.7; }
+html[data-cm-host="windows-desktop"] .ws-brand-lockup { display:flex; min-width:0; flex-direction:column; gap:.12rem; }
+html[data-cm-host="windows-desktop"] .ws-brand-lockup strong { font-size:1.12rem; line-height:1.1; letter-spacing:-.035em; }
+html[data-cm-host="windows-desktop"] .ws-brand-lockup small { display:block; color:var(--cm-color-text-secondary); font-size:.69rem; font-weight:650; letter-spacing:.12em; text-transform:uppercase; }
+html[data-cm-host="windows-desktop"] .ws-scroll { padding: .45rem .7rem .8rem; }
+html[data-cm-host="windows-desktop"] .ws-start-conversation {
+  min-height:3.15rem; margin:.35rem .2rem .75rem; padding:.55rem .72rem; gap:.65rem;
+  border:1px solid color-mix(in srgb, var(--cm-color-accent) 34%, var(--cm-color-outline));
+  border-radius:.9rem; color:var(--cm-color-text-primary);
+  background:linear-gradient(110deg, color-mix(in srgb, var(--cm-color-accent) 13%, var(--cm-color-surface-raised)), var(--cm-color-surface-raised));
+  box-shadow:0 5px 16px color-mix(in srgb, var(--cm-color-accent) 8%, transparent);
+  font-weight:650;
+}
+html[data-cm-host="windows-desktop"] .ws-start-conversation:hover { border-color:color-mix(in srgb, var(--cm-color-accent) 58%, var(--cm-color-outline)); background:color-mix(in srgb, var(--cm-color-accent) 17%, var(--cm-color-surface-raised)); }
+html[data-cm-host="windows-desktop"] .ws-start-conversation .ws-item-label { white-space:normal; }
+html[data-cm-host="windows-desktop"] .ws-start-hint { margin-left:auto; color:var(--cm-color-text-secondary); font-size:.68rem; font-weight:550; white-space:nowrap; }
+html[data-cm-host="windows-desktop"] .ws-group-note { margin:.12rem .6rem .4rem; color:var(--cm-color-text-secondary); font-size:.74rem; line-height:1.45; }
+html[data-cm-host="windows-desktop"] .ws-group { margin:.16rem 0 .3rem; padding:.2rem .35rem .32rem; border-radius:1rem; }
+html[data-cm-host="windows-desktop"] .ws-group.is-open { background:color-mix(in srgb, var(--cm-color-surface-raised) 60%, transparent); }
+html[data-cm-host="windows-desktop"] .ws-head {
+  min-height:2.75rem; gap:.55rem; padding:.45rem .55rem;
+  border-radius:.8rem; color:var(--cm-color-text-primary); letter-spacing:.01em;
+  font-size:.8rem; font-weight:650; text-transform:none;
+}
+html[data-cm-host="windows-desktop"] .ws-head:hover { color:var(--cm-color-text-primary); background:color-mix(in srgb, var(--cm-color-accent) 7%, transparent); }
+html[data-cm-host="windows-desktop"] .ws-nav-icon { display:block; flex:0 0 auto; width:1.05rem; height:1.05rem; fill:none; stroke:currentColor; stroke-width:1.65; }
+html[data-cm-host="windows-desktop"] .ws-chev { order:-1; width:.65rem; height:.65rem; opacity:.6; }
+html[data-cm-host="windows-desktop"] .ws-head-name { font-size:.8rem; }
+html[data-cm-host="windows-desktop"] .ws-head-count { padding:.13rem .42rem; border:1px solid var(--cm-color-outline); border-radius:999px; color:var(--cm-color-text-secondary); background:color-mix(in srgb, var(--cm-color-surface) 70%, transparent); font-size:.68rem; }
+html[data-cm-host="windows-desktop"] .ws-group-body { gap:.15rem; padding:.12rem .1rem .2rem; }
+html[data-cm-host="windows-desktop"] .ws-item { min-height:2.45rem; gap:.55rem; padding:.42rem .58rem; border-radius:.78rem; color:var(--cm-color-text-secondary); }
+html[data-cm-host="windows-desktop"] .ws-item:hover { color:var(--cm-color-text-primary); background:color-mix(in srgb, var(--cm-color-accent) 9%, var(--cm-color-surface)); }
+html[data-cm-host="windows-desktop"] .ws-item.is-active { position:relative; color:var(--cm-color-text-primary); background:color-mix(in srgb, var(--cm-color-accent) 13%, var(--cm-color-surface-raised)); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--cm-color-accent) 22%, transparent); }
+html[data-cm-host="windows-desktop"] .ws-item.is-active::before { position:absolute; top:.48rem; bottom:.48rem; left:.12rem; width:3px; border-radius:9px; background:var(--cm-color-accent); content:""; }
+html[data-cm-host="windows-desktop"] .ws-item-meta { color:var(--cm-color-text-secondary); }
+html[data-cm-host="windows-desktop"] .ws-new-thread-mark { display:grid; place-items:center; width:1.35rem; height:1.35rem; border-radius:.45rem; color:var(--cm-color-accent-text); background:var(--cm-color-accent); font-size:1rem; font-weight:500; line-height:1; }
+html[data-cm-host="windows-desktop"] .ws-head:focus-visible,
+html[data-cm-host="windows-desktop"] .ws-start-conversation:focus-visible,
+html[data-cm-host="windows-desktop"] .ws-room:focus-visible,
+html[data-cm-host="windows-desktop"] .ws-more:focus-visible,
+html[data-cm-host="windows-desktop"] .ws-runtime:focus-visible { outline:2px solid var(--cm-color-accent); outline-offset:2px; }
+html[data-cm-host="windows-desktop"] .ws-room { min-height:2.3rem; padding:.45rem .6rem; border-radius:.75rem; color:var(--cm-color-text-secondary); }
+html[data-cm-host="windows-desktop"] .ws-room:hover, html[data-cm-host="windows-desktop"] .ws-room-btn.is-on { color:var(--cm-color-text-primary); background:color-mix(in srgb, var(--cm-color-accent) 9%, var(--cm-color-surface)); }
+html[data-cm-host="windows-desktop"] .ws-runtime {
+  gap:.72rem; min-height:4.65rem; margin:.55rem .65rem .65rem; padding:.65rem .75rem;
+  width:calc(100% - 1.3rem); border:1px solid var(--cm-color-outline); border-radius:1.05rem;
+  color:var(--cm-color-text-primary); background:color-mix(in srgb, var(--cm-color-surface-raised) 83%, transparent);
+  box-shadow:0 7px 20px color-mix(in srgb, var(--cm-color-text-primary) 5%, transparent);
+}
+html[data-cm-host="windows-desktop"] .ws-runtime:hover { border-color:color-mix(in srgb, var(--cm-color-accent) 44%, var(--cm-color-outline)); background:var(--cm-color-surface-raised); }
+html[data-cm-host="windows-desktop"] .ws-ai-emblem { position:relative; display:grid; place-items:center; flex:0 0 auto; width:2.45rem; height:2.45rem; border:1px solid color-mix(in srgb, var(--cm-color-accent) 35%, var(--cm-color-outline)); border-radius:50%; color:var(--cm-color-accent-text); background:radial-gradient(circle at 32% 25%, color-mix(in srgb, var(--cm-color-accent) 75%, white), var(--cm-color-accent)); box-shadow:0 0 0 4px color-mix(in srgb, var(--cm-color-accent) 9%, transparent); }
+html[data-cm-host="windows-desktop"] .ws-ai-emblem svg { width:1.35rem; height:1.35rem; fill:none; stroke:currentColor; stroke-width:1.7; }
+html[data-cm-host="windows-desktop"] .ws-ai-emblem i { position:absolute; right:-.03rem; bottom:.02rem; width:.62rem; height:.62rem; border:2px solid var(--cm-color-surface-raised); border-radius:50%; background:var(--cm-color-text-secondary); }
+html[data-cm-host="windows-desktop"] .ws-ai-emblem i.is-ready { background:#32A66A; }
+html[data-cm-host="windows-desktop"] .ws-ai-copy { display:flex; min-width:0; flex:1; flex-direction:column; gap:.15rem; }
+html[data-cm-host="windows-desktop"] .ws-ai-title { display:block; font-size:.86rem; font-weight:700; }
+html[data-cm-host="windows-desktop"] .ws-runtime-name { color:var(--cm-color-text-secondary); font-size:.72rem; }
+html[data-cm-host="windows-desktop"] .ws-runtime > .ws-item-meta { flex:0 0 auto; max-width:4.2rem; white-space:normal; text-align:right; font-size:.67rem; }
+/* The conversation area gets the same finish as the navigation: a quiet tint
+   behind the work, clear reading measure, and a composer that feels anchored
+   instead of like a detached input box. */
+html[data-cm-host="windows-desktop"] .ws-main {
+  background:
+    radial-gradient(ellipse at 82% 0%, color-mix(in srgb, var(--cm-color-accent) 7%, transparent), transparent 38%),
+    var(--cm-color-canvas);
+}
+html[data-cm-host="windows-desktop"] .ws-top {
+  min-height:3.5rem; padding:.55rem 1.5rem;
+  border-bottom-color:color-mix(in srgb, var(--cm-color-outline) 70%, transparent);
+  background:color-mix(in srgb, var(--cm-color-surface) 78%, transparent);
+  backdrop-filter:blur(18px) saturate(125%);
+}
+html[data-cm-host="windows-desktop"] .ws-title { font-size:1.03rem; font-weight:650; letter-spacing:-.025em; }
+html[data-cm-host="windows-desktop"] .ws-top-meta {
+  max-width:45%; overflow:hidden; padding:.36rem .7rem; border:1px solid var(--cm-color-outline);
+  border-radius:999px; color:var(--cm-color-text-secondary);
+  background:color-mix(in srgb, var(--cm-color-surface-raised) 76%, transparent); font-size:.72rem;
+  text-overflow:ellipsis; white-space:nowrap;
+}
+html[data-cm-host="windows-desktop"] .ws-thread { padding:1.5rem; }
+html[data-cm-host="windows-desktop"] .ws-thread-inner { max-width:54rem; gap:1.6rem; }
+html[data-cm-host="windows-desktop"] .msg { gap:.45rem; }
+html[data-cm-host="windows-desktop"] .msg-who { color:var(--cm-color-text-secondary); font-size:.69rem; letter-spacing:.1em; }
+html[data-cm-host="windows-desktop"] .msg-body { color:var(--cm-color-text-primary); font-size:1rem; line-height:1.72; }
+html[data-cm-host="windows-desktop"] .comp { padding:.55rem 1.5rem .8rem; }
+html[data-cm-host="windows-desktop"] .comp-inner { max-width:58rem; gap:.55rem; }
+html[data-cm-host="windows-desktop"] .comp-box {
+  gap:.4rem; padding:.55rem .6rem .55rem 1rem; border-color:var(--cm-color-outline);
+  border-radius:1.25rem; background:color-mix(in srgb, var(--cm-color-surface-raised) 88%, transparent);
+  box-shadow:0 10px 28px color-mix(in srgb, var(--cm-color-text-primary) 7%, transparent);
+  transition:border-color 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+html[data-cm-host="windows-desktop"] .comp-box:focus-within {
+  border-color:color-mix(in srgb, var(--cm-color-accent) 70%, var(--cm-color-outline));
+  background:var(--cm-color-surface-raised);
+  box-shadow:0 0 0 3px color-mix(in srgb, var(--cm-color-accent) 13%, transparent), 0 12px 30px color-mix(in srgb, var(--cm-color-text-primary) 8%, transparent);
+}
+html[data-cm-host="windows-desktop"] .comp-input { min-height:2rem; color:var(--cm-color-text-primary); }
+html[data-cm-host="windows-desktop"] .comp-input::placeholder { color:var(--cm-color-text-secondary); }
+html[data-cm-host="windows-desktop"] .icon-btn { width:2.3rem; height:2.3rem; border-radius:.82rem; color:var(--cm-color-text-secondary); }
+html[data-cm-host="windows-desktop"] .icon-btn:hover { color:var(--cm-color-text-primary); background:color-mix(in srgb, var(--cm-color-accent) 10%, var(--cm-color-surface)); }
+html[data-cm-host="windows-desktop"] .icon-btn-send { color:var(--cm-color-accent-text); background:var(--cm-color-accent); }
+html[data-cm-host="windows-desktop"] .icon-btn-send:hover { color:var(--cm-color-accent-text); background:color-mix(in srgb, var(--cm-color-accent) 88%, white); }
+html[data-cm-host="windows-desktop"] .icon-btn-send[aria-disabled="true"] { color:var(--cm-color-text-secondary); background:var(--cm-color-surface); }
+html[data-cm-host="windows-desktop"] .icon-btn-send:disabled { opacity:.58; filter:saturate(.35); cursor:not-allowed; }
+html[data-cm-host="windows-desktop"] .comp-controls { min-height:1.7rem; padding:0 .35rem; color:var(--cm-color-text-secondary); font-size:.72rem; }
+html[data-cm-host="windows-desktop"] .comp-sep { color:var(--cm-color-outline); }
+@media (max-height:760px) {
+  html[data-cm-host="windows-desktop"] .ws-top { min-height:2.8rem; padding:.4rem 1.25rem; }
+  html[data-cm-host="windows-desktop"] .welcome-panel { padding:.55rem 1.25rem; }
+  html[data-cm-host="windows-desktop"] .welcome-panel h2 { margin:.35rem 0 .25rem; font-size:clamp(2.1rem, 3.8vw, 3rem); }
+  html[data-cm-host="windows-desktop"] .welcome-intro { margin-bottom:.7rem; }
+  html[data-cm-host="windows-desktop"] .welcome-tiles { grid-template-rows:repeat(2,minmax(6.15rem,auto)); gap:.5rem; }
+  html[data-cm-host="windows-desktop"] .welcome-tile { min-height:6.15rem; padding:.8rem .9rem; }
+  html[data-cm-host="windows-desktop"] .welcome-tile-primary { min-height:12.8rem; }
+  html[data-cm-host="windows-desktop"] .welcome-tile-icon { top:.42rem; left:.65rem; font-size:1rem; }
+  html[data-cm-host="windows-desktop"] .welcome-tile-arrow { top:.42rem; right:.65rem; font-size:.82rem; }
+  html[data-cm-host="windows-desktop"] .welcome-tile-title { font-size:1.02rem; }
+  html[data-cm-host="windows-desktop"] .welcome-footnote { margin:.65rem 0 0; }
+  html[data-cm-host="windows-desktop"] .comp { padding:.3rem 1.25rem .4rem; }
+  html[data-cm-host="windows-desktop"] .comp-inner { gap:.32rem; }
+  html[data-cm-host="windows-desktop"] .comp-box { gap:.28rem; padding:.38rem .45rem .38rem .8rem; }
+  html[data-cm-host="windows-desktop"] .icon-btn { width:1.95rem; height:1.95rem; }
+  html[data-cm-host="windows-desktop"] .comp-controls { min-height:1.35rem; }
+  html[data-cm-host="windows-desktop"] .ws-thread { padding:1.1rem 1.5rem; }
+}
+@media (prefers-reduced-motion:reduce) {
+  html[data-cm-host="windows-desktop"] .ws-chev,
+  html[data-cm-host="windows-desktop"] .comp-box { transition:none; }
+}
+
+/* Mobile uses the same Circle skin and navigation language as Desktop, with
+   the sidebar kept as a drawer and the welcome tiles reflowed for a narrow
+   viewport. The recipe class scopes these finishes to the handheld head. */
+.ws-handheld .ws-side {
+  border-right-color:var(--cm-color-outline);
+  background:
+    radial-gradient(ellipse at 0% 0%, color-mix(in srgb, var(--cm-color-accent) 12%, transparent), transparent 48%),
+    color-mix(in srgb, var(--cm-color-surface) 94%, var(--cm-color-surface-raised));
+}
+.ws-handheld .ws-brand { gap:.8rem; min-height:4.4rem; padding:.65rem 1rem; border-bottom:1px solid var(--cm-color-outline); }
+.ws-handheld .ws-brand-dot { display:none; }
+.ws-handheld .ws-brand-mark {
+  display:grid; place-items:center; flex:0 0 auto; width:2.35rem; height:2.35rem;
+  border:1px solid color-mix(in srgb, var(--cm-color-accent) 35%, var(--cm-color-outline));
+  border-radius:.86rem; color:var(--cm-color-accent-text);
+  background:linear-gradient(145deg, color-mix(in srgb, var(--cm-color-accent) 84%, white), var(--cm-color-accent));
+  box-shadow:0 5px 14px color-mix(in srgb, var(--cm-color-accent) 20%, transparent);
+}
+.ws-handheld .ws-brand-mark svg { width:1.42rem; height:1.42rem; fill:none; stroke:currentColor; stroke-width:1.7; }
+.ws-handheld .ws-brand-lockup { display:flex; min-width:0; flex-direction:column; gap:.12rem; }
+.ws-handheld .ws-brand-lockup strong { font-size:1.04rem; line-height:1.1; letter-spacing:-.035em; }
+.ws-handheld .ws-brand-lockup small { display:block; color:var(--cm-color-text-secondary); font-size:.65rem; font-weight:650; letter-spacing:.12em; text-transform:uppercase; }
+.ws-handheld .ws-scroll { padding:.4rem .55rem .7rem; }
+.ws-handheld .ws-start-conversation {
+  min-height:3rem; margin:.25rem .18rem .55rem; padding:.5rem .65rem; gap:.6rem;
+  border:1px solid color-mix(in srgb, var(--cm-color-accent) 34%, var(--cm-color-outline));
+  border-radius:.86rem; color:var(--cm-color-text-primary);
+  background:linear-gradient(110deg, color-mix(in srgb, var(--cm-color-accent) 13%, var(--cm-color-surface-raised)), var(--cm-color-surface-raised));
+  font-weight:650;
+}
+.ws-handheld .ws-start-hint { margin-left:auto; color:var(--cm-color-text-secondary); font-size:.66rem; font-weight:550; white-space:nowrap; }
+.ws-handheld .ws-new-thread-mark { display:grid; place-items:center; width:1.32rem; height:1.32rem; border-radius:.43rem; color:var(--cm-color-accent-text); background:var(--cm-color-accent); font-size:1rem; line-height:1; }
+.ws-handheld .ws-group { margin:.12rem 0 .2rem; padding:.14rem .25rem .22rem; border-radius:.9rem; }
+.ws-handheld .ws-group.is-open { background:color-mix(in srgb, var(--cm-color-surface-raised) 58%, transparent); }
+.ws-handheld .ws-head { min-height:2.7rem; gap:.5rem; padding:.42rem .48rem; border-radius:.75rem; color:var(--cm-color-text-primary); font-size:.82rem; font-weight:650; letter-spacing:.01em; text-transform:none; }
+.ws-handheld .ws-head:hover { background:color-mix(in srgb, var(--cm-color-accent) 7%, transparent); }
+.ws-handheld .ws-head-name { font-size:.82rem; }
+.ws-handheld .ws-nav-icon { display:block; flex:0 0 auto; width:1.05rem; height:1.05rem; fill:none; stroke:currentColor; stroke-width:1.65; }
+.ws-handheld .ws-chev { order:-1; width:.65rem; height:.65rem; opacity:.64; }
+.ws-handheld .ws-head-count { padding:.12rem .4rem; border:1px solid var(--cm-color-outline); border-radius:999px; color:var(--cm-color-text-secondary); background:color-mix(in srgb, var(--cm-color-surface) 70%, transparent); font-size:.68rem; }
+.ws-handheld .ws-group-body { gap:.12rem; padding:.1rem .08rem .18rem; }
+.ws-handheld .ws-item { min-height:2.6rem; gap:.5rem; padding:.42rem .5rem; border-radius:.72rem; color:var(--cm-color-text-secondary); }
+.ws-handheld .ws-item:hover { color:var(--cm-color-text-primary); background:color-mix(in srgb, var(--cm-color-accent) 9%, var(--cm-color-surface)); }
+.ws-handheld .ws-item.is-active { color:var(--cm-color-text-primary); background:color-mix(in srgb, var(--cm-color-accent) 13%, var(--cm-color-surface-raised)); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--cm-color-accent) 22%, transparent); }
+.ws-handheld .ws-item-meta { color:var(--cm-color-text-secondary); }
+.ws-handheld .ws-group-note { margin:.12rem .55rem .36rem; color:var(--cm-color-text-secondary); font-size:.75rem; line-height:1.45; }
+.ws-handheld .ws-more { min-height:2.55rem; padding:.48rem .55rem; border-radius:.7rem; color:var(--cm-color-accent); font-size:.76rem; }
+.ws-handheld .ws-history-link { display:flex; align-items:center; gap:.55rem; }
+.ws-handheld .ws-history-link svg { width:1rem; height:1rem; flex:0 0 auto; fill:none; stroke:currentColor; stroke-width:1.8; }
+.ws-handheld .ws-room { min-height:2.55rem; padding:.48rem .58rem; border-radius:.7rem; color:var(--cm-color-text-secondary); font-size:.86rem; }
+.ws-handheld .ws-room:hover, .ws-handheld .ws-room-btn.is-on { color:var(--cm-color-text-primary); background:color-mix(in srgb, var(--cm-color-accent) 9%, var(--cm-color-surface)); }
+.ws-handheld .ws-runtime { min-height:4.5rem; margin:.45rem .55rem .6rem; padding:.62rem .7rem; width:calc(100% - 1.1rem); gap:.65rem; border:1px solid var(--cm-color-outline); border-radius:1rem; color:var(--cm-color-text-primary); background:color-mix(in srgb, var(--cm-color-surface-raised) 83%, transparent); }
+.ws-handheld .ws-ai-emblem { position:relative; display:grid; place-items:center; flex:0 0 auto; width:2.28rem; height:2.28rem; border:1px solid color-mix(in srgb, var(--cm-color-accent) 35%, var(--cm-color-outline)); border-radius:50%; color:var(--cm-color-accent-text); background:radial-gradient(circle at 32% 25%, color-mix(in srgb, var(--cm-color-accent) 75%, white), var(--cm-color-accent)); }
+.ws-handheld .ws-ai-emblem svg { width:1.25rem; height:1.25rem; fill:none; stroke:currentColor; stroke-width:1.7; }
+.ws-handheld .ws-ai-emblem i { position:absolute; right:-.03rem; bottom:.02rem; width:.6rem; height:.6rem; border:2px solid var(--cm-color-surface-raised); border-radius:50%; background:var(--cm-color-text-secondary); }
+.ws-handheld .ws-ai-emblem i.is-ready { background:#32A66A; }
+.ws-handheld .ws-ai-copy { display:flex; min-width:0; flex:1; flex-direction:column; gap:.12rem; }
+.ws-handheld .ws-ai-title { display:block; font-size:.86rem; font-weight:700; }
+.ws-handheld .ws-runtime-name { color:var(--cm-color-text-secondary); font-size:.73rem; }
+.ws-handheld .ws-runtime > .ws-item-meta { flex:0 0 auto; color:var(--cm-color-accent); font-size:.7rem; }
+.ws-handheld .ws-head:focus-visible,
+.ws-handheld .ws-start-conversation:focus-visible,
+.ws-handheld .ws-room:focus-visible,
+.ws-handheld .ws-more:focus-visible,
+.ws-handheld .ws-runtime:focus-visible { outline:2px solid var(--cm-color-accent); outline-offset:2px; }
+.ws-handheld .welcome-panel { display:block; flex:1; min-height:0; overflow-y:auto; padding:1rem .9rem 1.2rem; }
+.ws-handheld .welcome-panel { display:flex; flex-direction:column; justify-content:center; }
+.ws-handheld .welcome-mark { display:grid; place-items:center; width:2.2rem; height:2.2rem; border:1px solid color-mix(in srgb, var(--cm-color-accent) 34%, var(--cm-color-outline)); border-radius:.78rem; color:var(--cm-color-accent-text); background:linear-gradient(145deg, color-mix(in srgb, var(--cm-color-accent) 82%, white), var(--cm-color-accent)); box-shadow:0 5px 16px color-mix(in srgb, var(--cm-color-accent) 20%, transparent); }
+.ws-handheld .welcome-mark svg { width:1.28rem; height:1.28rem; fill:none; stroke:currentColor; stroke-width:1.7; }
+.ws-handheld .welcome-kicker { font-size:.77rem; }
+.ws-handheld .welcome-panel h2 { margin:.65rem 0 .45rem; font-size:clamp(2rem, 9.3vw, 2.8rem); line-height:.99; }
+.ws-handheld .welcome-intro { max-width:32rem; margin:0 0 .9rem; font-size:.91rem; }
+.ws-handheld .welcome-tiles { grid-template-columns:1fr 1fr; grid-template-rows:auto auto; gap:.55rem; }
+.ws-handheld .welcome-tile { min-height:7.1rem; padding:.8rem; border-radius:1rem; }
+.ws-handheld .welcome-tile-primary { grid-column:span 2; grid-row:auto; min-height:8.3rem; }
+.ws-handheld .welcome-tile-icon { top:.6rem; left:.7rem; font-size:1.15rem; }
+.ws-handheld .welcome-tile-arrow { top:.6rem; right:.7rem; }
+.ws-handheld .welcome-tile-title { font-size:.98rem; }
+.ws-handheld .welcome-tile-copy { font-size:.76rem; }
+.ws-handheld .welcome-footnote { margin:.7rem 0 0; font-size:.7rem; }
+.ws-handheld .ws-main { background:var(--cm-color-canvas); }
+.ws-handheld .ws-top { background:color-mix(in srgb, var(--cm-color-surface) 88%, transparent); border-bottom-color:var(--cm-color-outline); }
+.ws-handheld .ws-top-meta { color:var(--cm-color-text-secondary); }
+.ws-handheld .ws-title { color:var(--cm-color-text-primary); }
+.ws-handheld .comp { padding-left:.7rem; padding-right:.7rem; }
+.ws-handheld .comp-box { border-color:var(--cm-color-outline); border-radius:1.15rem; background:color-mix(in srgb, var(--cm-color-surface-raised) 90%, transparent); }
+.ws-handheld .comp-box:focus-within { border-color:color-mix(in srgb, var(--cm-color-accent) 72%, var(--cm-color-outline)); box-shadow:0 0 0 3px color-mix(in srgb, var(--cm-color-accent) 14%, transparent); }
+.ws-handheld .comp-input { color:var(--cm-color-text-primary); }
+.ws-handheld .comp-input::placeholder { color:var(--cm-color-text-secondary); }
+.ws-handheld .icon-btn-send { color:var(--cm-color-accent-text); background:var(--cm-color-accent); }
+.ws-handheld .icon-btn-send[aria-disabled="true"] { color:var(--cm-color-text-secondary); background:var(--cm-color-surface); }
+.ws-handheld .icon-btn-send:disabled { opacity:.58; filter:saturate(.35); cursor:not-allowed; }
+.ws-handheld .comp-controls { color:var(--cm-color-text-secondary); }
+.ws-handheld .ws-top-meta { border-color:transparent; background:transparent; }
+@media (max-width:600px) {
+  .ws-handheld .comp-controls { flex-wrap:wrap; }
+  .ws-handheld .comp-controls > span:last-child:not(.runtime-readiness) { display:none; }
+  .ws-handheld .runtime-readiness { flex-basis:100%; line-height:1.4; }
+}
+@media (max-height:760px) {
+  .ws-handheld .welcome-panel { justify-content:flex-start; padding-top:.55rem; }
+  .ws-handheld .welcome-panel h2 { margin:.4rem 0 .3rem; font-size:clamp(1.9rem, 8vw, 2.35rem); }
+  .ws-handheld .welcome-intro { margin-bottom:.6rem; }
+  .ws-handheld .welcome-tile { min-height:6rem; }
+  .ws-handheld .welcome-tile-primary { min-height:7rem; }
+  .ws-handheld .welcome-footnote { margin-top:.45rem; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .ws-handheld .ws-chev, .ws-handheld .comp-box { transition:none; }
+}
+
+/* Diagrams must stay usable at handset width: let source editors and source
+   disclosures scroll within their own bounds instead of widening the page. */
+.room, .room-body, .room-body > *, .diagram { min-width:0; max-width:100%; }
+.room-body textarea.comp-input { max-width:100%; overflow-x:auto; white-space:pre; }
+.diagram-source .chip-out { max-width:100%; overflow-x:auto; white-space:pre; }

@@ -4,7 +4,8 @@ namespace Concierge.Away;
 
 /// <summary>Something said that has not been delivered yet.</summary>
 /// <param name="Id">Its own name on disk, so delivering it can remove exactly it.</param>
-public sealed record AwayPending(Guid Id, string Text, Situation Situation);
+public sealed record AwayPending(Guid Id, string Text, Situation Situation, Guid? ConversationId = null,
+    IReadOnlyList<Concierge.Shared.Chat.ConversationEvent>? ConversationEvents = null);
 
 /// <summary>
 /// What was said while there was nowhere to send it.
@@ -41,9 +42,10 @@ public sealed class AwayOutbox
     public string Folder => _folder;
 
     /// <summary>Keep it until it can go.</summary>
-    public AwayPending Keep(string text, Situation situation)
+    public AwayPending Keep(string text, Situation situation, Guid? conversationId = null,
+        IReadOnlyList<Concierge.Shared.Chat.ConversationEvent>? conversationEvents = null)
     {
-        var pending = new AwayPending(Guid.NewGuid(), text, situation);
+        var pending = new AwayPending(Guid.NewGuid(), text, situation, conversationId, conversationEvents);
 
         try
         {

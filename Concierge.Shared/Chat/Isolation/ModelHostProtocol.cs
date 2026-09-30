@@ -32,6 +32,12 @@ public static class ModelHostProtocol
 
     /// <summary>Parent asks the child to stop the current reply.</summary>
     public const string Cancel = "cancel";
+
+    /// <summary>Person approved the model download in the parent application.</summary>
+    public const string Download = "download";
+
+    /// <summary>Person cancelled a model download in progress.</summary>
+    public const string CancelDownload = "cancel-download";
 }
 
 /// <param name="Op">One of the constants on <see cref="ModelHostProtocol"/>.</param>
@@ -71,4 +77,7 @@ public sealed record ModelHostResponse(
     string? Error = null,
     bool Ready = false,
     string? EngineLabel = null,
-    string? Status = null);
+    string? Status = null,
+    PendingModelDownload? PendingDownload = null,
+    double? ProgressRatio = null,
+    string? ProgressDescription = null);

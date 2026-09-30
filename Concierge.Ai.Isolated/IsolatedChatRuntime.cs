@@ -27,7 +27,7 @@ namespace Concierge.Ai.Isolated;
 /// and quietly re-running a generation that just crashed the model is how you
 /// get a loop. The next message starts a fresh child.
 /// </summary>
-public sealed class IsolatedChatRuntime : IChatRuntime, IDisposable, IAsyncDisposable
+public sealed class IsolatedChatRuntime : IChatRuntime, IModelDownloadRequired, IInitializableChatRuntime, IChatRuntimeStatusEvents, IDisposable, IAsyncDisposable
 {
     private readonly IsolatedRuntimeOptions _options;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -38,7 +38,13 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IDisposable, IAsyncDispo
 
     private string _engineLabel = "On-device model";
     private bool _isReady;
+    private bool _helloReceived;
     private string _status = "Not started yet.";
+    private PendingModelDownload? _pendingDownload;
+    private ModelDownloadProgress? _currentDownloadProgress;
+    private TaskCompletionSource<bool>? _downloadCompletion;
+    private int _downloadRequestId;
+    private IProgress<ModelDownloadProgress>? _downloadProgress;
 
     /// <summary>Set when the child has faulted, so the status says something
     /// truthful rather than "ready" about a process that is gone.</summary>
@@ -62,6 +68,12 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IDisposable, IAsyncDispo
     public bool IsReady => _isReady && !_childFaulted;
 
     public string StatusMessage => _status;
+
+    public PendingModelDownload? PendingDownload => _pendingDownload;
+
+    public ModelDownloadProgress? CurrentDownloadProgress => _currentDownloadProgress;
+
+    public event EventHandler? StatusChanged;
 
     public async IAsyncEnumerable<string> StreamAsync(
         IReadOnlyList<ChatTurn> messages,
@@ -110,6 +122,9 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IDisposable, IAsyncDispo
                 return (false, 0, null, _status);
             }
 
+            if (!IsReady)
+                return (false, 0, null, _status);
+
             var requestId = ++_nextRequestId;
             _pending = chunks;
 
@@ -142,6 +157,72 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IDisposable, IAsyncDispo
 
     private Channel<string>? _pending;
 
+    public async Task<bool> AcceptDownloadAsync(
+        IProgress<ModelDownloadProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        Task<bool> completion;
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!await EnsureChildAsync().ConfigureAwait(false) || _pendingDownload is null || IsReady)
+                return false;
+
+            _downloadRequestId = ++_nextRequestId;
+            _downloadCompletion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _downloadProgress = progress;
+            completion = _downloadCompletion.Task;
+            await SendRequestCoreAsync(new ModelHostRequest(ModelHostProtocol.Download, _downloadRequestId)).ConfigureAwait(false);
+        }
+        catch (IOException ex)
+        {
+            _status = $"Could not start the model download: {ex.Message}";
+            return false;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        using var registration = cancellationToken.Register(() => _ = CancelDownloadAsync());
+        try
+        {
+            return await completion.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+    }
+
+    private async Task CancelDownloadAsync()
+    {
+        try
+        {
+            await _gate.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                await SendRequestCoreAsync(new ModelHostRequest(ModelHostProtocol.CancelDownload)).ConfigureAwait(false);
+            }
+            finally
+            {
+                _gate.Release();
+            }
+        }
+        catch (Exception)
+        {
+            // The model host may already have exited while cancellation was requested.
+        }
+    }
+
+    private async Task SendRequestCoreAsync(ModelHostRequest request)
+    {
+        if (_toChild is null || _process is null || _process.HasExited)
+            throw new IOException("The model host is not running.");
+        await _toChild.WriteLineAsync(JsonSerializer.Serialize(request, ModelHostProtocol.Json)).ConfigureAwait(false);
+        await _toChild.FlushAsync().ConfigureAwait(false);
+    }
+
     private static ModelHostTurn ToWire(ChatTurn turn)
         => new(turn.Role, turn.Content,
             turn.Images?.Select(i => new ModelHostImage(i.FileName, i.MediaType, Convert.ToBase64String(i.Bytes))).ToArray());
@@ -168,6 +249,9 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IDisposable, IAsyncDispo
             _gate.Release();
         }
     }
+
+    public Task InitializeAsync(CancellationToken cancellationToken = default)
+        => WarmUpAsync(cancellationToken);
 
     /// <summary>
     /// Starts the child if it is not running. Returns false with a readable
@@ -247,12 +331,12 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IDisposable, IAsyncDispo
         // The hello carries the label and whether the model loaded. Bounded:
         // a child that never says hello must not hang the composer forever.
         var deadline = DateTimeOffset.UtcNow + _options.StartTimeout;
-        while (!_isReady && !_childFaulted && DateTimeOffset.UtcNow < deadline)
+        while (!_helloReceived && !_childFaulted && DateTimeOffset.UtcNow < deadline)
         {
             await Task.Delay(100).ConfigureAwait(false);
         }
 
-        if (!_isReady && !_childFaulted)
+        if (!_helloReceived && !_childFaulted)
         {
             _status = "The model did not finish loading in time.";
         }
@@ -264,7 +348,9 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IDisposable, IAsyncDispo
             _restarts = 0;
         }
 
-        return _isReady;
+        // The child may be alive and waiting for download approval. It is
+        // initialized, even though it cannot answer until the model is ready.
+        return _helloReceived && _process is { HasExited: false };
     }
 
     /// <summary>
@@ -296,10 +382,37 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IDisposable, IAsyncDispo
                 if (response.EngineLabel is not null)
                 {
                     _engineLabel = response.EngineLabel;
-                    _status = response.Status ?? _status;
-                    _isReady = response.Ready;
-                    continue;
+                    _helloReceived = true;
                 }
+
+                if (response.Status is not null)
+                    _status = response.Status;
+                if (response.PendingDownload is not null || response.Ready)
+                    _pendingDownload = response.PendingDownload;
+                if (response.EngineLabel is not null || response.Done)
+                    _isReady = response.Ready;
+                if (response.ProgressRatio is { } ratio)
+                {
+                    var downloadProgress = new ModelDownloadProgress(ratio, response.ProgressDescription ?? _status);
+                    _currentDownloadProgress = downloadProgress;
+                    _downloadProgress?.Report(downloadProgress);
+                    StatusChanged?.Invoke(this, EventArgs.Empty);
+                }
+
+                if (response.Done && (response.Id == 0 || response.Id == _downloadRequestId))
+                {
+                    if (response.Id != 0)
+                    {
+                        _downloadCompletion?.TrySetResult(response.Ready);
+                        _downloadCompletion = null;
+                        _downloadProgress = null;
+                    }
+                    _currentDownloadProgress = null;
+                    StatusChanged?.Invoke(this, EventArgs.Empty);
+                }
+
+                if (response.Status is not null || response.Ready || response.Error is not null)
+                    StatusChanged?.Invoke(this, EventArgs.Empty);
 
                 if (response.Chunk is { Length: > 0 })
                 {
@@ -339,6 +452,10 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IDisposable, IAsyncDispo
         {
             MarkFaulted();
         }
+
+        _downloadCompletion?.TrySetResult(false);
+        _downloadCompletion = null;
+        _downloadProgress = null;
     }
 
     /// <summary>How many times the child has been restarted after a fault.
@@ -353,6 +470,7 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IDisposable, IAsyncDispo
         _childFaulted = true;
         _isReady = false;
         _status = "The model stopped unexpectedly.";
+        StatusChanged?.Invoke(this, EventArgs.Empty);
 
         // Restart it, rather than waiting to be asked.
         //
@@ -393,14 +511,15 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IDisposable, IAsyncDispo
     {
         try
         {
-            if (_toChild is null || _process is null || _process.HasExited)
+            await _gate.WaitAsync().ConfigureAwait(false);
+            try
             {
-                return;
+                await SendRequestCoreAsync(new ModelHostRequest(ModelHostProtocol.Cancel, requestId)).ConfigureAwait(false);
             }
-
-            await _toChild.WriteLineAsync(JsonSerializer.Serialize(
-                new ModelHostRequest(ModelHostProtocol.Cancel, requestId), ModelHostProtocol.Json)).ConfigureAwait(false);
-            await _toChild.FlushAsync().ConfigureAwait(false);
+            finally
+            {
+                _gate.Release();
+            }
         }
         catch (Exception)
         {

@@ -20,7 +20,7 @@ namespace Concierge.Shared.Safety;
 /// engine can still ask before fetching a model. Nothing holds the real runtime — every
 /// host resolves this — so a capability that stops here stops existing.
 /// </remarks>
-public sealed class ContentFilterChatRuntimeDecorator : IChatRuntime, IPersistableChatRuntime, IModelDownloadRequired
+public sealed class ContentFilterChatRuntimeDecorator : IChatRuntime, IPersistableChatRuntime, IModelDownloadRequired, IInitializableChatRuntime, IChatRuntimeStatusEvents
 {
     // Stable message the UI shows when a refusal lands. Kept short + warm
     // because Bell's voice is "honest, never punitive". The actual reason
@@ -61,6 +61,27 @@ public sealed class ContentFilterChatRuntimeDecorator : IChatRuntime, IPersistab
     public string EngineLabel => _inner.EngineLabel;
     public bool IsReady => _inner.IsReady;
     public string StatusMessage => _inner.StatusMessage;
+    public ModelDownloadProgress? CurrentDownloadProgress
+        => (_inner as IChatRuntimeStatusEvents)?.CurrentDownloadProgress;
+
+    public Task InitializeAsync(CancellationToken cancellationToken = default)
+        => _inner is IInitializableChatRuntime initializable
+            ? initializable.InitializeAsync(cancellationToken)
+            : Task.CompletedTask;
+
+    public event EventHandler? StatusChanged
+    {
+        add
+        {
+            if (_inner is IChatRuntimeStatusEvents notifier)
+                notifier.StatusChanged += value;
+        }
+        remove
+        {
+            if (_inner is IChatRuntimeStatusEvents notifier)
+                notifier.StatusChanged -= value;
+        }
+    }
 
     /// <inheritdoc/>
     /// <remarks>

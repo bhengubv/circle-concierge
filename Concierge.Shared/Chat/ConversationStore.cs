@@ -82,6 +82,23 @@ public sealed class ConversationStore : IConversationStore
         return conversation;
     }
 
+    public async Task<Conversation> StartWithIdAsync(Guid id, string ownerId, string? title = null, string? systemPrompt = null, CancellationToken cancellationToken = default)
+    {
+        if (id == Guid.Empty) throw new ArgumentException("A conversation ID is required.", nameof(id));
+        await _schemaReady.Value.ConfigureAwait(false);
+        await using var db = await _factory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        var conversation = new Conversation
+        {
+            Id = id,
+            OwnerId = ownerId,
+            Title = string.IsNullOrWhiteSpace(title) ? "New conversation" : title.Trim(),
+            SystemPrompt = systemPrompt ?? string.Empty,
+        };
+        db.Conversations.Add(conversation);
+        await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        return conversation;
+    }
+
     public async Task<ChatMessageRow> AppendAsync(Guid conversationId, string role, string content, string? producedBy = null, CancellationToken cancellationToken = default)
     {
         await _schemaReady.Value.ConfigureAwait(false);
@@ -143,6 +160,16 @@ public sealed class ConversationStore : IConversationStore
                 .MaxAsync(cancellationToken)
                 .ConfigureAwait(false);
 
+            var previousTime = await db.Events
+                .Where(e => e.ConversationId == conversationId)
+                .OrderByDescending(e => e.Seq)
+                .Select(e => (DateTimeOffset?)e.CreatedAt)
+                .FirstOrDefaultAsync(cancellationToken)
+                .ConfigureAwait(false);
+            var createdAt = DateTimeOffset.UtcNow;
+            if (previousTime is { } lastTime && createdAt <= lastTime)
+                createdAt = lastTime.AddMilliseconds(1);
+
             var entry = new ConversationEvent
             {
                 ConversationId = conversationId,
@@ -150,6 +177,7 @@ public sealed class ConversationStore : IConversationStore
                 Type = type,
                 Data = data ?? string.Empty,
                 ProducedBy = producedBy,
+                CreatedAt = createdAt,
             };
             db.Events.Add(entry);
 
@@ -194,6 +222,81 @@ public sealed class ConversationStore : IConversationStore
             .OrderBy(e => e.Seq)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    public async Task SynchronizeEventsAsync(Guid conversationId, IReadOnlyList<ConversationEvent> events, CancellationToken cancellationToken = default)
+    {
+        await _schemaReady.Value.ConfigureAwait(false);
+        await AppendGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using var db = await _factory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+            var conversation = await db.Conversations.FirstOrDefaultAsync(c => c.Id == conversationId, cancellationToken)
+                .ConfigureAwait(false) ?? throw new InvalidOperationException($"Conversation {conversationId} not found.");
+            var previousTime = await db.Events
+                .Where(e => e.ConversationId == conversationId)
+                .OrderByDescending(e => e.Seq)
+                .Select(e => (DateTimeOffset?)e.CreatedAt)
+                .FirstOrDefaultAsync(cancellationToken)
+                .ConfigureAwait(false);
+
+            foreach (var incoming in events.OrderBy(e => e.Seq))
+            {
+                if (incoming.ConversationId != conversationId)
+                    throw new InvalidOperationException("A synchronized event belongs to a different conversation.");
+
+                if (await db.Events.AnyAsync(e => e.Id == incoming.Id, cancellationToken).ConfigureAwait(false))
+                    continue;
+
+                // The originating device records its submitted prompt before sending it.
+                // The execution device records the same prompt in its own log. Treat an
+                // identical sequence slot as the same event; reject actual divergent logs.
+                var sameSlot = await db.Events.FirstOrDefaultAsync(
+                    e => e.ConversationId == conversationId && e.Seq == incoming.Seq, cancellationToken).ConfigureAwait(false);
+                if (sameSlot is not null)
+                {
+                    if (sameSlot.Type == incoming.Type && sameSlot.Data == incoming.Data)
+                        continue;
+                    throw new InvalidOperationException($"Conversation log conflict at sequence {incoming.Seq}.");
+                }
+
+                var createdAt = incoming.CreatedAt;
+                if (previousTime is { } lastTime && createdAt <= lastTime)
+                    createdAt = lastTime.AddMilliseconds(1);
+                var copy = new ConversationEvent
+                {
+                    Id = incoming.Id,
+                    ConversationId = conversationId,
+                    Seq = incoming.Seq,
+                    Type = incoming.Type,
+                    Data = incoming.Data,
+                    ProducedBy = incoming.ProducedBy,
+                    // Event sequence is the cross-device ordering authority. Keep the
+                    // projected timeline monotonic when handset and Desktop clocks differ.
+                    CreatedAt = createdAt,
+                };
+                db.Events.Add(copy);
+                previousTime = createdAt;
+                if (ProjectsToMessage(copy.Type))
+                {
+                    db.Messages.Add(new ChatMessageRow
+                    {
+                        ConversationId = conversationId,
+                        Role = RoleFor(copy.Type),
+                        Content = copy.Data,
+                        ProducedBy = copy.ProducedBy,
+                        CreatedAt = copy.CreatedAt,
+                    });
+                    conversation.UpdatedAt = copy.CreatedAt;
+                }
+            }
+
+            await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            AppendGate.Release();
+        }
     }
 
     /// <inheritdoc />

@@ -37,6 +37,17 @@
     var snapshot = State.GetSnapshot();
     var runtime = LlmRuntime.GetSnapshot();
     var recent = _conversations.Take(6).ToList();
+    var createLinks = new[] { (Name: "Diagrams", Href: "diagrams"), (Name: "Images", Href: "images") };
+    var aboutLinks = new[]
+    {
+        (Name: "What Concierge can do", Href: "product"),
+        (Name: "How it works", Href: "engineering"),
+        (Name: "More than coding", Href: "beyond"),
+        (Name: "Business connections", Href: "business-apis"),
+        (Name: "Coming next", Href: "roadmap"),
+        (Name: "What's new", Href: "release"),
+        (Name: "Plans and pricing", Href: "pricing")
+    };
 }
 
 <div class="ws">
@@ -50,10 +61,16 @@
     <aside class="ws-side">
         <a class="ws-brand" href="/">
             <span class="ws-brand-dot" aria-hidden="true"></span>
-            Concierge
+            <span class="ws-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="_content/Concierge.Shared.Components/lib/circlemetro/circle-icons.svg#cm-icon-circle" /></svg></span>
+            <span class="ws-brand-lockup"><strong>Concierge</strong><small>by Circle</small></span>
         </a>
 
         <div class="ws-scroll">
+            <button class="ws-item ws-start-conversation" type="button" @onclick="StartNewAsync">
+                <span class="ws-new-thread-mark" aria-hidden="true">+</span>
+                <span class="ws-item-label">New conversation</span>
+                <span class="ws-start-hint">Start here</span>
+            </button>
             @*
                 Long lists are folded, not scrolled. Threads and Approvals open
                 because they are what is happening; Skills is a catalogue of
@@ -61,18 +78,16 @@
                 shows its count, so a folded Approvals still says two are
                 waiting on you.
             *@
-            <section class="ws-group @(IsGroupOpen("threads") ? "is-open" : null)">
-                <button class="ws-head" type="button" @onclick='@(() => ToggleGroup("threads"))'>
+            <section class="ws-group ws-group-threads @(IsGroupOpen("threads") ? "is-open" : null)">
+                <button class="ws-head" type="button" aria-expanded="@IsGroupOpen("threads")" @onclick='@(() => ToggleGroup("threads"))'>
+                    <svg class="ws-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="_content/Concierge.Shared.Components/lib/circlemetro/circle-icons.svg#cm-icon-message" /></svg>
                     <svg class="ws-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
-                    <span class="ws-head-name">Threads</span>
+                    <span class="ws-head-name">Recent conversations</span>
                     <span class="ws-head-count">@_conversations.Count</span>
                 </button>
                 @if (IsGroupOpen("threads"))
                 {
-                    <div class="ws-group-body">
-                        <button class="ws-item" type="button" @onclick="StartNewAsync">
-                            <span class="ws-item-label" style="color:var(--accent-ink);">New thread</span>
-                        </button>
+                    <div class="ws-group-body" id="desktop-recent-conversations">
                         @*
                             The three most recent, then the rest on request.
                             Four threads plus four group headers overflowed the
@@ -102,25 +117,30 @@
                         {
                             <button class="ws-more" type="button"
                                     @onclick="@(() => _allThreads = true)">
-                                Show all @_conversations.Count
+                                Show all conversations
                             </button>
                         }
+                        <a class="ws-more ws-history-link" href="history">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><use href="_content/Concierge.Shared.Components/lib/circlemetro/circle-icons.svg#cm-icon-search" /></svg>
+                            Find an older conversation
+                        </a>
                     </div>
                 }
             </section>
 
-            <section class="ws-group @(IsGroupOpen("approvals") ? "is-open" : null)">
-                <button class="ws-head" type="button" @onclick='@(() => ToggleGroup("approvals"))'>
+            <section class="ws-group ws-group-approvals @(IsGroupOpen("approvals") ? "is-open" : null)">
+                <button class="ws-head" type="button" aria-expanded="@IsGroupOpen("approvals")" @onclick='@(() => ToggleGroup("approvals"))'>
+                    <svg class="ws-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="_content/Concierge.Shared.Components/lib/circlemetro/circle-icons.svg#cm-icon-shield" /></svg>
                     <svg class="ws-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
-                    <span class="ws-head-name">Approvals</span>
+                    <span class="ws-head-name">Needs your OK</span>
                     <span class="ws-head-count">@_pendingApprovals.Count</span>
                 </button>
                 @if (IsGroupOpen("approvals"))
                 {
-                    <div class="ws-group-body">
+                    <div class="ws-group-body" id="desktop-approval-summary">
                         @if (_pendingApprovals.Count == 0)
                         {
-                            <span class="ws-item" style="cursor:default;color:var(--ink-faint);">Nothing waiting</span>
+                            <p class="ws-group-note">Circle AI pauses here when an action needs your permission. You're all caught up.</p>
                         }
                         @foreach (var approval in _pendingApprovals)
                         {
@@ -137,7 +157,7 @@
                             overview, and without it /approvals is a route
                             nothing reaches.
                         *@
-                        <a class="ws-more" href="approvals">Open the queue</a>
+                        <a class="ws-more" href="approvals">Review requests</a>
                     </div>
                 }
             </section>
@@ -148,91 +168,75 @@
                 that is worth a permanent place. The catalogue is a search, and
                 searches belong behind a control, not in a sidebar.
             *@
-            <section class="ws-group @(IsGroupOpen("skills") ? "is-open" : null)">
-                <button class="ws-head" type="button" @onclick='@(() => ToggleGroup("skills"))'>
+            <section class="ws-group ws-group-skills @(IsGroupOpen("skills") ? "is-open" : null)">
+                <button class="ws-head" type="button" aria-expanded="@IsGroupOpen("skills")" @onclick='@(() => ToggleGroup("skills"))'>
+                    <svg class="ws-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="_content/Concierge.Shared.Components/lib/circlemetro/circle-icons.svg#cm-icon-star" /></svg>
                     <svg class="ws-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
-                    <span class="ws-head-name">Skills</span>
-                    <span class="ws-head-count">@_activeSkillIds.Count</span>
+                    <span class="ws-head-name">Personalize Circle AI</span>
+                    @if (_activeSkillIds.Count > 0)
+                    {
+                        <span class="ws-head-count">@_activeSkillIds.Count</span>
+                    }
                 </button>
                 @if (IsGroupOpen("skills"))
                 {
-                    <div class="ws-group-body">
+                    <div class="ws-group-body" id="desktop-personalize">
                         @if (_activeSkillIds.Count == 0)
                         {
-                            <span class="ws-item" style="cursor:default;color:var(--ink-faint);">None on</span>
+                            <p class="ws-group-note">Add specialist help for the kinds of things you do.</p>
                         }
                         else
                         {
                             @foreach (var skill in snapshot.Skills.Where(s => _activeSkillIds.Contains(s.Id)))
                             {
                                 var activeId = skill.Id;
-                                <button class="ws-item" type="button" title="Turn off"
+                                <button class="ws-item" type="button" title="Turn off this ability"
                                         @onclick="@(() => DeactivateSkill(activeId))">
                                     <span class="dot dot-done" aria-hidden="true"></span>
                                     <span class="ws-item-label">@skill.Name</span>
-                                    <span class="ws-item-meta">off</span>
+                                    <span class="ws-item-meta">on · turn off</span>
                                 </button>
                             }
                         }
                         <button class="ws-more" type="button" @onclick="ToggleSkillPicker">
-                            Browse all @snapshot.Skills.Count
+                            Browse abilities
                         </button>
                     </div>
                 }
             </section>
 
-            @*
-                The rooms. Everything above this is the conversation; these are
-                the six places that are not one — what the tools can do, what
-                it costs, what ships next. They keep their own routes because
-                they are destinations you read rather than modes you work in,
-                and this group is how you reach them now that there is no tab
-                bar and no ⋯ menu. Folded by default: they are somewhere you go
-                occasionally, and the threads above are not.
-            *@
-            <section class="ws-group @(IsGroupOpen("rooms") ? "is-open" : null)">
-                <button class="ws-head" type="button" @onclick='@(() => ToggleGroup("rooms"))'>
+            <section class="ws-group ws-group-create @(IsGroupOpen("create") ? "is-open" : null)">
+                <button class="ws-head" type="button" aria-expanded="@IsGroupOpen("create")" @onclick='@(() => ToggleGroup("create"))'>
+                    <svg class="ws-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="_content/Concierge.Shared.Components/lib/circlemetro/circle-icons.svg#cm-icon-edit" /></svg>
                     <svg class="ws-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
-                    <span class="ws-head-name">Rooms</span>
-                    <span class="ws-head-count">@RoomLinks.Length</span>
+                    <span class="ws-head-name">Make something</span>
                 </button>
-                @if (IsGroupOpen("rooms"))
+                @if (IsGroupOpen("create"))
                 {
-                    <div class="ws-group-body">
-                        @foreach (var room in RoomLinks)
+                    <div class="ws-group-body" id="desktop-create">
+                        <button class="ws-room ws-room-btn @(_designOpen ? "is-on" : null)" type="button" @onclick="ToggleDesign">
+                            @(_designOpen ? "Close Creator" : "Open Creator")
+                        </button>
+                        @foreach (var item in createLinks)
                         {
-                            <a class="ws-room" href="@room.Href">@room.Name</a>
+                            <a class="ws-room" href="@item.Href">@item.Name</a>
                         }
                     </div>
                 }
             </section>
 
-            @*
-                Things you use rather than read. Kept apart from Rooms so
-                neither group grows past what the sidebar can show.
-            *@
-            <section class="ws-group @(IsGroupOpen("tools") ? "is-open" : null)">
-                <button class="ws-head" type="button" @onclick='@(() => ToggleGroup("tools"))'>
+            <section class="ws-group ws-group-about @(IsGroupOpen("about") ? "is-open" : null)">
+                <button class="ws-head" type="button" aria-expanded="@IsGroupOpen("about")" @onclick='@(() => ToggleGroup("about"))'>
+                    <svg class="ws-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="_content/Concierge.Shared.Components/lib/circlemetro/circle-icons.svg#cm-icon-info" /></svg>
                     <svg class="ws-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
-                    <span class="ws-head-name">Tools</span>
-                    <span class="ws-head-count">@(ToolLinks.Length + 1)</span>
+                    <span class="ws-head-name">About &amp; updates</span>
                 </button>
-                @if (IsGroupOpen("tools"))
+                @if (IsGroupOpen("about"))
                 {
-                    <div class="ws-group-body">
-                        @*
-                            A posture, not a place. It looks like the links beside
-                            it on purpose — the difference between opening a page
-                            and changing what the middle of the window is for is
-                            not one a person should have to hold in their head.
-                        *@
-                        <button class="ws-room ws-room-btn @(_designOpen ? "is-on" : null)"
-                                type="button" @onclick="ToggleDesign">
-                            @(_designOpen ? "Creator — close" : "Creator")
-                        </button>
-                        @foreach (var tool in ToolLinks)
+                    <div class="ws-group-body" id="desktop-about">
+                        @foreach (var item in aboutLinks)
                         {
-                            <a class="ws-room" href="@tool.Href">@tool.Name</a>
+                            <a class="ws-room" href="@item.Href">@item.Name</a>
                         }
                     </div>
                 }
@@ -240,15 +244,14 @@
         </div>
 
         @*
-            What is answering, permanently on screen — and the way into settings.
-            Pressing what is answering to change what answers is the shortest
-            true sentence about where that control belongs; it was the third
-            group of a page you had to navigate to.
+            Circle AI status, permanently on screen — and the way into settings.
+            Windows desktop lets Circle AI choose the model automatically, so
+            this is a status label rather than a provider control.
         *@
-        <button class="ws-runtime" type="button" title="Settings"
+        <button class="ws-runtime" type="button" title="Open Circle AI and app settings" aria-label="Open Circle AI and app settings"
                 @onclick="OpenSettings">
-            <span class="dot @(runtime.RegistryAvailable ? "dot-done" : "dot-waiting")" aria-hidden="true"></span>
-            <span class="ws-runtime-name">@runtime.Engine</span>
+            <span class="ws-ai-emblem" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="_content/Concierge.Shared.Components/lib/circlemetro/circle-icons.svg#cm-icon-circle" /></svg><i class="@(runtime.RegistryAvailable ? "is-ready" : null)"></i></span>
+            <span class="ws-ai-copy"><span class="ws-ai-title">Circle AI</span><span class="ws-runtime-name">AI and app settings</span></span>
             @* Was the literal text "on device", under whichever engine was
                selected — including the three that are a cloud provider. The
                sidebar was contradicting the product's main claim on the one
@@ -259,7 +262,7 @@
                reintroduce the same fault in the other direction. *@
             @if (_activeRuntime is not null)
             {
-                <span class="ws-item-meta">@(_activeRuntime.LeavesDevice ? "in the cloud" : "on device")</span>
+                <span class="ws-item-meta">Settings</span>
             }
         </button>
     </aside>
@@ -295,7 +298,7 @@
                 }
                 else
                 {
-                    <span>@(_activeRuntime?.EngineLabel ?? runtime.Engine)</span>
+                    <span>Circle AI</span>
                 }
             </span>
         </header>
@@ -312,16 +315,15 @@
         {
             <Design Session="_design!" Changed="StateHasChanged" />
         }
-        else if (_active is null)
+        else if (_active is null || _active.Messages.Count == 0)
         {
-            @* Codex's empty panel is one glyph and one line. No tiles, no
-               suggestions, no hero — the composer below is the invitation. *@
-            <div class="empty">
+            <div class="empty desktop-legacy-empty">
                 <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M4 5h16v11H8l-4 4z"/>
                 </svg>
                 <span class="empty-line">Ask for anything, or pick up a thread</span>
             </div>
+            <WelcomePanel OnPromptSelected="UseStarterPrompt" />
         }
         else
         {
@@ -543,12 +545,60 @@
                         }
                     </div>
                     <span class="comp-sep">·</span>
-                    <span>@(_activeRuntime?.EngineLabel ?? runtime.Engine)</span>
+                    <span>Circle AI</span>
                     }
                     @if (!string.IsNullOrWhiteSpace(_composerHint))
                     {
                         <span class="comp-sep">·</span>
                         <span>@_composerHint</span>
+                    }
+                    @if (!_designOpen && CurrentModelDownload is { } modelProgress)
+                    {
+                        <span class="runtime-readiness model-download-status" role="status" aria-live="polite">
+                            <span class="model-download-description">@modelProgress.Description</span>
+                            <progress max="1" value="@Math.Clamp(modelProgress.Ratio, 0, 1)" aria-label="Circle AI model download progress"></progress>
+                            <span class="model-download-percent">@((int)Math.Round(Math.Clamp(modelProgress.Ratio, 0, 1) * 100))%</span>
+                        </span>
+                    }
+                    else if (!_designOpen && _downloading)
+                    {
+                        <span class="runtime-readiness" role="status" aria-live="polite">
+                            @(_downloadDetail ?? "Preparing Circle AI on this device…")
+                        </span>
+                    }
+                    else if (!_designOpen && PendingModel is { } pendingModel)
+                    {
+                        <span class="runtime-readiness" role="status">
+                            @if (_desktopAvailable)
+                            {
+                                <span>Circle AI can answer on your Desktop. Download @(pendingModel.Gigabytes.ToString("0.#")) GB to use this device offline.</span>
+                            }
+                            else
+                            {
+                                <span>Circle AI needs a @(pendingModel.Gigabytes.ToString("0.#")) GB download to answer here.</span>
+                            }
+                            @if (!pendingModel.FitsThisDevice)
+                            {
+                                <span>This model may not run smoothly on this device.</span>
+                            }
+                            <button class="download-model-action" type="button" @onclick="AcceptDownload">
+                                Download on this device
+                            </button>
+                            @if (!_desktopAvailable && DesktopClient is not null)
+                            {
+                                <button class="download-model-action" type="button" disabled="@_searchingDesktop" @onclick="@(() => FindDesktopAsync())">
+                                    @(_searchingDesktop ? "Looking for Desktop…" : "Find Desktop on Wi-Fi")
+                                </button>
+                                @if (_desktopSearchMessage is { } searchMessage)
+                                {
+                                    <span class="runtime-readiness-detail">@searchMessage</span>
+                                }
+                            }
+                        </span>
+                    }
+                    else if (RuntimeReadinessMessage is { } readinessMessage)
+                    {
+                        <span class="runtime-readiness" role="status" aria-live="polite">@readinessMessage</span>
                     }
                 </div>
             </div>

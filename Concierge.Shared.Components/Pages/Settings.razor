@@ -2,7 +2,6 @@
 @using Concierge.Shared.Safety
 @inject IConciergeStateService Concierge
 @inject ILlmRuntimeService LlmRuntime
-@inject IEnumerable<IChatRuntime> ChatRuntimes
 @inject ConciergeSafetySettings SafetySettings
 @inject ISafetyAuditLog SafetyAudit
 @inject IJSRuntime JS
@@ -24,12 +23,6 @@
 @{
     var snapshot = Concierge.GetSnapshot();
     var runtime = LlmRuntime.GetSnapshot();
-    var runtimes = ChatRuntimes
-        .GroupBy(r => r.Id, StringComparer.OrdinalIgnoreCase)
-        .Select(g => g.First())
-        .OrderByDescending(r => string.Equals(r.Id, "circleai", StringComparison.OrdinalIgnoreCase))
-        .ThenBy(r => r.EngineLabel, StringComparer.OrdinalIgnoreCase)
-        .ToList();
 }
 
 <div class="sheet-back" @onclick="Close" aria-hidden="true"></div>
@@ -43,50 +36,45 @@
         </button>
     </div>
 
-    @* ── Who answers ─────────────────────────────────────────────────── *@
-    <section class="sheet-group">
-        <button class="sheet-head-btn" type="button" @onclick="@(() => Toggle("who"))">
-            <svg class="ws-chev @(IsOpen("who") ? "is-open" : null)" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
-            <span class="sheet-label">Who answers</span>
-        </button>
-        @if (IsOpen("who"))
-        {
-        <div class="rows">
-            @foreach (var rt in runtimes)
+    <section class="appearance-panel" aria-label="Appearance">
+        <div class="appearance-heading">Make it yours</div>
+        <div class="appearance-caption">Theme</div>
+        <div class="seg appearance-themes" role="group" aria-label="Theme">
+            @foreach (var theme in new[] { ("auto", "Device"), ("light", "Light"), ("dark", "Dark") })
             {
-                var runtimeId = rt.Id;
-                var isLocal = string.Equals(runtimeId, "circleai", StringComparison.OrdinalIgnoreCase);
-                var isSelected = (_selectedProviderId is null && isLocal)
-                              || string.Equals(runtimeId, _selectedProviderId, StringComparison.OrdinalIgnoreCase);
-
-                <button class="row" type="button"
-                        @onclick="@(() => SelectProviderAsync(runtimeId))">
-                    <span class="row-name">
-                        @rt.EngineLabel
-                        @*
-                            NOT rt.StatusMessage. That reads "Anthropic API key
-                            not configured — set Anthropic:ApiKey in
-                            IConfiguration to enable", which is true and is
-                            addressed to whoever wrote the code. The person
-                            reading this needs to know what to do about it.
-                        *@
-                        <span class="row-sub">@Explain(rt, isLocal)</span>
-                    </span>
-                    @if (isSelected)
-                    {
-                        <span class="state"><span class="dot dot-done" aria-hidden="true"></span>Answering</span>
-                    }
+                <button class="seg-opt @(_appearanceTheme == theme.Item1 ? "is-on" : null)" type="button"
+                        aria-pressed="@(_appearanceTheme == theme.Item1 ? "true" : "false")"
+                        @onclick="@(() => SetAppearanceThemeAsync(theme.Item1))">@theme.Item2</button>
+            }
+        </div>
+        <div class="appearance-caption">Colour</div>
+        <div class="appearance-skins" role="group" aria-label="Colour skin">
+            @foreach (var skin in new[] { ("circle", "Circle"), ("tide", "Tide"), ("berry", "Berry") })
+            {
+                <button class="appearance-skin skin-@skin.Item1 @(_appearanceSkin == skin.Item1 ? "is-on" : null)" type="button"
+                        aria-pressed="@(_appearanceSkin == skin.Item1 ? "true" : "false")"
+                        @onclick="@(() => SetAppearanceSkinAsync(skin.Item1))">
+                    <span class="skin-swatch" aria-hidden="true"></span><span>@skin.Item2</span>
                 </button>
             }
         </div>
-        }
+        <p class="appearance-caption auto-model-note">Circle AI chooses the best available model for this device. It asks before downloads or paid actions.</p>
+    </section>
+
+    @* ── Automatic model choice ─────────────────────────────────────── *@
+    <section class="sheet-group">
+        <div class="row">
+            <span class="row-name">
+                Circle AI chooses the model
+                <span class="row-sub">It picks from the options available on this device. Add provider keys below; Circle AI handles the routing.</span>
+            </span>
+        </div>
     </section>
 
     @* ── Keys ────────────────────────────────────────────────────────── *@
     @*
-        Directly under "Who answers", because that group is where a cloud
-        runtime says it needs a key — and being told what is missing without
-        being shown where to put it is the jargon problem in another form.
+        Provider credentials are optional capabilities; Circle AI decides when
+        an available model is the right choice for the current device and task.
     *@
     <section class="sheet-group">
         <button class="sheet-head-btn" type="button" @onclick="@(() => Toggle("keys"))">
@@ -248,34 +236,15 @@
     /// app, so a cut-off panel gives no sign there is more. Folding is the same
     /// answer the sidebar uses, and it means the panel fits.
     ///
-    /// "Who answers" starts open because it is the one people come here for.
+    /// Keys starts open because it is the only section that needs configuration.
     /// </summary>
     /// One at a time, deliberately. With several groups unfolded the panel ran
     /// 246px past the bottom of the window and, with scrollbars hidden app-wide,
     /// said nothing about it. An accordion cannot outgrow the space it has.
-    private string? _open = "who";
+    private string? _open = "keys";
 
     private bool IsOpen(string key) => string.Equals(_open, key, StringComparison.Ordinal);
 
     private void Toggle(string key) => _open = IsOpen(key) ? null : key;
 
-    /// <summary>
-    /// What a runtime's state means to the person reading it.
-    ///
-    /// IChatRuntime.StatusMessage says "Anthropic API key not configured — set
-    /// Anthropic:ApiKey in IConfiguration to enable". That is accurate and it is
-    /// addressed to whoever wrote the code; it names a configuration key nobody
-    /// looking at this screen can act on.
-    /// </summary>
-    private static string Explain(IChatRuntime runtime, bool isLocal)
-    {
-        if (isLocal)
-        {
-            return "On this device. No key, no network.";
-        }
-
-        return runtime.IsReady
-            ? "In the cloud. Key saved."
-            : "In the cloud. Needs an API key before it can answer.";
-    }
 }

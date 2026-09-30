@@ -211,6 +211,24 @@ public interface IModelDownloadRequired
 }
 
 /// <summary>
+/// A runtime that must initialize a separate host before its status and model
+/// download choice are available to the client UI.
+/// </summary>
+public interface IInitializableChatRuntime
+{
+    Task InitializeAsync(CancellationToken cancellationToken = default);
+}
+
+/// <summary>Signals runtime readiness changes so clients can enable work without polling.</summary>
+public interface IChatRuntimeStatusEvents
+{
+    event EventHandler? StatusChanged;
+
+    /// <summary>The current model download, when this runtime is preparing one.</summary>
+    ModelDownloadProgress? CurrentDownloadProgress { get; }
+}
+
+/// <summary>
 /// Where a model download has got to.
 /// </summary>
 /// <param name="Ratio">Completion, 0 to 1. Zero when the total size is not yet known.</param>

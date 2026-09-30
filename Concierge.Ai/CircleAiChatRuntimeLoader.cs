@@ -11,18 +11,27 @@ namespace Concierge.Ai;
 internal sealed class CircleAiChatRuntimeLoader : IHostedService
 {
     private readonly CircleAiChatRuntime _runtime;
+    private readonly CircleAiChatOptions _options;
     private readonly CancellationTokenSource _shutdown = new();
     private Task? _loadTask;
 
-    public CircleAiChatRuntimeLoader(CircleAiChatRuntime runtime)
+    public CircleAiChatRuntimeLoader(CircleAiChatRuntime runtime, CircleAiChatOptions options)
     {
         _runtime = runtime;
+        _options = options;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        _loadTask = Task.Run(() => _runtime.LoadAsync(_shutdown.Token), _shutdown.Token);
+        _loadTask = Task.Run(LoadAndPrepareAsync, _shutdown.Token);
         return Task.CompletedTask;
+    }
+
+    private async Task LoadAndPrepareAsync()
+    {
+        await _runtime.LoadAsync(_shutdown.Token).ConfigureAwait(false);
+        if (_options.AllowAutomaticDownload && _runtime.Selected is not null && !_shutdown.IsCancellationRequested)
+            await _runtime.AcceptDownloadAsync(cancellationToken: _shutdown.Token).ConfigureAwait(false);
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)

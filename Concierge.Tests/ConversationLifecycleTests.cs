@@ -99,6 +99,17 @@ public sealed class ConversationLifecycleTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_conversation_can_be_created_with_an_id_shared_by_another_device()
+    {
+        var sharedId = Guid.NewGuid();
+
+        var created = await _store.StartWithIdAsync(sharedId, "local", "Shared from phone");
+
+        Assert.Equal(sharedId, created.Id);
+        Assert.Equal(sharedId, (await _store.GetAsync(sharedId))!.Id);
+    }
+
+    [Fact]
     public async Task Forking_from_a_message_that_is_not_there_is_refused()
     {
         var original = await SeedConversation("one");

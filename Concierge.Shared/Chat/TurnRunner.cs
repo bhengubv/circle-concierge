@@ -64,7 +64,8 @@ public sealed record TurnRequest(
     IChatRuntime Runtime,
     IReadOnlyList<IChatRuntime>? Alternatives = null,
     IReadOnlyList<ChatImage>? Images = null,
-    TurnSettings? Settings = null);
+    TurnSettings? Settings = null,
+    bool InputAlreadyRecorded = false);
 
 /// <summary>What a turn came to.</summary>
 public sealed record TurnResult(
@@ -124,9 +125,10 @@ public sealed class TurnRunner(
         var settings = request.Settings ?? new TurnSettings();
         var images = request.Images is { Count: > 0 } given ? given.ToList() : [];
 
-        await store.AppendEventAsync(
-            request.ConversationId, ConversationEventType.UserMessage, request.Text, cancellationToken: cancellationToken)
-            .ConfigureAwait(false);
+        if (!request.InputAlreadyRecorded)
+            await store.AppendEventAsync(
+                request.ConversationId, ConversationEventType.UserMessage, request.Text, cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
 
         progress?.Report(new TurnStep(TurnStage.Recorded));
 
