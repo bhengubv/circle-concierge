@@ -9,6 +9,17 @@ namespace Concierge.Tests;
 
 public sealed class CircleAiWindowsServiceRuntimeTests
 {
+    [Fact]
+    public void Prompt_diagnostics_include_all_system_layers_without_retaining_text()
+    {
+        var messages = new ChatTurn[] { new("system", new string('x', 20000)), new("system", "abcd"), new("user", "12345678") };
+        var diagnostics = CircleAiWindowsServiceRuntime.MeasurePrompt(messages, "selected");
+        Assert.Equal(3, diagnostics.MessageCount);
+        Assert.Equal(20012, diagnostics.Characters);
+        Assert.Equal(5009, diagnostics.EstimatedSystemTokens);
+        Assert.Equal(5015, diagnostics.EstimatedTokens);
+        Assert.DoesNotContain(new string('x', 100), JsonSerializer.Serialize(diagnostics));
+    }
     [Theory]
     [InlineData("{\"data\":[{\"id\":\"resident\",\"supports_streaming\":true}]}", "resident")]
     [InlineData("{\"data\":[]}", null)]

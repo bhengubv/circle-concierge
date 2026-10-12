@@ -1446,3 +1446,8 @@ Queue remaining work explicitly: bound the complete outgoing prompt (identity, t
 Implemented shared Desktop conversation history, local offline cache and durable unread markers, selected-thread voice continuation, unsent request queue and current/saved status screens. Added crown scrolling and optional public Wear SDK primary/dismiss gestures. 24 focused tests pass, including an unread-detection red/green check. See `acceptance/2026-10-13-stardust-wrist-inbox.md` for physical-device evidence and limits.
 
 Remaining: background answer/status notifications, cross-device unread reconciliation, Project agent scheduler queue integration, physical voice/gesture trial, and the previously recorded Circle AI full-context accuracy defect. No overall vision stage is closed by this change.
+
+
+### 13 October 2026 — mobile refresh and measured prompt pressure
+
+Updated Concierge debug clients on AngelDust and PixieDust; both installed and launched with existing data, and the Desktop presence response listed all four endpoints connected. Fresh Desktop 8+5 returned incorrect 10 with a measured 15,476-character request (3,919 estimated tokens, 3,901 in system text). Added content-free service prompt diagnostics and a passing measurement test. Full context accounting, capability-preserving progressive tool discovery, service configuration and suitable automatic model selection remain next work. See `acceptance/2026-10-13-mobile-update-and-prompt-budget.md`. No vision stage closed.

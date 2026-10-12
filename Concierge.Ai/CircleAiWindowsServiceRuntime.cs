@@ -22,6 +22,16 @@ public sealed class CircleAiWindowsServiceRuntime : IChatRuntime, IChatRuntimeCa
     public string EngineLabel => _model is null ? "Circle AI service" : $"{_model} (Circle AI service)";
     public bool LeavesDevice => false;
     public bool IsReady { get; private set; }
+    public CircleAiPromptDiagnostics? LastPromptDiagnostics { get; private set; }
+    internal static CircleAiPromptDiagnostics MeasurePrompt(IReadOnlyList<ChatTurn> messages, string? model)
+    {
+        var meter = new Concierge.Shared.Context.HeuristicTokenMeter();
+        return new(DateTimeOffset.UtcNow, model, messages.Count,
+            messages.Sum(m => m.Content?.Length ?? 0),
+            meter.Measure(messages, 4096).Tokens,
+            messages.Where(m => string.Equals(m.Role, "system", StringComparison.OrdinalIgnoreCase))
+                .Sum(m => meter.EstimateTokens(m.Content) + 4));
+    }
     private string _status = "Connecting to Circle AI service…";
     public event EventHandler? StatusChanged;
     public ModelDownloadProgress? CurrentDownloadProgress => null;
@@ -154,6 +164,7 @@ public sealed class CircleAiWindowsServiceRuntime : IChatRuntime, IChatRuntimeCa
         await _inference.WaitAsync(cancellationToken);
         try
         {
+        LastPromptDiagnostics = MeasurePrompt(messages, _model);
         using var request = new HttpRequestMessage(HttpMethod.Post, "/v1/chat/completions")
         {
             // Concierge's action/approval responses should not depend on a
@@ -185,6 +196,10 @@ public sealed class CircleAiWindowsServiceRuntime : IChatRuntime, IChatRuntimeCa
     }
     public void Dispose() => _http.Dispose();
 }
+
+/// <summary>Payload size only; never retains conversation content or credentials. Token counts are heuristic estimates.</summary>
+public sealed record CircleAiPromptDiagnostics(DateTimeOffset ObservedAt, string? Model,
+    int MessageCount, int Characters, int EstimatedTokens, int EstimatedSystemTokens);
 
 public sealed class CircleAiWindowsServiceLoader(CircleAiWindowsServiceRuntime runtime) : IHostedService, IDisposable
 {
