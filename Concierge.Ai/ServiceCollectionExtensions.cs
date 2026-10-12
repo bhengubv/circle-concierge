@@ -28,6 +28,7 @@ public static class ConciergeAiServiceCollectionExtensions
         services.AddSingleton<ILlmRuntimeService, CircleAiLlmRuntimeService>();
 
         services.AddSingleton(chatOptions);
+        services.TryAddSingleton<IChatExecutionDeviceSelector, CircleAiExecutionDeviceSelector>();
         services.AddSingleton<CircleAiChatRuntime>();
         services.RemoveAll<IChatRuntime>();
         services.AddSingleton<IChatRuntime>(sp => sp.GetRequiredService<CircleAiChatRuntime>());

@@ -11,6 +11,8 @@ namespace Concierge.Shared.Components.Pages;
 
 public partial class Skills
 {
+    private ElementReference _dialog;
+    private bool _focusTrapAttached;
 
     private string _query = string.Empty;
     private string? _area;
@@ -19,6 +21,27 @@ public partial class Skills
     // Waiting for blur on a 6689px catalogue is waiting for the wrong event.
     private void OnQueryChanged(ChangeEventArgs e)
         => _query = e.Value?.ToString() ?? string.Empty;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            await JS.InvokeVoidAsync("conciergeFocusTrap.attach", _dialog);
+            _focusTrapAttached = true;
+        }
+        catch { /* JS may be unavailable during prerender or on platforms that block it. */ }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (!_focusTrapAttached) return;
+        try
+        {
+            await JS.InvokeVoidAsync("conciergeFocusTrap.detach", _dialog);
+        }
+        catch { /* The document may already be gone during app shutdown. */ }
+    }
 
     // Two letters, so 69 rows have something to aim at other than a wall of
     // sentences. Drawn from the name rather than a per-skill icon set, which

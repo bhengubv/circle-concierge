@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Concierge.Shared.Chat;
 using Concierge.Shared.Design;
 using Concierge.Shared.Tools;
@@ -34,8 +35,12 @@ public sealed class AwayDesk(
     IEnumerable<IChatRuntime> runtimes,
     InteractiveToolApprovalService? approvals = null,
     RoomCatalogue? catalogue = null,
-    DesignWorkbench? workbench = null) : IAway
+    DesignWorkbench? workbench = null,
+    AwayRequestLedger? requestLedger = null) : IAway
 {
+    private readonly AwayRequestLedger _requestLedger = requestLedger ?? new AwayRequestLedger();
+    private readonly ConcurrentDictionary<Guid, CancellationTokenSource> _activeRuns = new();
+    private readonly IChatRuntime[] _runtimes = runtimes.ToArray();
     /// <summary>
     /// Whose conversations these are. The same owner the workspace uses, so what was said
     /// on a wrist is in the thread list on the desk rather than in a second history nobody
@@ -57,15 +62,76 @@ public sealed class AwayDesk(
 
     private DateTimeOffset _lastAt;
 
-    public AwayCapabilities Capabilities => new(runtimes.Any(runtime => runtime.IsReady
-        && !string.Equals(runtime.Id, "null", StringComparison.OrdinalIgnoreCase)));
+    public AwayCapabilities Capabilities
+    {
+        get
+        {
+            var circleAi = _runtimes.FirstOrDefault(runtime =>
+                string.Equals(runtime.Id, "circleai", StringComparison.OrdinalIgnoreCase));
+            var catalog = (circleAi as IChatRuntimeCapabilitySource)?.CapabilityCatalog;
+            var canAnswer = _runtimes.Any(runtime => runtime.IsReady
+                && !string.Equals(runtime.Id, "null", StringComparison.OrdinalIgnoreCase));
+            return new AwayCapabilities(canAnswer, catalog);
+        }
+    }
 
     /// <inheritdoc />
     public async Task<AwayAnswer> SayAsync(AwaySaid said, CancellationToken cancellationToken = default)
     {
+        if (said.RequestId is not { } requestId)
+            return await SayCoreAsync(said, cancellationToken).ConfigureAwait(false);
+
+        var candidateCancellation = new CancellationTokenSource();
+        var runCancellation = _activeRuns.GetOrAdd(requestId, candidateCancellation);
+        var ownsCancellation = ReferenceEquals(runCancellation, candidateCancellation);
+        if (!ownsCancellation)
+            candidateCancellation.Dispose();
+        try
+        {
+            return await _requestLedger.ExecuteOnceAsync(requestId, AwayRequestLedger.Fingerprint(said),
+                // The phone's HTTP connection may disappear after acceptance. The run keeps
+                // going unless an explicit cancel arrives with this same durable ID.
+                () => SayCoreAsync(said, runCancellation.Token), cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (ownsCancellation)
+            {
+                if (_activeRuns.TryGetValue(requestId, out var current) && ReferenceEquals(current, runCancellation))
+                    _activeRuns.TryRemove(requestId, out _);
+                runCancellation.Dispose();
+            }
+        }
+    }
+
+    public Task<bool> CancelRunAsync(Guid runId, CancellationToken cancellationToken = default)
+    {
+        if (!_activeRuns.TryGetValue(runId, out var stopping))
+            return Task.FromResult(false);
+        try
+        {
+            stopping.Cancel();
+            return Task.FromResult(true);
+        }
+        catch (ObjectDisposedException)
+        {
+            return Task.FromResult(false);
+        }
+    }
+
+    private async Task<AwayAnswer> SayCoreAsync(AwaySaid said, CancellationToken cancellationToken)
+    {
         if (string.IsNullOrWhiteSpace(said.Text))
         {
             return new AwayAnswer(false, string.Empty, "Nothing was said.");
+        }
+
+        if (said.ProjectId == Guid.Empty || said.ProjectWorkspaceId == Guid.Empty
+            || said.ProjectWorkspaceId is not null && said.ProjectId is null
+            || said.ProjectId is null && !string.IsNullOrWhiteSpace(said.ProjectContext)
+            || said.ProjectContext is { Length: > 16_384 })
+        {
+            return new AwayAnswer(false, string.Empty, "That project context is invalid or too large.", said.ConversationId);
         }
 
         // A client-created ID makes this the same durable conversation on both devices.
@@ -91,6 +157,11 @@ public sealed class AwayDesk(
         {
             return await AskTheModelAsync(said, null, cancellationToken).ConfigureAwait(false);
         }
+
+        // Plan only must not take the canvas fast path: DesignSpeech applies changes
+        // directly and bypasses TurnRunner's ExecuteTools gate.
+        if (said.PermissionMode == ToolPermissionMode.PlanOnly)
+            return await AskTheModelAsync(said, null, cancellationToken).ConfigureAwait(false);
 
         var restored = await designs.LoadAsync(cancellationToken).ConfigureAwait(false);
 
@@ -136,6 +207,45 @@ public sealed class AwayDesk(
 
     public Task<IReadOnlyList<ConversationEvent>> ReadConversationEventsAsync(Guid conversationId, CancellationToken cancellationToken = default)
         => conversations.ReadEventsAsync(conversationId, cancellationToken);
+
+    public Task<IReadOnlyList<ConversationEvent>> ReadConversationEventsAfterAsync(
+        Guid conversationId, int afterSeq, CancellationToken cancellationToken = default)
+        => conversations.ReadEventsAfterAsync(conversationId, afterSeq, cancellationToken);
+
+    public Task<IReadOnlyList<ConversationEvent>> ReadConversationEventsPageAsync(
+        Guid conversationId, int afterSeq, int pageSize, CancellationToken cancellationToken = default)
+        => conversations.ReadEventsPageAsync(conversationId, afterSeq, pageSize, cancellationToken);
+
+    /// <inheritdoc />
+    public async Task<bool> SynchronizeConversationEventsAsync(
+        Guid conversationId,
+        IReadOnlyList<ConversationEvent> events,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(events);
+        if (conversationId == Guid.Empty || events.Count > ConversationEventPage.MaximumSize)
+            return false;
+        if (events.Count == 0)
+            return true;
+        if (events.Any(entry => entry is null || entry.ConversationId != conversationId || entry.Id == Guid.Empty))
+            return false;
+
+        var existing = await conversations.GetAsync(conversationId, cancellationToken).ConfigureAwait(false);
+        if (existing is null)
+        {
+            // A handset creates the conversation identity before it can sync. Reusing that
+            // identity means a later Desktop turn continues this exact event log.
+            await conversations.StartWithIdAsync(conversationId, Owner, "From Mobile", cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+        }
+        else if (!string.Equals(existing.OwnerId, Owner, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        await conversations.SynchronizeEventsAsync(conversationId, events, cancellationToken).ConfigureAwait(false);
+        return true;
+    }
 
     /// <inheritdoc />
     public Task<IReadOnlyList<AwayAsk>> WaitingAsync(CancellationToken cancellationToken = default)
@@ -229,7 +339,7 @@ public sealed class AwayDesk(
     private async Task<AwayAnswer> AskTheModelAsync(
         AwaySaid said, string? fallback, CancellationToken cancellationToken)
     {
-        var ready = runtimes.Where(r => r.IsReady && !string.Equals(r.Id, "null", StringComparison.Ordinal)).ToList();
+        var ready = _runtimes.Where(r => r.IsReady && !string.Equals(r.Id, "null", StringComparison.Ordinal)).ToList();
 
         // Something that can see goes first when there is something to see. Asked of the
         // runtime's own list rather than of the interface: the local runtime declares the
@@ -286,6 +396,8 @@ public sealed class AwayDesk(
             return new AwayAnswer(false, string.Empty, unavailable, conversation.Id);
         }
 
+        var permissionMode = said.PermissionMode ?? ToolPermissionMode.AskFirst;
+        using var approvalMode = approvals?.ForTurn(permissionMode == ToolPermissionMode.ActFreely);
         var result = await runner.RunAsync(
             new TurnRequest(
                 conversation.Id,
@@ -295,16 +407,26 @@ public sealed class AwayDesk(
                 Images: said.Picture is not null && !blind
                     ? [new ChatImage(said.Picture.FileName, said.Picture.MediaType, said.Picture.Bytes)]
                     : null,
-                Settings: new TurnSettings(SystemPrompt: said.Context.AsSaid()),
-                InputAlreadyRecorded: said.ConversationEvents is { Count: > 0 }),
+                Settings: new TurnSettings(
+                    ExecuteTools: permissionMode != ToolPermissionMode.PlanOnly,
+                    IncludeToolCatalog: said.IncludeToolCatalog,
+                    SystemPrompt: string.Join("\n\n", new[] { said.Context.AsSaid(), said.ProjectContext }
+                        .Where(value => !string.IsNullOrWhiteSpace(value))),
+                    PermissionMode: permissionMode),
+                InputAlreadyRecorded: said.ConversationEvents is { Count: > 0 },
+                RunId: said.RequestId,
+                ProjectId: said.ProjectId,
+                ProjectWorkspaceId: said.ProjectWorkspaceId),
             progress: null,
             cancellationToken).ConfigureAwait(false);
 
         // A face has room for a sentence, not a transcript. The last line of what came back
         // is the answer; the rest is in the thread on the desk, where there is room for it.
-        var answer = result.Text?
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .LastOrDefault();
+        var answer = said.ProjectId is not null
+            ? result.Text
+            : result.Text?
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .LastOrDefault();
 
         return new AwayAnswer(
             result.Text is { Length: > 0 },

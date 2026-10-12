@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text;
+using Concierge.Away;
 using Concierge.Shared.Away;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -23,6 +24,7 @@ public sealed class DesktopAwayHost(IServiceProvider services, ILogger<DesktopAw
     private WebApplication? _app;
     private CancellationTokenSource? _beaconStop;
     private IPAddress? _lanAddress;
+    private readonly DevicePresenceDirectory _devices = new();
 
     public async Task StartAsync()
     {
@@ -37,22 +39,56 @@ public sealed class DesktopAwayHost(IServiceProvider services, ILogger<DesktopAw
                 log.LogWarning("Not starting the temporary bridge: no private Wi-Fi or Ethernet address is available.");
                 return;
             }
+            var broadcastAddress = FindPrivateLanBroadcastAddress(_lanAddress);
 
             var builder = WebApplication.CreateSlimBuilder();
-            // Do not bind wildcard/public interfaces. This debug-only proof listens
-            // only on a private IPv4 address and never on a public Internet address.
-            builder.WebHost.UseUrls($"http://{_lanAddress}:{Port}");
+            // Bind the workstation's loopback for its own browser and one private
+            // interface for the paired mobile proof. Never use a wildcard/public
+            // interface: this endpoint is deliberately temporary and unauthenticated.
+            builder.WebHost.UseUrls($"http://127.0.0.1:{Port};http://{_lanAddress}:{Port}");
             var app = builder.Build();
 
             app.MapGet("/healthz", () => Results.Ok(new { status = "ready", service = "Concierge Desktop" }));
+            app.MapGet("/api/away/devices", () => Results.Json(_devices.Snapshot()));
+            app.MapPost("/api/away/devices", (DeviceHeartbeat device) =>
+            {
+                try { return Results.Json(_devices.Observe(device)); }
+                catch (ArgumentException) { return Results.BadRequest(); }
+            });
             app.MapGet("/api/away/capabilities", () => Results.Json(Away.Capabilities));
+            app.MapGet("/api/away/conversations", async (CancellationToken ct) => Results.Json(
+                await WristReadModel.ReadAsync(services.GetRequiredService<Concierge.Shared.Chat.IConversationStore>(),
+                    services.GetService<Concierge.Shared.Chat.BackgroundRuns>(), ct).ConfigureAwait(false)));
+            app.MapGet("/api/away/conversations/{conversationId:guid}/recent", async (Guid conversationId, CancellationToken ct) => Results.Json(
+                await services.GetRequiredService<Concierge.Shared.Chat.IConversationStore>().ReadRecentEventsAsync(conversationId, 100, ct).ConfigureAwait(false)));
+            app.MapPost("/api/away/cancel", async (CancelBody body, CancellationToken ct) =>
+            {
+                if (body.RunId == Guid.Empty)
+                    return Results.BadRequest(new { cancelled = false, message = "A run ID is required." });
+
+                var cancelled = await Away.CancelRunAsync(body.RunId, ct).ConfigureAwait(false);
+                return Results.Json(new { cancelled });
+            });
             // Return Task<IResult> directly. An async lambda here can bind to the
             // RequestDelegate overload and silently discard the IResult body.
             app.MapPost("/api/away/say",
                 (Delegate)(Func<HttpContext, Task<IResult>>)(context => SayAsync(context)));
             app.MapGet("/api/away/conversations/{conversationId:guid}/events", async (Guid conversationId, int? afterSeq, CancellationToken ct) =>
-                Results.Json((await Away.ReadConversationEventsAsync(conversationId, ct).ConfigureAwait(false))
-                    .Where(entry => entry.Seq > (afterSeq ?? -1))));
+                Results.Json(await Away.ReadConversationEventsAfterAsync(
+                    conversationId, afterSeq ?? -1, ct).ConfigureAwait(false)));
+            app.MapPost("/api/away/conversations/{conversationId:guid}/events", async (
+                Guid conversationId, AwayConversationEvents body, CancellationToken ct) =>
+            {
+                if (conversationId == Guid.Empty || body.Events is null
+                    || body.Events.Count > Concierge.Shared.Chat.ConversationEventPage.MaximumSize)
+                    return Results.BadRequest(new { synchronized = false, message = "Send a valid event batch of at most 512 events." });
+
+                var synchronized = await Away.SynchronizeConversationEventsAsync(
+                    conversationId, body.Events, ct).ConfigureAwait(false);
+                return synchronized
+                    ? Results.Ok(new { synchronized = true })
+                    : Results.Conflict(new { synchronized = false, message = "Those events do not match this conversation." });
+            });
             app.MapGet("/api/away/waiting", async (CancellationToken ct) =>
                 Results.Json(await Away.WaitingAsync(ct).ConfigureAwait(false)));
             app.MapPost("/api/away/answer", async (AnswerBody body, CancellationToken ct) =>
@@ -74,7 +110,7 @@ public sealed class DesktopAwayHost(IServiceProvider services, ILogger<DesktopAw
             await app.StartAsync().ConfigureAwait(false);
             _app = app;
             _beaconStop = new CancellationTokenSource();
-            _ = AnnounceAsync(_lanAddress, _beaconStop.Token);
+            _ = AnnounceAsync(_lanAddress, broadcastAddress, _beaconStop.Token);
             log.LogWarning("Temporary unauthenticated Concierge LAN bridge is listening on port {Port}; Debug builds only.", Port);
         }
         catch (Exception failure)
@@ -109,28 +145,49 @@ public sealed class DesktopAwayHost(IServiceProvider services, ILogger<DesktopAw
             body.At ?? DateTimeOffset.UtcNow,
             string.IsNullOrWhiteSpace(body.Device) ? "phone" : body.Device,
             body.Latitude, body.Longitude, body.Motion, body.HeartRate, body.AmbientLux), picture, body.ConversationId,
-            body.ConversationEvents);
+            body.ConversationEvents, body.RequestId, body.PermissionMode, body.ProjectId,
+            body.ProjectWorkspaceId, body.ProjectContext, body.IncludeToolCatalog);
         var answer = await Away.SayAsync(said, context.RequestAborted).ConfigureAwait(false);
         if (answer.ConversationId is { } conversationId)
             answer = answer with { Events = await Away.ReadConversationEventsAsync(conversationId, context.RequestAborted).ConfigureAwait(false) };
         return Results.Json(answer);
     }
 
-    private static async Task AnnounceAsync(IPAddress address, CancellationToken cancellationToken)
+    private static async Task AnnounceAsync(IPAddress address, IPAddress? broadcastAddress, CancellationToken cancellationToken)
     {
         using var udp = new UdpClient(AddressFamily.InterNetwork);
         // Bind the sender to the same physical interface as the HTTP host. The
         // Windows default multicast route can otherwise select a virtual adapter.
         udp.Client.Bind(new IPEndPoint(address, 0));
-        var destination = new IPEndPoint(IPAddress.Parse("239.7.7.7"), 47772);
-        var bytes = Encoding.UTF8.GetBytes($"concierge-away|http://{address}:{Port}");
+        udp.EnableBroadcast = broadcastAddress is not null;
+        var multicastDestination = new IPEndPoint(IPAddress.Parse(AwayBeacon.MulticastGroup), AwayBeacon.Port);
+        var broadcastDestination = broadcastAddress is null ? null : new IPEndPoint(broadcastAddress, AwayBeacon.Port);
+        var bytes = Encoding.UTF8.GetBytes($"{AwayBeacon.Prefix}http://{address}:{Port}");
         while (!cancellationToken.IsCancellationRequested)
         {
-            try { await udp.SendAsync(bytes, destination, cancellationToken).ConfigureAwait(false); }
+            try { await udp.SendAsync(bytes, multicastDestination, cancellationToken).ConfigureAwait(false); }
             catch (Exception ex) when (ex is SocketException or ObjectDisposedException) { }
+            if (broadcastDestination is not null)
+            {
+                try { await udp.SendAsync(bytes, broadcastDestination, cancellationToken).ConfigureAwait(false); }
+                catch (Exception ex) when (ex is SocketException or ObjectDisposedException) { }
+            }
             try { await Task.Delay(TimeSpan.FromSeconds(3), cancellationToken).ConfigureAwait(false); }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { break; }
         }
+    }
+
+    private static IPAddress? FindPrivateLanBroadcastAddress(IPAddress address)
+    {
+        foreach (var network in NetworkInterface.GetAllNetworkInterfaces()
+                     .Where(network => network.OperationalStatus == OperationalStatus.Up))
+        {
+            var unicast = network.GetIPProperties().UnicastAddresses
+                .FirstOrDefault(candidate => candidate.Address.Equals(address));
+            if (unicast?.IPv4Mask is { } mask)
+                return AwayBeacon.DirectedBroadcastAddress(address, mask);
+        }
+        return null;
     }
 
     private static IPAddress? FindPrivateLanAddress()
@@ -181,7 +238,14 @@ public sealed class DesktopAwayHost(IServiceProvider services, ILogger<DesktopAw
     private sealed record SaidBody(
         string? Text, string? Device, DateTimeOffset? At, double? Latitude, double? Longitude,
         string? Motion, int? HeartRate, double? AmbientLux, string? PictureBase64, string? PictureName,
-        Guid? ConversationId, IReadOnlyList<Concierge.Shared.Chat.ConversationEvent>? ConversationEvents);
+        Guid? ConversationId, IReadOnlyList<Concierge.Shared.Chat.ConversationEvent>? ConversationEvents,
+        Guid? RequestId = null,
+        Concierge.Shared.Tools.ToolPermissionMode? PermissionMode = null,
+        Guid? ProjectId = null,
+        Guid? ProjectWorkspaceId = null,
+        string? ProjectContext = null,
+        bool IncludeToolCatalog = true);
     private sealed record AnswerBody(Guid Id, bool Allowed);
+    private sealed record CancelBody(Guid RunId);
 }
 #endif

@@ -8,7 +8,7 @@ namespace Concierge.Hosting;
 
 /// <summary>
 /// MAUI-flavoured <see cref="IDeviceContext"/>. Pulls live signals from
-/// <see cref="DeviceInfo"/>, <see cref="Battery"/>, and <see cref="Connectivity"/> so the
+/// <see cref="DeviceInfo"/>, <see cref="Battery"/>, and <see cref="Microsoft.Maui.Networking.Connectivity"/> so the
 /// CircleAI runtime can reason about locale, battery, and network state on the user's device.
 /// All access is wrapped in try/catch because some platforms do not expose every sensor.
 /// </summary>

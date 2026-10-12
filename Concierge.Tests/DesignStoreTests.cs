@@ -69,6 +69,83 @@ public sealed class DesignStoreTests : IDisposable
     }
 
     [Fact]
+    public async Task Canvas_history_position_and_selection_survive_a_restart()
+    {
+        var store = Store();
+        var session = new DesignSession();
+        var frame = DesignNode.New(DesignNodeKind.Frame, null, ("text", "First"));
+        session.Record(session.Current.Add(frame), "Added the first frame");
+        session.Point(frame.Id);
+        session.Record(session.Current.Add(DesignNode.New(DesignNodeKind.Heading, frame.Id, ("text", "Next"))), "Added a heading");
+        session.Back();
+
+        await store.SaveSessionAsync(session.Capture());
+
+        var restored = await store.LoadSessionAsync();
+        Assert.Null(restored.Problem);
+        Assert.NotNull(restored.Session);
+        var reopened = new DesignSession(restored.Session!);
+        Assert.Equal(3, reopened.Moments.Count);
+        Assert.Equal(1, reopened.Position);
+        Assert.True(reopened.CanGoBack);
+        Assert.True(reopened.CanGoForward);
+        Assert.Equal(frame.Id, reopened.Selected);
+        Assert.Equal("First", reopened.Current.Find(frame.Id)!.Text);
+        reopened.Forward();
+        Assert.Equal("Next", reopened.Current.ChildrenOf(frame.Id).Single().Text);
+    }
+
+    [Fact]
+    public async Task Legacy_single_document_file_opens_as_one_history_moment()
+    {
+        var store = Store();
+        Directory.CreateDirectory(_root);
+        await File.WriteAllTextAsync(store.Path, DesignDocumentFormat.Serialize(Sample()));
+
+        var restored = await store.LoadSessionAsync();
+
+        Assert.Null(restored.Problem);
+        Assert.Single(restored.Session!.Moments);
+        Assert.Equal(DesignMedium.Deck, restored.Session.Moments[0].Document.Medium);
+    }
+
+    [Fact]
+    public async Task Document_only_update_keeps_the_existing_history_for_older_clients()
+    {
+        var store = Store();
+        var session = new DesignSession();
+        var frame = DesignNode.New(DesignNodeKind.Frame, null, ("text", "First"));
+        session.Record(session.Current.Add(frame), "Added the first frame");
+        await store.SaveSessionAsync(session.Capture());
+        var updated = session.Current.Add(DesignNode.New(DesignNodeKind.Heading, frame.Id, ("text", "From Mobile")));
+
+        await store.SaveAsync(updated);
+
+        var restored = await store.LoadSessionAsync();
+        Assert.Equal(3, restored.Session!.Moments.Count);
+        Assert.Equal("Updated from a connected device", restored.Session.Moments[^1].What);
+        Assert.Equal("From Mobile", restored.Session.Moments[^1].Document.ChildrenOf(frame.Id).Single().Text);
+    }
+
+    [Fact]
+    public async Task Newer_session_file_is_not_overwritten_by_a_save()
+    {
+        var store = Store();
+        var session = new DesignSession();
+        session.Record(Sample(), "Added a design");
+        await store.SaveSessionAsync(session.Capture());
+        var future = (await File.ReadAllTextAsync(store.Path)).Replace(
+            "\"SessionSchemaVersion\": 1",
+            "\"SessionSchemaVersion\": 99",
+            StringComparison.Ordinal);
+        await File.WriteAllTextAsync(store.Path, future);
+
+        await Assert.ThrowsAsync<IOException>(() => store.SaveSessionAsync(session.Capture()));
+
+        Assert.Contains("\"SessionSchemaVersion\": 99", await File.ReadAllTextAsync(store.Path));
+    }
+
+    [Fact]
     public async Task Saving_twice_keeps_the_second_one()
     {
         var store = Store();
@@ -118,10 +195,12 @@ public sealed class DesignStoreTests : IDisposable
         await store.SaveAsync(Sample());
 
         var written = await File.ReadAllTextAsync(store.Path);
-        await File.WriteAllTextAsync(store.Path, written.Replace(
-            $"\"SchemaVersion\": {DesignDocumentFormat.CurrentVersion}",
-            $"\"SchemaVersion\": {DesignDocumentFormat.CurrentVersion + 99}",
-            StringComparison.Ordinal));
+        var sessionWire = System.Text.Json.Nodes.JsonNode.Parse(written)!;
+        var savedMoment = sessionWire["Moments"]![0]!;
+        var documentWire = System.Text.Json.Nodes.JsonNode.Parse(savedMoment["Document"]!.GetValue<string>())!;
+        documentWire["SchemaVersion"] = DesignDocumentFormat.CurrentVersion + 99;
+        savedMoment["Document"] = documentWire.ToJsonString();
+        await File.WriteAllTextAsync(store.Path, sessionWire.ToJsonString());
 
         var restored = await store.LoadAsync();
 

@@ -1,7 +1,10 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Diagnostics;
 using System.Text;
 using Concierge.Away;
+using Concierge.Shared.Chat;
+using Concierge.Shared.Tools;
 
 namespace Concierge.Tests;
 
@@ -20,14 +23,34 @@ namespace Concierge.Tests;
 /// </summary>
 public sealed class AwayWireTests : IDisposable
 {
+    private sealed class CapabilityRuntime(ChatRuntimeCapabilityCatalog catalog) : IChatRuntime, IChatRuntimeCapabilitySource
+    {
+        public string Id => "circleai";
+        public string EngineLabel => "Circle AI on this device";
+        public bool IsReady => true;
+        public string StatusMessage => "Ready";
+        public ChatRuntimeCapabilityCatalog? CapabilityCatalog => catalog;
+
+        public async IAsyncEnumerable<string> StreamAsync(IReadOnlyList<ChatTurn> messages,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.CompletedTask;
+            yield return "local";
+        }
+    }
+
     private readonly HttpListener _listener = new();
     private readonly List<string> _bodies = [];
     private readonly List<string?> _keys = [];
     private readonly CancellationTokenSource _stopping = new();
     private readonly string _where;
+    private string? _capabilitiesResponseOverride;
 
     private readonly string _outbox = Path.Combine(
         Path.GetTempPath(), $"wire-outbox-{Guid.NewGuid():N}");
+    private readonly string _hostConfigRoot = Path.Combine(
+        Path.GetTempPath(), $"wire-host-{Guid.NewGuid():N}");
+    private string HostConfigPath => Path.Combine(_hostConfigRoot, "desk.txt");
 
     public AwayWireTests()
     {
@@ -50,6 +73,10 @@ public sealed class AwayWireTests : IDisposable
             if (Directory.Exists(_outbox))
             {
                 Directory.Delete(_outbox, recursive: true);
+            }
+            if (Directory.Exists(_hostConfigRoot))
+            {
+                Directory.Delete(_hostConfigRoot, recursive: true);
             }
         }
         catch (IOException)
@@ -93,7 +120,9 @@ public sealed class AwayWireTests : IDisposable
             {
                 "/api/away/waiting" =>
                     """[{"id":"11111111-1111-1111-1111-111111111111","tool":"write_file","summary":"Write notes.md","risk":"Caution","askedAt":"2026-09-13T06:14:00Z"}]""",
+                "/api/away/capabilities" => _capabilitiesResponseOverride ?? """{"canAnswer":false}""",
                 "/api/away/answer" => """{"answered":true}""",
+                "/api/away/cancel" => """{"cancelled":true}""",
                 _ => """{"understood":true,"what":"Added a title","reply":"Added a title"}""",
             };
 
@@ -103,6 +132,47 @@ public sealed class AwayWireTests : IDisposable
             await context.Response.OutputStream.WriteAsync(bytes, cancellationToken);
             context.Response.Close();
         }
+    }
+
+    [Fact]
+    public async Task Capability_wire_drops_activity_when_desktop_is_unavailable_even_if_host_sends_stale_activity()
+    {
+        var stale = new Concierge.Shared.Chat.ChatRuntimeCapabilityCatalog(
+            1, "circleai", "3.6.0", DateTimeOffset.UtcNow.AddHours(-1),
+            [new("conversation", "Conversation", Concierge.Shared.Chat.ChatRuntimeCapabilityState.Unavailable,
+                "Circle AI stopped while preparing.")],
+            new(19, 1300, 8, "Online", null),
+            Activity: new Concierge.Shared.Chat.ChatRuntimeActivity(
+                "model-download", "embeddings_bf16.bin 1%", 0.01));
+        _capabilitiesResponseOverride = System.Text.Json.JsonSerializer.Serialize(
+            new AwayDeviceCapabilities(false, stale));
+        var client = Pointed();
+
+        var received = await client.GetCapabilitiesAsync();
+
+        Assert.NotNull(received?.CircleAi);
+        Assert.Equal(Concierge.Shared.Chat.ChatRuntimeCapabilityState.Unavailable,
+            received.CircleAi.Capabilities.Single(capability => capability.Id == "conversation").State);
+        Assert.Null(received.CircleAi.Activity);
+    }
+
+    [Fact]
+    public async Task Capability_wire_preserves_fresh_download_activity_while_conversation_is_available()
+    {
+        var current = new Concierge.Shared.Chat.ChatRuntimeCapabilityCatalog(
+            1, "circleai", "3.6.0", DateTimeOffset.UtcNow,
+            [new("conversation", "Conversation", Concierge.Shared.Chat.ChatRuntimeCapabilityState.Available)],
+            new(19, 1300, 8, "Online", null),
+            Activity: new Concierge.Shared.Chat.ChatRuntimeActivity(
+                "model-download", "Model 10 of 10 · weights 4 GB / 9 GB", 0.45));
+        _capabilitiesResponseOverride = System.Text.Json.JsonSerializer.Serialize(
+            new AwayDeviceCapabilities(true, current));
+        var client = Pointed();
+
+        var received = await client.GetCapabilitiesAsync();
+
+        Assert.Equal("model-download", received?.CircleAi?.Activity?.Kind);
+        Assert.Equal(0.45, received?.CircleAi?.Activity?.ProgressRatio);
     }
 
     /// <summary>
@@ -117,9 +187,46 @@ public sealed class AwayWireTests : IDisposable
     /// </summary>
     private AwayClient Pointed()
     {
-        var client = new AwayClient(new AwayOutbox(_outbox)) { Key = "watchtest" };
+        var client = new AwayClient(new AwayOutbox(_outbox), hostConfigPath: HostConfigPath) { Key = "watchtest" };
         client.PointAt(_where);
         return client;
+    }
+
+    [Fact]
+    public void HTTPS_Desktop_link_is_saved_and_loaded_by_a_new_client()
+    {
+        var client = new AwayClient(new AwayOutbox(_outbox), hostConfigPath: HostConfigPath);
+
+        client.ConfigureHost("https://desk.example.test/");
+
+        Assert.Equal("https://desk.example.test", client.ConfiguredHost);
+        var reloaded = new AwayClient(new AwayOutbox(_outbox), hostConfigPath: HostConfigPath);
+        Assert.Equal("https://desk.example.test", reloaded.ConfiguredHost);
+        Assert.True(reloaded.HasConfiguredHost);
+    }
+
+    [Fact]
+    public void HTTP_Desktop_link_is_accepted_for_private_LAN_and_rejects_public_cleartext()
+    {
+        var client = new AwayClient(new AwayOutbox(_outbox), hostConfigPath: HostConfigPath);
+
+        client.ConfigureHost("http://192.168.0.250:5198");
+
+        Assert.Equal("http://192.168.0.250:5198", client.ConfiguredHost);
+        Assert.Throws<ArgumentException>(() => client.ConfigureHost("http://desk.example.test"));
+        Assert.Equal("http://192.168.0.250:5198", client.ConfiguredHost);
+    }
+
+    [Fact]
+    public void Reconfiguring_Desktop_preserves_a_saved_key_without_persisting_an_environment_key()
+    {
+        Directory.CreateDirectory(_hostConfigRoot);
+        File.WriteAllLines(HostConfigPath, ["http://192.168.0.250:5198", "pairing-test-key"]);
+        var client = new AwayClient(new AwayOutbox(_outbox), hostConfigPath: HostConfigPath);
+
+        client.ConfigureHost("https://desk.example.test");
+
+        Assert.Equal(["https://desk.example.test", "pairing-test-key"], File.ReadAllLines(HostConfigPath));
     }
 
     /// <summary>
@@ -134,6 +241,57 @@ public sealed class AwayWireTests : IDisposable
 
         Assert.True(answer.Understood, answer.Reply);
         Assert.Equal("Added a title", answer.Reply);
+    }
+
+    [Fact]
+    public async Task Project_agent_dispatch_preserves_run_and_project_identity_without_tool_catalogue()
+    {
+        var runId = Guid.NewGuid();
+        var projectId = Guid.NewGuid();
+        var workspaceId = Guid.NewGuid();
+        var client = Pointed();
+
+        var answer = await client.SayProjectAgentAsync("Review the launch plan.",
+            new Situation(DateTimeOffset.UtcNow), runId, projectId, workspaceId, null,
+            "Read-only analysis", "{\"Name\":\"Launch\"}");
+
+        Assert.True(answer.Understood, answer.Reply);
+        using var body = System.Text.Json.JsonDocument.Parse(Assert.Single(_bodies));
+        var request = body.RootElement;
+        Assert.Equal(runId, request.GetProperty("requestId").GetGuid());
+        Assert.Equal(projectId, request.GetProperty("projectId").GetGuid());
+        Assert.Equal(workspaceId, request.GetProperty("projectWorkspaceId").GetGuid());
+        Assert.False(request.GetProperty("includeToolCatalog").GetBoolean());
+        Assert.Equal((int)ToolPermissionMode.PlanOnly, request.GetProperty("permissionMode").GetInt32());
+        Assert.Equal(0, client.Waiting);
+    }
+
+    [Fact]
+    public async Task Cancellation_uses_the_same_durable_run_id()
+    {
+        var runId = Guid.NewGuid();
+        var cancelled = await Pointed().CancelRunAsync(runId);
+
+        Assert.True(cancelled);
+        using var body = System.Text.Json.JsonDocument.Parse(Assert.Single(_bodies));
+        Assert.Equal(runId, body.RootElement.GetProperty("runId").GetGuid());
+    }
+
+    [Fact]
+    public async Task Project_agent_selector_chooses_ready_Desktop_when_it_has_more_usable_memory()
+    {
+        var desktopCatalog = new ChatRuntimeCapabilityCatalog(1, "circleai", "3.6.0", DateTimeOffset.UtcNow,
+            [new("conversation", "Conversation", ChatRuntimeCapabilityState.Available),
+             new("reasoning", "Reasoning", ChatRuntimeCapabilityState.Available)],
+            new(16.1, 500, 16, "Online", "Live"));
+        _capabilitiesResponseOverride = System.Text.Json.JsonSerializer.Serialize(
+            new AwayDeviceCapabilities(true, desktopCatalog));
+        var mobileCatalog = desktopCatalog with { Resources = desktopCatalog.Resources! with { UsableMemoryGb = 2.1 } };
+        var local = new CapabilityRuntime(mobileCatalog);
+
+        var selected = await new AwayProjectAgentRuntimeSelector(Pointed()).SelectAsync(local);
+
+        Assert.IsType<AwayProjectAgentRuntime>(selected);
     }
 
     /// <summary>
@@ -152,6 +310,8 @@ public sealed class AwayWireTests : IDisposable
         Assert.Contains("walking", sent, StringComparison.Ordinal);
         Assert.Contains("2026-09-13T06:14:00", sent, StringComparison.Ordinal);
         Assert.Contains("\"device\":\"watch\"", sent, StringComparison.Ordinal);
+        Assert.True(Guid.TryParse(
+            System.Text.Json.JsonDocument.Parse(sent).RootElement.GetProperty("requestId").GetString(), out _));
     }
 
     [Fact]
@@ -162,6 +322,51 @@ public sealed class AwayWireTests : IDisposable
         await Pointed().SayInConversationAsync("continue this work", new Situation(DateTimeOffset.UtcNow), id);
 
         Assert.Contains($"\"conversationId\":\"{id:D}\"", Assert.Single(_bodies), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task A_project_run_id_is_the_same_id_sent_to_the_desktop_turn_runner()
+    {
+        var conversationId = Guid.NewGuid();
+        var runId = Guid.NewGuid();
+
+        await Pointed().SayInConversationAsync("analyse this Project", new Situation(DateTimeOffset.UtcNow), conversationId,
+            cancellationToken: default, permissionMode: ToolPermissionMode.PlanOnly, requestId: runId);
+
+        var sent = System.Text.Json.JsonDocument.Parse(Assert.Single(_bodies)).RootElement;
+        Assert.Equal(runId, sent.GetProperty("requestId").GetGuid());
+        Assert.Equal((int)ToolPermissionMode.PlanOnly, sent.GetProperty("permissionMode").GetInt32());
+    }
+
+    [Theory]
+    [InlineData(ToolPermissionMode.PlanOnly, "0")]
+    [InlineData(ToolPermissionMode.AskFirst, "1")]
+    [InlineData(ToolPermissionMode.ActFreely, "2")]
+    public async Task And_carries_the_action_permission_mode_to_desktop(ToolPermissionMode mode, string wireValue)
+    {
+        var id = Guid.NewGuid();
+        await Pointed().SayInConversationAsync("continue this work", new Situation(DateTimeOffset.UtcNow), id,
+            Array.Empty<Concierge.Shared.Chat.ConversationEvent>(), permissionMode: mode);
+
+        Assert.Contains($"\"permissionMode\":{wireValue}", Assert.Single(_bodies), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task And_carries_project_context_with_the_same_away_run()
+    {
+        var conversationId = Guid.NewGuid();
+        var projectId = Guid.NewGuid();
+        var workspaceId = Guid.NewGuid();
+        const string context = "Current project context: \"Launch plan\".";
+
+        await Pointed().SayInConversationAsync("continue launch work", new Situation(DateTimeOffset.UtcNow), conversationId,
+            Array.Empty<Concierge.Shared.Chat.ConversationEvent>(), permissionMode: ToolPermissionMode.AskFirst,
+            projectId: projectId, projectWorkspaceId: workspaceId, projectContext: context);
+
+        var sent = System.Text.Json.JsonDocument.Parse(Assert.Single(_bodies)).RootElement;
+        Assert.Equal(projectId, sent.GetProperty("projectId").GetGuid());
+        Assert.Equal(workspaceId, sent.GetProperty("projectWorkspaceId").GetGuid());
+        Assert.Equal(context, sent.GetProperty("projectContext").GetString());
     }
 
     /// <summary>
@@ -224,6 +429,49 @@ public sealed class AwayWireTests : IDisposable
         Assert.False(string.IsNullOrWhiteSpace(answer.Reply));
     }
 
+    [Fact]
+    public async Task A_failed_capability_refresh_forgets_a_stale_desktop_address()
+    {
+        var client = Pointed();
+
+        var live = await client.GetCapabilitiesAsync();
+
+        Assert.NotNull(live);
+        Assert.Equal(_where, client.Where);
+
+        _listener.Close();
+        var afterDisconnect = await client.GetCapabilitiesAsync();
+
+        Assert.Null(afterDisconnect);
+        Assert.Null(client.Where);
+    }
+
+    [Fact]
+    public async Task A_silent_host_cannot_hold_the_mobile_capability_status_stale_for_two_minutes()
+    {
+        using var listener = new TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        using var stop = new CancellationTokenSource();
+        var stalledResponse = Task.Run(async () =>
+        {
+            using var accepted = await listener.AcceptTcpClientAsync(stop.Token);
+            await Task.Delay(Timeout.InfiniteTimeSpan, stop.Token);
+        });
+
+        var client = new AwayClient(new AwayOutbox(_outbox));
+        client.PointAt($"http://127.0.0.1:{port}");
+        var elapsed = Stopwatch.StartNew();
+
+        var capabilities = await client.GetCapabilitiesAsync();
+
+        Assert.Null(capabilities);
+        Assert.Null(client.Where);
+        Assert.True(elapsed.Elapsed < TimeSpan.FromSeconds(5), $"the disconnected host probe took {elapsed.Elapsed}");
+        stop.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => stalledResponse);
+    }
+
     /// <summary>
     /// And with no beacon at all it gives up rather than waiting — measured, because a
     /// patience that is actually infinite looks identical to one that works until somebody
@@ -233,8 +481,12 @@ public sealed class AwayWireTests : IDisposable
     public async Task And_looking_for_a_desk_that_is_not_there_gives_up()
     {
         var began = DateTimeOffset.UtcNow;
+        int isolatedPort;
+        using (var portProbe = new UdpClient(0))
+            isolatedPort = ((IPEndPoint)portProbe.Client.LocalEndPoint!).Port;
 
-        var found = await new AwayClient(new AwayOutbox(_outbox)).FindAsync(TimeSpan.FromMilliseconds(400));
+        var found = await new AwayClient(new AwayOutbox(_outbox), isolatedPort)
+            .FindAsync(TimeSpan.FromMilliseconds(400));
 
         Assert.False(found);
         Assert.True(DateTimeOffset.UtcNow - began < TimeSpan.FromSeconds(5), "it waited far longer than it was told to");

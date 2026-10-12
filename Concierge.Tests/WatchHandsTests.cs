@@ -139,18 +139,21 @@ public sealed class WatchHandsTests : IAsyncLifetime
     [Fact]
     public async Task Coming_back_on_delivers_and_says_so()
     {
-        var hands = AWatch();
-        await OffAsync();
-
-        await hands.SaidAsync("first", Now());
-        await hands.SaidAsync("make it night", Now());
-
-        await OnAsync();
+        var outbox = new AwayOutbox(Path.Combine(_root, "outbox"));
+        // The real Desktop on a developer's LAN may answer discovery during this test.
+        // Persist the already-queued sentences here so this test covers the wrist's
+        // reconnect message, while AwayOutboxTests cover loss and network recovery.
+        outbox.Keep("first", Now());
+        outbox.Keep("make it night", Now());
+        var client = new AwayClient(outbox);
+        client.PointAt(_where);
+        var hands = new WatchHands(client);
 
         var update = await hands.LookedAgainAsync();
 
         Assert.NotNull(update.Say);
         Assert.Contains("2", update.Say!, StringComparison.Ordinal);
+        Assert.Equal(0, outbox.Count());
 
         // Nothing held now, so nothing is said about it.
         Assert.Null((await hands.LookedAgainAsync()).Say);
@@ -159,6 +162,21 @@ public sealed class WatchHandsTests : IAsyncLifetime
     /// <summary>
     /// Taking it back says what stands now, and taking back nothing says that.
     /// </summary>
+    [Fact]
+    public async Task Queued_answer_is_displayed_when_the_watch_wakes()
+    {
+        var outbox = new AwayOutbox(Path.Combine(_root, "outbox"));
+        outbox.Keep("add a heading that says Sports Day", Now());
+        var client = new AwayClient(outbox);
+        client.PointAt(_where);
+
+        var update = await new WatchHands(client).LookedAgainAsync();
+
+        Assert.Contains("Added a title", update.Say!, StringComparison.Ordinal);
+        Assert.Equal(0, outbox.Count());
+        Assert.Null((await new WatchHands(client).LookedAgainAsync()).Say);
+    }
+
     [Fact]
     public async Task Taking_it_back_says_what_stands_now()
     {

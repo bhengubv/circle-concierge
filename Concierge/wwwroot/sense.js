@@ -196,6 +196,72 @@
         paintAppearance(resolvedTheme(getTheme()), getSkin());
     }
 
+    // Focus is part of a modal's boundary: entering it must move focus inside,
+    // Tab must stay inside, Escape closes it, and dismissing it restores focus
+    // to the control that opened it. Settings and Skills share this behavior.
+    const focusTraps = new WeakMap();
+    const focusableSelector = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    function focusableWithin(dialog) {
+        return [...dialog.querySelectorAll(focusableSelector)]
+            .filter(element => !element.hidden && element.getAttribute('aria-hidden') !== 'true' && element.getClientRects().length > 0);
+    }
+    function attachFocusTrap(dialog) {
+        if (!dialog || focusTraps.has(dialog)) return;
+        const returnFocus = document.activeElement;
+        const onKeyDown = event => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                dialog.querySelector('.sheet-head button')?.click();
+                return;
+            }
+            if (event.key !== 'Tab') return;
+            const items = focusableWithin(dialog);
+            if (items.length === 0) {
+                event.preventDefault();
+                dialog.focus();
+                return;
+            }
+            const first = items[0];
+            const last = items[items.length - 1];
+            if (event.shiftKey && (document.activeElement === first || !dialog.contains(document.activeElement))) {
+                event.preventDefault();
+                last.focus();
+            } else if (!event.shiftKey && (document.activeElement === last || !dialog.contains(document.activeElement))) {
+                event.preventDefault();
+                first.focus();
+            }
+        };
+        focusTraps.set(dialog, { returnFocus, onKeyDown });
+        dialog.addEventListener('keydown', onKeyDown);
+        (focusableWithin(dialog)[0] || dialog).focus();
+    }
+    function detachFocusTrap(dialog) {
+        const state = dialog && focusTraps.get(dialog);
+        if (!state) return;
+        dialog.removeEventListener('keydown', state.onKeyDown);
+        focusTraps.delete(dialog);
+        if (state.returnFocus?.isConnected && typeof state.returnFocus.focus === 'function')
+            state.returnFocus.focus();
+    }
+
+    // Hybrid WebViews can report a component's first render before its JS bridge
+    // is ready. Observe modal insertion/removal as a second path so the keyboard
+    // boundary is active on Android even when OnAfterRender interop arrives late.
+    const modalSelector = '.sheet[role="dialog"]';
+    function visitDialogs(node, action) {
+        if (!(node instanceof Element)) return;
+        if (node.matches(modalSelector)) action(node);
+        node.querySelectorAll(modalSelector).forEach(action);
+    }
+    const modalFocusObserver = new MutationObserver(records => {
+        for (const record of records) {
+            record.removedNodes.forEach(node => visitDialogs(node, detachFocusTrap));
+            record.addedNodes.forEach(node => visitDialogs(node, attachFocusTrap));
+        }
+    });
+    if (document.documentElement)
+        modalFocusObserver.observe(document.documentElement, { childList: true, subtree: true });
+
     // This file is loaded in the document head: set :root before its stylesheets
     // arrive, then bring body-scoped legacy rules along once body exists.
     loadAppearance();
@@ -215,4 +281,5 @@
         applyTheme, getTheme, applySkin, getSkin, applyAppearance,
         isWindowsDesktop: () => WINDOWS_DESKTOP,
     };
+    window.conciergeFocusTrap = { attach: attachFocusTrap, detach: detachFocusTrap };
 })();

@@ -1,4 +1,5 @@
 using Concierge.Shared.Tools;
+using Concierge.Shared.Sandboxing;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
@@ -57,6 +58,7 @@ public static class McpServiceCollectionExtensions
         services.TryAddSingleton(_ => new McpServerOptions(configPath));
         services.TryAddSingleton<McpToolSource>();
         services.AddSingleton<IAgentToolSource>(sp => sp.GetRequiredService<McpToolSource>());
+        services.AddSingleton<IManagedHostCollectionTelemetrySource>(sp => sp.GetRequiredService<McpToolSource>());
         services.AddHostedService<McpLoader>();
 
         return services;

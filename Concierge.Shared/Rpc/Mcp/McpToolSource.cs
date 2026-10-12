@@ -1,4 +1,5 @@
-using System.Diagnostics;
+using System.Runtime.Versioning;
+using Concierge.Shared.Sandboxing;
 using System.Text.Json.Nodes;
 using Concierge.Shared.Tools;
 
@@ -39,10 +40,11 @@ public sealed record McpServerStatus(
 /// It namespaces them. Two servers may both publish "search", and a collision
 /// silently resolved by first-wins is a tool call going somewhere unintended.
 /// </summary>
-public sealed class McpToolSource : IAgentToolSource, IAsyncDisposable
+public sealed class McpToolSource : IAgentToolSource, IManagedHostCollectionTelemetrySource, IAsyncDisposable
 {
     private readonly McpServerOptions _options;
     private readonly IToolApprovalService _approval;
+    private readonly Func<long?> _availableMemoryProvider;
     private readonly List<Connection> _connections = new();
     private readonly object _gate = new();
 
@@ -50,10 +52,14 @@ public sealed class McpToolSource : IAgentToolSource, IAsyncDisposable
     private IReadOnlyList<McpServerStatus> _statuses = [];
     private string? _problem;
 
-    public McpToolSource(McpServerOptions options, IToolApprovalService approval)
+    public McpToolSource(
+        McpServerOptions options,
+        IToolApprovalService approval,
+        Func<long?>? availableMemoryProvider = null)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _approval = approval ?? throw new ArgumentNullException(nameof(approval));
+        _availableMemoryProvider = availableMemoryProvider ?? McpWorkerResourceBudget.MeasureAvailableMemoryBytes;
     }
 
     public IReadOnlyList<IAgentTool> Tools
@@ -73,6 +79,45 @@ public sealed class McpToolSource : IAgentToolSource, IAsyncDisposable
     public string? ConfigProblem
     {
         get { lock (_gate) { return _problem; } }
+    }
+
+    /// <summary>Current state and process measurements for each configured MCP server.</summary>
+    public IReadOnlyList<ManagedHostMeasurement> CurrentHosts
+    {
+        get
+        {
+            lock (_gate)
+            {
+                var remainingConnections = _connections.ToList();
+                return _statuses.Select((status, index) =>
+                {
+                    Connection? connection = null;
+                    if (status.Connected)
+                    {
+                        var connectionIndex = remainingConnections.FindIndex(candidate =>
+                            string.Equals(candidate.Name, status.Name, StringComparison.OrdinalIgnoreCase));
+                        if (connectionIndex >= 0)
+                        {
+                            connection = remainingConnections[connectionIndex];
+                            remainingConnections.RemoveAt(connectionIndex);
+                        }
+                    }
+                    var snapshot = connection?.CurrentSnapshot;
+                    var state = snapshot is not null
+                        ? "Running"
+                        : connection is not null
+                            ? "Process exited"
+                            : status.Connected
+                                ? "Worker no longer running"
+                            : status.Status;
+                    return new ManagedHostMeasurement(
+                        $"mcp:{index}:{status.Name}",
+                        $"MCP · {status.Name}",
+                        snapshot,
+                        state);
+                }).ToArray();
+            }
+        }
     }
 
     /// <summary>
@@ -95,7 +140,36 @@ public sealed class McpToolSource : IAgentToolSource, IAsyncDisposable
                 continue;
             }
 
-            var (connection, status) = await StartAsync(server, cancellationToken).ConfigureAwait(false);
+            if (!OperatingSystem.IsWindows())
+            {
+                statuses.Add(new McpServerStatus(server.Name, false, 0,
+                    "Not started: Concierge cannot enforce an MCP process memory limit on this platform."));
+                continue;
+            }
+
+            var availableMemory = _availableMemoryProvider();
+            if (availableMemory is null)
+            {
+                statuses.Add(new McpServerStatus(server.Name, false, 0,
+                    "Not started: live available memory could not be measured, so a safe worker budget cannot be assigned."));
+                continue;
+            }
+
+            var budget = McpWorkerResourceBudget.FromAvailableMemory(availableMemory.Value);
+            int runningWorkers;
+            lock (_gate)
+                runningWorkers = _connections.Count;
+
+            if (!budget.CanStartAnother(runningWorkers))
+            {
+                statuses.Add(new McpServerStatus(server.Name, false, 0,
+                    budget.MaximumWorkers == 0
+                        ? "Not started: less than the required free-memory reserve is available."
+                        : $"Not started: the current resource budget allows {budget.MaximumWorkers} MCP workers."));
+                continue;
+            }
+
+            var (connection, status) = await StartWindowsAsync(server, budget, cancellationToken).ConfigureAwait(false);
             statuses.Add(status);
 
             if (connection is null)
@@ -119,40 +193,36 @@ public sealed class McpToolSource : IAgentToolSource, IAsyncDisposable
         }
     }
 
-    private async Task<(Connection? Connection, McpServerStatus Status)> StartAsync(
-        McpServerConfig server, CancellationToken cancellationToken)
+    [SupportedOSPlatform("windows")]
+    private async Task<(Connection? Connection, McpServerStatus Status)> StartWindowsAsync(
+        McpServerConfig server,
+        McpWorkerResourceBudget budget,
+        CancellationToken cancellationToken)
     {
-        Process? process = null;
+        ConfinedChildProcess? child = null;
+        WindowsJobObjectSandbox? sandbox = null;
 
         try
         {
-            var start = new ProcessStartInfo(server.Command)
-            {
-                RedirectStandardInput = true,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true
-            };
+            sandbox = new WindowsJobObjectSandbox(
+                memoryCapBytes: budget.MemoryBytesPerWorker,
+                processCap: 4,
+                jobMemoryCapBytes: budget.MemoryBytesPerWorker);
+            sandbox.OpenJob();
 
-            foreach (var argument in server.Arguments ?? Array.Empty<string>())
-            {
-                start.ArgumentList.Add(argument);
-            }
-
-            process = Process.Start(start);
-            if (process is null)
-            {
-                return (null, new McpServerStatus(server.Name, false, 0, "Would not start."));
-            }
-
+            child = ConfinedProcess.StartInJob(
+                sandbox.Job,
+                server.Command,
+                server.Arguments ?? Array.Empty<string>(),
+                Environment.CurrentDirectory);
             // Drained, or a server that logs will fill its pipe and wedge —
             // the same trap the model host hit.
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    while (await process.StandardError.ReadLineAsync().ConfigureAwait(false) is not null)
+                    using var reader = new StreamReader(child.StandardError, leaveOpen: true);
+                    while (await reader.ReadLineAsync().ConfigureAwait(false) is not null)
                     {
                     }
                 }
@@ -162,8 +232,8 @@ public sealed class McpToolSource : IAgentToolSource, IAsyncDisposable
             }, CancellationToken.None);
 
             var client = await McpClient.ConnectAsync(
-                process.StandardInput.BaseStream,
-                process.StandardOutput.BaseStream,
+                child.StandardInput,
+                child.StandardOutput,
                 cancellationToken).ConfigureAwait(false);
 
             var published = await client.GetAgentToolsAsync(cancellationToken).ConfigureAwait(false);
@@ -172,25 +242,29 @@ public sealed class McpToolSource : IAgentToolSource, IAsyncDisposable
                 .Select(tool => (IAgentTool)new ApprovedMcpTool(server.Name, tool, _approval))
                 .ToList();
 
-            return (new Connection(process, client, wrapped),
+            return (new Connection(server.Name, child, client, wrapped, sandbox,
+                        budget.MemoryBytesPerWorker),
                     new McpServerStatus(server.Name, true, wrapped.Count,
-                        wrapped.Count == 1 ? "Connected, 1 tool." : $"Connected, {wrapped.Count} tools.",
+                        wrapped.Count == 1
+                            ? "Connected, 1 tool · 512 MB worker limit."
+                            : $"Connected, {wrapped.Count} tools · 512 MB worker limit.",
                         published.Select(t => t.Name).ToList()));
         }
         catch (Exception ex)
         {
             try
             {
-                if (process is { HasExited: false })
+                if (child is { HasExited: false })
                 {
-                    process.Kill(entireProcessTree: true);
+                    child.Kill();
                 }
             }
             catch (Exception)
             {
             }
 
-            process?.Dispose();
+            child?.Dispose();
+            sandbox?.Dispose();
             return (null, new McpServerStatus(server.Name, false, 0, $"Did not connect: {ex.Message}"));
         }
     }
@@ -211,9 +285,30 @@ public sealed class McpToolSource : IAgentToolSource, IAsyncDisposable
         }
     }
 
-    private sealed record Connection(Process Process, McpClient Client, IReadOnlyList<IAgentTool> Tools)
+    private sealed record Connection(
+        string Name,
+        ConfinedChildProcess Child,
+        McpClient Client,
+        IReadOnlyList<IAgentTool> Tools,
+        IDisposable Job,
+        long MemoryBudgetBytes)
         : IAsyncDisposable
     {
+        public ManagedHostSnapshot? CurrentSnapshot
+        {
+            get
+            {
+                try
+                {
+                    return Child.GetSnapshot(MemoryBudgetBytes);
+                }
+                catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+                {
+                    return null;
+                }
+            }
+        }
+
         public async ValueTask DisposeAsync()
         {
             try
@@ -224,18 +319,9 @@ public sealed class McpToolSource : IAgentToolSource, IAsyncDisposable
             {
             }
 
-            try
-            {
-                if (!Process.HasExited)
-                {
-                    Process.Kill(entireProcessTree: true);
-                }
-            }
-            catch (Exception)
-            {
-            }
-
-            Process.Dispose();
+            // Closing the Windows job reliably kills the process and descendants.
+            Job.Dispose();
+            Child.Dispose();
         }
     }
 }

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Concierge.Shared.Planning;
 
 namespace Concierge.Shared.Chat;
 
@@ -25,12 +26,15 @@ public static class ConciergeChatServiceCollectionExtensions
         {
             options.UseSqlite($"Data Source={resolvedPath}");
         });
+        services.AddConciergeProjects(resolvedPath);
         services.AddSingleton<IConversationStore, ConversationStore>();
 
         // The composer's image queue. Always present, even on a head with no
         // device layer, so the workspace can drain it without first asking
         // whether this build has anything that can take a picture.
         services.TryAddSingleton<CapturedImages>();
+        services.TryAddSingleton<ConversationRunGate>();
+        services.TryAddSingleton<IModelDownloadCoordinator, InProcessModelDownloadCoordinator>();
         services.TryAddSingleton<IChatRuntime, NullChatRuntime>();
         services.AddHostedService<ConciergeChatSchemaInitializer>();
         return services;

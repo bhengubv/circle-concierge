@@ -13,7 +13,21 @@ public sealed record ToolApprovalAuditEntry(
     DateTimeOffset At,
     string ToolName,
     string Summary,
-    ToolApprovalDecision Decision);
+    ToolApprovalDecision Decision,
+    Guid? ConversationId = null,
+    Guid? RunId = null,
+    Guid? ApprovalId = null);
+
+/// <summary>One approval event stored alongside the conversation that owns the run.</summary>
+public sealed record ConversationApprovalEvent(
+    Guid ApprovalId,
+    Guid RunId,
+    string ToolName,
+    string Summary,
+    ConciergeToolRisk Risk,
+    string? Detail,
+    DateTimeOffset At,
+    ToolApprovalDecision? Decision = null);
 
 /// <summary>
 /// Where approval decisions go so a parent, an operator, or a later session can see what was
@@ -98,11 +112,16 @@ public sealed class AuditingToolApprovalService : IToolApprovalService
 {
     private readonly IToolApprovalService _inner;
     private readonly IToolApprovalAuditLog _audit;
+    private readonly Concierge.Shared.Chat.IConversationStore? _conversations;
 
-    public AuditingToolApprovalService(IToolApprovalService inner, IToolApprovalAuditLog audit)
+    public AuditingToolApprovalService(
+        IToolApprovalService inner,
+        IToolApprovalAuditLog audit,
+        Concierge.Shared.Chat.IConversationStore? conversations = null)
     {
         _inner = inner ?? throw new ArgumentNullException(nameof(inner));
         _audit = audit ?? throw new ArgumentNullException(nameof(audit));
+        _conversations = conversations;
     }
 
     /// <inheritdoc />
@@ -110,12 +129,46 @@ public sealed class AuditingToolApprovalService : IToolApprovalService
         ToolApprovalRequest request,
         CancellationToken cancellationToken = default)
     {
-        var decision = await _inner.RequestAsync(request, cancellationToken).ConfigureAwait(false);
+        var context = ToolApprovalRunContext.Current;
+        var promptsPerson = _inner is InteractiveToolApprovalService interactive && interactive.WillPromptPerson;
+        var approvalId = promptsPerson ? Guid.NewGuid() : (Guid?)null;
+        var effectiveRequest = approvalId is { } id ? request with { ApprovalId = id } : request;
+
+        if (promptsPerson && context is not null && _conversations is not null && approvalId is { } askedId)
+        {
+            var asked = new ConversationApprovalEvent(
+                askedId, context.RunId, request.ToolName, request.Summary, request.Risk,
+                request.Detail, DateTimeOffset.UtcNow);
+            await _conversations.AppendEventAsync(
+                context.ConversationId,
+                Concierge.Shared.Chat.ConversationEventType.ApprovalAsked,
+                JsonSerializer.Serialize(asked),
+                cancellationToken: cancellationToken,
+                eventId: askedId).ConfigureAwait(false);
+        }
+
+        var decision = await _inner.RequestAsync(effectiveRequest, cancellationToken).ConfigureAwait(false);
+
+        if (promptsPerson && context is not null && _conversations is not null && approvalId is { } decidedId)
+        {
+            var decided = new ConversationApprovalEvent(
+                decidedId, context.RunId, request.ToolName, request.Summary, request.Risk,
+                request.Detail, DateTimeOffset.UtcNow, decision);
+            await _conversations.AppendEventAsync(
+                context.ConversationId,
+                Concierge.Shared.Chat.ConversationEventType.ApprovalDecided,
+                JsonSerializer.Serialize(decided),
+                cancellationToken: CancellationToken.None).ConfigureAwait(false);
+        }
+
         _audit.Record(new ToolApprovalAuditEntry(
             DateTimeOffset.UtcNow,
             request.ToolName,
             request.Summary,
-            decision));
+            decision,
+            context?.ConversationId,
+            context?.RunId,
+            approvalId));
         return decision;
     }
 }

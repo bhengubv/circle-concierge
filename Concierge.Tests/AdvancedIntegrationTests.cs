@@ -6,11 +6,50 @@ using Concierge.Shared;
 using Concierge.Web.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Concierge.Tests;
 
 public sealed class AdvancedIntegrationTests
 {
+    private sealed class IsolatedHost : IDisposable
+    {
+        private readonly string _root = Path.Combine(Path.GetTempPath(), $"concierge-advanced-{Guid.NewGuid():N}");
+
+        public ServiceProvider Provider { get; }
+
+        public IsolatedHost(bool withMesh)
+        {
+            Directory.CreateDirectory(_root);
+            var services = new ServiceCollection().AddConciergeCore();
+
+            if (withMesh)
+            {
+                services.AddConciergeMesh();
+                services.RemoveAll<AetherMeshTransportService>();
+                services.AddSingleton<AetherMeshTransportService>(provider => new AetherMeshTransportService(
+                    Path.Combine(_root, "aether.identity.bin"),
+                    new InMemoryRouteStore(),
+                    provider));
+            }
+
+            // Core's default harness uses the checkout as its workspace. Tests must not
+            // append their run logs to the user's real .concierge-artifacts directory.
+            services.AddSingleton<IAgentHarnessService>(provider => new AgentHarnessService(
+                _root,
+                provider.GetService<IAgentRunLogPublisher>()));
+
+            Provider = services.BuildServiceProvider();
+        }
+
+        public void Dispose()
+        {
+            Provider.Dispose();
+            if (Directory.Exists(_root))
+                Directory.Delete(_root, recursive: true);
+        }
+    }
+
     [Fact]
     public void Persisted_mesh_identity_yields_the_same_node_tag_after_recreation()
     {
@@ -39,10 +78,8 @@ public sealed class AdvancedIntegrationTests
     [Fact]
     public async Task Run_goal_publishes_a_dtn_bundle_when_mesh_is_wired()
     {
-        using var provider = new ServiceCollection()
-            .AddConciergeCore()
-            .AddConciergeMesh()
-            .BuildServiceProvider();
+        using var host = new IsolatedHost(withMesh: true);
+        var provider = host.Provider;
 
         var harness = provider.GetRequiredService<IAgentHarnessService>();
         var mesh = provider.GetRequiredService<IMeshTransportService>();
@@ -60,9 +97,8 @@ public sealed class AdvancedIntegrationTests
     [Fact]
     public async Task Run_goal_without_mesh_still_completes_using_the_null_publisher()
     {
-        using var provider = new ServiceCollection()
-            .AddConciergeCore()
-            .BuildServiceProvider();
+        using var host = new IsolatedHost(withMesh: false);
+        var provider = host.Provider;
 
         var harness = provider.GetRequiredService<IAgentHarnessService>();
 

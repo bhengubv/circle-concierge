@@ -20,6 +20,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseMaui>false</UseMaui>
+    <RuntimeIdentifiers>android-arm;android-arm64</RuntimeIdentifiers>
+    <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
 
     <ApplicationId>com.companyname.concierge.wear</ApplicationId>
     <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
@@ -30,6 +32,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <AndroidJavaSource Include="Native\WristGestures.java" />
     <ProjectReference Include="..\Concierge.Shared\Concierge.Shared.csproj" />
   </ItemGroup>
 

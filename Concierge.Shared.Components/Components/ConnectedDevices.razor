@@ -1,0 +1,42 @@
+@implements IDisposable
+@inject IServiceProvider Services
+
+@if (Client is not null)
+{
+<details class="connected-devices" open="@_expanded">
+    <summary @onclick="() => _expanded = !_expanded" @onclick:preventDefault>@(_devices.Count == 0 ? "Finding Desktop…" : $"{_devices.Count(d => d.Connected)} devices connected")</summary>
+    <ul>
+        @foreach (var device in _devices)
+        {
+            <li><strong>@device.Name</strong><span>@device.Platform · @(device.Connected ? "Connected" : "Offline")</span></li>
+        }
+    </ul>
+</details>
+}
+
+@code {
+    private Concierge.Away.AwayClient? Client;
+    private IReadOnlyList<Concierge.Away.ConnectedDevice> _devices = [];
+    private bool _expanded;
+    private readonly CancellationTokenSource _stop = new();
+    protected override void OnInitialized()
+    {
+        // Shared pages also run in heads without the Away bridge.
+        Client = Services.GetService(typeof(Concierge.Away.AwayClient)) as Concierge.Away.AwayClient;
+        if (Client is not null) _ = PollAsync();
+    }
+    private async Task PollAsync()
+    {
+        try
+        {
+            while (!_stop.IsCancellationRequested)
+            {
+                _devices = await Client!.RefreshDevicesAsync(_stop.Token);
+                await InvokeAsync(StateHasChanged);
+                await Task.Delay(3000, _stop.Token);
+            }
+        }
+        catch (OperationCanceledException) { }
+    }
+    public void Dispose() => _stop.Cancel();
+}

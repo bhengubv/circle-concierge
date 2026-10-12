@@ -8,7 +8,7 @@
 
 Concierge is the product described by this vision. It owns the person’s experience: Chat, Workspaces, Projects, Start-Up journeys, workflows, continuity, and control across devices. Circle AI is the AI engine Concierge reads capabilities from and uses to help get work done. Concierge should surface those capabilities in useful experiences without exposing technical model or runtime choices. Other clients can use Circle AI too and become different products, from an everyday assistant to a focused creative app such as a video editor.
 
-The experience should feel like Concierge is helping the person get something done, with Circle AI powering the relevant capabilities behind the experience.
+Concierge supports the full work lifecycle: understand the goal, shape and build the deliverable, dispatch eligible operational work to integrated Butler, then monitor execution, decisions, and results from the same Workspace or Project. Butler is part of Concierge's workflow, so people stay with the work instead of moving to a separate destination. Circle AI supplies intelligence and selects suitable capabilities and resources; Concierge owns the durable work record, user experience, permissions, and control settings; Butler executes dispatched operations and reports attributable progress and outcomes. This makes Concierge the place a person can build, execute, and monitor work through Circle AI and Butler together. The integration must grow from Butler's live capability contract; the current Concierge connector dispatches and monitors Butler's read-only `find_jobs` operation, not arbitrary business actions.
 
 ## Three ways to work
 
@@ -29,6 +29,8 @@ Start-Up Mode should begin with a plain-language question: **“New business or 
 Chat, Workspaces, Projects, workflows, and agent activity should be available across Desktop, Mobile, and Wearable clients. Mobile should be able to do the same work as Desktop when its resources allow. When a task exceeds mobile's available resources, Desktop can take over execution while the person continues to monitor and guide the work from Mobile. A Wearable can provide on-the-go access to work running on either Mobile or Desktop.
 
 Execution should be able to move to a better-resourced device without losing the task, its context, progress, artifacts, or pending decisions. The device in the person's hand is an access point to the ongoing work; it should not determine what that work is allowed to become.
+
+**Find Desktop must work beyond the home Wi-Fi.** Someone should be able to reach the Desktop running Concierge while visiting a client site, shopping, or attending an event, then monitor and guide the same work from Mobile or Wearable. A same-LAN discovery button is not enough for this journey. Prove remote reachability across different networks as a distinct milestone; treat proof networking and production-secure pairing as separate stages.
 
 For example, during a 10:00–11:00 meeting, someone could dictate a request from Desktop, Mobile, or Wearable: “Build us an MVP of an app that can manage real-world location product activation and generate BI data flows.” Concierge should begin coordinating the work, using Circle AI, available agents, and device resources, and keep making progress while the person is away from the desk. Concierge should bring forward prompts when it needs a permission, correction, or decision. By the end of the meeting, the person should be able to review the progress and respond to whatever is blocking the next step.
 
@@ -57,10 +59,32 @@ Project workflows should be useful for building and operating a business, as wel
 
 The same flexible system should support homework, music, video, and other goals. It should present workflows and tools appropriate to the task rather than forcing every task into an app-development template.
 
+### Default Projects for new users
+
+Concierge should include practical, ready-to-explore default Projects so a new user can see how Projects, workflows, and assistant agents help with everyday life and work. These are starter examples that people can adapt or remove; they should make each agent's standout capability clear.
+
+**Home**
+
+- **House Chores:** organize recurring chores, assignments, reminders, and completion. The standout assistant agent feature is allowance or pay management, which can be enabled or left out.
+- **Home Executive:** coordinate household schedules, supplies, and routines. The standout feature is an online-shopping assistant agent for comparing and preparing household purchases.
+- **Personal Mechanic:** keep vehicle maintenance, repair history, and tuning plans together. The standout feature is a tuning assistant agent.
+- **Off-Grid Living:** manage borehole, solar, smallholding farming, and related systems. The standout feature is an automation assistant agent for coordinating those systems.
+
+**Work**
+
+- **Front Desk:** handle incoming enquiries, messages, and follow-ups. The standout feature is an assistant's-assistant agent that helps the person at the front desk stay on top of requests.
+- **Office Management:** track office supplies, equipment, and recurring needs. The standout feature is a supply-management assistant agent.
+- **Recruitment:** manage recruiter and candidate flows, with relevant alerts for each. The standout feature is a recruiter assistant agent that coordinates the flow and sends recruiter or candidate alerts to the appropriate person.
+- **Task Automation:** map recurring work and connect supported third-party services. The standout feature is third-party integration.
+- **Development:** organize software maintenance and development work. The standout feature is the Wolverine assistant agent from Circle AI 3.6.0.
+
+Each default Project should open with an understandable example workflow, sample tasks, and a clear view of what its assistant agent can do. Any external actions, purchases, messages, or changes should follow the person's configured control and approval settings.
+
 ## Product implications
 
 - Circle AI capabilities should be discoverable by Concierge at runtime; Concierge should decide how to surface relevant abilities as they become available.
 - Workspaces and Projects should track outcomes, steps, artifacts, decisions, progress, and agent activity together.
+- Concierge should connect build, execution, and monitoring in one continuous workflow, with Butler integrated as part of the operational loop. The integration must preserve ownership, status, permissions, and results in the relevant Workspace or Project, and should expand from Butler's live capability contract. The current read-only job-search connector is the first slice, not general operational coverage.
 - Device changes should preserve one continuous task state; Desktop can provide execution capacity while Mobile or Wearable provides access and oversight.
 - Project mode can grow to support agents coordinating company workflows autonomously, subject to environment capacity and the person's chosen level of control.
 - Keep the interaction proportional to the task: a casual question belongs in Chat; focused work belongs in a Workspace; related workflows belong in a Project.
@@ -71,6 +95,8 @@ The same flexible system should support homework, music, video, and other goals.
 - **Clarify goals before substantial work:** Concierge, powered by Circle AI, should turn a broad request into a proposed result, plan, time and resource budget, and important assumptions. It should ask for decisions that materially affect the outcome before committing significant effort.
 - **Respectful interruptions:** People should be able to choose when and where they receive prompts. Urgent approvals can be surfaced promptly; routine progress can be summarized for a convenient time.
 - **Visible and accountable autonomy:** People should be able to see what agents are doing, what they changed, which permissions they used, and how to pause, correct, or undo their work.
+- **Useful model setup:** Model preparation should run in the background without freezing Concierge. Circle AI should stage eligible models from smallest to largest and expose real readiness as each tier becomes usable; Concierge should keep progress visible across devices and offer a hands-on tutorial people can use while setup continues.
+- **Managed .NET hosts and bounded resource use:** Concierge must not become a memory hog. Every .NET worker host that Concierge starts should have an explicit owner, measured resource budget, observable lifecycle, and bounded concurrency. Keep the person-facing Concierge process responsive and small; put heavy model and agent work in managed worker hosts where the platform permits, and route or defer work when live device resources are insufficient. Stop or pause hosts cleanly when work ends, and preserve accepted work when a host must be reclaimed.
 - **Graceful limits and recovery:** If a device goes offline, runs low on power, or reaches a resource limit, Concierge should preserve progress, explain what paused, and offer a practical next step, using Circle AI where available.
 - **An honest finish line:** Time-bound requests should clarify what counts as complete. Concierge should distinguish what is ready, what needs review, and what could not be completed, and communicate uncertainty plainly.
 

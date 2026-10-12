@@ -112,7 +112,8 @@ public static class ConciergeToolsServiceCollectionExtensions
             provider.GetRequiredService<Skills.ISkillRuntime>(),
             provider.GetRequiredService<ConciergeToolLoopOptions>(),
             provider.GetRequiredService<Chat.BackgroundRuns>(),
-            provider.GetRequiredService<Chat.CapturedImages>()));
+            provider.GetRequiredService<Chat.CapturedImages>(),
+            runGate: provider.GetRequiredService<Chat.ConversationRunGate>()));
 
         services.TryAddSingleton<IJobRuntime, InMemoryJobRuntime>();
         services.TryAddSingleton<IRetryPolicy>(_ => new BoundedRetryPolicy());

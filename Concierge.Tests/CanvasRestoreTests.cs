@@ -119,7 +119,7 @@ public sealed class CanvasRestoreTests : BunitContext
         cut.WaitForState(() => cut.FindAll("section.ws-group").Count > 0);
 
         cut.FindAll("button.ws-head")
-            .First(head => head.QuerySelector(".ws-head-name")!.TextContent.Trim() == "Tools")
+            .First(head => head.QuerySelector(".ws-head-name")!.TextContent.Trim() == "Make something")
             .Click();
 
         cut.WaitForState(() => cut.FindAll("button.ws-room-btn").Count > 0);
@@ -224,5 +224,31 @@ public sealed class CanvasRestoreTests : BunitContext
             "Saturday the 14th",
             moments[^1].GetAttribute("srcdoc") ?? string.Empty,
             StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Reopening_creator_restores_the_visual_history_and_selected_moment()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"creator-history-{Guid.NewGuid():N}.json");
+        var store = new FileDesignStore(path);
+        var session = new DesignSession();
+        var first = ADesign();
+        session.Record(first, "Made the first version");
+        session.Record(first.Add(DesignNode.New(DesignNodeKind.Text, first.Frames[0].Id, ("text", "Later"))), "Added a note");
+        session.Back();
+        await store.SaveSessionAsync(session.Capture());
+
+        var cut = Open(store);
+
+        cut.WaitForAssertion(() =>
+        {
+            var moments = cut.FindAll(".dz-moment");
+            Assert.Equal(3, moments.Count);
+            Assert.Contains("is-now", moments[1].ClassName);
+            Assert.Contains("Saturday the 14th", Canvas(cut), StringComparison.Ordinal);
+        }, TimeSpan.FromSeconds(10));
+
+        var history = cut.FindAll(".dz-moment iframe");
+        Assert.Contains("Later", history[2].GetAttribute("srcdoc") ?? string.Empty, StringComparison.Ordinal);
     }
 }

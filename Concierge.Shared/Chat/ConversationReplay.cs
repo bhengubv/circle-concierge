@@ -34,7 +34,7 @@ public sealed class ConversationReplay
                 yield break;
             }
 
-            if (ProjectsToMessage(entry.Type))
+            if (ProjectsToMessage(entry.Type, entry.ProducedBy))
             {
                 history.Add(new ChatTurn(RoleFor(entry.Type), entry.Data));
             }
@@ -45,10 +45,10 @@ public sealed class ConversationReplay
         }
     }
 
-    private static bool ProjectsToMessage(ConversationEventType type) => type
-        is ConversationEventType.UserMessage
-        or ConversationEventType.AssistantMessage
-        or ConversationEventType.ToolResult;
+    private static bool ProjectsToMessage(ConversationEventType type, string? producedBy)
+        => type is ConversationEventType.UserMessage or ConversationEventType.ToolResult
+            || (type == ConversationEventType.AssistantMessage
+                && !string.Equals(producedBy, "Connection status", StringComparison.Ordinal));
 
     private static string RoleFor(ConversationEventType type) => type switch
     {

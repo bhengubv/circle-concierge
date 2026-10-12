@@ -80,4 +80,5 @@ public sealed record ModelHostResponse(
     string? Status = null,
     PendingModelDownload? PendingDownload = null,
     double? ProgressRatio = null,
-    string? ProgressDescription = null);
+    string? ProgressDescription = null,
+    ChatRuntimeCapabilityCatalog? CapabilityCatalog = null);

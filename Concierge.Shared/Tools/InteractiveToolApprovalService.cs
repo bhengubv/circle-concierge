@@ -32,6 +32,7 @@ public sealed class InteractiveToolApprovalService : IToolApprovalService, IDisp
 {
     private readonly ConcurrentDictionary<Guid, Waiting> _waiting = new();
     private readonly TimeSpan _patience;
+    private readonly AsyncLocal<bool?> _turnOverride = new();
     private bool _disposed;
 
     /// <param name="patience">
@@ -58,6 +59,17 @@ public sealed class InteractiveToolApprovalService : IToolApprovalService, IDisp
     /// </summary>
     public bool AllowWithoutAsking { get; set; }
 
+    /// <summary>Whether the current request would be shown to a person.</summary>
+    public bool WillPromptPerson => !_disposed && !(_turnOverride.Value ?? AllowWithoutAsking);
+
+    /// <summary>Apply one request's permission choice without changing other concurrent turns.</summary>
+    public IDisposable ForTurn(bool allowWithoutAsking)
+    {
+        var previous = _turnOverride.Value;
+        _turnOverride.Value = allowWithoutAsking;
+        return new TurnOverride(() => _turnOverride.Value = previous);
+    }
+
     /// <summary>What is waiting, oldest first.</summary>
     public IReadOnlyList<PendingApproval> Pending =>
         _waiting.Values
@@ -77,7 +89,7 @@ public sealed class InteractiveToolApprovalService : IToolApprovalService, IDisp
             return ToolApprovalDecision.Unavailable;
         }
 
-        if (AllowWithoutAsking)
+        if (_turnOverride.Value ?? AllowWithoutAsking)
         {
             // Nothing is queued and nobody is interrupted. The call still went
             // through the approval seam, so a surface counting what ran can
@@ -85,7 +97,9 @@ public sealed class InteractiveToolApprovalService : IToolApprovalService, IDisp
             return ToolApprovalDecision.Allowed;
         }
 
-        var id = Guid.NewGuid();
+        var id = request.ApprovalId is { } approvalId && approvalId != Guid.Empty
+            ? approvalId
+            : Guid.NewGuid();
         var entry = new Waiting(new PendingApproval(id, request, DateTimeOffset.UtcNow));
         _waiting[id] = entry;
         PendingChanged?.Invoke(this, EventArgs.Empty);
@@ -133,5 +147,11 @@ public sealed class InteractiveToolApprovalService : IToolApprovalService, IDisp
     {
         public TaskCompletionSource<ToolApprovalDecision> Answered { get; } =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    private sealed class TurnOverride(Action restore) : IDisposable
+    {
+        private Action? _restore = restore;
+        public void Dispose() => Interlocked.Exchange(ref _restore, null)?.Invoke();
     }
 }

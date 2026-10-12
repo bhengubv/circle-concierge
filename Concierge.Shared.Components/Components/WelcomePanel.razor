@@ -1,38 +1,422 @@
-<section class="welcome-panel" aria-labelledby="welcome-title">
+<section class="welcome-panel" aria-labelledby="welcome-title" data-catalog-version="@CatalogVersion">
     <div class="welcome-kicker">
         <span class="welcome-mark" aria-hidden="true">
             <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" /></svg>
         </span>
-        Circle AI
+        <strong class="welcome-brand">Concierge</strong>
+        <span class="welcome-engine">Powered by Circle AI</span>
     </div>
-    <h2 id="welcome-title">A little help<br />goes a long way.</h2>
-    <p class="welcome-intro">Start with what you need. Circle AI is here across your day.</p>
+    <h2 id="welcome-title">What would help today?</h2>
+    <p class="welcome-intro">Choose an area to find a starting point. You can edit the draft before sending.</p>
+    @if (SetupGuidance is { } guidance)
+    {
+        <aside class="welcome-setup-guide" aria-labelledby="welcome-setup-title">
+            <h3 id="welcome-setup-title">@guidance.Title</h3>
+            <p>@guidance.Message</p>
+            @if (IsHandheld && OnRefreshDesktop.HasDelegate && DesktopCapabilityCatalog is not null && (PreparationFailed(ConversationCapability(DesktopCapabilityCatalog)) || NoModelFits(ConversationCapability(DesktopCapabilityCatalog)) || DesktopWorkerMemoryUnavailable(ConversationCapability(DesktopCapabilityCatalog))))
+            {
+                <button class="welcome-desktop-refresh" type="button" disabled="@IsRefreshingDesktop" @onclick="OnRefreshDesktop">@(IsRefreshingDesktop ? "Checking Desktop…" : "Refresh Desktop status")</button>
+                @if (!string.IsNullOrWhiteSpace(DesktopSearchMessage))
+                {
+                    <p class="welcome-desktop-status" role="status" aria-live="polite">@DesktopSearchMessage</p>
+                }
+            }
+            @if (DesktopActivity is { } activeDesktopActivity)
+            {
+                <div class="welcome-setup-progress" role="status" aria-live="polite">
+                    @if (activeDesktopActivity.ProgressRatio is { } ratio)
+                    {
+                        <span>@activeDesktopActivity.Description</span>
+                        <progress max="1" value="@Math.Clamp(ratio, 0, 1)" aria-label="Circle AI model download progress"></progress>
+                        <span>@((int)Math.Round(Math.Clamp(ratio, 0, 1) * 100))%</span>
+                    }
+                    else
+                    {
+                        <span class="runtime-preparing-bar" role="progressbar" aria-label="Circle AI preparation progress" aria-valuetext="Preparing; percentage unavailable."></span>
+                        <span>@activeDesktopActivity.Description</span>
+                    }
+                </div>
+            }
+            else if (DesktopIsPreparing)
+            {
+                <div class="welcome-setup-progress" role="status" aria-live="polite">
+                    <span class="runtime-preparing-bar" role="progressbar" aria-label="Circle AI preparation progress" aria-valuetext="Preparing; percentage unavailable."></span>
+                    <span>Circle AI is getting ready on your Desktop. This screen checks regularly.</span>
+                </div>
+            }
+        </aside>
+    }
+    <details class="welcome-device-details" open="@(!IsHandheld)">
+        <summary>Device status and capabilities</summary>
+    @if (CapabilityCatalog is { } catalog)
+    {
+        <section class="welcome-capabilities" aria-label="AI engine capabilities on this device" data-catalog-version="@catalog.SchemaVersion">
+            <h3>AI engine on this device</h3>
+            <div class="welcome-capability-list">
+                @foreach (var capability in catalog.Capabilities)
+                {
+                    var detail = CapabilityExplanation(capability, isRemote: false);
+                    <div class="welcome-capability" data-state="@capability.State.ToString().ToLowerInvariant()">
+                        <span class="welcome-capability-name">@capability.Name</span>
+                        <span class="welcome-capability-state">@CapabilityStateLabel(capability.State)</span>
+                        @if (!string.IsNullOrWhiteSpace(detail))
+                        {
+                            <span class="welcome-capability-detail">@detail</span>
+                        }
+                    </div>
+                }
+            </div>
+            @if (catalog.Resources is { } resources)
+            {
+                <p class="welcome-resources">
+                    <span>Device check:</span>
+                    @if (resources.UsableMemoryGb is > 0)
+                    {
+                        <span>@resources.UsableMemoryGb.Value.ToString("0.#") GB usable memory</span>
+                    }
+                    @if (resources.FreeStorageGb is > 0)
+                    {
+                        <span>@resources.FreeStorageGb.Value.ToString("0.#") GB free storage</span>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(resources.Connectivity))
+                    {
+                        <span>Network @resources.Connectivity</span>
+                    }
+                    @if (resources.MeasuredAt is { } measuredAt)
+                    {
+                        <time datetime="@FormatIsoTime(measuredAt)">Checked @FormatLocalTime(measuredAt)</time>
+                    }
+                </p>
+            }
+        </section>
+    }
+    @if (DesktopCapabilityCatalog is { } desktopCatalog)
+    {
+        <section class="welcome-capabilities welcome-capabilities-remote" aria-label="AI engine capabilities on connected Desktop" data-catalog-version="@desktopCatalog.SchemaVersion">
+            <h3>AI engine on connected Desktop</h3>
+            @if (DesktopActivity is { } activity && !DesktopIsPreparing)
+            {
+                <div class="welcome-setup-progress" role="status" aria-live="polite">
+                    @if (activity.ProgressRatio is { } ratio)
+                    {
+                        <span>@activity.Description</span>
+                        <progress max="1" value="@Math.Clamp(ratio, 0, 1)" aria-label="Circle AI model download progress"></progress>
+                        <span>@((int)Math.Round(Math.Clamp(ratio, 0, 1) * 100))%</span>
+                    }
+                    else
+                    {
+                        <span class="runtime-preparing-bar" role="progressbar" aria-label="Circle AI preparation progress" aria-valuetext="Preparing; percentage unavailable."></span>
+                        <span>@activity.Description</span>
+                    }
+                </div>
+            }
+            <div class="welcome-capability-list">
+                @foreach (var capability in desktopCatalog.Capabilities)
+                {
+                    var detail = CapabilityExplanation(capability, isRemote: true);
+                    <div class="welcome-capability" data-state="@capability.State.ToString().ToLowerInvariant()">
+                        <span class="welcome-capability-name">@capability.Name</span>
+                        <span class="welcome-capability-state">@CapabilityStateLabel(capability.State)</span>
+                        @if (!string.IsNullOrWhiteSpace(detail))
+                        {
+                            <span class="welcome-capability-detail">@detail</span>
+                        }
+                    </div>
+                }
+            </div>
+            @if (desktopCatalog.Resources is { } desktopResources)
+            {
+                <p class="welcome-resources">
+                    <span>Desktop check:</span>
+                    @if (desktopResources.UsableMemoryGb is > 0)
+                    {
+                        <span>@desktopResources.UsableMemoryGb.Value.ToString("0.#") GB usable memory</span>
+                    }
+                    @if (desktopResources.FreeStorageGb is > 0)
+                    {
+                        <span>@desktopResources.FreeStorageGb.Value.ToString("0.#") GB free storage</span>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(desktopResources.Connectivity))
+                    {
+                        <span>Network @desktopResources.Connectivity</span>
+                    }
+                    @if (desktopResources.MeasuredAt is { } desktopMeasuredAt)
+                    {
+                        <time datetime="@FormatIsoTime(desktopMeasuredAt)">Checked @FormatLocalTime(desktopMeasuredAt)</time>
+                    }
+                </p>
+            }
+        </section>
+    }
+    </details>
+    <nav class="welcome-categories" aria-label="Browse ways Concierge can help">
+        @foreach (var group in Catalogue)
+        {
+            <button class="welcome-category @(SelectedGroup == group.Title ? "is-selected" : null)"
+                    type="button" aria-pressed="@(SelectedGroup == group.Title ? "true" : "false")"
+                    @onclick="() => SelectedGroup = group.Title">
+                @group.Title
+            </button>
+        }
+    </nav>
     <div class="welcome-tiles">
-        <button class="welcome-tile welcome-tile-primary" type="button"
-                @onclick="@(() => OnPromptSelected.InvokeAsync("Help me think through something"))">
-            <span class="welcome-tile-icon" aria-hidden="true">✳</span>
-            <span class="welcome-tile-title">Ask Circle AI</span>
-            <span class="welcome-tile-copy">Talk it through, simply.</span>
-            <span class="welcome-tile-arrow" aria-hidden="true">↗</span>
-        </button>
-        <button class="welcome-tile welcome-tile-image" type="button"
-                @onclick="@(() => OnPromptSelected.InvokeAsync("Create an image of "))">
-            <span class="welcome-tile-icon" aria-hidden="true">▧</span>
-            <span class="welcome-tile-title">Make a picture</span>
-            <span class="welcome-tile-copy">Bring an idea to life.</span>
-            <span class="welcome-tile-arrow" aria-hidden="true">↗</span>
-        </button>
-        <button class="welcome-tile welcome-tile-plan" type="button"
-                @onclick="@(() => OnPromptSelected.InvokeAsync("Help me make a simple plan for "))">
-            <span class="welcome-tile-icon" aria-hidden="true">☷</span>
-            <span class="welcome-tile-title">Find a next step</span>
-            <span class="welcome-tile-copy">Make the day feel lighter.</span>
-            <span class="welcome-tile-arrow" aria-hidden="true">↗</span>
-        </button>
+        @foreach (var capability in CurrentItems)
+        {
+            <button class="welcome-tile" type="button" @key="capability.Title"
+                    @onclick="@(() => OnPromptSelected.InvokeAsync(capability.Opener))">
+                <span class="welcome-tile-icon" aria-hidden="true">@capability.Icon</span>
+                <span class="welcome-tile-title">@capability.Title</span>
+                <span class="welcome-tile-copy">@capability.Opener</span>
+                <span class="welcome-tile-arrow" aria-hidden="true">↗</span>
+            </button>
+        }
     </div>
-    <p class="welcome-footnote">Choose a tile to start a draft. Nothing is sent until you say so.</p>
+    <p class="welcome-footnote">These are starting ideas, not separate apps. Nothing is sent until you choose to send it.</p>
 </section>
 
 @code {
+    private static readonly IReadOnlyList<CircleAI.Assistant.CapabilityGroup> Catalogue =
+        CircleAI.Assistant.Capabilities.All;
+
+    private string SelectedGroup { get; set; } = Catalogue.FirstOrDefault(group => group.Title == "Work and business")?.Title
+        ?? Catalogue.FirstOrDefault()?.Title
+        ?? string.Empty;
+
+    private IReadOnlyList<CircleAI.Assistant.Capability> CurrentItems =>
+        Catalogue.FirstOrDefault(group => group.Title == SelectedGroup)?.Items ?? [];
+
+    private static string CatalogVersion => typeof(CircleAI.Assistant.Capabilities).Assembly.GetName().Version?.ToString(2)
+        ?? "unknown";
+
+    private static string CapabilityStateLabel(ChatRuntimeCapabilityState state) => state switch
+    {
+        ChatRuntimeCapabilityState.Available => "Ready",
+        ChatRuntimeCapabilityState.Preparing => "Preparing",
+        ChatRuntimeCapabilityState.ActionRequired => "Setup needed",
+        _ => "Unavailable"
+    };
+
+    private (string Title, string Message)? SetupGuidance
+    {
+        get
+        {
+            var local = ConversationCapability(CapabilityCatalog);
+            if (local is null)
+                return null;
+
+            var desktop = ConversationCapability(DesktopCapabilityCatalog);
+            if (IsHandheld && local.State == ChatRuntimeCapabilityState.Available
+                && DesktopWorkerMemoryUnavailable(desktop))
+            {
+                return ("Desktop needs more free memory",
+                    $"{desktop!.Explanation} Circle AI can still answer on this phone when the request fits its local capabilities. Free memory on Desktop, then refresh its status before routing work there.");
+            }
+
+            if (local.State is ChatRuntimeCapabilityState.Available or ChatRuntimeCapabilityState.Preparing)
+                return null;
+
+            if (desktop?.State == ChatRuntimeCapabilityState.Available)
+            {
+                return IsHandheld
+                    ? ("Circle AI is ready on your Desktop",
+                        "This phone cannot run the available model. Keep Concierge open on your Desktop; connect over the same Wi‑Fi or use its HTTPS link when you’re away.")
+                    : ("Circle AI is ready on a connected device",
+                        "This Desktop cannot run the available model. Keep this computer connected to the ready device's network to continue.");
+            }
+
+            if (PreparationFailed(desktop))
+            {
+                return IsHandheld
+                    ? ("Circle AI stopped on your Desktop",
+                        "Circle AI stopped on Desktop and will not retry automatically. Close and reopen Concierge on Desktop so it can try again. When Desktop is ready, check its status here. This phone will not download a model.")
+                    : ("Circle AI could not finish starting",
+                        "Restart Concierge to try again. If Circle AI still cannot start, review the readiness details below.");
+            }
+
+            if (IsHandheld && DesktopActivity is { } activeDesktopActivity)
+            {
+                return activeDesktopActivity.Kind == "model-download"
+                    ? ("Circle AI is downloading on Desktop",
+                        "Keep Concierge open on both devices. Download progress is shown below; this phone will not download the model.")
+                    : ("Circle AI is getting ready on Desktop",
+                        "Keep Concierge open on both devices. This screen will show when it is ready; the phone will not download the model.");
+            }
+
+            if (desktop?.State == ChatRuntimeCapabilityState.Preparing)
+            {
+                return IsHandheld
+                    ? ("Waiting for Circle AI on Desktop",
+                        "Keep Concierge open on both devices. They can connect over the same Wi‑Fi or through the Desktop HTTPS link; this phone will show when Circle AI is ready.")
+                    : ("Circle AI is being prepared on the connected Desktop",
+                        "Leave that device running. Its readiness will update here when preparation finishes.");
+            }
+
+            if (NoModelFits(desktop))
+            {
+                var availableMemory = DesktopCapabilityCatalog?.Resources?.UsableMemoryGb;
+                var memoryDetail = availableMemory is > 0
+                    ? $"Desktop currently reports {availableMemory.Value:0.#} GB available memory, and Circle AI cannot fit a local model with that amount."
+                    : "Circle AI currently cannot fit a local model on Desktop.";
+                return IsHandheld
+                    ? ("Desktop needs more available memory",
+                        $"{memoryDetail} Free memory on Desktop, then tap “Refresh Desktop status” above to check again. Use its HTTPS link when you’re away. This phone will not download a model.")
+                    : ("Circle AI needs more available memory",
+                        memoryDetail);
+            }
+
+            if (local.State == ChatRuntimeCapabilityState.ActionRequired)
+            {
+                return IsHandheld
+                    ? ("Circle AI needs setup on this phone",
+                        "Tap “Download on this device” below the chat composer to prepare Circle AI for this phone. Circle AI handles the model choice; nothing downloads until you tap. Desktop setup and progress are shown separately when a Desktop is connected.")
+                    : ("Circle AI needs setup on this Desktop",
+                        "Tap “Download on this device” below the chat composer to continue. Circle AI handles the model choice; nothing downloads until you tap.");
+            }
+
+            if (desktop?.State == ChatRuntimeCapabilityState.ActionRequired)
+            {
+                return IsHandheld
+                    ? ("Finish Circle AI setup on Desktop",
+                        $"{DesktopDownloadPrompt(desktop)} In Concierge on Desktop, tap “Download on this device” below the chat composer. This phone will show Desktop's download progress here; when Desktop says Ready, send your message from this screen. No phone download is currently offered.")
+                    : ("Circle AI needs setup on this Desktop",
+                        "Open the chat composer and tap “Download on this device.” Circle AI will choose the model; nothing downloads until you tap that button.");
+            }
+
+            return IsHandheld
+                ? ("Set up messaging on this phone",
+                    PreparationFailed(local)
+                        ? "Circle AI could not finish starting on this phone. Restart Concierge and try again, or connect a ready Desktop over Wi‑Fi or its HTTPS link."
+                        : "This phone cannot run Circle AI on its own. Start Concierge on your Desktop, then find it on Wi‑Fi or paste its HTTPS link below. Concierge keeps looking while this screen is open. Once Circle AI shows Ready, type your message above and tap Send. Any phone download is offered separately; nothing downloads without your choice.")
+                : ("Circle AI is not ready on this device",
+                    PreparationFailed(local)
+                        ? "Restart Concierge to try again. Review the capability details below if it still cannot start."
+                        : "Review the readiness details below and follow the setup action under the chat composer, if one is available.");
+        }
+    }
+
+    private bool DesktopIsPreparing
+        => ConversationCapability(DesktopCapabilityCatalog)?.State == ChatRuntimeCapabilityState.Preparing;
+
+    private ChatRuntimeActivity? DesktopActivity
+    {
+        get
+        {
+            var catalog = DesktopCapabilityCatalog;
+            var state = ConversationCapability(catalog)?.State;
+            var activity = catalog?.Activity;
+            var activityMatchesReadiness = state == ChatRuntimeCapabilityState.Preparing
+                || state == ChatRuntimeCapabilityState.Available
+                    && string.Equals(activity?.Kind, "model-download", StringComparison.OrdinalIgnoreCase);
+            return activityMatchesReadiness && IsFreshActivitySnapshot(catalog)
+                ? activity
+                : null;
+        }
+    }
+
+    private static bool IsFreshActivitySnapshot(ChatRuntimeCapabilityCatalog? catalog)
+    {
+        if (catalog is null)
+            return false;
+
+        var age = DateTimeOffset.UtcNow - catalog.ObservedAt;
+        return age >= TimeSpan.Zero && age <= TimeSpan.FromSeconds(30);
+    }
+
+    private static ChatRuntimeCapability? ConversationCapability(ChatRuntimeCapabilityCatalog? catalog)
+        => catalog?.Capabilities.FirstOrDefault(capability =>
+            string.Equals(capability.Id, "conversation", StringComparison.OrdinalIgnoreCase));
+
+    private static bool PreparationFailed(ChatRuntimeCapability? capability)
+        => capability?.State == ChatRuntimeCapabilityState.Unavailable
+            && capability.Explanation?.Contains("stopped while preparing", StringComparison.OrdinalIgnoreCase) == true;
+
+    private static bool NoModelFits(ChatRuntimeCapability? capability)
+        => capability?.State == ChatRuntimeCapabilityState.Unavailable
+            && IsResourceLimitExplanation(capability.Explanation);
+
+    private static bool DesktopWorkerMemoryUnavailable(ChatRuntimeCapability? capability)
+        => capability?.State == ChatRuntimeCapabilityState.Unavailable
+            && capability.Explanation?.StartsWith("Circle AI is paused on Desktop because", StringComparison.OrdinalIgnoreCase) == true;
+
+    private static bool IsResourceLimitExplanation(string? explanation)
+        => explanation?.StartsWith("No Circle AI model fits this device's available resources.", StringComparison.OrdinalIgnoreCase) == true
+            || explanation?.StartsWith("No model fits this device's available resources.", StringComparison.OrdinalIgnoreCase) == true;
+
+    private string? CapabilityExplanation(ChatRuntimeCapability capability, bool isRemote)
+    {
+        if (!string.Equals(capability.Id, "conversation", StringComparison.OrdinalIgnoreCase))
+            return UserFacingCapabilityDetail(capability.Explanation);
+
+        var device = isRemote ? "your Desktop" : IsHandheld ? "this phone" : "this device";
+        return capability.State switch
+        {
+            ChatRuntimeCapabilityState.Available => $"Circle AI can answer on {device}.",
+            ChatRuntimeCapabilityState.Preparing => $"Circle AI is getting ready on {device}.",
+            ChatRuntimeCapabilityState.ActionRequired => isRemote
+                ? "Open Concierge on Desktop and finish the setup shown below its chat composer."
+                : "Finish the Circle AI setup shown below the chat composer.",
+            ChatRuntimeCapabilityState.Unavailable when PreparationFailed(capability)
+                => $"Circle AI stopped while preparing. Restart Concierge on {(isRemote ? "your Desktop" : "this device")} to try again.",
+            ChatRuntimeCapabilityState.Unavailable when IsHandheld && !isRemote
+                && IsResourceLimitExplanation(capability.Explanation)
+                => "This phone cannot run Circle AI with its available resources. Connect to Desktop to continue.",
+            ChatRuntimeCapabilityState.Unavailable when isRemote && DesktopWorkerMemoryUnavailable(capability)
+                => UserFacingCapabilityDetail(capability.Explanation),
+            ChatRuntimeCapabilityState.Unavailable
+                => $"Circle AI is unavailable on {device}. Check the readiness details for the next step.",
+            _ => capability.Explanation
+        };
+    }
+
+    private static string? UserFacingCapabilityDetail(string? explanation)
+    {
+        if (string.IsNullOrWhiteSpace(explanation))
+            return explanation;
+
+        if (explanation.Contains("download", StringComparison.OrdinalIgnoreCase))
+        {
+            var size = System.Text.RegularExpressions.Regex.Match(
+                explanation,
+                @"\b\d+(?:\.\d+)?\s*GB\b",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            return size.Success
+                ? $"A {size.Value} Circle AI download is needed before this is ready."
+                : "A Circle AI download is needed before this is ready.";
+        }
+
+        if (explanation.StartsWith("Loading ", StringComparison.OrdinalIgnoreCase)
+            && explanation.Contains("into memory", StringComparison.OrdinalIgnoreCase))
+            return "Circle AI is getting ready to use this capability.";
+
+        return explanation;
+    }
+
+    private static string DesktopDownloadPrompt(ChatRuntimeCapability capability)
+    {
+        var explanation = capability.Explanation;
+        if (!string.IsNullOrWhiteSpace(explanation)
+            && explanation.Contains("download", StringComparison.OrdinalIgnoreCase))
+        {
+            var size = System.Text.RegularExpressions.Regex.Match(
+                explanation,
+                @"\b\d+(?:\.\d+)?\s*GB\b",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+            return size.Success
+                ? $"A {size.Value} Circle AI download is needed on Desktop."
+                : "A Circle AI download is needed on Desktop.";
+        }
+
+        return "Circle AI has chosen a model for this Desktop.";
+    }
+
+    private static string FormatIsoTime(DateTimeOffset value) => value.ToString("O");
+    private static string FormatLocalTime(DateTimeOffset value) => value.ToLocalTime().ToString("t");
+
     [Parameter] public EventCallback<string> OnPromptSelected { get; set; }
+    [Parameter] public ChatRuntimeCapabilityCatalog? CapabilityCatalog { get; set; }
+    [Parameter] public ChatRuntimeCapabilityCatalog? DesktopCapabilityCatalog { get; set; }
+    [Parameter] public bool IsHandheld { get; set; }
+    [Parameter] public EventCallback OnRefreshDesktop { get; set; }
+    [Parameter] public bool IsRefreshingDesktop { get; set; }
+    [Parameter] public string? DesktopSearchMessage { get; set; }
 }

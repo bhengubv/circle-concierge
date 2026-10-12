@@ -17,7 +17,8 @@ namespace Concierge.Shared.Session;
 ///   The thread you were in, so launching lands where you left rather than on
 ///   an empty workspace.
 ///
-///   Text typed and not sent. The most common loss and the cheapest to fix.
+///   Text typed and not sent, including a first-run goal typed before a
+///   conversation exists. The most common loss and the cheapest to fix.
 ///
 ///   What it is allowed to do without asking. Losing that across a restart
 ///   would silently return somebody to asking after they had chosen not to —
@@ -48,11 +49,23 @@ public interface ISessionState
 /// Composer text that was typed and never sent, keyed by conversation id so
 /// two threads do not overwrite each other's half-written questions.
 /// </param>
+/// <param name="InitialDraftText">
+/// Text typed on the empty workspace before a conversation exists, such as a
+/// goal prepared while Circle AI is getting ready.
+/// </param>
+/// <param name="PendingTurnSubmissions">
+/// Idempotency keys and request fingerprints for turns whose terminal receipts
+/// have not yet been durably observed by the workspace, keyed by conversation ID.
+/// </param>
 public sealed record SessionSnapshot(
     Guid? LastConversationId = null,
     IReadOnlyCollection<string>? ActiveSkillIds = null,
     IReadOnlyDictionary<string, string>? UnsentText = null,
-    Concierge.Shared.Tools.ToolPermissionMode Permission = Concierge.Shared.Tools.ToolPermissionMode.AskFirst)
+    Concierge.Shared.Tools.ToolPermissionMode Permission = Concierge.Shared.Tools.ToolPermissionMode.AskFirst,
+    string? InitialDraftText = null,
+    int SetupTutorialStep = 0,
+    bool SetupTutorialCollapsed = false,
+    IReadOnlyDictionary<string, PendingTurnSubmission>? PendingTurnSubmissions = null)
 {
     public static SessionSnapshot Empty { get; } = new();
 
@@ -70,4 +83,12 @@ public sealed record SessionSnapshot(
     /// <summary>The unsent text for one thread, or empty.</summary>
     public string UnsentFor(Guid conversationId)
         => Unsent.TryGetValue(conversationId.ToString("N"), out var text) ? text : string.Empty;
+
+    /// <summary>The unclosed turn for one conversation, if there is one.</summary>
+    public PendingTurnSubmission? PendingTurnFor(Guid conversationId)
+        => (PendingTurnSubmissions ?? new Dictionary<string, PendingTurnSubmission>())
+            .TryGetValue(conversationId.ToString("N"), out var pending) ? pending : null;
 }
+
+/// <summary>Stable client identity for retrying one unclosed chat submission.</summary>
+public sealed record PendingTurnSubmission(Guid ConversationId, Guid RunId, string Fingerprint);

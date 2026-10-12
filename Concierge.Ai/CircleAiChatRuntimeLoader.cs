@@ -32,6 +32,25 @@ internal sealed class CircleAiChatRuntimeLoader : IHostedService
         await _runtime.LoadAsync(_shutdown.Token).ConfigureAwait(false);
         if (_options.AllowAutomaticDownload && _runtime.Selected is not null && !_shutdown.IsCancellationRequested)
             await _runtime.AcceptDownloadAsync(cancellationToken: _shutdown.Token).ConfigureAwait(false);
+        else if (_options.ResumeAcceptedDownloadOnStartup && !_shutdown.IsCancellationRequested)
+            await _runtime.ResumeAcceptedDownloadAsync(cancellationToken: _shutdown.Token).ConfigureAwait(false);
+
+        // Resource capacity can change while the client remains open (for example,
+        // when another task releases memory). Keep the capability feed current on
+        // in-process heads without polling or reselecting a model in the UI.
+        while (!_shutdown.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(15), _shutdown.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (_shutdown.IsCancellationRequested)
+            {
+                break;
+            }
+
+            _runtime.RefreshCapabilityCatalog();
+        }
     }
 
     public async Task StopAsync(CancellationToken cancellationToken)

@@ -23,6 +23,7 @@ using Microsoft.AspNetCore.RateLimiting;
 using MudBlazor.Services;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Concierge.Shared.Away;
+using Concierge.Shared.Butler;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 
@@ -38,6 +39,16 @@ if (savedSecrets.Count > 0)
     builder.Configuration.AddInMemoryCollection(savedSecrets!);
 }
 builder.Services.AddSingleton<IConciergeSecretStore>(secretStore);
+// Web token storage is intentionally not backed by the shared plaintext settings file.
+// Add a server-side, per-person authenticated vault before enabling Butler here.
+builder.Services.AddSingleton<IButlerAccountSession, ButlerAccountUnavailable>();
+builder.Services.AddHttpClient<ButlerWorkRunApiClient>(client =>
+{
+    var butlerApi = builder.Configuration["App:ButlerApiBaseUrl"] ?? "https://butlerapi.thegeeknetwork.co.za";
+    client.BaseAddress = new Uri(butlerApi);
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
+builder.Services.AddSingleton<IButlerWorkRunApi>(sp => sp.GetRequiredService<ButlerWorkRunApiClient>());
 
 // Add services to the container.
 builder.Services.AddRazorComponents()

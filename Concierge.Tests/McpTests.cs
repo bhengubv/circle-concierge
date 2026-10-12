@@ -1,5 +1,8 @@
+using System.Diagnostics;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Concierge.Shared.Rpc.Mcp;
+using Concierge.Shared.Sandboxing;
 using Concierge.Shared.Tools;
 
 namespace Concierge.Tests;
@@ -30,6 +33,17 @@ public sealed class McpTests : IDisposable
             {
                 File.Delete(_path);
             }
+        }
+        catch
+        {
+            // Swept with the test-run temp root regardless.
+        }
+
+        var script = Path.ChangeExtension(_path, ".ps1");
+        try
+        {
+            if (File.Exists(script))
+                File.Delete(script);
         }
         catch
         {
@@ -102,6 +116,141 @@ public sealed class McpTests : IDisposable
         Assert.Empty(servers);
         Assert.NotNull(problem);
         Assert.Contains("not valid JSON", problem!);
+    }
+
+    [Fact]
+    public async Task Configured_MCP_processes_are_visible_to_the_host_manager_even_when_start_fails()
+    {
+        File.WriteAllText(_path, System.Text.Json.JsonSerializer.Serialize(new[]
+        {
+            new McpServerConfig("missing", Path.Combine(Path.GetTempPath(), $"missing-mcp-{Guid.NewGuid():N}")),
+        }));
+
+        await using var source = new McpToolSource(
+            new McpServerOptions(_path),
+            UnavailableToolApprovalService.Instance);
+
+        await source.ConnectAllAsync();
+
+        var host = Assert.Single(source.CurrentHosts);
+        Assert.Equal("MCP · missing", host.DisplayName);
+        Assert.Null(host.Snapshot);
+        Assert.Contains(
+            OperatingSystem.IsWindows() ? "Did not connect" : "cannot enforce",
+            host.State,
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData(0, 0)]
+    [InlineData(McpWorkerResourceBudget.ConciergeAndSystemReserveBytes, 0)]
+    [InlineData(McpWorkerResourceBudget.ConciergeAndSystemReserveBytes + McpWorkerResourceBudget.MemoryBytesPerWorkerLimit - 1, 0)]
+    [InlineData(McpWorkerResourceBudget.ConciergeAndSystemReserveBytes + McpWorkerResourceBudget.MemoryBytesPerWorkerLimit, 1)]
+    [InlineData(McpWorkerResourceBudget.ConciergeAndSystemReserveBytes + 2 * McpWorkerResourceBudget.MemoryBytesPerWorkerLimit, 2)]
+    [InlineData(long.MaxValue, McpWorkerResourceBudget.AbsoluteWorkerLimit)]
+    public void MCP_worker_concurrency_is_derived_from_available_memory(long availableBytes, int expectedWorkers)
+    {
+        var budget = McpWorkerResourceBudget.FromAvailableMemory(availableBytes);
+
+        Assert.Equal(expectedWorkers, budget.MaximumWorkers);
+        Assert.Equal(McpWorkerResourceBudget.MemoryBytesPerWorkerLimit, budget.MemoryBytesPerWorker);
+        Assert.Equal(expectedWorkers > 0, budget.CanStartAnother(0));
+        Assert.False(budget.CanStartAnother(expectedWorkers));
+    }
+
+    [Fact]
+    public void Windows_accepts_an_aggregate_job_memory_cap_for_an_MCP_worker()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        using var job = new WindowsJobObjectSandbox(
+            memoryCapBytes: McpWorkerResourceBudget.MemoryBytesPerWorkerLimit,
+            processCap: 4,
+            jobMemoryCapBytes: McpWorkerResourceBudget.MemoryBytesPerWorkerLimit);
+
+        Assert.NotEqual(nint.Zero, job.OpenJob());
+        Assert.Equal(McpWorkerResourceBudget.MemoryBytesPerWorkerLimit, job.MemoryBudgetBytes);
+        Assert.Equal(McpWorkerResourceBudget.MemoryBytesPerWorkerLimit, job.JobMemoryBudgetBytes);
+        Assert.Equal(4, job.ProcessBudget);
+    }
+
+    [Fact]
+    public async Task MCP_worker_runs_in_a_bounded_job_and_is_killed_when_Concierge_closes_it()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var powershell = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.System),
+            "WindowsPowerShell", "v1.0", "powershell.exe");
+        Assert.True(File.Exists(powershell), "Windows PowerShell is required for this child-process acceptance test.");
+
+        var script = Path.ChangeExtension(_path, ".ps1");
+        var descendantPidFile = script + ".child-pid";
+        File.WriteAllText(script, """
+            param($markerPath)
+            $descendant = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') `
+              -ArgumentList @('-NoLogo', '-NoProfile', '-Command', 'Start-Sleep -Seconds 60') `
+              -PassThru -WindowStyle Hidden
+            [IO.File]::WriteAllText($markerPath, $descendant.Id.ToString())
+            while ($line = [Console]::In.ReadLine()) {
+              $request = $line | ConvertFrom-Json
+              $result = switch ($request.method) {
+                'initialize' { @{ protocolVersion = $request.params.protocolVersion; capabilities = @{ tools = @{} }; serverInfo = @{ name = 'bounded-test'; version = '1' } } }
+                'tools/list' { @{ tools = @(@{ name = 'ping'; description = 'A test tool'; inputSchema = @{ type = 'object'; properties = @{} } }) } }
+                default { @{} }
+              }
+              $reply = @{ jsonrpc = '2.0'; id = $request.id; result = $result }
+              [Console]::Out.WriteLine(($reply | ConvertTo-Json -Compress -Depth 20))
+            }
+            """);
+
+        var config = new[]
+        {
+            new McpServerConfig("bounded-test", powershell,
+                ["-NoLogo", "-NoProfile", "-NonInteractive", "-File", script, descendantPidFile]),
+        };
+        File.WriteAllText(_path, JsonSerializer.Serialize(config));
+
+        var source = new McpToolSource(
+            new McpServerOptions(_path),
+            UnavailableToolApprovalService.Instance,
+            () => long.MaxValue);
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(15));
+        try
+        {
+            await source.ConnectAllAsync(timeout.Token);
+
+            var status = Assert.Single(source.Statuses);
+            Assert.True(status.Connected, status.Status);
+            Assert.Equal("ping", Assert.Single(status.ToolNames!));
+
+            var host = Assert.Single(source.CurrentHosts);
+            Assert.Equal(McpWorkerResourceBudget.MemoryBytesPerWorkerLimit,
+                host.Snapshot!.MemoryBudgetBytes);
+            using var worker = Process.GetProcessById(host.Snapshot.ProcessId);
+            Assert.False(worker.HasExited);
+
+            using (var descendantWait = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+            {
+                while (!File.Exists(descendantPidFile))
+                    await Task.Delay(25, descendantWait.Token);
+            }
+            using var descendant = Process.GetProcessById(int.Parse(File.ReadAllText(descendantPidFile)));
+            Assert.False(descendant.HasExited);
+
+            await source.DisposeAsync();
+            await worker.WaitForExitAsync(new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token);
+            await descendant.WaitForExitAsync(new CancellationTokenSource(TimeSpan.FromSeconds(5)).Token);
+            Assert.True(worker.HasExited);
+            Assert.True(descendant.HasExited);
+        }
+        finally
+        {
+            await source.DisposeAsync();
+        }
     }
 
     [Fact]

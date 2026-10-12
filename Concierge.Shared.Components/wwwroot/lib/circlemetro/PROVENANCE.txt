@@ -1,6 +1,6 @@
 CircleMetroUI design tokens
 Source: https://github.com/bhengubv/CircleMetroUI
-Commit: 516c33c35af0d3d32ed515d15827f276f9e08c44
+Commit: 7eb5275e1dd1be4a58d90647b49da6633852a306
 File:   platforms/web/tokens.generated.css
 Licence: Apache-2.0 (LICENSE beside this file)
 

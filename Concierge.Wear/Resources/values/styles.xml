@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="ConciergeWear" parent="android:style/Theme.DeviceDefault.NoActionBar">
+        <!-- The app routes horizontal gestures itself, including Yes/No. -->
+        <item name="android:windowSwipeToDismiss">false</item>
+        <item name="android:windowBackground">@color/cm_color_canvas</item>
+        <item name="android:colorAccent">@color/cm_brand_circle_blue</item>
+    </style>
+</resources>

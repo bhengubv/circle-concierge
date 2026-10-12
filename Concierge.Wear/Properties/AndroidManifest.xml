@@ -31,8 +31,9 @@
 	     192dp face is a dialog nobody can read. What guards it is the key, not the transport,
 	     and that decision is written down beside the beacon.
 	-->
-	<application android:label="Concierge" android:allowBackup="false" android:supportsRtl="true"
-	             android:usesCleartextTraffic="true">
+	<application android:label="Concierge" android:icon="@drawable/ic_concierge" android:allowBackup="false" android:supportsRtl="true"
+                 android:usesCleartextTraffic="true" android:enableOnBackInvokedCallback="false">
 		<meta-data android:name="com.google.android.wearable.standalone" android:value="true" />
+        <uses-library android:name="com.google.android.wearable" android:required="false" />
 	</application>
 </manifest>

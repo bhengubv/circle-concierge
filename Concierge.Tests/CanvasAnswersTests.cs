@@ -84,7 +84,7 @@ public sealed class CanvasAnswersTests : BunitContext
         // way would pass on a build where nothing could open the canvas at all, which is a
         // mistake this repository has already made once.
         cut.FindAll("button.ws-head")
-            .Single(head => head.TextContent.Contains("Tools", StringComparison.Ordinal))
+            .Single(head => head.TextContent.Contains("Make something", StringComparison.Ordinal))
             .Click();
 
         cut.WaitForState(() => cut.FindAll("button.ws-room-btn").Count > 0);

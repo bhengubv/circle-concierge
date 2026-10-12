@@ -1,3 +1,6 @@
+using Concierge.Shared.Chat;
+using Concierge.Shared.Tools;
+
 namespace Concierge.Shared.Away;
 
 /// <summary>
@@ -69,7 +72,9 @@ public sealed record AwayPicture(string FileName, string MediaType, byte[] Bytes
 
 /// <summary>A sentence from a device that is not here, and what it was looking at.</summary>
 public sealed record AwaySaid(string Text, AwayContext Context, AwayPicture? Picture = null, Guid? ConversationId = null,
-    IReadOnlyList<Concierge.Shared.Chat.ConversationEvent>? ConversationEvents = null);
+    IReadOnlyList<Concierge.Shared.Chat.ConversationEvent>? ConversationEvents = null, Guid? RequestId = null,
+    ToolPermissionMode? PermissionMode = null, Guid? ProjectId = null, Guid? ProjectWorkspaceId = null,
+    string? ProjectContext = null, bool IncludeToolCatalog = true);
 
 /// <summary>What came of it.</summary>
 /// <param name="Understood">Whether anything changed.</param>
@@ -81,8 +86,13 @@ public sealed record AwaySaid(string Text, AwayContext Context, AwayPicture? Pic
 public sealed record AwayAnswer(bool Understood, string What, string? Reply, Guid? ConversationId = null,
     IReadOnlyList<Concierge.Shared.Chat.ConversationEvent>? Events = null);
 
+/// <summary>A bounded batch of conversation events produced by a connected client.</summary>
+public sealed record AwayConversationEvents(IReadOnlyList<ConversationEvent>? Events);
+
 /// <summary>Capabilities currently available on the connected execution device.</summary>
-public sealed record AwayCapabilities(bool CanAnswer);
+public sealed record AwayCapabilities(
+    bool CanAnswer,
+    ChatRuntimeCapabilityCatalog? CircleAi = null);
 
 /// <summary>Something waiting on a person, small enough to decide on a wrist.</summary>
 public sealed record AwayAsk(Guid Id, string Tool, string Summary, string Risk, DateTimeOffset AskedAt);
@@ -123,8 +133,32 @@ public interface IAway
     /// <summary>Say something, and hear what came of it.</summary>
     Task<AwayAnswer> SayAsync(AwaySaid said, CancellationToken cancellationToken = default);
 
+    /// <summary>Cancel a run previously submitted with its stable request ID.</summary>
+    Task<bool> CancelRunAsync(Guid runId, CancellationToken cancellationToken = default)
+        => Task.FromResult(false);
+
     /// <summary>Read the completed shared conversation log for post-answer synchronization.</summary>
     Task<IReadOnlyList<Concierge.Shared.Chat.ConversationEvent>> ReadConversationEventsAsync(Guid conversationId, CancellationToken cancellationToken = default);
+
+    /// <summary>Read only events newer than a client's last applied sequence.</summary>
+    Task<IReadOnlyList<Concierge.Shared.Chat.ConversationEvent>> ReadConversationEventsAfterAsync(
+        Guid conversationId, int afterSeq, CancellationToken cancellationToken = default);
+
+    /// <summary>Merge events produced on another device into the shared conversation log.</summary>
+    Task<bool> SynchronizeConversationEventsAsync(
+        Guid conversationId,
+        IReadOnlyList<Concierge.Shared.Chat.ConversationEvent> events,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult(false);
+
+    /// <summary>Read one bounded event page after a cursor.</summary>
+    async Task<IReadOnlyList<Concierge.Shared.Chat.ConversationEvent>> ReadConversationEventsPageAsync(
+        Guid conversationId, int afterSeq, int pageSize, CancellationToken cancellationToken = default)
+    {
+        var boundedSize = Math.Clamp(pageSize, 1, Concierge.Shared.Chat.ConversationEventPage.MaximumSize);
+        var events = await ReadConversationEventsAfterAsync(conversationId, afterSeq, cancellationToken).ConfigureAwait(false);
+        return events.Take(boundedSize).ToArray();
+    }
 
     /// <summary>What is waiting on a person, oldest first.</summary>
     Task<IReadOnlyList<AwayAsk>> WaitingAsync(CancellationToken cancellationToken = default);

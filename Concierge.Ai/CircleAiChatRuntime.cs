@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using CircleAI.Core;
 using CircleAI.Inference;
@@ -8,9 +9,9 @@ namespace Concierge.Ai;
 
 /// <summary>
 /// <see cref="IChatRuntime"/> backed by CircleAI's on-device chat generator (MNN-LLM
-/// running a Qwen / Kimi family model). Model selection is device-driven via
-/// <see cref="DeviceAwareModelSelector"/> reading CircleAI's model registry — neither the
-/// host nor the UI picks; whatever tier fits the device's RAM and storage is what loads.
+/// running a Qwen / Kimi family model). Model selection is device-driven through CircleAI's
+/// mode-aware catalogue assessor and selector — neither the host nor the UI picks; the best
+/// compatible tier for the device's current resources and MNN mode is selected.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -46,18 +47,31 @@ namespace Concierge.Ai;
 /// </list>
 /// </para>
 /// </remarks>
-public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime, IModelDownloadRequired, IChatRuntimeStatusEvents, IVisionCapableRuntime, IAsyncDisposable
+public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime, IModelDownloadRequired, IModelDownloadApprovalPreparer, IResumableModelDownload, IInitializableChatRuntime, IChatRuntimeStatusEvents, IChatRuntimeCapabilitySource, IVisionCapableRuntime, IAsyncDisposable
 {
     private readonly ILogger<CircleAiChatRuntime> _logger;
     private readonly CircleAiChatOptions _options;
+    private readonly ModelDownloadApprovalStore _downloadApprovalStore;
 
     // Everything below is guarded by _statusGate. _selected in particular is written on a pool
     // thread by LoadAsync and read on the render thread through PendingDownload.
     private ModelSelection? _selected;
+    private IReadOnlyList<ModelSelection> _stagingPlan = [];
+    private HashSet<string> _selectedModelCapabilities = new(StringComparer.OrdinalIgnoreCase);
+    private DeviceProbe? _deviceProbe;
+    private DateTimeOffset _resourcesMeasuredAt;
     private IChatGenerator? _generator;
+    private string? _activeModelId;
+    private string? _activeModelPath;
     private ModelDownloadProgress? _currentDownloadProgress;
+    private string? _downloadRecoveryMessage;
+    private long _lastProgressStatusTimestamp;
     private bool _accepting;
     private bool _disposed;
+    private bool _loadStarted;
+    private CancellationTokenSource? _downloadCancellation;
+    private ModelDownloadApproval? _resumeApproval;
+    private bool _explicitlyStopped;
 
     // Cancelled on disposal. A 21 GB transfer must not outlive the app that started it, and
     // the native handle must not be freed underneath a decode that is still running.
@@ -73,6 +87,7 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
     // SaveSessionAsync / LoadSessionAsync also acquire this so a snapshot
     // never races with a partial decode.
     private readonly SemaphoreSlim _generationGate = new(1, 1);
+    private readonly SemaphoreSlim _loadGate = new(1, 1);
 
     private string _statusMessage = "Engine queued for load…";
     private string _engineLabel = "CircleAI (pending)";
@@ -89,6 +104,7 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
     {
         _logger = logger;
         _options = options;
+        _downloadApprovalStore = new ModelDownloadApprovalStore(options.ModelsDirectory);
     }
 
     /// <summary>
@@ -109,20 +125,34 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
                 return null;
 
             ModelSelection? selection;
+            IReadOnlyList<ModelSelection> stagingPlan;
             lock (_statusGate)
             {
                 selection = _selected;
+                stagingPlan = _stagingPlan;
             }
 
-            return selection is null
-                ? null
-                : new PendingModelDownload(
-                    selection.ModelId,
-                    selection.EstimatedBytes,
-                    // NothingFits means the catalogue had nothing this device can run and the
-                    // smallest entry was handed back anyway. Worth saying before somebody
-                    // spends an hour on it.
-                    FitsThisDevice: selection.Quality != SelectionQuality.NothingFits);
+            if (selection is null || selection.Quality == SelectionQuality.NothingFits)
+                return null;
+
+            var remaining = _options.StageEligibleModelsSmallestFirst
+                ? stagingPlan
+                    .Where(candidate => !IsAlreadyDownloaded(candidate.ModelId, _options.ModelsDirectory))
+                    .ToArray()
+                : [selection];
+            return new PendingModelDownload(
+                selection.ModelId,
+                selection.EstimatedBytes,
+                // NothingFits means the catalogue had nothing this device can run and the
+                // smallest entry was handed back anyway. Worth saying before somebody
+                // spends an hour on it.
+                FitsThisDevice: selection.Quality != SelectionQuality.NothingFits)
+            {
+                StagingBytes = _options.StageEligibleModelsSmallestFirst
+                    ? Math.Max(selection.EstimatedBytes, remaining.Sum(candidate => candidate.EstimatedBytes))
+                    : selection.EstimatedBytes,
+                StagedModelCount = Math.Max(1, remaining.Length),
+            };
         }
     }
 
@@ -135,10 +165,233 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
     public string StatusMessage => _statusMessage;
     public string? SessionSnapshotPath => _options.SessionSnapshotPath;
 
-    public async Task LoadAsync(CancellationToken cancellationToken)
+    public ChatRuntimeCapabilityCatalog CapabilityCatalog
+    {
+        get
+        {
+            lock (_statusGate)
+            {
+                var cannotFit = _selected?.Quality == SelectionQuality.NothingFits;
+                var usable = _isReady;
+                var waiting = !_isReady && !cannotFit && IsPreparingStatus(_statusMessage, _accepting);
+                var needsSetup = !_isReady && !cannotFit && _selected is not null && !_accepting;
+                var visionMediaTypes = SupportedImageMediaTypes.ToArray();
+                var vision = visionMediaTypes.Length > 0;
+                var visionDeclared = _selectedModelCapabilities.Contains(nameof(ChatCapability.Vision));
+                var toolsDeclared = _selectedModelCapabilities.Contains(nameof(ChatCapability.Tools));
+                var reasoningDeclared = _selectedModelCapabilities.Contains(nameof(ChatCapability.Reasoning));
+                var longContextDeclared = _selectedModelCapabilities.Contains(nameof(ChatCapability.LongContext));
+                var resources = _deviceProbe is null ? null : new ChatRuntimeResourceSnapshot(
+                    _deviceProbe.UsableRamGb,
+                    _deviceProbe.StorageFreeGb,
+                    _deviceProbe.CpuCores,
+                    _deviceProbe.Connectivity.ToString(),
+                    _deviceProbe.MeasurementWarning,
+                    _resourcesMeasuredAt);
+
+                var chatState = usable ? ChatRuntimeCapabilityState.Available
+                    : cannotFit ? ChatRuntimeCapabilityState.Unavailable
+                    : waiting ? ChatRuntimeCapabilityState.Preparing
+                    : needsSetup ? ChatRuntimeCapabilityState.ActionRequired
+                    : ChatRuntimeCapabilityState.Unavailable;
+                var toolState = toolsDeclared ? chatState
+                    : _selected is null && waiting ? ChatRuntimeCapabilityState.Preparing
+                    : ChatRuntimeCapabilityState.Unavailable;
+
+                return new ChatRuntimeCapabilityCatalog(
+                    SchemaVersion: 1,
+                    RuntimeId: Id,
+                    RuntimeVersion: typeof(DeviceProbe).Assembly.GetName().Version?.ToString(3) ?? "unknown",
+                    ObservedAt: DateTimeOffset.UtcNow,
+                    Capabilities:
+                    [
+                        new("conversation", "Conversation", chatState,
+                            usable ? null : cannotFit ? "No model fits this device's available resources." : _statusMessage),
+                        new("tool-use", "Working with tools", toolState,
+                            toolState == ChatRuntimeCapabilityState.Unavailable
+                                ? "The active model has not been confirmed for tool use."
+                                : usable ? null : cannotFit ? "This device cannot prepare a model for tool use." : _statusMessage),
+                        new("visual-input", "Understanding images", vision ? ChatRuntimeCapabilityState.Available
+                            : !usable && visionDeclared ? OptionalFeatureState(visionDeclared, usable, waiting, needsSetup)
+                            : ChatRuntimeCapabilityState.Unavailable,
+                            vision ? null : FeatureExplanation("image understanding", visionDeclared, usable, waiting, needsSetup, _statusMessage)),
+                        new("reasoning", "Careful reasoning", OptionalFeatureState(reasoningDeclared, usable, waiting, needsSetup),
+                            FeatureExplanation("careful reasoning", reasoningDeclared, usable, waiting, needsSetup, _statusMessage)),
+                        new("long-context", "Longer conversations", OptionalFeatureState(longContextDeclared, usable, waiting, needsSetup),
+                            FeatureExplanation("longer conversations", longContextDeclared, usable, waiting, needsSetup, _statusMessage))
+                    ],
+                    Resources: resources,
+                    SupportedImageMediaTypes: visionMediaTypes,
+                    Activity: _currentDownloadProgress is { } download
+                        ? new ChatRuntimeActivity("model-download", download.Description, Math.Clamp(download.Ratio, 0, 1))
+                        : _downloadRecoveryMessage is { Length: > 0 } recovery
+                            ? new ChatRuntimeActivity("model-download-paused", recovery)
+                        : _accepting
+                            ? new ChatRuntimeActivity("model-preparation", _statusMessage)
+                            : null);
+            }
+        }
+    }
+
+    /// <summary>Refreshes the resource measurement used by Circle AI's device-fit decision.</summary>
+    public ChatRuntimeCapabilityCatalog RefreshCapabilityCatalog()
     {
         try
         {
+            var probe = SnapshotDevice(_options.ModelsDirectory);
+            ModelSelection? pendingSelection = null;
+            lock (_statusGate)
+            {
+                _deviceProbe = probe;
+                _resourcesMeasuredAt = DateTimeOffset.UtcNow;
+
+                // Resource availability can change after launch (for example, a WSL
+                // workload can claim most of Desktop RAM). Reassess a waiting model
+                // before continuing to advertise a stale download offer.
+                if (!_isReady && !_accepting && _selected is { } selected
+                    && IsWaitingForModelFit(_statusMessage))
+                    pendingSelection = selected;
+            }
+
+            if (pendingSelection is not null)
+            {
+                using var selector = new CircleAiModelSelectorContext(_options.ModelsDirectory);
+                selector.Assess(probe);
+                var reassessed = selector.BestFit(probe, ChatCapability.Default | ChatCapability.Tools);
+                if (reassessed.ModelId != pendingSelection.ModelId || reassessed.Quality != pendingSelection.Quality)
+                {
+                    lock (_statusGate)
+                    {
+                        if (!_isReady && !_accepting && _selected is not null)
+                        {
+                            _selected = reassessed;
+                            _engineLabel = $"{reassessed.ModelId} (CircleAI)";
+                        }
+                    }
+
+                    SetSelectedModelCapabilities(selector, probe, reassessed.ModelId);
+                    if (reassessed.Quality == SelectionQuality.NothingFits)
+                    {
+                        SetStatus($"No Circle AI model fits this device's available resources. {reassessed.ModelId} is the smallest option; route this work to a more capable connected device.", ready: false);
+                    }
+                    else
+                    {
+                        var gigabytes = reassessed.EstimatedBytes / 1024d / 1024d / 1024d;
+                        SetStatus($"{reassessed.ModelId} needs a {gigabytes:0.#} GB download before it can run.", ready: false);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "CircleAI could not refresh its device resource measurement.");
+        }
+
+        StatusChanged?.Invoke(this, EventArgs.Empty);
+        return CapabilityCatalog;
+    }
+
+    private static bool IsWaitingForModelFit(string status)
+        => status.StartsWith("No Circle AI model fits this device's available resources.", StringComparison.OrdinalIgnoreCase)
+            || status.Contains("download before it can run.", StringComparison.OrdinalIgnoreCase);
+
+    private DeviceProbe SnapshotDevice(string modelsDirectory)
+        => _options.DeviceProbeFactory?.Invoke(modelsDirectory)
+            ?? DeviceProbe.Snapshot(modelsDirectory);
+
+    private void SetSelectedModelCapabilities(CircleAiModelSelectorContext selector, DeviceProbe probe, string modelId)
+    {
+        var declared = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var capability in new[]
+        {
+            ChatCapability.Default,
+            ChatCapability.Tools,
+            ChatCapability.Vision,
+            ChatCapability.LongContext,
+            ChatCapability.Reasoning
+        })
+        {
+            if (HasDeclaredCapability(selector, probe, modelId, capability))
+                declared.Add(capability.ToString());
+        }
+
+        lock (_statusGate)
+            _selectedModelCapabilities = declared;
+    }
+
+    private static bool HasDeclaredCapability(
+        CircleAiModelSelectorContext selector,
+        DeviceProbe probe,
+        string modelId,
+        ChatCapability capability)
+    {
+        try
+        {
+            var selection = selector.BestFit(probe, ChatCapability.Default | ChatCapability.Tools | capability);
+            return selection.Quality != SelectionQuality.NothingFits
+                && string.Equals(selection.ModelId, modelId, StringComparison.OrdinalIgnoreCase);
+        }
+        catch (InvalidOperationException)
+        {
+            // Optional capabilities may have no fit in the registry. That means the current
+            // model does not advertise the feature; it must not take conversation startup
+            // offline while we are only measuring what else this runtime can do.
+            return false;
+        }
+    }
+
+    private static ChatRuntimeCapabilityState OptionalFeatureState(
+        bool declared,
+        bool ready,
+        bool preparing,
+        bool actionRequired)
+    {
+        if (ready)
+            return declared ? ChatRuntimeCapabilityState.Available : ChatRuntimeCapabilityState.Unavailable;
+        if (!declared)
+            return ChatRuntimeCapabilityState.Unavailable;
+        if (preparing)
+            return ChatRuntimeCapabilityState.Preparing;
+        if (actionRequired)
+            return ChatRuntimeCapabilityState.ActionRequired;
+        return ChatRuntimeCapabilityState.Unavailable;
+    }
+
+    private static string? FeatureExplanation(
+        string name,
+        bool declared,
+        bool ready,
+        bool preparing,
+        bool actionRequired,
+        string status)
+    {
+        if (ready)
+            return declared ? null : $"The current Circle AI setup does not include {name}.";
+        if (declared && (preparing || actionRequired))
+            return status;
+        return $"Circle AI does not report {name} as available on this device.";
+    }
+
+    public async Task LoadAsync(CancellationToken cancellationToken)
+    {
+        using var loading = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+        cancellationToken = loading.Token;
+        await _loadGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+        lock (_statusGate)
+        {
+            if (_disposed)
+                return;
+            _loadStarted = true;
+        }
+
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(_options.NativeLibDir))
+                NativeLibraryResolver.OverrideDirectory = _options.NativeLibDir;
+            NativeLibraryResolver.EnsureRegistered();
+
             SetStatus("Picking model for this device…", ready: false);
 
             // Catalog-driven selection. The old static ModelSelector was removed upstream as
@@ -147,13 +400,45 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
             var modelsDirectory = _options.ModelsDirectory;
             Directory.CreateDirectory(modelsDirectory);
 
-            using var selector = new DeviceAwareModelSelector();
-            var probe = DeviceProbe.Snapshot(modelsDirectory);
+            // DeviceProbe's generic desktop estimate is based on physical RAM.
+            // That misses memory consumed by other processes (notably WSL), so a
+            // large MoE can be selected even when Windows has almost no RAM left.
+            // Keep this callback installed in the isolated Windows host so both
+            // initial selection and later readiness refreshes use live available RAM.
+            if (_options.DeviceProbeFactory is null && OperatingSystem.IsWindows())
+                DeviceProbe.PlatformMemoryProbe = WindowsAvailableMemoryProbe.Read;
+
+            var probe = SnapshotDevice(modelsDirectory);
+            using var selector = new CircleAiModelSelectorContext(modelsDirectory);
+            selector.Assess(probe);
+            lock (_statusGate)
+            {
+                _deviceProbe = probe;
+                _resourcesMeasuredAt = DateTimeOffset.UtcNow;
+            }
 
             // Tools, because Concierge's whole tool loop depends on the model emitting call
             // blocks. Asking for it here means an unsuitable model is refused at selection
             // rather than discovered when the first tool call comes back as prose.
             var tier = selector.BestFit(probe, ChatCapability.Default | ChatCapability.Tools);
+            var stagingCandidates = _options.StageEligibleModelsSmallestFirst
+                ? selector.EligibleCandidatesSmallestFirst(probe, ChatCapability.Default | ChatCapability.Tools)
+                : new[] { tier };
+            var selectedIndex = stagingCandidates
+                .Select((candidate, index) => (candidate, index))
+                .Where(item => string.Equals(item.candidate.ModelId, tier.ModelId, StringComparison.OrdinalIgnoreCase))
+                .Select(item => item.index)
+                .DefaultIfEmpty(-1)
+                .First();
+            lock (_statusGate)
+            {
+                _stagingPlan = tier.Quality == SelectionQuality.NothingFits
+                    ? []
+                    : selectedIndex >= 0
+                        ? stagingCandidates.Take(selectedIndex + 1).ToArray()
+                        : [tier];
+            }
+            SetSelectedModelCapabilities(selector, probe, tier.ModelId);
             _engineLabel = $"{tier.ModelId} (CircleAI)";
 
             // The selector always answers RequiresDownload: true — its own comment says
@@ -164,6 +449,8 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
 
             if (tier.Quality == SelectionQuality.NothingFits)
             {
+                lock (_statusGate)
+                    _selected = tier;
                 SetStatus($"No Circle AI model fits this device's available resources. {tier.ModelId} is the smallest option; route this work to a more capable connected device.", ready: false);
                 _generatorReady.TrySetResult(null);
                 return;
@@ -179,9 +466,9 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
                 // nothing to somebody who cannot use the app yet. Take what is here, come up
                 // ready, and go on offering the better one.
                 var usable = selector.AllCandidates(probe)
-                    .FirstOrDefault(candidate =>
-                        candidate.Quality != SelectionQuality.NothingFits &&
-                        IsAlreadyDownloaded(candidate.ModelId, modelsDirectory));
+                .FirstOrDefault(candidate =>
+                    candidate.Quality != SelectionQuality.NothingFits &&
+                    IsAlreadyDownloaded(candidate.ModelId, modelsDirectory));
 
                 lock (_statusGate)
                 {
@@ -190,9 +477,11 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
 
                 if (usable is not null)
                 {
+                    SetSelectedModelCapabilities(selector, probe, usable.ModelId);
                     _engineLabel = $"{usable.ModelId} (CircleAI)";
                     SetStatus($"Loading {usable.ModelId} into memory (one-time)…", ready: false);
-                    Publish(CreateGenerator(await FetchAsync(usable.ModelId, null, cancellationToken).ConfigureAwait(false)));
+                    var usablePath = await FetchAsync(usable.ModelId, null, cancellationToken).ConfigureAwait(false);
+                    await ActivateModelAsync(usable.ModelId, usablePath, cancellationToken).ConfigureAwait(false);
                     SetStatus($"Ready · {usable.ModelId}", ready: true);
                     return;
                 }
@@ -215,7 +504,7 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
             var modelPath = await FetchAsync(tier.ModelId, null, cancellationToken).ConfigureAwait(false);
 
             SetStatus($"Loading {tier.ModelId} into memory (one-time)…", ready: false);
-            Publish(CreateGenerator(modelPath));
+            await ActivateModelAsync(tier.ModelId, modelPath, cancellationToken).ConfigureAwait(false);
 
             SetStatus($"Ready · {tier.ModelId}", ready: true);
         }
@@ -230,6 +519,62 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
             SetStatus($"Engine offline: {ex.Message}", ready: false);
             _generatorReady.TrySetResult(null);
         }
+        }
+        finally
+        {
+            _loadGate.Release();
+        }
+    }
+
+    public Task InitializeAsync(CancellationToken cancellationToken = default)
+        => LoadAsync(cancellationToken);
+
+    /// <summary>
+    /// Writes the exact model plan after the person accepts it and before an Android job is
+    /// scheduled. The OS job itself then becomes the durable owner of the transfer.
+    /// </summary>
+    public async Task<bool> PrepareDownloadApprovalAsync(CancellationToken cancellationToken = default)
+    {
+        RefreshCapabilityCatalog();
+
+        ModelSelection? selection;
+        IReadOnlyList<ModelSelection> stagingPlan;
+        lock (_statusGate)
+        {
+            if (_disposed || _accepting)
+                return false;
+            selection = _selected;
+            stagingPlan = _stagingPlan;
+        }
+
+        if (selection is null || selection.Quality == SelectionQuality.NothingFits)
+            return false;
+
+        var candidates = _options.StageEligibleModelsSmallestFirst
+            ? stagingPlan
+                .Where(candidate => candidate.EstimatedBytes <= selection.EstimatedBytes)
+                .OrderBy(candidate => candidate.EstimatedBytes)
+                .ThenBy(candidate => candidate.ModelId, StringComparer.OrdinalIgnoreCase)
+                .ToArray()
+            : [selection];
+        if (!candidates.Any(candidate => string.Equals(candidate.ModelId, selection.ModelId, StringComparison.OrdinalIgnoreCase)))
+            candidates = candidates.Append(selection).OrderBy(candidate => candidate.EstimatedBytes).ToArray();
+
+        await _downloadApprovalStore.WriteAsync(new ModelDownloadApproval(
+            SchemaVersion: 1,
+            SelectedModelId: selection.ModelId,
+            StagedModelIds: candidates.Select(candidate => candidate.ModelId).ToArray(),
+            AcceptedAtUtc: DateTimeOffset.UtcNow), cancellationToken).ConfigureAwait(false);
+
+        lock (_statusGate)
+        {
+            _currentDownloadProgress = new ModelDownloadProgress(
+                0,
+                "Waiting for Circle AI's background download worker to start");
+            _statusMessage = "Circle AI download accepted; starting background preparation…";
+        }
+        StatusChanged?.Invoke(this, EventArgs.Empty);
+        return true;
     }
 
     /// <inheritdoc/>
@@ -237,7 +582,12 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
         IProgress<ModelDownloadProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        // The resources that justified this offer may have changed since the last
+        // capability refresh. Re-run Circle AI's selector before accepting it.
+        RefreshCapabilityCatalog();
+
         ModelSelection selection;
+        IReadOnlyList<ModelSelection> stagingPlan;
         lock (_statusGate)
         {
             if (_disposed)
@@ -267,43 +617,165 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
                 return false;
             }
 
+            if (pending.Quality == SelectionQuality.NothingFits)
+                return false;
+
             selection = pending;
+            stagingPlan = _stagingPlan;
             _accepting = true;
+            _downloadRecoveryMessage = null;
         }
 
         // Linked so that closing the app stops the transfer, not only the person clicking stop.
         using var stopping = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetime.Token);
+        lock (_statusGate)
+            _downloadCancellation = stopping;
 
+        var preserveApprovalOnExit = false;
         try
         {
-            var gigabytes = selection.EstimatedBytes / 1024d / 1024d / 1024d;
-            var hasUsableModel = IsReady;
-            var currentEngine = EngineLabel;
-            SetStatus(hasUsableModel
-                ? $"Preparing {selection.ModelId} ({gigabytes:0.#} GB). Continuing with {currentEngine} meanwhile…"
-                : $"Downloading {selection.ModelId} ({gigabytes:0.#} GB)…", ready: hasUsableModel);
+            var candidates = _options.StageEligibleModelsSmallestFirst
+                ? stagingPlan
+                    .Where(candidate => candidate.EstimatedBytes <= selection.EstimatedBytes)
+                    .OrderBy(candidate => candidate.EstimatedBytes)
+                    .ThenBy(candidate => candidate.ModelId, StringComparer.OrdinalIgnoreCase)
+                    .ToArray()
+                : [selection];
+            if (!candidates.Any(candidate => string.Equals(candidate.ModelId, selection.ModelId, StringComparison.OrdinalIgnoreCase)))
+                candidates = candidates.Append(selection).OrderBy(candidate => candidate.EstimatedBytes).ToArray();
 
-            var transferProgress = new InlineProgress<ModelDownloadProgress>(report =>
+            ModelDownloadApproval? resumeApproval;
+            lock (_statusGate)
             {
-                lock (_statusGate)
-                    _currentDownloadProgress = report;
-                progress?.Report(report);
-                StatusChanged?.Invoke(this, EventArgs.Empty);
-            });
-            var modelPath = await FetchAsync(selection.ModelId, transferProgress, stopping.Token).ConfigureAwait(false);
-            stopping.Token.ThrowIfCancellationRequested();
+                resumeApproval = _resumeApproval;
+                _resumeApproval = null;
+                _explicitlyStopped = false;
+            }
 
-            SetStatus(hasUsableModel
-                ? $"Switching to {selection.ModelId}. Continuing with {currentEngine} meanwhile…"
-                : $"Loading {selection.ModelId} into memory (one-time)…", ready: hasUsableModel);
-            var generator = CreateGenerator(modelPath);
-
-            if (!Publish(generator))
+            if (resumeApproval is not null)
             {
-                // Disposed while the model was loading. Free what we just built rather than
-                // leave the weights resident with nothing holding them.
-                generator.Dispose();
-                return false;
+                var currentIds = candidates.Select(candidate => candidate.ModelId).ToArray();
+                if (!string.Equals(resumeApproval.SelectedModelId, selection.ModelId, StringComparison.OrdinalIgnoreCase)
+                    || !resumeApproval.StagedModelIds.SequenceEqual(currentIds, StringComparer.OrdinalIgnoreCase))
+                {
+                    await _downloadApprovalStore.ClearAsync(CancellationToken.None).ConfigureAwait(false);
+                    SetStatus("The previous Circle AI download offer has changed. Review the current offer to continue.", ready: IsReady);
+                    return false;
+                }
+            }
+            else
+            {
+                // Record the person's consent before any bundle request begins. If the process
+                // exits mid-transfer, the next runtime can resume this exact model plan only.
+                await _downloadApprovalStore.WriteAsync(new ModelDownloadApproval(
+                    SchemaVersion: 1,
+                    SelectedModelId: selection.ModelId,
+                    StagedModelIds: candidates.Select(candidate => candidate.ModelId).ToArray(),
+                    AcceptedAtUtc: DateTimeOffset.UtcNow), stopping.Token).ConfigureAwait(false);
+                stopping.Token.ThrowIfCancellationRequested();
+            }
+
+            ReportDownloadProgress(
+                new ModelDownloadProgress(0, $"Preparing the first of {candidates.Length} Circle AI model downloads"),
+                progress);
+
+            var remaining = candidates
+                .Where(candidate => !IsAlreadyDownloaded(candidate.ModelId, _options.ModelsDirectory))
+                .ToList();
+            if (!remaining.Any(candidate => string.Equals(candidate.ModelId, selection.ModelId, StringComparison.OrdinalIgnoreCase)))
+                remaining.Add(selection);
+
+            var totalBytes = remaining.Sum(candidate => Math.Max(candidate.EstimatedBytes, 1));
+            var bytesComplete = 0L;
+            var downloadedPaths = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            for (var index = 0; index < remaining.Count; index++)
+            {
+                stopping.Token.ThrowIfCancellationRequested();
+                var candidate = remaining[index];
+                var stageNumber = index + 1;
+                SetStatus(
+                    $"Preparing Circle AI · downloading model {stageNumber} of {remaining.Count}",
+                    ready: IsReady);
+
+                var stageProgress = new InlineProgress<ModelDownloadProgress>(report =>
+                {
+                    var stageBytes = (long)(Math.Max(candidate.EstimatedBytes, 1) * Math.Clamp(report.Ratio, 0, 1));
+                    var overallRatio = totalBytes == 0
+                        ? report.Ratio
+                        : Math.Clamp((bytesComplete + stageBytes) / (double)totalBytes, 0, 1);
+                    ReportDownloadProgress(new ModelDownloadProgress(
+                        overallRatio,
+                        $"Model {stageNumber} of {remaining.Count} · {report.Description}"), progress);
+                });
+
+                var modelPath = await FetchAsync(candidate.ModelId, stageProgress, stopping.Token).ConfigureAwait(false);
+                stopping.Token.ThrowIfCancellationRequested();
+                downloadedPaths[candidate.ModelId] = modelPath;
+                bytesComplete += Math.Max(candidate.EstimatedBytes, 1);
+
+                // The smallest compatible model makes the app useful as soon as its bundle
+                // lands. The larger selected tier is fetched afterwards while this model
+                // remains available for conversations and tool work.
+                if (!IsReady)
+                {
+                    stopping.Token.ThrowIfCancellationRequested();
+                    var probe = SnapshotDevice(_options.ModelsDirectory);
+                    using var selector = new CircleAiModelSelectorContext(_options.ModelsDirectory);
+                    selector.Assess(probe);
+                    var stillEligible = selector.EligibleCandidatesSmallestFirst(
+                        probe, ChatCapability.Default | ChatCapability.Tools)
+                        .Any(item => string.Equals(item.ModelId, candidate.ModelId, StringComparison.OrdinalIgnoreCase));
+                    if (!stillEligible)
+                    {
+                        _ = _generatorReady.TrySetResult(null);
+                        SetStatus("Device resources changed before Circle AI could open the starting model. The download is saved; refresh readiness to retry.", ready: false);
+                        return false;
+                    }
+
+                    SetSelectedModelCapabilities(selector, probe, candidate.ModelId);
+                    _engineLabel = $"{candidate.ModelId} (CircleAI)";
+                    SetStatus("Opening the first Circle AI model…", ready: false);
+                    if (!await ActivateModelAsync(candidate.ModelId, modelPath, stopping.Token).ConfigureAwait(false))
+                        return false;
+                    SetStatus("Circle AI is ready with a starting model. The selected model is preparing in the background.", ready: true);
+                }
+
+                ReportDownloadProgress(new ModelDownloadProgress(
+                    totalBytes == 0 ? 1 : Math.Clamp(bytesComplete / (double)totalBytes, 0, 1),
+                    $"Downloaded Circle AI model {stageNumber} of {remaining.Count}"), progress);
+            }
+
+            var selectedPath = downloadedPaths.TryGetValue(selection.ModelId, out var downloadedPath)
+                ? downloadedPath
+                : await FetchAsync(selection.ModelId, null, stopping.Token).ConfigureAwait(false);
+
+            if (!string.Equals(_activeModelId, selection.ModelId, StringComparison.OrdinalIgnoreCase))
+            {
+                var latestProbe = SnapshotDevice(_options.ModelsDirectory);
+                using var selector = new CircleAiModelSelectorContext(_options.ModelsDirectory);
+                selector.Assess(latestProbe);
+                var latestSelection = selector.BestFit(latestProbe, ChatCapability.Default | ChatCapability.Tools);
+                if (latestSelection.Quality == SelectionQuality.NothingFits
+                    || !string.Equals(latestSelection.ModelId, selection.ModelId, StringComparison.OrdinalIgnoreCase))
+                {
+                    lock (_statusGate)
+                    {
+                        _deviceProbe = latestProbe;
+                        _resourcesMeasuredAt = DateTimeOffset.UtcNow;
+                        _selected = latestSelection;
+                        _engineLabel = $"{latestSelection.ModelId} (CircleAI)";
+                    }
+                    SetSelectedModelCapabilities(selector, latestProbe, latestSelection.ModelId);
+                    SetStatus(IsReady
+                        ? "Circle AI is ready with a compatible starting model. Device capacity changed; the best-fit model is saved for a later retry."
+                        : $"Device resources changed. Circle AI selected a different model: {latestSelection.ModelId}.", ready: IsReady);
+                    return IsReady;
+                }
+
+                SetSelectedModelCapabilities(selector, latestProbe, selection.ModelId);
+                SetStatus("Switching to the best-fit Circle AI model…", ready: IsReady);
+                if (!await ActivateModelAsync(selection.ModelId, selectedPath, stopping.Token).ConfigureAwait(false))
+                    return IsReady;
             }
 
             lock (_statusGate)
@@ -316,9 +788,11 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
         }
         catch (OperationCanceledException)
         {
+            lock (_statusGate)
+                preserveApprovalOnExit = !_explicitlyStopped;
             SetStatus(IsReady
                 ? $"Preparation paused. Continuing with {EngineLabel}."
-                : "Model preparation was interrupted; Circle AI will retry when the app starts again.", ready: IsReady);
+                : "Model download stopped. Circle AI can retry the download.", ready: IsReady);
             return false;
         }
         catch (Exception ex)
@@ -326,18 +800,149 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
             _logger.LogError(ex, "CircleAI model download failed.");
             SetStatus(IsReady
                 ? $"Could not prepare {selection.ModelId}; continuing with {EngineLabel}. {ex.Message}"
-                : $"Circle AI could not prepare {selection.ModelId}: {ex.Message}. It will retry when the app starts again.", ready: IsReady);
+                : $"Circle AI could not prepare {selection.ModelId}: {ex.Message}. You can retry from this download offer.", ready: IsReady);
             return false;
         }
         finally
         {
+            if (!preserveApprovalOnExit)
+            {
+                try
+                {
+                    await _downloadApprovalStore.ClearAsync(CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    _logger.LogWarning(ex, "Could not clear the completed Circle AI download approval.");
+                }
+            }
+
             lock (_statusGate)
             {
                 _accepting = false;
                 _currentDownloadProgress = null;
+                _downloadCancellation = null;
             }
             StatusChanged?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    public Task CancelCurrentDownloadAsync()
+    {
+        CancellationTokenSource? stopping;
+        lock (_statusGate)
+        {
+            _explicitlyStopped = true;
+            stopping = _downloadCancellation;
+            if (stopping is null)
+                _currentDownloadProgress = null;
+        }
+
+        try
+        {
+            stopping?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The transfer completed between reading the source and cancelling it.
+        }
+
+        StatusChanged?.Invoke(this, EventArgs.Empty);
+        return _downloadApprovalStore.ClearAsync(CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Stops the transfer because its background owner is shutting down or pausing. Unlike the
+    /// person's Stop action, this preserves the accepted model plan for safe continuation later.
+    /// </summary>
+    public Task PauseCurrentDownloadAsync()
+    {
+        CancellationTokenSource? stopping;
+        lock (_statusGate)
+            stopping = _downloadCancellation;
+
+        try
+        {
+            stopping?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // It completed while the pause was being delivered.
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Resumes a previously accepted transfer after the app recreated its runtime. Resume is
+    /// allowed only when Circle AI still selects the same model and the staged plan is unchanged.
+    /// If resources changed, keep the accepted record and partial files, then expose a review
+    /// message; silently deleting the person's accepted work makes restart recovery impossible.
+    /// </summary>
+    public async Task<bool> ResumeAcceptedDownloadAsync(
+        IProgress<ModelDownloadProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        ModelDownloadApproval? approval;
+        try
+        {
+            approval = await _downloadApprovalStore.ReadAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException)
+        {
+            _logger.LogWarning(ex, "Could not read the prior Circle AI download approval; keeping setup manual.");
+            await _downloadApprovalStore.ClearAsync(CancellationToken.None).ConfigureAwait(false);
+            return false;
+        }
+
+        if (approval is null)
+            return false;
+
+        RefreshCapabilityCatalog();
+        ModelSelection? selection;
+        IReadOnlyList<ModelSelection> stagingPlan;
+        lock (_statusGate)
+        {
+            selection = _selected;
+            stagingPlan = _stagingPlan;
+        }
+
+        if (selection is null || selection.Quality == SelectionQuality.NothingFits
+            || !string.Equals(approval.SelectedModelId, selection.ModelId, StringComparison.OrdinalIgnoreCase))
+        {
+            MarkDownloadPlanChanged();
+            return false;
+        }
+
+        var candidates = _options.StageEligibleModelsSmallestFirst
+            ? stagingPlan
+                .Where(candidate => candidate.EstimatedBytes <= selection.EstimatedBytes)
+                .OrderBy(candidate => candidate.EstimatedBytes)
+                .ThenBy(candidate => candidate.ModelId, StringComparer.OrdinalIgnoreCase)
+                .ToArray()
+            : [selection];
+        if (!candidates.Any(candidate => string.Equals(candidate.ModelId, selection.ModelId, StringComparison.OrdinalIgnoreCase)))
+            candidates = candidates.Append(selection).OrderBy(candidate => candidate.EstimatedBytes).ToArray();
+
+        if (!approval.StagedModelIds.SequenceEqual(candidates.Select(candidate => candidate.ModelId), StringComparer.OrdinalIgnoreCase))
+        {
+            MarkDownloadPlanChanged();
+            return false;
+        }
+
+        lock (_statusGate)
+            _resumeApproval = approval;
+        return await AcceptDownloadAsync(progress, cancellationToken).ConfigureAwait(false);
+    }
+
+    private void MarkDownloadPlanChanged()
+    {
+        var message = IsReady
+            ? "The previously accepted Circle AI download is paused because device resources changed. Partial model files are kept. Circle AI can keep answering; review the current offer when available."
+            : "The previously accepted Circle AI download is paused because device resources changed. Partial model files are kept. Review the current offer when available.";
+        lock (_statusGate)
+            _downloadRecoveryMessage = message;
+        SetStatus(message, ready: IsReady);
     }
 
     /// <summary>
@@ -366,9 +971,13 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
         // The rich overload, not the IProgress<float> one: that one drops the byte counts and
         // the ETA one call before the screen, and takes no cancellation token — so a stop
         // button wired to it would be a lie.
+        // Progress<T> posts once per downloader chunk. A large bundle can produce hundreds
+        // of callbacks per second across parallel ranges; on Android those queued callbacks
+        // competed with the UI thread and drove Mono into repeated full GCs. Relay inline so
+        // the platform worker can apply its own bounded notification cadence.
         var relayed = progress is null
             ? null
-            : new Progress<DownloadProgress>(report =>
+            : new InlineProgress<DownloadProgress>(report =>
                 progress.Report(new ModelDownloadProgress(report.Ratio, report.Describe())));
 
         return await loader.DownloadModelAsync(modelId, relayed, cancellationToken).ConfigureAwait(false);
@@ -462,12 +1071,152 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
         }
     }
 
+    private void ReportDownloadProgress(
+        ModelDownloadProgress report,
+        IProgress<ModelDownloadProgress>? progress = null)
+    {
+        bool notifyStatus;
+        lock (_statusGate)
+        {
+            _currentDownloadProgress = report;
+            var now = Stopwatch.GetTimestamp();
+            notifyStatus = report.Ratio >= 1
+                || _lastProgressStatusTimestamp == 0
+                || Stopwatch.GetElapsedTime(_lastProgressStatusTimestamp, now) >= TimeSpan.FromMilliseconds(500);
+            if (notifyStatus)
+                _lastProgressStatusTimestamp = now;
+        }
+        progress?.Report(report);
+        if (notifyStatus)
+            StatusChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Opens a model with exclusive access to the native handle. A larger replacement can
+    /// need more memory than the old one plus the new one, so the old generator is freed
+    /// before the replacement is created. A failed upgrade reloads the prior model.
+    /// </summary>
+    private async Task<bool> ActivateModelAsync(
+        string modelId,
+        string modelPath,
+        CancellationToken cancellationToken)
+    {
+        await _generationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        IChatGenerator? replaced = null;
+        string? replacedId = null;
+        string? replacedPath = null;
+        try
+        {
+            lock (_statusGate)
+            {
+                if (_disposed)
+                    return false;
+
+                if (_generator is not null
+                    && string.Equals(_activeModelId, modelId, StringComparison.OrdinalIgnoreCase))
+                    return true;
+
+                replaced = _generator;
+                replacedId = _activeModelId;
+                replacedPath = _activeModelPath;
+                _generator = null;
+                _activeModelId = null;
+                _activeModelPath = null;
+                _isReady = false;
+                _generatorReady = new TaskCompletionSource<IChatGenerator?>(TaskCreationOptions.RunContinuationsAsynchronously);
+            }
+
+            replaced?.Dispose();
+            replaced = null;
+
+            try
+            {
+                var generator = CreateGenerator(modelPath);
+                if (!Publish(generator, modelId, modelPath))
+                {
+                    generator.Dispose();
+                    return false;
+                }
+
+                return true;
+            }
+            catch when (!string.IsNullOrWhiteSpace(replacedId) && !string.IsNullOrWhiteSpace(replacedPath))
+            {
+                // A higher tier may fail to open under the memory actually available after
+                // download. Restore the last usable tier instead of leaving Chat offline.
+                var fallback = CreateGenerator(replacedPath!);
+                if (Publish(fallback, replacedId!, replacedPath!))
+                {
+                    _engineLabel = $"{replacedId} (CircleAI)";
+                    SetStatus("The larger Circle AI model could not open. Continuing with the model already prepared on this device.", ready: true);
+                    return false;
+                }
+
+                fallback.Dispose();
+                return false;
+            }
+        }
+        catch
+        {
+            lock (_statusGate)
+            {
+                if (!_generatorReady.Task.IsCompleted)
+                    _generatorReady.TrySetResult(null);
+            }
+            throw;
+        }
+        finally
+        {
+            _generationGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Acquires the generation gate and returns the current model. A caller can observe an
+    /// old readiness task just before a tier switch, so it rechecks identity after the gate.
+    /// The caller releases the gate after using the returned generator.
+    /// </summary>
+    private async Task<IChatGenerator?> AcquireGeneratorAsync(CancellationToken cancellationToken)
+    {
+        while (true)
+        {
+            Task<IChatGenerator?> readiness;
+            lock (_statusGate)
+            {
+                if (_disposed)
+                    return null;
+                if (_generator is null && !_loadStarted)
+                    return null;
+                readiness = _generatorReady.Task;
+            }
+
+            var candidate = await readiness.WaitAsync(cancellationToken).ConfigureAwait(false);
+            if (candidate is null)
+                return null;
+
+            await _generationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            lock (_statusGate)
+            {
+                if (_disposed)
+                {
+                    _generationGate.Release();
+                    return null;
+                }
+
+                if (ReferenceEquals(candidate, _generator))
+                    return candidate;
+            }
+
+            _generationGate.Release();
+        }
+    }
+
     /// <summary>
     /// Makes <paramref name="generator"/> the one this runtime owns, disposing whatever it
     /// replaces. Returns false when the runtime has been disposed, in which case the caller
     /// owns the generator it just built.
     /// </summary>
-    private bool Publish(IChatGenerator generator)
+    private bool Publish(IChatGenerator generator, string modelId, string modelPath)
     {
         IChatGenerator? replaced;
         lock (_statusGate)
@@ -479,6 +1228,9 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
 
             replaced = _generator;
             _generator = generator;
+            _activeModelId = modelId;
+            _activeModelPath = modelPath;
+            _engineLabel = $"{modelId} (CircleAI)";
 
             // Whoever was waiting while there was no model already has their answer. A fresh
             // source is what the next caller waits on.
@@ -506,7 +1258,7 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
             }
         }
 
-        var generator = await _generatorReady.Task.ConfigureAwait(false);
+        var generator = await AcquireGeneratorAsync(cancellationToken).ConfigureAwait(false);
         if (generator is null)
         {
             yield return $"[{StatusMessage}]";
@@ -564,7 +1316,6 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
             MaxTokens = (int)_options.MaxOutputTokens,
         };
 
-        await _generationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             await foreach (var chunk in generator
@@ -585,9 +1336,7 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
     {
         if (string.IsNullOrWhiteSpace(path)) return false;
 
-        var generator = _generatorReady.Task.IsCompletedSuccessfully
-            ? await _generatorReady.Task.ConfigureAwait(false)
-            : null;
+        var generator = await AcquireGeneratorAsync(cancellationToken).ConfigureAwait(false);
         if (generator is null)
         {
             // Engine never loaded — nothing to snapshot. Not an error from the
@@ -596,7 +1345,6 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
             return false;
         }
 
-        await _generationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             try
@@ -630,13 +1378,12 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
             return false;
         }
 
-        var generator = await _generatorReady.Task.ConfigureAwait(false);
+        var generator = await AcquireGeneratorAsync(cancellationToken).ConfigureAwait(false);
         if (generator is null)
         {
             return false;
         }
 
-        await _generationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             try
@@ -676,9 +1423,20 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
             }
 
             _disposed = true;
+            _generatorReady.TrySetResult(null);
         }
 
         await _lifetime.CancelAsync().ConfigureAwait(false);
+
+        var loadHeld = false;
+        try
+        {
+            loadHeld = await _loadGate.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException)
+        {
+            // Already gone; no load can still be using the generator.
+        }
 
         var held = false;
         try
@@ -705,6 +1463,11 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
         }
 
         _generationGate.Dispose();
+        if (loadHeld)
+        {
+            _loadGate.Release();
+            _loadGate.Dispose();
+        }
         _lifetime.Dispose();
     }
 
@@ -717,6 +1480,14 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
         }
         StatusChanged?.Invoke(this, EventArgs.Empty);
     }
+
+    private static bool IsPreparingStatus(string status, bool accepting)
+        => accepting
+            || status.Contains("queued", StringComparison.OrdinalIgnoreCase)
+            || status.StartsWith("Picking model", StringComparison.OrdinalIgnoreCase)
+            || status.StartsWith("Resolving model", StringComparison.OrdinalIgnoreCase)
+            || status.StartsWith("Loading ", StringComparison.OrdinalIgnoreCase)
+            || status.Contains("preparing it automatically", StringComparison.OrdinalIgnoreCase);
 
     private sealed class InlineProgress<T>(Action<T> report) : IProgress<T>
     {
@@ -731,6 +1502,16 @@ public sealed class CircleAiChatRuntime : IChatRuntime, IPersistableChatRuntime,
 /// </summary>
 public sealed class CircleAiChatOptions
 {
+    /// <summary>Optional native library directory supplied by a mobile application host.</summary>
+    public string? NativeLibDir { get; init; }
+
+    /// <summary>
+    /// Supplies a live resource snapshot for this host. Production uses Circle AI's
+    /// platform probe; deterministic test hosts may supply a fixed snapshot so selection
+    /// tests do not change when the test runner's memory limit or machine load changes.
+    /// </summary>
+    public Func<string, DeviceProbe>? DeviceProbeFactory { get; init; }
+
     /// <summary>
     /// How a model bundle is fetched. Null means CircleAI's <c>BundleModelLoader</c> against
     /// the default source — what ships. A host with its own mirror can substitute one, and a
@@ -800,6 +1581,19 @@ public sealed class CircleAiChatOptions
     /// <see cref="CircleAiChatRuntime.EnsureModelAsync"/> once somebody has said yes.
     /// </remarks>
     public bool AllowAutomaticDownload { get; init; }
+
+    /// <summary>
+    /// Whether an accepted setup download prepares every currently eligible chat/tool tier
+    /// from smallest to the device-selected best fit. No extra models are fetched unless the
+    /// person starts setup or automatic preparation is configured.
+    /// </summary>
+    public bool StageEligibleModelsSmallestFirst { get; init; }
+
+    /// <summary>
+    /// Whether the app's in-process startup loader resumes accepted downloads. Android
+    /// JobScheduler owns accepted transfers there, so the loader must not race the job.
+    /// </summary>
+    public bool ResumeAcceptedDownloadOnStartup { get; init; } = true;
 
     /// <summary>
     /// Per-(installation, conversation) path the MAUI host uses to snapshot the

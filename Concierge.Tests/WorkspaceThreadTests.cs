@@ -2,6 +2,7 @@ using AngleSharp.Dom;
 using Bunit;
 using Concierge.Shared;
 using Concierge.Shared.Chat;
+using Concierge.Shared.Tools;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -105,6 +106,213 @@ public sealed class WorkspaceThreadTests : BunitContext
         Assert.StartsWith("Second thing", bodies[1]);
     }
 
+    [Fact]
+    public void Opening_a_thread_restores_its_durable_plan_snapshot()
+    {
+        var store = Compose();
+        var conversation = store.StartAsync("local", title: "Interrupted work").GetAwaiter().GetResult();
+        store.AppendEventAsync(conversation.Id, ConversationEventType.TodoWrite,
+            System.Text.Json.JsonSerializer.Serialize(new TurnPlanSnapshot(
+                Guid.NewGuid(), ["Inspect the project", "Build a first version", "Review the result"],
+                Done: 2, Revisions: 0, UpdatedAt: DateTimeOffset.UtcNow))).GetAwaiter().GetResult();
+
+        var cut = Open(conversation.Id);
+
+        Assert.Equal("2 of 3", cut.Find(".plan-count").TextContent.Trim());
+        var steps = cut.FindAll(".plan-step").Select(step => step.TextContent.Trim()).ToArray();
+        Assert.Equal(["Inspect the project", "Build a first version", "Review the result"], steps);
+        Assert.Equal(2, cut.FindAll(".plan-step.is-done").Count);
+    }
+
+    [Fact]
+    public void Opening_a_thread_with_an_unclosed_run_shows_that_it_was_interrupted()
+    {
+        var store = Compose();
+        var conversation = store.StartAsync("local", title: "Interrupted work").GetAwaiter().GetResult();
+        var runId = Guid.NewGuid();
+        store.AppendEventAsync(conversation.Id, ConversationEventType.TurnStart,
+            System.Text.Json.JsonSerializer.Serialize(new { RunId = runId, Fingerprint = "test" }),
+            eventId: runId).GetAwaiter().GetResult();
+
+        var cut = Open(conversation.Id);
+
+        cut.WaitForAssertion(() => Assert.Contains("This run stopped before it finished", cut.Find(".run-recovery").TextContent));
+        Assert.Contains("did not automatically repeat it", cut.Find(".run-recovery").TextContent);
+    }
+
+    [Fact]
+    public void Interrupted_run_names_tool_calls_without_a_durable_result()
+    {
+        var store = Compose();
+        var conversation = store.StartAsync("local", title: "Uncertain tool action").GetAwaiter().GetResult();
+        var runId = Guid.NewGuid();
+        store.AppendEventAsync(conversation.Id, ConversationEventType.TurnStart,
+            System.Text.Json.JsonSerializer.Serialize(new { RunId = runId, Fingerprint = "test" }),
+            eventId: runId).GetAwaiter().GetResult();
+        store.AppendEventAsync(conversation.Id, ConversationEventType.ToolCall,
+            "read_file {\"path\":\"notes.md\"}").GetAwaiter().GetResult();
+        store.AppendEventAsync(conversation.Id, ConversationEventType.ToolResult,
+            ToolCallProtocol.FormatResult("read_file", new AgentToolResult(true, "old notes"))).GetAwaiter().GetResult();
+        store.AppendEventAsync(conversation.Id, ConversationEventType.ToolCall,
+            "write_file {\"path\":\"notes.md\"}").GetAwaiter().GetResult();
+
+        var cut = Open(conversation.Id);
+
+        cut.WaitForAssertion(() => Assert.Contains("outcome of these recorded actions is unknown",
+            cut.Find(".run-recovery").TextContent));
+        Assert.Contains("write_file", cut.Find(".run-recovery").TextContent);
+        Assert.Contains("Check whether they took effect before retrying", cut.Find(".run-recovery").TextContent);
+        Assert.DoesNotContain("read_file", cut.Find(".run-recovery").TextContent);
+    }
+
+    [Fact]
+    public void Opening_a_thread_with_a_live_run_does_not_label_it_interrupted()
+    {
+        var store = Compose();
+        var conversation = store.StartAsync("local", title: "Live work").GetAwaiter().GetResult();
+        var runId = Guid.NewGuid();
+        store.AppendEventAsync(conversation.Id, ConversationEventType.TurnStart,
+            System.Text.Json.JsonSerializer.Serialize(new { RunId = runId, Fingerprint = "test" }),
+            eventId: runId).GetAwaiter().GetResult();
+        using var cancellation = new CancellationTokenSource();
+        Services.GetRequiredService<BackgroundRuns>().Started(conversation.Id, cancellation);
+
+        var cut = Open(conversation.Id);
+
+        Assert.Contains("still working on this device", cut.Find(".run-recovery").TextContent);
+        Assert.DoesNotContain("stopped before it finished", cut.Find(".run-recovery").TextContent);
+        Services.GetRequiredService<BackgroundRuns>().Finished(conversation.Id);
+    }
+
+    [Fact]
+    public async Task Active_run_exposes_a_stop_control_that_cancels_the_run()
+    {
+        var store = Compose();
+        var conversation = store.StartAsync("local", title: "Work in progress").GetAwaiter().GetResult();
+        using var cancellation = new CancellationTokenSource();
+        Services.GetRequiredService<BackgroundRuns>().Started(conversation.Id, cancellation);
+
+        var cut = Open(conversation.Id);
+        cut.WaitForAssertion(() => Assert.Single(cut.FindAll("button[aria-label='Stop this run']")));
+        await cut.InvokeAsync(() => cut.Find("button[aria-label='Stop this run']").Click());
+
+        cut.WaitForAssertion(() => Assert.True(cancellation.IsCancellationRequested));
+        Assert.Contains("Stopping this run", cut.Markup);
+        Services.GetRequiredService<BackgroundRuns>().Finished(conversation.Id);
+    }
+
+    [Fact]
+    public void A_closed_run_does_not_show_interruption_status()
+    {
+        var store = Compose();
+        var conversation = store.StartAsync("local", title: "Completed work").GetAwaiter().GetResult();
+        var runId = Guid.NewGuid();
+        store.AppendEventAsync(conversation.Id, ConversationEventType.TurnStart,
+            System.Text.Json.JsonSerializer.Serialize(new { RunId = runId, Fingerprint = "test" }),
+            eventId: runId).GetAwaiter().GetResult();
+        store.AppendEventAsync(conversation.Id, ConversationEventType.TurnEnd,
+            System.Text.Json.JsonSerializer.Serialize(new TurnRunReceipt(
+                runId, "completed", "Done", "test runtime", [], 0, null))).GetAwaiter().GetResult();
+
+        var cut = Open(conversation.Id);
+
+        Assert.Empty(cut.FindAll(".run-recovery"));
+    }
+
+    [Fact]
+    public async Task A_confirmed_stop_replaces_the_stopping_hint()
+    {
+        var store = Compose();
+        var conversation = await store.StartAsync("local", title: "Stop confirmation");
+        var runId = Guid.NewGuid();
+        await store.AppendEventAsync(conversation.Id, ConversationEventType.TurnStart,
+            System.Text.Json.JsonSerializer.Serialize(new TurnRunStart(runId, "test")), eventId: runId);
+        using var cancellation = new CancellationTokenSource();
+        var runs = Services.GetRequiredService<BackgroundRuns>();
+        runs.Started(conversation.Id, cancellation);
+        var cut = Open(conversation.Id);
+        await cut.InvokeAsync(() => cut.Find("button[aria-label='Stop this run']").Click());
+        Assert.Contains("Stopping this run", cut.Markup);
+        await store.AppendEventAsync(conversation.Id, ConversationEventType.TurnEnd,
+            System.Text.Json.JsonSerializer.Serialize(new TurnRunReceipt(runId, "cancelled", null, "test", [], 0, null)));
+        runs.Finished(conversation.Id);
+        cut.WaitForAssertion(() => Assert.Contains("Run stopped. Your work is saved.", cut.Markup));
+        Assert.DoesNotContain("Stopping this run", cut.Markup);
+    }
+
+    [Theory]
+    [InlineData("cancelled", "This run was stopped")]
+    [InlineData("failed", "This run failed")]
+    public void Returning_to_an_unsuccessful_terminal_run_shows_its_outcome(string status, string expected)
+    {
+        var store = Compose();
+        var conversation = store.StartAsync("local", title: "Stopped work").GetAwaiter().GetResult();
+        var runId = Guid.NewGuid();
+        store.AppendEventAsync(conversation.Id, ConversationEventType.TurnStart,
+            System.Text.Json.JsonSerializer.Serialize(new TurnRunStart(runId, "test")),
+            eventId: runId).GetAwaiter().GetResult();
+        store.AppendEventAsync(conversation.Id, ConversationEventType.UserMessage, "Help me").GetAwaiter().GetResult();
+        store.AppendEventAsync(conversation.Id, ConversationEventType.TurnEnd,
+            System.Text.Json.JsonSerializer.Serialize(new TurnRunReceipt(
+                runId, status, null, "test runtime", [], 0, null))).GetAwaiter().GetResult();
+
+        var cut = Open(conversation.Id);
+        cut.WaitForAssertion(() => Assert.Contains(expected, cut.Find(".run-recovery").TextContent));
+        Assert.Contains("recorded activity are saved", cut.Find(".run-recovery").TextContent);
+        Assert.Empty(cut.FindAll("button[aria-label='Stop this run']"));
+    }
+
+    [Fact]
+    public void An_unanswered_approval_is_identified_when_the_run_is_restored()
+    {
+        var store = Compose();
+        var conversation = store.StartAsync("local", title: "Approval recovery").GetAwaiter().GetResult();
+        var runId = Guid.NewGuid();
+        var approvalId = Guid.NewGuid();
+        store.AppendEventAsync(conversation.Id, ConversationEventType.TurnStart,
+            System.Text.Json.JsonSerializer.Serialize(new { RunId = runId, Fingerprint = "test" }),
+            eventId: runId).GetAwaiter().GetResult();
+        store.AppendEventAsync(conversation.Id, ConversationEventType.ApprovalAsked,
+            System.Text.Json.JsonSerializer.Serialize(new ConversationApprovalEvent(
+                approvalId, runId, "write_file", "replace the launch notes", ConciergeToolRisk.High,
+                "proposed diff", DateTimeOffset.UtcNow))).GetAwaiter().GetResult();
+        Assert.False(Services.GetRequiredService<BackgroundRuns>().IsRunning(conversation.Id));
+
+        var cut = Open(conversation.Id);
+
+        cut.WaitForAssertion(() => Assert.Contains("waiting for permission to replace the launch notes",
+            cut.Find(".run-recovery").TextContent));
+        Assert.Contains("was not automatically approved", cut.Find(".run-recovery").TextContent);
+        Assert.Contains("proposed diff", cut.Find(".approval-history").TextContent);
+        Assert.Contains("not automatically approved", cut.Find(".approval-history").TextContent);
+    }
+
+    [Fact]
+    public void Opening_a_thread_restores_the_permission_decision_and_request_detail()
+    {
+        var store = Compose();
+        var conversation = store.StartAsync("local", title: "Permission history").GetAwaiter().GetResult();
+        var runId = Guid.NewGuid();
+        var approvalId = Guid.NewGuid();
+        store.AppendEventAsync(conversation.Id, ConversationEventType.TurnStart,
+            System.Text.Json.JsonSerializer.Serialize(new { RunId = runId, Fingerprint = "test" }),
+            eventId: runId).GetAwaiter().GetResult();
+        var request = new ConversationApprovalEvent(
+            approvalId, runId, "write_file", "replace the launch notes", ConciergeToolRisk.High,
+            "proposed launch-notes diff", DateTimeOffset.UtcNow);
+        store.AppendEventAsync(conversation.Id, ConversationEventType.ApprovalAsked,
+            System.Text.Json.JsonSerializer.Serialize(request), eventId: approvalId).GetAwaiter().GetResult();
+        store.AppendEventAsync(conversation.Id, ConversationEventType.ApprovalDecided,
+            System.Text.Json.JsonSerializer.Serialize(request with { Decision = ToolApprovalDecision.Denied }))
+            .GetAwaiter().GetResult();
+
+        var cut = Open(conversation.Id);
+
+        cut.WaitForAssertion(() => Assert.Contains("Declined", cut.Find(".approval-history").TextContent));
+        Assert.Contains("replace the launch notes", cut.Find(".approval-history").TextContent);
+        Assert.Contains("proposed launch-notes diff", cut.Find(".approval-history").TextContent);
+    }
+
     // ── What it did ───────────────────────────────────────────────────────
 
     /// <summary>
@@ -205,8 +413,9 @@ public sealed class WorkspaceThreadTests : BunitContext
 
         var cut = Open(conversation.Id);
 
-        Assert.NotNull(cut.Find(".ws-thread"));
-        Assert.Empty(cut.FindAll(".empty"));
+        Assert.Equal("Tidy the notes", cut.Find(".ws-title").TextContent.Trim());
+        Assert.NotNull(cut.Find(".empty"));
+        Assert.Empty(cut.FindAll(".ws-thread"));
     }
 
     [Fact]

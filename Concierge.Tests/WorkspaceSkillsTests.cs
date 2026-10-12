@@ -70,7 +70,7 @@ public sealed class WorkspaceSkillsTests : BunitContext
 
     private static void OpenSkillsGroup(IRenderedComponent<Concierge.Shared.Components.Workspace.Desktop.Workspace> cut)
         => cut.FindAll("button.ws-head")
-              .First(b => b.QuerySelector(".ws-head-name")!.TextContent.Trim() == "Skills")
+              .First(b => b.QuerySelector(".ws-head-name")!.TextContent.Trim() == "Personalize Circle AI")
               .Click();
 
     private static void OpenPicker(IRenderedComponent<Concierge.Shared.Components.Workspace.Desktop.Workspace> cut)
@@ -91,9 +91,9 @@ public sealed class WorkspaceSkillsTests : BunitContext
         var cut = RenderWorkspace();
 
         var header = cut.FindAll("button.ws-head")
-            .First(b => b.QuerySelector(".ws-head-name")!.TextContent.Trim() == "Skills");
+            .First(b => b.QuerySelector(".ws-head-name")!.TextContent.Trim() == "Personalize Circle AI");
 
-        Assert.Equal("0", header.QuerySelector(".ws-head-count")!.TextContent.Trim());
+        Assert.Null(header.QuerySelector(".ws-head-count"));
     }
 
     [Fact]
@@ -103,8 +103,8 @@ public sealed class WorkspaceSkillsTests : BunitContext
         OpenSkillsGroup(cut);
 
         var group = cut.FindAll("section.ws-group")[2];
-        Assert.Contains("None on", group.TextContent);
-        Assert.Contains("Browse all", group.QuerySelector("button.ws-more")!.TextContent);
+        Assert.Contains("Add specialist help", group.TextContent);
+        Assert.Contains("Browse abilities", group.QuerySelector("button.ws-more")!.TextContent);
     }
 
     // ── The picker ────────────────────────────────────────────────────────
@@ -188,7 +188,7 @@ public sealed class WorkspaceSkillsTests : BunitContext
 
         // The sidebar counts it.
         var header = cut.FindAll("button.ws-head")
-            .First(b => b.QuerySelector(".ws-head-name")!.TextContent.Trim() == "Skills");
+            .First(b => b.QuerySelector(".ws-head-name")!.TextContent.Trim() == "Personalize Circle AI");
         Assert.Equal("1", header.QuerySelector(".ws-head-count")!.TextContent.Trim());
 
         // And it sits with the composer, because it shapes every reply from it.

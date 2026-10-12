@@ -1,4 +1,4 @@
-using System.Diagnostics;
+using Concierge.Shared.Sandboxing;
 using CircleAI.Voice;
 using Concierge.Shared.Design;
 using Concierge.Shared.Media;
@@ -29,7 +29,7 @@ public sealed class LocalVoiceOptions
 /// Speech, both ways, on the device.
 ///
 /// CircleAI.Voice has been in this solution's package cache the whole time and nothing
-/// referenced it: WhisperTranscriber writes out what is said, OnnxTtsEngine speaks, and
+/// referenced it: WhisperNetTranscriber writes out what is said, OnnxTtsEngine speaks, and
 /// neither had a caller. This is that wiring, behind the IVoiceRuntime seam the cloud
 /// runtime already sits behind — so whatever uses voice does not care which answered.
 ///
@@ -49,7 +49,7 @@ public sealed class CircleAiVoiceRuntime : IVoiceRuntime, IAsyncDisposable
     private readonly LocalVoiceOptions _options;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
-    private WhisperTranscriber? _listener;
+    private WhisperNetTranscriber? _listener;
     private OnnxTtsEngine? _speaker;
     private bool _disposed;
 
@@ -89,12 +89,8 @@ public sealed class CircleAiVoiceRuntime : IVoiceRuntime, IAsyncDisposable
 
             if (!WhisperIsHere.Value)
             {
-                // Named first because it is the one nobody can solve by downloading a model:
-                // CircleAI.Voice 1.2.0 ships no runtimes folder, so the library it calls into
-                // is on no machine that merely installed the package.
                 blocking.Add(
-                    "the native whisper library is missing — CircleAI.Voice ships no runtimes "
-                    + "folder, so nothing here can run the model");
+                    "the Whisper.net native runtime could not load on this device");
             }
 
             if (Encoder is null)
@@ -140,8 +136,9 @@ public sealed class CircleAiVoiceRuntime : IVoiceRuntime, IAsyncDisposable
     {
         try
         {
-            return System.Runtime.InteropServices.NativeLibrary.TryLoad(
-                "whisper", typeof(CircleAI.Voice.WhisperTranscriber).Assembly, null, out _);
+            // Use the decoder's own runtime loader, including its RID and CPU selection.
+            // Loading an unrelated whisper DLL does not prove this decoder can run.
+            return !string.IsNullOrWhiteSpace(Whisper.net.WhisperFactory.GetRuntimeInfo());
         }
         catch (Exception)
         {
@@ -300,39 +297,23 @@ public sealed class CircleAiVoiceRuntime : IVoiceRuntime, IAsyncDisposable
                 await audio.CopyToAsync(writing, cancellationToken).ConfigureAwait(false);
             }
 
-            var run = new ProcessStartInfo(encoder)
-            {
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
+            var process = await ManagedChildProcessRunner.RunCapturedAsync(
+                encoder,
+                [
+                    "-hide_banner", "-loglevel", "error", "-y",
+                    "-i", source,
+                    "-ac", "1", "-ar", "16000", "-f", "s16le",
+                    samples,
+                ],
+                folder,
+                cancellationToken).ConfigureAwait(false);
 
-            foreach (var argument in new[]
-                     {
-                         "-hide_banner", "-loglevel", "error", "-y",
-                         "-i", source,
-                         "-ac", "1", "-ar", "16000", "-f", "s16le",
-                         samples,
-                     })
-            {
-                run.ArgumentList.Add(argument);
-            }
-
-            using var process = Process.Start(run);
-
-            if (process is null)
-            {
-                return [];
-            }
-
-            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-
-            return File.Exists(samples)
+            return process.ExitCode == 0 && File.Exists(samples)
                 ? await File.ReadAllBytesAsync(samples, cancellationToken).ConfigureAwait(false)
                 : [];
         }
-        catch (IOException)
+        catch (Exception exception) when (exception is IOException or InvalidOperationException
+            or System.ComponentModel.Win32Exception)
         {
             return [];
         }
@@ -349,7 +330,7 @@ public sealed class CircleAiVoiceRuntime : IVoiceRuntime, IAsyncDisposable
         }
     }
 
-    private async Task<WhisperTranscriber?> ListenerAsync(CancellationToken cancellationToken)
+    private async Task<WhisperNetTranscriber?> ListenerAsync(CancellationToken cancellationToken)
     {
         if (Files.Listener is not { } path)
         {
@@ -362,7 +343,9 @@ public sealed class CircleAiVoiceRuntime : IVoiceRuntime, IAsyncDisposable
         {
             // Opened once and kept: a whisper model takes seconds to open and every
             // sentence after the first would pay it again.
-            return _listener ??= new WhisperTranscriber(path, _options.Threads);
+            return _listener ??= _options.Threads > 0
+                ? new WhisperNetTranscriber(path) { Threads = _options.Threads }
+                : new WhisperNetTranscriber(path);
         }
         catch (Exception)
         {

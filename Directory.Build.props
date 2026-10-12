@@ -1,4 +1,8 @@
 <Project>
+  <PropertyGroup>
+    <CircleAiPackageVersion Condition="'$(CircleAiPackageVersion)' == ''">3.8.1</CircleAiPackageVersion>
+  </PropertyGroup>
+
   <!--
     Concierge build configuration.
 
@@ -27,6 +31,13 @@
   -->
   <PropertyGroup Condition="'$(UseMaui)' == 'true' AND !$(Configuration.Contains('-Full'))">
     <TargetFrameworks>net10.0-android</TargetFrameworks>
+  </PropertyGroup>
+
+  <!-- The custom Debug-Full configuration does not receive Debug's compiler symbols automatically. -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug-Full'">
+    <DefineConstants>$(DefineConstants);DEBUG;TRACE</DefineConstants>
+    <DebugSymbols>true</DebugSymbols>
+    <Optimize>false</Optimize>
   </PropertyGroup>
 
   <!--

@@ -99,6 +99,41 @@ public sealed class CircleAiChatRuntimeTests
     }
 
     [Fact]
+    public void Runtime_publishes_a_versioned_catalogue_without_claiming_unloaded_abilities_are_ready()
+    {
+        var runtime = BuildRuntime();
+        var catalog = Assert.IsAssignableFrom<IChatRuntimeCapabilitySource>(runtime).CapabilityCatalog;
+
+        Assert.NotNull(catalog);
+        Assert.Equal(1, catalog.SchemaVersion);
+        Assert.Equal("circleai", catalog.RuntimeId);
+        Assert.Equal(
+            ["conversation", "tool-use", "visual-input", "reasoning", "long-context"],
+            catalog.Capabilities.Select(capability => capability.Id));
+        Assert.Contains(catalog.Capabilities, capability => capability.Id == "conversation"
+            && capability.State == ChatRuntimeCapabilityState.Preparing);
+        Assert.Contains(catalog.Capabilities, capability => capability.Id == "tool-use"
+            && capability.State == ChatRuntimeCapabilityState.Preparing);
+        Assert.Contains(catalog.Capabilities, capability => capability.Id == "visual-input"
+            && capability.State == ChatRuntimeCapabilityState.Unavailable);
+        Assert.Contains(catalog.Capabilities, capability => capability.Id == "reasoning"
+            && capability.State == ChatRuntimeCapabilityState.Unavailable);
+        Assert.Contains(catalog.Capabilities, capability => capability.Id == "long-context"
+            && capability.State == ChatRuntimeCapabilityState.Unavailable);
+    }
+
+    [Fact]
+    public void Refreshing_runtime_catalogue_records_a_fresh_device_resource_measurement()
+    {
+        var runtime = BuildRuntime();
+
+        var catalog = runtime.RefreshCapabilityCatalog();
+
+        Assert.Equal(1, catalog.SchemaVersion);
+        Assert.NotNull(catalog.Resources?.MeasuredAt);
+    }
+
+    [Fact]
     public async Task DisposeAsync_is_safe_when_engine_never_loaded()
     {
         // Critical — the loader-failed branch is the most likely state on

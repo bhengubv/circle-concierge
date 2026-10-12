@@ -1,4 +1,5 @@
 @page "/engineering"
+@implements IAsyncDisposable
 @inject IAgentHarnessService Harness
 @inject IServiceProvider Services
 
@@ -39,6 +40,7 @@
     </p>
 
     <div class="room-body">
+        <CircleAiSharedServiceStatus />
         <RoomSection Title="Working in" Open="true">
             <div class="rows">
                 <div class="row">
@@ -99,6 +101,74 @@
                     </span>
                 </div>
             </div>
+        </RoomSection>
+
+        <RoomSection Title=".NET Host Manager">
+            <div class="rows">
+                <div class="row">
+                    <span class="row-name">
+                        Concierge app
+                        <span class="row-sub">PID @_appProcessId · @_appCpuTime.ToString("hh\\:mm\\:ss") CPU</span>
+                    </span>
+                    <span class="state"><span class="dot dot-on" aria-hidden="true"></span>@FormatBytes(_appWorkingSetBytes) resident · @FormatBytes(_appPrivateBytes) private</span>
+                </div>
+                @if (_managedHostStatus.Count == 0)
+                {
+                    <div class="row">
+                        <span class="row-name">Managed workers</span>
+                        <span class="state"><span class="dot dot-idle" aria-hidden="true"></span>None registered in this build</span>
+                    </div>
+                }
+                @foreach (var host in _managedHostStatus)
+                {
+                    <div class="row">
+                        <span class="row-name">
+                            @host.DisplayName
+                            @if (host.Snapshot is { } snapshot)
+                            {
+                                <span class="row-sub">PID @snapshot.ProcessId · @snapshot.CpuTime.ToString("hh\\:mm\\:ss") CPU · @FormatBytes(snapshot.PrivateMemoryBytes) private</span>
+                            }
+                            else
+                            {
+                                <span class="row-sub">@host.State</span>
+                            }
+                        </span>
+                        @if (host.Snapshot is { } worker)
+                        {
+                            <span class="state"><span class="dot dot-on" aria-hidden="true"></span>@FormatBytes(worker.WorkingSetBytes) resident</span>
+                        }
+                        else
+                        {
+                            <span class="state"><span class="dot dot-idle" aria-hidden="true"></span>Not running</span>
+                        }
+                    </div>
+                    @if (host.Snapshot is { } budgetedHost)
+                    {
+                        <div class="row">
+                            <span class="row-name">@host.DisplayName memory limits</span>
+                            <span class="row-val">
+                                Resident @(budgetedHost.ResidentMemoryBudgetBytes is { } resident ? FormatBytes(resident) : "Not enforced")
+                                · Commit @(budgetedHost.MemoryBudgetBytes is { } budget ? FormatBytes(budget) : "Not enforced")
+                            </span>
+                        </div>
+                    }
+                    @if (host.Inference is { } inference)
+                    {
+                        <div class="row">
+                            <span class="row-name">Latest model request
+                                <span class="row-sub">@inference.MessageCount messages · @inference.InputCharacters characters (@inference.SystemCharacters system) · @inference.OutputCharacters output characters</span>
+                            </span>
+                            <span class="row-val">@inference.State · @((inference.ElapsedMilliseconds / 1000).ToString("0.0")) s elapsed
+                                <span class="row-sub">@(inference.FirstChunkMilliseconds is { } first ? $"First output: {first / 1000:0.0} s" : "No output received yet")</span>
+                            </span>
+                        </div>
+                    }
+                }
+            </div>
+            <p class="room-note">
+                Measurements refresh every three seconds. This inventory covers Concierge and registered model, Code Mode, and MCP processes. MCP workers use resource-sized Windows job limits; terminal sessions and other child-process types are not included.
+                Last sample: @_hostObservedAt.ToLocalTime().ToString("HH:mm:ss").
+            </p>
         </RoomSection>
 
         <RoomSection Title="Reads only" Count="@tools.Count(t => t.IsReadOnly)">
@@ -358,6 +428,17 @@
     private Concierge.Shared.Hooks.HookStatus? _hookStatus;
     private Concierge.Shared.Design.SceneEngineReport? _scene;
 
+    private IReadOnlyList<Concierge.Shared.Sandboxing.IManagedHostTelemetrySource> _managedHostSources = [];
+    private IReadOnlyList<Concierge.Shared.Sandboxing.IManagedHostCollectionTelemetrySource> _managedHostCollectionSources = [];
+    private IReadOnlyList<Concierge.Shared.Sandboxing.ManagedHostMeasurement> _managedHostStatus = [];
+    private CancellationTokenSource? _hostRefreshCancellation;
+    private Task? _hostRefreshTask;
+    private int _appProcessId;
+    private long _appWorkingSetBytes;
+    private long _appPrivateBytes;
+    private TimeSpan _appCpuTime;
+    private DateTimeOffset _hostObservedAt;
+
     private IReadOnlyList<Concierge.Shared.Hooks.HookRegistration> _hooks = [];
 
     protected override void OnInitialized()
@@ -372,6 +453,13 @@
 
         _hookStatus = Services.GetService(typeof(Concierge.Shared.Hooks.HookStatus))
             as Concierge.Shared.Hooks.HookStatus;
+
+        _managedHostSources = (Services.GetService(typeof(IEnumerable<Concierge.Shared.Sandboxing.IManagedHostTelemetrySource>))
+                as IEnumerable<Concierge.Shared.Sandboxing.IManagedHostTelemetrySource> ?? [])
+            .ToList();
+        _managedHostCollectionSources = (Services.GetService(typeof(IEnumerable<Concierge.Shared.Sandboxing.IManagedHostCollectionTelemetrySource>))
+                as IEnumerable<Concierge.Shared.Sandboxing.IManagedHostCollectionTelemetrySource> ?? [])
+            .ToList();
 
         _scene = Services.GetService(typeof(Concierge.Shared.Design.SceneEngineReport))
             as Concierge.Shared.Design.SceneEngineReport;
@@ -389,6 +477,83 @@
             .Select(declared => declared.Capability)
             .OrderBy(capability => capability.Name, StringComparer.Ordinal)
             .ToList();
+
+        RefreshHostMeasurements();
+        _hostRefreshCancellation = new CancellationTokenSource();
+        _hostRefreshTask = RefreshHostMeasurementsAsync(_hostRefreshCancellation.Token);
+    }
+
+    private async Task RefreshHostMeasurementsAsync(CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(3));
+        try
+        {
+            while (await timer.WaitForNextTickAsync(cancellationToken))
+            {
+                await InvokeAsync(() =>
+                {
+                    if (cancellationToken.IsCancellationRequested)
+                        return;
+                    RefreshHostMeasurements();
+                    StateHasChanged();
+                });
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+    }
+
+    private void RefreshHostMeasurements()
+    {
+        using var process = System.Diagnostics.Process.GetCurrentProcess();
+        process.Refresh();
+        _appProcessId = process.Id;
+        _appWorkingSetBytes = process.WorkingSet64;
+        _appPrivateBytes = process.PrivateMemorySize64;
+        _appCpuTime = process.TotalProcessorTime;
+        var singleHosts = _managedHostSources.Select(source =>
+        {
+            var snapshot = source.CurrentSnapshot;
+            return new Concierge.Shared.Sandboxing.ManagedHostMeasurement(
+                source.HostId,
+                source.DisplayName,
+                snapshot,
+                snapshot is null ? "Starts when this capability is needed." : "Running",
+                source.LatestInference);
+        });
+        _managedHostStatus = singleHosts
+            .Concat(_managedHostCollectionSources.SelectMany(source => source.CurrentHosts))
+            .ToArray();
+        _hostObservedAt = DateTimeOffset.UtcNow;
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes < 0)
+            return "Unknown";
+        string[] units = ["B", "KB", "MB", "GB"];
+        var size = (double)bytes;
+        var unit = 0;
+        while (size >= 1024 && unit < units.Length - 1)
+        {
+            size /= 1024;
+            unit++;
+        }
+        return $"{size:0.#} {units[unit]}";
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_hostRefreshCancellation is null)
+            return;
+        await _hostRefreshCancellation.CancelAsync();
+        if (_hostRefreshTask is not null)
+        {
+            try { await _hostRefreshTask; }
+            catch (OperationCanceledException) { }
+        }
+        _hostRefreshCancellation.Dispose();
     }
 
     /// <summary>

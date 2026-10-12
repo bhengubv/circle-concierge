@@ -32,6 +32,7 @@ public sealed record WatchUpdate(
 /// </remarks>
 public sealed class WatchHands(AwayClient desk)
 {
+    public Guid? ConversationId { get; set; }
     /// <summary>
     /// Say something, and hear what to put on the face.
     ///
@@ -42,7 +43,10 @@ public sealed class WatchHands(AwayClient desk)
     public async Task<WatchUpdate> SaidAsync(
         string said, Situation situation, CancellationToken cancellationToken = default)
     {
-        var answer = await desk.SayAsync(said, situation, cancellationToken).ConfigureAwait(false);
+        var answer = ConversationId is { } id
+            ? await desk.SayInConversationAsync(said, situation, id, cancellationToken).ConfigureAwait(false)
+            : await desk.SayAsync(said, situation, cancellationToken).ConfigureAwait(false);
+        ConversationId = answer.ConversationId ?? ConversationId;
 
         var say = answer.Reply
             ?? (answer.Understood ? answer.What ?? "Done." : "Nothing came back.");
@@ -104,6 +108,11 @@ public sealed class WatchHands(AwayClient desk)
             (_, 0) => sent == 1 ? "Sent what was waiting." : $"Sent {sent} that were waiting.",
             _ => $"Sent {sent}, {left} still waiting.",
         };
+        if (sent > 0 && desk.LastFlushedReply is { } answer)
+        {
+            var reply = answer.Reply ?? answer.What;
+            if (!string.IsNullOrWhiteSpace(reply)) say = $"{say} {reply}";
+        }
 
         return await ThenAsync(say, cancellationToken).ConfigureAwait(false);
     }

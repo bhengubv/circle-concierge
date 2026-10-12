@@ -10,6 +10,148 @@ namespace Concierge.Shared.Sandboxing;
 /// <param name="Output">Standard output and standard error, in that order.</param>
 public sealed record ConfinedResult(int ExitCode, string Output);
 
+/// <summary>A persistent process created directly inside a Windows job object.</summary>
+public sealed class ConfinedChildProcess : IDisposable
+{
+    private readonly Microsoft.Win32.SafeHandles.SafeProcessHandle _processHandle;
+    private readonly Microsoft.Win32.SafeHandles.SafeFileHandle _stdin;
+    private readonly Microsoft.Win32.SafeHandles.SafeFileHandle _stdout;
+    private readonly Microsoft.Win32.SafeHandles.SafeFileHandle _stderr;
+
+    internal ConfinedChildProcess(nint processHandle, int processId, nint stdin, nint stdout, nint stderr)
+    {
+        _processHandle = new(processHandle, ownsHandle: true);
+        ProcessId = processId;
+        _stdin = new(stdin, ownsHandle: true);
+        _stdout = new(stdout, ownsHandle: true);
+        _stderr = new(stderr, ownsHandle: true);
+        StandardInput = new FileStream(_stdin, FileAccess.Write, 4096, isAsync: false);
+        StandardOutput = new FileStream(_stdout, FileAccess.Read, 4096, isAsync: false);
+        StandardError = new FileStream(_stderr, FileAccess.Read, 4096, isAsync: false);
+    }
+
+    public int ProcessId { get; }
+    public Stream StandardInput { get; }
+    public Stream StandardOutput { get; }
+    public Stream StandardError { get; }
+
+    public bool HasExited => WaitForSingleObject(_processHandle, 0) == WaitObject0;
+
+    public int ExitCode
+    {
+        get
+        {
+            if (!GetExitCodeProcess(_processHandle, out var exitCode))
+                throw new InvalidOperationException($"The worker exit code could not be read: {Marshal.GetLastWin32Error()}.");
+            return unchecked((int)exitCode);
+        }
+    }
+
+    public void Kill()
+    {
+        if (!HasExited && !TerminateProcess(_processHandle, 1))
+            throw new InvalidOperationException($"The worker could not be stopped: {Marshal.GetLastWin32Error()}.");
+    }
+
+    public async Task WaitForExitAsync(CancellationToken cancellationToken = default)
+    {
+        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var waitHandle = new EventWaitHandle(false, EventResetMode.ManualReset)
+        {
+            SafeWaitHandle = new Microsoft.Win32.SafeHandles.SafeWaitHandle(
+                _processHandle.DangerousGetHandle(), ownsHandle: false),
+        };
+        var registration = ThreadPool.RegisterWaitForSingleObject(
+            waitHandle, (_, _) => completed.TrySetResult(), null, Timeout.Infinite, executeOnlyOnce: true);
+        try
+        {
+            using (cancellationToken.Register(() => completed.TrySetCanceled(cancellationToken)))
+                await completed.Task.ConfigureAwait(false);
+        }
+        finally
+        {
+            registration.Unregister(null);
+        }
+    }
+
+    public ManagedHostSnapshot? GetSnapshot(long memoryBudgetBytes)
+    {
+        if (HasExited)
+            return null;
+
+        var counters = new ProcessMemoryCountersEx { Size = (uint)Marshal.SizeOf<ProcessMemoryCountersEx>() };
+        if (!GetProcessMemoryInfo(_processHandle, ref counters, counters.Size)
+            || !GetProcessTimes(_processHandle, out _, out _, out var kernelTime, out var userTime))
+            return null;
+
+        var cpuTicks = ((long)kernelTime.High << 32 | kernelTime.Low)
+            + ((long)userTime.High << 32 | userTime.Low);
+        return new ManagedHostSnapshot(
+            ProcessId,
+            checked((long)counters.WorkingSetSize),
+            checked((long)counters.PrivateUsage),
+            TimeSpan.FromTicks(cpuTicks),
+            memoryBudgetBytes,
+            DateTimeOffset.UtcNow);
+    }
+
+    public void Dispose()
+    {
+        StandardInput.Dispose();
+        StandardOutput.Dispose();
+        StandardError.Dispose();
+        _processHandle.Dispose();
+    }
+
+    private const uint WaitObject0 = 0;
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern uint WaitForSingleObject(Microsoft.Win32.SafeHandles.SafeProcessHandle handle, uint milliseconds);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetExitCodeProcess(Microsoft.Win32.SafeHandles.SafeProcessHandle handle, out uint exitCode);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool TerminateProcess(Microsoft.Win32.SafeHandles.SafeProcessHandle handle, uint exitCode);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetProcessTimes(
+        Microsoft.Win32.SafeHandles.SafeProcessHandle handle,
+        out FileTime creationTime, out FileTime exitTime, out FileTime kernelTime, out FileTime userTime);
+
+    [DllImport("psapi.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetProcessMemoryInfo(
+        Microsoft.Win32.SafeHandles.SafeProcessHandle handle,
+        ref ProcessMemoryCountersEx counters, uint size);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FileTime
+    {
+        public uint Low;
+        public uint High;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ProcessMemoryCountersEx
+    {
+        public uint Size;
+        public uint PageFaultCount;
+        public nuint PeakWorkingSetSize;
+        public nuint WorkingSetSize;
+        public nuint QuotaPeakPagedPoolUsage;
+        public nuint QuotaPagedPoolUsage;
+        public nuint QuotaPeakNonPagedPoolUsage;
+        public nuint QuotaNonPagedPoolUsage;
+        public nuint PagefileUsage;
+        public nuint PeakPagefileUsage;
+        public nuint PrivateUsage;
+    }
+}
+
 /// <summary>
 /// Starting a process that is already inside a job object.
 ///
@@ -40,6 +182,92 @@ public sealed record ConfinedResult(int ExitCode, string Output);
 [SupportedOSPlatform("windows")]
 public static class ConfinedProcess
 {
+    /// <summary>
+    /// Starts a persistent child with redirected standard streams, born inside
+    /// <paramref name="job"/>. This avoids the process-start/job-assignment race.
+    /// </summary>
+    public static ConfinedChildProcess StartInJob(
+        nint job,
+        string executable,
+        IReadOnlyList<string> arguments,
+        string workingDirectory)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(executable);
+        ArgumentNullException.ThrowIfNull(arguments);
+        if (job == nint.Zero)
+            throw new ArgumentException("A configured Windows job is required.", nameof(job));
+        ArgumentException.ThrowIfNullOrWhiteSpace(workingDirectory);
+
+        var security = new SecurityAttributes
+        {
+            Length = Marshal.SizeOf<SecurityAttributes>(),
+            InheritHandle = true,
+        };
+        nint stdinRead = 0, stdinWrite = 0, stdoutRead = 0, stdoutWrite = 0, stderrRead = 0, stderrWrite = 0;
+        nint attributes = 0, jobHandleBuffer = 0, inheritedHandleBuffer = 0, environment = 0;
+        var info = new ProcessInformation();
+        try
+        {
+            if (!CreatePipe(out stdinRead, out stdinWrite, ref security, 0)
+                || !CreatePipe(out stdoutRead, out stdoutWrite, ref security, 0)
+                || !CreatePipe(out stderrRead, out stderrWrite, ref security, 0))
+                throw new InvalidOperationException("The worker's standard streams could not be created.");
+
+            if (!SetHandleInformation(stdinWrite, HandleFlagInherit, 0)
+                || !SetHandleInformation(stdoutRead, HandleFlagInherit, 0)
+                || !SetHandleInformation(stderrRead, HandleFlagInherit, 0))
+                throw new InvalidOperationException("The worker's parent pipe handles could not be protected.");
+            attributes = BuildJobAttribute(
+                job,
+                out jobHandleBuffer,
+                [stdinRead, stdoutWrite, stderrWrite],
+                out inheritedHandleBuffer);
+            var startup = new StartupInfoEx();
+            startup.StartupInfo.cb = Marshal.SizeOf<StartupInfoEx>();
+            startup.StartupInfo.dwFlags = StartFUseStdHandles;
+            startup.StartupInfo.hStdInput = stdinRead;
+            startup.StartupInfo.hStdOutput = stdoutWrite;
+            startup.StartupInfo.hStdError = stderrWrite;
+            startup.lpAttributeList = attributes;
+            environment = BuildEnvironment();
+            var commandLine = new StringBuilder(CommandLineFor(executable, arguments));
+            if (!CreateProcess(null, commandLine, nint.Zero, nint.Zero, true,
+                    CreateNoWindow | ExtendedStartupInfoPresent | CreateUnicodeEnvironment,
+                    environment, workingDirectory, ref startup, out info))
+                throw new InvalidOperationException($"The worker could not be started confined: {Marshal.GetLastWin32Error()}.");
+
+            CloseHandle(stdinRead); stdinRead = 0;
+            CloseHandle(stdoutWrite); stdoutWrite = 0;
+            CloseHandle(stderrWrite); stderrWrite = 0;
+
+            // Process owns its own handle; the original CreateProcess handles can
+            // then be closed without losing the stable process identity.
+            var result = new ConfinedChildProcess(info.hProcess, info.dwProcessId, stdinWrite, stdoutRead, stderrRead);
+            info.hProcess = 0;
+            stdinWrite = stdoutRead = stderrRead = 0;
+            return result;
+        }
+        catch
+        {
+            if (info.hProcess != 0)
+                TerminateProcess(info.hProcess, 1);
+            throw;
+        }
+        finally
+        {
+            foreach (var handle in new[] { stdinRead, stdinWrite, stdoutRead, stdoutWrite, stderrRead, stderrWrite, info.hThread, info.hProcess })
+                if (handle != 0) CloseHandle(handle);
+            if (attributes != 0)
+            {
+                DeleteProcThreadAttributeList(attributes);
+                Marshal.FreeHGlobal(attributes);
+            }
+            if (jobHandleBuffer != 0) Marshal.FreeHGlobal(jobHandleBuffer);
+            if (inheritedHandleBuffer != 0) Marshal.FreeHGlobal(inheritedHandleBuffer);
+            if (environment != 0) Marshal.FreeHGlobal(environment);
+        }
+    }
+
     /// <summary>
     /// Runs a command inside <paramref name="job"/>, from creation.
     /// </summary>
@@ -244,14 +472,27 @@ public static class ConfinedProcess
     /// The attribute list that puts the process in the job at creation.
     /// </summary>
     private static nint BuildJobAttribute(nint job, out nint jobHandleBuffer)
+        => BuildJobAttribute(job, out jobHandleBuffer, null, out _);
+
+    /// <summary>
+    /// The job attribute plus an explicit inherited-handle allowlist. Persistent
+    /// stdio workers must not inherit unrelated handles owned by Concierge.
+    /// </summary>
+    private static nint BuildJobAttribute(
+        nint job,
+        out nint jobHandleBuffer,
+        IReadOnlyList<nint>? inheritedHandles,
+        out nint inheritedHandleBuffer)
     {
         jobHandleBuffer = 0;
+        inheritedHandleBuffer = 0;
         nint size = 0;
-        InitializeProcThreadAttributeList(nint.Zero, 1, 0, ref size);
+        var attributeCount = inheritedHandles is null ? 1 : 2;
+        InitializeProcThreadAttributeList(nint.Zero, attributeCount, 0, ref size);
 
         var list = Marshal.AllocHGlobal(size);
 
-        if (!InitializeProcThreadAttributeList(list, 1, 0, ref size))
+        if (!InitializeProcThreadAttributeList(list, attributeCount, 0, ref size))
         {
             Marshal.FreeHGlobal(list);
             throw new InvalidOperationException("The confinement could not be prepared, so the command was not run.");
@@ -269,9 +510,30 @@ public static class ConfinedProcess
         if (!UpdateProcThreadAttribute(list, 0, ProcThreadAttributeJobList, jobHandle, nint.Size, nint.Zero, nint.Zero))
         {
             Marshal.FreeHGlobal(jobHandle);
+            jobHandleBuffer = 0;
             DeleteProcThreadAttributeList(list);
             Marshal.FreeHGlobal(list);
             throw new InvalidOperationException("The confinement could not be applied, so the command was not run.");
+        }
+
+        if (inheritedHandles is not null)
+        {
+            inheritedHandleBuffer = Marshal.AllocHGlobal(inheritedHandles.Count * nint.Size);
+            for (var index = 0; index < inheritedHandles.Count; index++)
+                Marshal.WriteIntPtr(inheritedHandleBuffer, index * nint.Size, inheritedHandles[index]);
+
+            if (!UpdateProcThreadAttribute(
+                    list, 0, ProcThreadAttributeHandleList, inheritedHandleBuffer,
+                    inheritedHandles.Count * nint.Size, nint.Zero, nint.Zero))
+            {
+                Marshal.FreeHGlobal(inheritedHandleBuffer);
+                inheritedHandleBuffer = 0;
+                DeleteProcThreadAttributeList(list);
+                Marshal.FreeHGlobal(list);
+                Marshal.FreeHGlobal(jobHandle);
+                jobHandleBuffer = 0;
+                throw new InvalidOperationException("The worker's stdio handles could not be restricted, so it was not run.");
+            }
         }
 
         return list;
@@ -356,6 +618,7 @@ public static class ConfinedProcess
     private const uint ExtendedStartupInfoPresent = 0x00080000;
     private const int StdInput = -10;
     private static readonly nint ProcThreadAttributeJobList = 0x0002000D;
+    private static readonly nint ProcThreadAttributeHandleList = 0x00020002;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct SecurityAttributes
@@ -434,6 +697,10 @@ public static class ConfinedProcess
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool GetExitCodeProcess(nint process, out int exitCode);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool TerminateProcess(nint process, uint exitCode);
 
     /// <summary>
     /// Waits for a process handle to be signalled, without a thread parked on it.

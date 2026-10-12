@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 
 namespace Concierge.Shared.Tools;
 
@@ -39,7 +40,14 @@ public interface IAgentTool
 }
 
 /// <summary>Outcome of an <see cref="IAgentTool"/> call.</summary>
-public sealed record AgentToolResult(bool Success, string Output, string? FailureMessage = null);
+public sealed record AgentToolArtifact(string Name, string MediaType);
+
+public sealed record AgentToolResult(bool Success, string Output, string? FailureMessage = null)
+{
+    /// <summary>Outputs created by this tool; kept out of the model-facing tool-result block.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<AgentToolArtifact>? Artifacts { get; init; }
+}
 
 /// <summary>
 /// Registry of every available tool. Hosts populate it via DI (AgentHarness adapter is the

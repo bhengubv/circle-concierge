@@ -1,4 +1,5 @@
 using Concierge.Ai.Isolated;
+using Concierge.Model.Host;
 using Concierge.Shared.Chat;
 using Concierge.Shared.Chat.Isolation;
 using Microsoft.Extensions.DependencyInjection;
@@ -23,6 +24,98 @@ namespace Concierge.Tests;
 /// </summary>
 public sealed class IsolatedRuntimeTests
 {
+    [Fact]
+    public async Task Setup_completion_and_other_request_output_cannot_close_or_enter_an_active_reply()
+    {
+        using var runtime = new IsolatedChatRuntime();
+        var reply = System.Threading.Channels.Channel.CreateUnbounded<string>();
+        runtime.SetPendingReply(8, reply);
+        runtime.DeliverPendingReply(new ModelHostResponse(Done: true));
+        runtime.DeliverPendingReply(new ModelHostResponse(9, Chunk: "other request", Error: "other failure", Done: true));
+        Assert.False(reply.Reader.Completion.IsCompleted);
+        Assert.False(reply.Reader.TryRead(out _));
+        runtime.DeliverPendingReply(new ModelHostResponse(8, Chunk: "correct reply", Done: true));
+        Assert.True(reply.Reader.TryRead(out var text));
+        Assert.Equal("correct reply", text);
+        await reply.Reader.Completion.WaitAsync(TimeSpan.FromSeconds(1));
+    }
+
+    [Fact]
+    public void Inference_measurements_report_sizes_and_timing_without_content()
+    {
+        using var runtime = new IsolatedChatRuntime();
+        runtime.StartInferenceMeasurement(12, [new("system", "private instructions"), new("user", "secret")]);
+        var before = runtime.LatestInference!;
+        Assert.Equal(2, before.MessageCount);
+        Assert.Equal(26, before.InputCharacters);
+        Assert.Equal(20, before.SystemCharacters);
+        Assert.Null(before.FirstChunkMilliseconds);
+        Assert.Equal("waiting", before.State);
+        runtime.MeasureInferenceResponse(new ModelHostResponse(99, Chunk: "wrong request", Done: true));
+        Assert.Equal(before.OutputCharacters, runtime.LatestInference!.OutputCharacters);
+        runtime.MeasureInferenceResponse(new ModelHostResponse(12, Chunk: "answer"));
+        var first = runtime.LatestInference!.FirstChunkMilliseconds;
+        Assert.NotNull(first);
+        runtime.MeasureInferenceResponse(new ModelHostResponse(12, Chunk: "!", Done: true));
+        var after = runtime.LatestInference!;
+        Assert.Equal(first, after.FirstChunkMilliseconds);
+        Assert.Equal(7, after.OutputCharacters);
+        Assert.Equal("completed", after.State);
+        Assert.True(after.ElapsedMilliseconds >= first);
+        var json = JsonSerializer.Serialize(after);
+        Assert.DoesNotContain("secret", json);
+        Assert.DoesNotContain("private instructions", json);
+        Assert.DoesNotContain("answer", json);
+    }
+
+    [Fact]
+    public void Failed_inference_does_not_count_the_error_as_model_output()
+    {
+        using var runtime = new IsolatedChatRuntime();
+        runtime.StartInferenceMeasurement(9, [new("user", "Hi")]);
+        runtime.MeasureInferenceResponse(new ModelHostResponse(9, Error: "Failed to load", Done: true));
+        Assert.Equal("failed", runtime.LatestInference!.State);
+        Assert.Equal(0, runtime.LatestInference.OutputCharacters);
+        Assert.Null(runtime.LatestInference.FirstChunkMilliseconds);
+    }
+
+    [Fact]
+    public void Completing_a_stream_does_not_unload_the_ready_engine()
+    {
+        using var runtime = new IsolatedChatRuntime();
+        runtime.ApplyReadinessResponse(new ModelHostResponse(Ready: true, EngineLabel: "test engine"));
+        Assert.True(runtime.IsReady);
+        runtime.ApplyReadinessResponse(new ModelHostResponse(7, Done: true));
+        Assert.True(runtime.IsReady);
+        runtime.ApplyReadinessResponse(new ModelHostResponse(Ready: false, EngineLabel: "test engine"));
+        Assert.False(runtime.IsReady);
+    }
+
+    [Fact]
+    public void A_child_exit_replaces_stale_preparing_capabilities_with_unavailable()
+    {
+        var observedAt = DateTimeOffset.Parse("2026-10-01T04:00:00Z");
+        var catalog = new ChatRuntimeCapabilityCatalog(
+            1, "circleai", "3.6.0", DateTimeOffset.Parse("2026-10-01T03:00:00Z"),
+            [
+                new("conversation", "Conversation", ChatRuntimeCapabilityState.Preparing, "Loading model"),
+                new("visual-input", "Understanding images", ChatRuntimeCapabilityState.Unavailable, "Not supported")
+            ],
+            new ChatRuntimeResourceSnapshot(8, 100, 8, "Online", null,
+                DateTimeOffset.Parse("2026-10-01T03:00:00Z")),
+            Activity: new ChatRuntimeActivity("model-download", "weights.bin (2/7)", 0.01));
+
+        var updated = IsolatedChatRuntime.MarkCatalogUnavailable(
+            catalog, observedAt, "Circle AI stopped while preparing. Check Concierge status before retrying.");
+
+        Assert.Equal(observedAt, updated.ObservedAt);
+        Assert.Equal(observedAt, updated.Resources?.MeasuredAt);
+        Assert.Null(updated.Activity);
+        Assert.Equal(ChatRuntimeCapabilityState.Unavailable, updated.Capabilities[0].State);
+        Assert.Contains("stopped", updated.Capabilities[0].Explanation, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(ChatRuntimeCapabilityState.Unavailable, updated.Capabilities[1].State);
+    }
+
     // ── Finding the host ──────────────────────────────────────────────────
 
     /// <summary>
@@ -42,6 +135,36 @@ public sealed class IsolatedRuntimeTests
 
         Assert.False(runtime.IsReady);
         Assert.Contains("missing", text, StringComparison.OrdinalIgnoreCase);
+        Assert.NotNull(runtime.CapabilityCatalog);
+        Assert.All(runtime.CapabilityCatalog!.Capabilities,
+            capability => Assert.Equal(ChatRuntimeCapabilityState.Unavailable, capability.State));
+    }
+
+    [Fact]
+    public async Task Unsafe_worker_budget_is_exposed_as_unavailable_capabilities_with_live_memory()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        await using var runtime = new IsolatedChatRuntime(new IsolatedRuntimeOptions
+        {
+            HostPath = typeof(IsolatedRuntimeTests).Assembly.Location,
+            WorkerMemoryBudgetProvider = () => null
+        });
+
+        await runtime.WarmUpAsync();
+
+        Assert.False(runtime.IsReady);
+        var catalog = runtime.CapabilityCatalog;
+        Assert.NotNull(catalog);
+        Assert.Equal(1, catalog!.SchemaVersion);
+        Assert.Equal("circleai", catalog.RuntimeId);
+        Assert.NotNull(catalog.Resources?.UsableMemoryGb);
+        Assert.All(catalog.Capabilities, capability =>
+        {
+            Assert.Equal(ChatRuntimeCapabilityState.Unavailable, capability.State);
+            Assert.Contains("memory", capability.Explanation, StringComparison.OrdinalIgnoreCase);
+        });
     }
 
     [Fact]
@@ -173,6 +296,196 @@ public sealed class IsolatedRuntimeTests
         Assert.Equal("hello", back.Turns![0].Content);
     }
 
+    [Fact]
+    public async Task Host_reads_cancel_command_while_model_stream_is_still_running()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var streamCancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var streamRequest = new ModelHostRequest(ModelHostProtocol.Stream, 41);
+        var cancelRequest = new ModelHostRequest(ModelHostProtocol.Cancel, 41);
+        var input = string.Join('\n',
+            JsonSerializer.Serialize(streamRequest, ModelHostProtocol.Json),
+            JsonSerializer.Serialize(cancelRequest, ModelHostProtocol.Json));
+
+        var loop = ModelHostCommandLoop.RunAsync(
+            new StringReader(input),
+            async _ =>
+            {
+                try
+                {
+                    await Task.Delay(Timeout.Infinite, cancellation.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    streamCancelled.TrySetResult();
+                }
+            },
+            _ => Task.CompletedTask,
+            id =>
+            {
+                if (id == 41)
+                    cancellation.Cancel();
+            },
+            _ => Task.CompletedTask,
+            () => { });
+
+        await loop.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.True(cancellation.IsCancellationRequested);
+        Assert.True(streamCancelled.Task.IsCompletedSuccessfully);
+    }
+
+    [Fact]
+    public async Task Host_reads_download_cancel_command_while_model_transfer_is_still_running()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var downloadStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var downloadCancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cancelCalls = 0;
+        var input = string.Join('\n',
+            JsonSerializer.Serialize(new ModelHostRequest(ModelHostProtocol.Download, 52), ModelHostProtocol.Json),
+            JsonSerializer.Serialize(new ModelHostRequest(ModelHostProtocol.CancelDownload), ModelHostProtocol.Json));
+
+        var loop = ModelHostCommandLoop.RunAsync(
+            new StringReader(input),
+            _ => Task.CompletedTask,
+            _ => Task.CompletedTask,
+            _ => { },
+            async _ =>
+            {
+                downloadStarted.TrySetResult();
+                try
+                {
+                    await Task.Delay(Timeout.Infinite, cancellation.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    downloadCancelled.TrySetResult();
+                }
+            },
+            () =>
+            {
+                cancelCalls++;
+                cancellation.Cancel();
+            });
+
+        await loop.WaitAsync(TimeSpan.FromSeconds(2));
+        Assert.True(downloadStarted.Task.IsCompletedSuccessfully);
+        Assert.True(downloadCancelled.Task.IsCompletedSuccessfully);
+        Assert.Equal(1, cancelCalls);
+    }
+
+    [Fact]
+    public async Task Host_pipe_shutdown_pauses_a_download_without_using_the_person_stop_action()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var downloadStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var downloadPaused = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var personStopCalls = 0;
+
+        var loop = ModelHostCommandLoop.RunAsync(
+            new StringReader(JsonSerializer.Serialize(
+                new ModelHostRequest(ModelHostProtocol.Download, 54), ModelHostProtocol.Json)),
+            _ => Task.CompletedTask,
+            _ => Task.CompletedTask,
+            _ => { },
+            async _ =>
+            {
+                downloadStarted.TrySetResult();
+                try
+                {
+                    await Task.Delay(Timeout.Infinite, cancellation.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    downloadPaused.TrySetResult();
+                }
+            },
+            () => personStopCalls++,
+            () => cancellation.Cancel());
+
+        await loop.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.True(downloadStarted.Task.IsCompletedSuccessfully);
+        Assert.True(downloadPaused.Task.IsCompletedSuccessfully);
+        Assert.Equal(0, personStopCalls);
+    }
+
+    [Fact]
+    public async Task Host_can_stop_or_reject_a_download_that_resumed_before_the_command_reader()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var resumedDownload = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(Timeout.Infinite, cancellation.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                // A paused runtime surfaces completion to its command owner.
+            }
+        });
+        var personStopCalls = 0;
+        var rejectedDownloads = 0;
+        var input = string.Join('\n',
+            JsonSerializer.Serialize(new ModelHostRequest(ModelHostProtocol.Download, 55), ModelHostProtocol.Json),
+            JsonSerializer.Serialize(new ModelHostRequest(ModelHostProtocol.CancelDownload), ModelHostProtocol.Json));
+
+        var loop = ModelHostCommandLoop.RunAsync(
+            new StringReader(input),
+            _ => Task.CompletedTask,
+            _ => Task.CompletedTask,
+            _ => { },
+            _ => throw new InvalidOperationException("A second transfer must not start."),
+            () =>
+            {
+                personStopCalls++;
+                cancellation.Cancel();
+            },
+            () => cancellation.Cancel(),
+            resumedDownload,
+            _ =>
+            {
+                rejectedDownloads++;
+                return Task.CompletedTask;
+            });
+
+        await loop.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.Equal(1, rejectedDownloads);
+        Assert.Equal(1, personStopCalls);
+        Assert.True(resumedDownload.IsCompleted);
+    }
+
+    [Fact]
+    public async Task Host_keeps_command_reader_responsive_during_synchronous_download_startup()
+    {
+        var cancelSeen = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var startupObservedCancel = false;
+        var input = string.Join('\n',
+            JsonSerializer.Serialize(new ModelHostRequest(ModelHostProtocol.Download, 53), ModelHostProtocol.Json),
+            JsonSerializer.Serialize(new ModelHostRequest(ModelHostProtocol.CancelDownload), ModelHostProtocol.Json));
+
+        var loop = ModelHostCommandLoop.RunAsync(
+            new StringReader(input),
+            _ => Task.CompletedTask,
+            _ => Task.CompletedTask,
+            _ => { },
+            _ =>
+            {
+                // Simulate selector and filesystem setup that blocks before the operation's
+                // first await. The command reader must still be able to deliver cancellation.
+                startupObservedCancel = cancelSeen.Task.Wait(TimeSpan.FromSeconds(1));
+                return Task.CompletedTask;
+            },
+            () => cancelSeen.TrySetResult());
+
+        await loop.WaitAsync(TimeSpan.FromSeconds(2));
+
+        Assert.True(startupObservedCancel);
+        Assert.True(cancelSeen.Task.IsCompletedSuccessfully);
+    }
+
     /// <summary>
     /// The transport is a line of text, so a picture crosses it base64. Worth
     /// asserting because it is the one place in the codebase that encodes them.
@@ -247,6 +560,29 @@ public sealed class IsolatedRuntimeTests
 
         Assert.DoesNotContain('\n', json);
         Assert.DoesNotContain('\r', json);
+    }
+
+    [Fact]
+    public void Hello_response_preserves_the_versioned_runtime_capability_catalogue()
+    {
+        var catalog = new ChatRuntimeCapabilityCatalog(
+            1, "circleai", "3.6.0", DateTimeOffset.UnixEpoch,
+            [new("visual-input", "Understanding images", ChatRuntimeCapabilityState.Unavailable, "Text-only runtime.")],
+            new(3.5, 9, 6, "Online", null),
+            Activity: new ChatRuntimeActivity("model-download", "Downloading model", 0.42));
+
+        var json = JsonSerializer.Serialize(new ModelHostResponse(
+            Ready: false,
+            EngineLabel: "Circle AI",
+            CapabilityCatalog: catalog), ModelHostProtocol.Json);
+        var response = JsonSerializer.Deserialize<ModelHostResponse>(json, ModelHostProtocol.Json);
+
+        Assert.Equal(catalog.SchemaVersion, response?.CapabilityCatalog?.SchemaVersion);
+        Assert.Equal(catalog.RuntimeVersion, response?.CapabilityCatalog?.RuntimeVersion);
+        Assert.Equal(ChatRuntimeCapabilityState.Unavailable, response?.CapabilityCatalog?.Capabilities[0].State);
+        Assert.Equal(3.5, response?.CapabilityCatalog?.Resources?.UsableMemoryGb);
+        Assert.Equal("model-download", response?.CapabilityCatalog?.Activity?.Kind);
+        Assert.Equal(0.42, response?.CapabilityCatalog?.Activity?.ProgressRatio);
     }
 
     private static async Task<string> CollectAsync(IChatRuntime runtime)

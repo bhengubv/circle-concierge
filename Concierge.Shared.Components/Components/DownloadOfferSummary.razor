@@ -1,0 +1,46 @@
+@if (LocalCanAnswer)
+{
+    @if (Download.StagedModelCount > 1)
+    {
+        <span>Circle AI can already handle conversations on this @DeviceName. Prepare about @(Download.StagingGigabytes.ToString("0.#")) GB across @Download.StagedModelCount more compatible models, smallest first, while you keep working. Circle AI selected an offline upgrade of about @(Download.Gigabytes.ToString("0.#")) GB.</span>
+    }
+    else
+    {
+        <span>Circle AI can already handle conversations on this @DeviceName. Prepare this additional @(Download.Gigabytes.ToString("0.#")) GB model for offline use while you keep working.</span>
+    }
+}
+else if (Download.StagedModelCount > 1)
+{
+    @if (DesktopCanAnswer)
+    {
+        <span>Circle AI can answer on your Desktop. Prepare about @(Download.StagingGigabytes.ToString("0.#")) GB here to use this @DeviceName offline. It will download @Download.StagedModelCount compatible models, smallest first. The selected model is about @(Download.Gigabytes.ToString("0.#")) GB.</span>
+    }
+    else if (DesktopConnected)
+    {
+        <span>Desktop is connected, but Circle AI is not ready there yet. Concierge can prepare about @(Download.StagingGigabytes.ToString("0.#")) GB on this @DeviceName across @Download.StagedModelCount compatible models, smallest first. It can answer as soon as the first model is ready; the selected model is about @(Download.Gigabytes.ToString("0.#")) GB.</span>
+    }
+    else
+    {
+        <span>Circle AI will prepare about @(Download.StagingGigabytes.ToString("0.#")) GB across @Download.StagedModelCount compatible models, smallest first. It can answer as soon as the first model is ready; the selected model is about @(Download.Gigabytes.ToString("0.#")) GB.</span>
+    }
+}
+else if (DesktopCanAnswer)
+{
+    <span>Circle AI can answer on your Desktop. Download @(Download.Gigabytes.ToString("0.#")) GB to use this @DeviceName offline.</span>
+}
+else if (DesktopConnected)
+{
+    <span>Desktop is connected, but Circle AI is not ready there yet. Download @(Download.Gigabytes.ToString("0.#")) GB to prepare Circle AI on this @DeviceName.</span>
+}
+else
+{
+    <span>Circle AI needs a @(Download.Gigabytes.ToString("0.#")) GB download to answer here.</span>
+}
+
+@code {
+    [Parameter, EditorRequired] public PendingModelDownload Download { get; set; } = default!;
+    [Parameter] public bool LocalCanAnswer { get; set; }
+    [Parameter] public bool DesktopConnected { get; set; }
+    [Parameter] public bool DesktopCanAnswer { get; set; }
+    [Parameter] public string DeviceName { get; set; } = "device";
+}

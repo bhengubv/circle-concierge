@@ -9,6 +9,15 @@ namespace Concierge.Shared.Chat;
 /// </summary>
 public sealed class ConversationStore : IConversationStore
 {
+    public async Task<IReadOnlyList<ConversationEvent>> ReadRecentEventsAsync(Guid conversationId, int count = 100, CancellationToken cancellationToken = default)
+    {
+        await _schemaReady.Value.ConfigureAwait(false);
+        await using var db = await _factory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        var events = await db.Events.AsNoTracking().Where(e => e.ConversationId == conversationId)
+            .OrderByDescending(e => e.Seq).Take(Math.Clamp(count, 1, 100)).ToListAsync(cancellationToken).ConfigureAwait(false);
+        return events.OrderBy(e => e.Seq).ToArray();
+    }
+
     private readonly IDbContextFactory<ConciergeChatDbContext> _factory;
     // Lazy schema bootstrap. The hosted-service initializer (ConciergeChatSchemaInitializer)
     // is the primary path, but on MAUI BlazorWebView the hosted-service lifecycle is fragile
@@ -60,7 +69,8 @@ public sealed class ConversationStore : IConversationStore
         // with the Unix-ms value converter applied to the timestamp column).
         conversation.Messages = await db.Messages
             .AsNoTracking()
-            .Where(m => m.ConversationId == conversationId)
+            .Where(m => m.ConversationId == conversationId
+                && (m.ProducedBy == null || m.ProducedBy != "Connection status"))
             .OrderBy(m => m.CreatedAt)
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -141,7 +151,8 @@ public sealed class ConversationStore : IConversationStore
         ConversationEventType type,
         string data,
         string? producedBy = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Guid? eventId = null)
     {
         await _schemaReady.Value.ConfigureAwait(false);
         await AppendGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -172,6 +183,7 @@ public sealed class ConversationStore : IConversationStore
 
             var entry = new ConversationEvent
             {
+                Id = eventId is { } suppliedId && suppliedId != Guid.Empty ? suppliedId : Guid.NewGuid(),
                 ConversationId = conversationId,
                 Seq = (next ?? -1) + 1,
                 Type = type,
@@ -183,7 +195,7 @@ public sealed class ConversationStore : IConversationStore
 
             // The message rows are a projection maintained alongside the append, so readers
             // that have not moved to the log keep working unchanged.
-            if (ProjectsToMessage(type))
+            if (ProjectsToMessage(type, producedBy))
             {
                 db.Messages.Add(new ChatMessageRow
                 {
@@ -213,14 +225,46 @@ public sealed class ConversationStore : IConversationStore
 
     /// <inheritdoc />
     public async Task<IReadOnlyList<ConversationEvent>> ReadEventsAsync(Guid conversationId, CancellationToken cancellationToken = default)
+        => await ReadEventsAfterAsync(conversationId, -1, cancellationToken).ConfigureAwait(false);
+
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<ConversationEvent>> ReadEventsAfterAsync(
+        Guid conversationId, int afterSeq, CancellationToken cancellationToken = default)
     {
         await _schemaReady.Value.ConfigureAwait(false);
         await using var db = await _factory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
         return await db.Events
             .AsNoTracking()
-            .Where(e => e.ConversationId == conversationId)
+            .Where(e => e.ConversationId == conversationId && e.Seq > afterSeq)
             .OrderBy(e => e.Seq)
             .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    public async Task<IReadOnlyList<ConversationEvent>> ReadEventsPageAsync(
+        Guid conversationId, int afterSeq, int pageSize, CancellationToken cancellationToken = default)
+    {
+        var boundedSize = Math.Clamp(pageSize, 1, ConversationEventPage.MaximumSize);
+        await _schemaReady.Value.ConfigureAwait(false);
+        await using var db = await _factory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        return await db.Events
+            .AsNoTracking()
+            .Where(e => e.ConversationId == conversationId && e.Seq > afterSeq)
+            .OrderBy(e => e.Seq)
+            .Take(boundedSize)
+            .ToListAsync(cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <inheritdoc />
+    public async Task<int?> GetLastEventSequenceAsync(Guid conversationId, CancellationToken cancellationToken = default)
+    {
+        await _schemaReady.Value.ConfigureAwait(false);
+        await using var db = await _factory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        return await db.Events
+            .Where(entry => entry.ConversationId == conversationId)
+            .Select(entry => (int?)entry.Seq)
+            .MaxAsync(cancellationToken)
             .ConfigureAwait(false);
     }
 
@@ -277,7 +321,7 @@ public sealed class ConversationStore : IConversationStore
                 };
                 db.Events.Add(copy);
                 previousTime = createdAt;
-                if (ProjectsToMessage(copy.Type))
+                if (ProjectsToMessage(copy.Type, copy.ProducedBy))
                 {
                     db.Messages.Add(new ChatMessageRow
                     {
@@ -326,7 +370,7 @@ public sealed class ConversationStore : IConversationStore
 
         foreach (var entry in events)
         {
-            if (entry.Seq < shadowedBefore || !ProjectsToMessage(entry.Type))
+            if (entry.Seq < shadowedBefore || !ProjectsToMessage(entry.Type, entry.ProducedBy))
             {
                 continue;
             }
@@ -356,7 +400,7 @@ public sealed class ConversationStore : IConversationStore
             .ToListAsync(cancellationToken)
             .ConfigureAwait(false);
 
-        foreach (var entry in events.Where(entry => ProjectsToMessage(entry.Type)))
+        foreach (var entry in events.Where(entry => ProjectsToMessage(entry.Type, entry.ProducedBy)))
         {
             db.Messages.Add(new ChatMessageRow
             {
@@ -372,13 +416,22 @@ public sealed class ConversationStore : IConversationStore
     }
 
     /// <summary>Whether this kind of event becomes a message the model sees.</summary>
-    private static bool ProjectsToMessage(ConversationEventType type) => type switch
+    private static bool ProjectsToMessage(ConversationEventType type, string? producedBy = null)
+    {
+        // Older builds persisted transient Desktop connection failures as assistant
+        // messages. Keep those diagnostics out of the visible transcript and model history.
+        if (type == ConversationEventType.AssistantMessage
+            && string.Equals(producedBy, "Connection status", StringComparison.Ordinal))
+            return false;
+
+        return type switch
     {
         ConversationEventType.UserMessage => true,
         ConversationEventType.AssistantMessage => true,
         ConversationEventType.ToolResult => true,
         _ => false,
     };
+    }
 
     /// <summary>
     /// The role a projected event carries. A tool result is its own role — writing it as a

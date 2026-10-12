@@ -26,6 +26,7 @@ public sealed class WorkspaceSettingsTests : BunitContext
         var dbPath = Path.Combine(Path.GetTempPath(), $"settings-{Guid.NewGuid():N}.db");
         Services.AddLogging();
         Services.AddConciergeCore();
+        Services.AddSingleton<Concierge.Shared.Settings.IConciergeSecretStore, InMemorySecretStore>();
 
         // Session state defaults to the real per-user file. A test that reads
         // it depends on whatever the app last did, and a test that writes it
@@ -175,7 +176,7 @@ public sealed class WorkspaceSettingsTests : BunitContext
         Open(cut);
         OpenGroup(cut, "Family mode");
 
-        var options = cut.FindAll(".sheet .seg .seg-opt").Select(e => e.TextContent.Trim()).ToArray();
+        var options = cut.FindAll(".sheet [aria-label='Strictness'] .seg-opt").Select(e => e.TextContent.Trim()).ToArray();
         Assert.Equal(new[] { "Off", "Balanced", "Strict" }, options);
 
         Assert.Empty(cut.FindAll(".sheet select"));
@@ -189,11 +190,11 @@ public sealed class WorkspaceSettingsTests : BunitContext
         Open(cut);
         OpenGroup(cut, "Family mode");
 
-        cut.FindAll(".sheet .seg .seg-opt").Single(e => e.TextContent.Trim() == "Strict").Click();
+        cut.FindAll(".sheet [aria-label='Strictness'] .seg-opt").Single(e => e.TextContent.Trim() == "Strict").Click();
 
         Assert.Equal(SafetyStrictness.Strict, safety.Strictness);
 
-        var chosen = cut.FindAll(".sheet .seg .seg-opt").Single(e => e.GetAttribute("aria-pressed") == "true");
+        var chosen = cut.FindAll(".sheet [aria-label='Strictness'] .seg-opt").Single(e => e.GetAttribute("aria-pressed") == "true");
         Assert.Equal("Strict", chosen.TextContent.Trim());
     }
 
@@ -221,7 +222,7 @@ public sealed class WorkspaceSettingsTests : BunitContext
 
         Assert.Empty(cut.FindAll(".sheet input[type=text]"));
 
-        cut.FindAll(".sheet .seg .seg-opt").Single(e => e.TextContent.Trim() == "Balanced").Click();
+        cut.FindAll(".sheet [aria-label='Strictness'] .seg-opt").Single(e => e.TextContent.Trim() == "Balanced").Click();
 
         Assert.Equal(SafetyStrictness.Balanced, safety.Strictness);
         Assert.NotNull(cut.Find(".sheet input[type=text]"));
@@ -253,9 +254,11 @@ public sealed class WorkspaceSettingsTests : BunitContext
         OpenGroup(cut, "On this device");
 
         var labels = cut.FindAll(".sheet .sheet-label").Select(e => e.TextContent.Trim()).ToArray();
+        var values = cut.FindAll(".sheet .row-name").Select(e => e.TextContent.Trim()).ToArray();
         Assert.Contains("On this device", labels);
-        Assert.Contains("Who answers", labels);
-        Assert.Contains("Family mode", labels);
+        Assert.Contains("Engine", values);
+        Assert.Contains("Device", values);
+        Assert.Contains("Model registry", values);
 
         Assert.NotEmpty(cut.FindAll(".sheet .dot"));
     }

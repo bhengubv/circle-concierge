@@ -68,7 +68,12 @@ public sealed class ModelDownloadOfferTests : IDisposable
         // Nothing to ask about when the decision was already made in configuration.
         var runtime = new CircleAiChatRuntime(
             NullLogger<CircleAiChatRuntime>.Instance,
-            new CircleAiChatOptions { ModelsDirectory = _modelsDirectory, AllowAutomaticDownload = true });
+            new CircleAiChatOptions
+            {
+                ModelsDirectory = _modelsDirectory,
+                AllowAutomaticDownload = true,
+                DeviceProbeFactory = CircleAiTestDefaults.Probe
+            });
 
         Assert.Null(((IModelDownloadRequired)runtime).PendingDownload);
         await runtime.DisposeAsync();
@@ -100,5 +105,9 @@ public sealed class ModelDownloadOfferTests : IDisposable
 
     private CircleAiChatRuntime NewRuntime() => new(
         NullLogger<CircleAiChatRuntime>.Instance,
-        new CircleAiChatOptions { ModelsDirectory = _modelsDirectory });
+        new CircleAiChatOptions
+        {
+            ModelsDirectory = _modelsDirectory,
+            DeviceProbeFactory = CircleAiTestDefaults.Probe
+        });
 }

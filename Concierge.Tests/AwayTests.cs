@@ -1,6 +1,7 @@
 using Concierge.Shared.Away;
 using Microsoft.Extensions.DependencyInjection;
 using Concierge.Shared.Design;
+using Concierge.Shared.Tools;
 
 namespace Concierge.Tests;
 
@@ -60,6 +61,64 @@ public sealed class AwayTests
         Assert.Contains(
             store.Held!.Nodes.Values,
             node => string.Equals(node.Text, "Sports Day", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Plan_only_does_not_apply_the_canvas_fast_path()
+    {
+        var store = new Remembers();
+        var desk = DeskOver(store);
+
+        await desk.SayAsync(new AwaySaid("make it night", FromAWatch(), PermissionMode: ToolPermissionMode.PlanOnly));
+
+        Assert.Equal(0, store.Saves);
+        Assert.Null(store.Held);
+    }
+
+    [Fact]
+    public async Task A_workspace_without_a_project_is_rejected_before_canvas_actions()
+    {
+        var store = new Remembers();
+        var answer = await DeskOver(store).SayAsync(new AwaySaid("make it night", FromAWatch(),
+            ProjectWorkspaceId: Guid.NewGuid()));
+
+        Assert.False(answer.Understood);
+        Assert.Equal(0, store.Saves);
+        Assert.Contains("project context is invalid", answer.Reply, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Project_context_without_a_project_id_is_rejected()
+    {
+        var answer = await DeskOver(new Remembers()).SayAsync(new AwaySaid("continue", FromAWatch(),
+            ProjectContext: "Unscoped prompt text"));
+
+        Assert.False(answer.Understood);
+        Assert.Contains("project context is invalid", answer.Reply, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task Retrying_a_delivered_request_returns_its_receipt_without_applying_it_twice()
+    {
+        var store = new Remembers();
+        var ledgerPath = Path.Combine(Path.GetTempPath(), $"away-ledger-{Guid.NewGuid():N}");
+        var desk = new AwayDesk(store, turn: () => null, conversations: null!, runtimes: [],
+            requestLedger: new AwayRequestLedger(ledgerPath));
+        var said = new AwaySaid("add a heading that says Sports Day", FromAWatch(), RequestId: Guid.NewGuid());
+
+        try
+        {
+            var first = await desk.SayAsync(said);
+            var retry = await desk.SayAsync(said);
+
+            Assert.True(first.Understood);
+            Assert.Equal(first, retry);
+            Assert.Equal(1, store.Saves);
+        }
+        finally
+        {
+            if (Directory.Exists(ledgerPath)) Directory.Delete(ledgerPath, recursive: true);
+        }
     }
 
     /// <summary>

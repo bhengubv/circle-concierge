@@ -38,7 +38,21 @@ public enum ConversationEventType
 
     /// <summary>The model rewrote its task list. Log-only.</summary>
     TodoWrite = 9,
+
+    /// <summary>A durable output was created. Log-only; the content stays in its source message or artifact store.</summary>
+    ArtifactCreated = 10,
+
+    /// <summary>A transport or peer status changed. Log-only; never conversation content.</summary>
+    ConnectionStatus = 11,
 }
+
+/// <summary>Structured pointer to an output retained in the conversation timeline.</summary>
+public sealed record ConversationArtifactRecord(
+    Guid ArtifactId,
+    string Name,
+    string MediaType,
+    Guid SourceEventId,
+    Guid? RunId = null);
 
 /// <summary>
 /// One immutable entry in a conversation's log.

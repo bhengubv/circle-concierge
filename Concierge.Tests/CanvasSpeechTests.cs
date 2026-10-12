@@ -68,7 +68,7 @@ public sealed class CanvasSpeechTests : BunitContext
         cut.WaitForState(() => cut.FindAll("section.ws-group").Count > 0);
 
         cut.FindAll("button.ws-head")
-            .First(head => head.QuerySelector(".ws-head-name")!.TextContent.Trim() == "Tools")
+            .First(head => head.QuerySelector(".ws-head-name")!.TextContent.Trim() == "Make something")
             .Click();
 
         cut.WaitForState(() => cut.FindAll("button.ws-room-btn").Count > 0);

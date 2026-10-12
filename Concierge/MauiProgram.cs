@@ -16,6 +16,7 @@ using Concierge.Shared;
 using Concierge.Shared.Devices;
 using Concierge.Shared.Hooks;
 using Concierge.Shared.Away;
+using Concierge.Shared.Butler;
 using Concierge.Shared.Chat;
 using Concierge.Shared.Safety;
 using Concierge.Shared.Diagrams;
@@ -90,6 +91,21 @@ public static class MauiProgram
 		// Needed by the flight-deck Dashboard's snackbar feedback + dialogs.
 		builder.Services.AddMudServices();
 		builder.Services.AddSingleton<IConciergeSecretStore>(_ => new LocalSecretStore());
+		builder.Services.AddSingleton<IButlerSessionTokenStore, Concierge.Butler.MauiButlerSessionTokenStore>();
+		builder.Services.AddHttpClient<ButlerAccountSession>(client =>
+		{
+			var authApi = builder.Configuration["AppState:AuthApiUrl"] ?? "https://authapi.thegeeknetwork.co.za";
+			client.BaseAddress = new Uri(authApi);
+			client.Timeout = TimeSpan.FromSeconds(20);
+		});
+		builder.Services.AddSingleton<IButlerAccountSession>(sp => sp.GetRequiredService<ButlerAccountSession>());
+		builder.Services.AddHttpClient<ButlerWorkRunApiClient>(client =>
+		{
+			var butlerApi = builder.Configuration["App:ButlerApiBaseUrl"] ?? "https://butlerapi.thegeeknetwork.co.za";
+			client.BaseAddress = new Uri(butlerApi);
+			client.Timeout = TimeSpan.FromSeconds(30);
+		});
+		builder.Services.AddSingleton<IButlerWorkRunApi>(sp => sp.GetRequiredService<ButlerWorkRunApiClient>());
 		builder.Services
 			.AddConciergeCore()
 			.AddLocalSkillSources()
@@ -135,8 +151,22 @@ public static class MauiProgram
 			// Model choice is deterministic and resource-driven inside CircleAI's
 			// DeviceAwareModelSelector. The client automatically fetches and loads
 			// that choice; it never asks a chat model or the person to pick one.
-			.AddConciergeAi(new CircleAiChatOptions { AllowAutomaticDownload = true })
+			// The selected bundle can be many gigabytes. Let the person see the size and
+			// start it from the download offer; app startup must not begin a transfer.
+			.AddConciergeAi(new CircleAiChatOptions
+			{
+				AllowAutomaticDownload = false,
+				StageEligibleModelsSmallestFirst = true,
+#if ANDROID
+				ResumeAcceptedDownloadOnStartup = false,
+				NativeLibDir = Android.App.Application.Context.ApplicationInfo?.NativeLibraryDir,
+#endif
+			})
+#if WINDOWS
+			.AddConciergeAiWindowsService()
+#else
 			.AddConciergeAiIsolated()
+#endif
 			.AddConciergeMesh()
 			.AddConciergeMedia()
 			// Parental controls / content-filter pipeline. Wraps IChatRuntime
@@ -170,7 +200,8 @@ public static class MauiProgram
 		builder.Services.AddSingleton<IToolApprovalService>(sp =>
 			new AuditingToolApprovalService(
 				sp.GetRequiredService<InteractiveToolApprovalService>(),
-				sp.GetRequiredService<IToolApprovalAuditLog>()));
+				sp.GetRequiredService<IToolApprovalAuditLog>(),
+				sp.GetRequiredService<IConversationStore>()));
 		builder.Services.AddConciergeRuntime();
 		// A device that is not here can reach the making. Registering it opens nothing;
 		// only a head with an endpoint can actually be reached.
@@ -180,9 +211,16 @@ public static class MauiProgram
 			var client = new Concierge.Away.AwayClient { DeviceLabel = "phone" };
 #if ANDROID
 			client.DiscoveryLease = Concierge.Platforms.Android.WifiMulticastLease.Acquire;
+			client.DeviceName = Android.Provider.Settings.Global.GetString(Android.App.Application.Context.ContentResolver, "device_name") ?? DeviceInfo.Current.Name;
+			client.DeviceId = Android.Provider.Settings.Secure.GetString(Android.App.Application.Context.ContentResolver, Android.Provider.Settings.Secure.AndroidId) ?? client.DeviceName;
+			client.DevicePlatform = DeviceInfo.Current.Model.Contains("Circle", StringComparison.OrdinalIgnoreCase) ? "CircleOS" : "AndroidOS";
+#elif WINDOWS
+			client.PointAt("http://127.0.0.1:5198");
 #endif
 			return client;
 		});
+		builder.Services.AddSingleton<Concierge.Shared.Planning.IProjectAgentRuntimeSelector,
+			Concierge.Away.AwayProjectAgentRuntimeSelector>();
 		builder.Services.AddConciergeState(Path.Combine(FileSystem.AppDataDirectory, "state"));
 
 		// Work that runs end to end, keeping its place on disk so an interrupted run
@@ -215,6 +253,12 @@ public static class MauiProgram
 		// Replace the NullDeviceContext registered by AddConciergeAi with the MAUI-aware one.
 		builder.Services.RemoveAll<IDeviceContext>();
 		builder.Services.AddSingleton<IDeviceContext, MauiDeviceContext>();
+
+#if ANDROID
+		builder.Services.AddSingleton<ICircleAiSharedService, Concierge.Platforms.Android.AndroidCircleAiSharedService>();
+		builder.Services.RemoveAll<IModelDownloadCoordinator>();
+		builder.Services.AddSingleton<IModelDownloadCoordinator, Concierge.Platforms.Android.AndroidModelDownloadCoordinator>();
+#endif
 
 #if DEBUG
 		builder.Services.AddBlazorWebViewDeveloperTools();

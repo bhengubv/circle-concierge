@@ -1,4 +1,4 @@
-using System.Diagnostics;
+using Concierge.Shared.Sandboxing;
 
 namespace Concierge.Shared.Design;
 
@@ -106,39 +106,16 @@ public sealed class ProcessEncoder : IEncoderRunner
     public async Task<EncoderRun> RunAsync(
         IReadOnlyList<string> arguments, CancellationToken cancellationToken = default)
     {
-        var start = new ProcessStartInfo(_ffmpeg)
-        {
-            RedirectStandardError = true,
-            RedirectStandardOutput = true,
-            UseShellExecute = false,
-            CreateNoWindow = true,
-        };
-
-        foreach (var argument in arguments)
-        {
-            start.ArgumentList.Add(argument);
-        }
-
         try
         {
-            using var process = Process.Start(start);
-
-            if (process is null)
-            {
-                return new EncoderRun(false, "The encoder would not start.", Started: false);
-            }
-
-            var errors = process.StandardError.ReadToEndAsync(cancellationToken);
-            var output = process.StandardOutput.ReadToEndAsync(cancellationToken);
-
-            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+            var result = await ManagedChildProcessRunner.RunCapturedAsync(
+                _ffmpeg, arguments, Environment.CurrentDirectory, cancellationToken).ConfigureAwait(false);
 
             return new EncoderRun(
-                process.ExitCode == 0,
-                await errors.ConfigureAwait(false) + await output.ConfigureAwait(false));
+                result.ExitCode == 0,
+                result.Output);
         }
-        catch (Exception error)
-            when (error is System.ComponentModel.Win32Exception or InvalidOperationException)
+        catch (Exception error) when (error is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
             return new EncoderRun(false, error.Message, Started: false);
         }

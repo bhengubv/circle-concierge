@@ -45,6 +45,28 @@ public sealed class ChatRuntimeCapabilityForwardingTests
     }
 
     [Fact]
+    public async Task Cancelling_through_the_wrapper_reaches_the_runtime()
+    {
+        var inner = new NeedsDownloadRuntime();
+
+        await ((IModelDownloadRequired)Wrap(inner)).CancelCurrentDownloadAsync();
+
+        Assert.Equal(1, inner.Cancelled);
+    }
+
+    [Fact]
+    public void The_safety_wrapper_preserves_runtime_readiness_and_image_abilities()
+    {
+        var catalog = new ChatRuntimeCapabilityCatalog(1, "circleai", "3.6.0", DateTimeOffset.UnixEpoch,
+            [new("visual-input", "Understanding images", ChatRuntimeCapabilityState.Available)],
+            new(4, 20, 8, "Online", null), ["image/jpeg"]);
+        var decorated = Wrap(new CapabilityRuntime(catalog));
+
+        Assert.Equal(catalog, ((IChatRuntimeCapabilitySource)decorated).CapabilityCatalog);
+        Assert.Contains("image/jpeg", ((IVisionCapableRuntime)decorated).SupportedImageMediaTypes);
+    }
+
+    [Fact]
     public void Wrapping_a_runtime_with_nothing_to_download_offers_nothing()
     {
         // A cloud runtime has no model to fetch. The wrapper must not invent one.
@@ -80,6 +102,7 @@ public sealed class ChatRuntimeCapabilityForwardingTests
     {
         public PendingModelDownload Pending { get; } = new("Some-Model", 21_000_000_000, true);
         public int Accepted { get; private set; }
+        public int Cancelled { get; private set; }
 
         public string Id => "needs-download";
         public string EngineLabel => "Some-Model";
@@ -96,12 +119,36 @@ public sealed class ChatRuntimeCapabilityForwardingTests
             return Task.FromResult(true);
         }
 
+        public Task CancelCurrentDownloadAsync()
+        {
+            Cancelled++;
+            return Task.CompletedTask;
+        }
+
         public async IAsyncEnumerable<string> StreamAsync(
             IReadOnlyList<ChatTurn> messages,
             [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             await Task.CompletedTask;
             yield return StatusMessage;
+        }
+    }
+
+    private sealed class CapabilityRuntime(ChatRuntimeCapabilityCatalog catalog) : IChatRuntime, IChatRuntimeCapabilitySource, IVisionCapableRuntime
+    {
+        public string Id => catalog.RuntimeId;
+        public string EngineLabel => "Circle AI";
+        public bool IsReady => true;
+        public string StatusMessage => "Ready";
+        public ChatRuntimeCapabilityCatalog CapabilityCatalog => catalog;
+        public IReadOnlyCollection<string> SupportedImageMediaTypes => catalog.SupportedImageMediaTypes ?? [];
+
+        public async IAsyncEnumerable<string> StreamAsync(
+            IReadOnlyList<ChatTurn> messages,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.CompletedTask;
+            yield return "ready";
         }
     }
 }

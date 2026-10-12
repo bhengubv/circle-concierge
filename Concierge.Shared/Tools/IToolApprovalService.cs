@@ -31,7 +31,8 @@ public sealed record ToolApprovalRequest(
     string ToolName,
     string Summary,
     ConciergeToolRisk Risk,
-    string? Detail = null);
+    string? Detail = null,
+    Guid? ApprovalId = null);
 
 /// <summary>
 /// Channel-neutral approval seam. A host answers through whatever surface it has — a MAUI

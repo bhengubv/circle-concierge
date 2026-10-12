@@ -90,6 +90,53 @@ public sealed class SessionStateTests : IDisposable
         Assert.Equal(string.Empty, restored.UnsentFor(Guid.NewGuid()));
     }
 
+    [Fact]
+    public async Task A_first_run_goal_draft_survives_restart_before_a_conversation_exists()
+    {
+        const string draft = "Build an MVP for location-based product activation and BI.";
+
+        await New().SaveAsync(new SessionSnapshot(InitialDraftText: draft));
+
+        Assert.Equal(draft, (await New().LoadAsync()).InitialDraftText);
+    }
+
+    [Fact]
+    public async Task Productive_wait_tutorial_position_and_pause_state_survive_restart()
+    {
+        await New().SaveAsync(new SessionSnapshot(SetupTutorialStep: 2, SetupTutorialCollapsed: true));
+
+        var restored = await New().LoadAsync();
+
+        Assert.Equal(2, restored.SetupTutorialStep);
+        Assert.True(restored.SetupTutorialCollapsed);
+    }
+
+    [Fact]
+    public async Task Pending_turn_ids_survive_restart_per_conversation()
+    {
+        var conversationId = Guid.NewGuid();
+        var runId = Guid.NewGuid();
+        var pending = new PendingTurnSubmission(conversationId, runId, "request-fingerprint");
+        await New().SaveAsync(new SessionSnapshot(
+            PendingTurnSubmissions: new Dictionary<string, PendingTurnSubmission>
+            {
+                [conversationId.ToString("N")] = pending,
+            }));
+
+        var restored = await New().LoadAsync();
+
+        Assert.Equal(pending, restored.PendingTurnFor(conversationId));
+        Assert.Null(restored.PendingTurnFor(Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task Sessions_written_before_initial_drafts_were_supported_still_load()
+    {
+        await File.WriteAllTextAsync(_path, "{}");
+
+        Assert.Null((await New().LoadAsync()).InitialDraftText);
+    }
+
     /// <summary>
     /// A corrupt file is a first launch, not a crash. The alternative is an app
     /// that will not open because of a file that only holds your place.

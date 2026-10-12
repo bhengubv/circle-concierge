@@ -15,6 +15,20 @@ public static class AwayEndpoints
     public static IEndpointRouteBuilder MapConciergeAway(this IEndpointRouteBuilder app)
     {
         app.MapGet("/api/away/capabilities", (IAway away) => Results.Json(away.Capabilities));
+        app.MapGet("/api/away/conversations", async ([Microsoft.AspNetCore.Mvc.FromServices] Concierge.Shared.Chat.IConversationStore store,
+            IServiceProvider services, CancellationToken ct) => Results.Json(
+                await Concierge.Away.WristReadModel.ReadAsync(store, services.GetService<Concierge.Shared.Chat.BackgroundRuns>(), ct).ConfigureAwait(false)));
+        app.MapGet("/api/away/conversations/{conversationId:guid}/recent", async (Guid conversationId,
+            [Microsoft.AspNetCore.Mvc.FromServices] Concierge.Shared.Chat.IConversationStore store, CancellationToken ct) => Results.Json(
+                await store.ReadRecentEventsAsync(conversationId, 100, ct).ConfigureAwait(false)));
+
+        app.MapPost("/api/away/cancel", async (CancelBody body, IAway away, CancellationToken cancellationToken) =>
+        {
+            if (body.RunId == Guid.Empty)
+                return Results.BadRequest(new { cancelled = false, message = "A run ID is required." });
+            var cancelled = await away.CancelRunAsync(body.RunId, cancellationToken).ConfigureAwait(false);
+            return Results.Json(new { cancelled });
+        });
 
         app.MapPost("/api/away/say", async (
             SaidBody body,
@@ -47,17 +61,47 @@ public static class AwayEndpoints
             }
 
             var answer = await away
-                .SayAsync(new AwaySaid(body.Text, context, picture, body.ConversationId, body.ConversationEvents), cancellationToken)
+                .SayAsync(new AwaySaid(body.Text, context, picture, body.ConversationId, body.ConversationEvents,
+                    body.RequestId, body.PermissionMode, body.ProjectId, body.ProjectWorkspaceId, body.ProjectContext,
+                    body.IncludeToolCatalog), cancellationToken)
                 .ConfigureAwait(false);
             if (answer.ConversationId is { } conversationId)
-                answer = answer with { Events = await away.ReadConversationEventsAsync(conversationId, cancellationToken).ConfigureAwait(false) };
+            {
+                // The caller sent the durable prefix it has already applied. Return only the
+                // post-answer tail, bounded to the same maximum as the catch-up endpoint.
+                // Returning the entire conversation on every reply grows without bound and
+                // makes an old thread increasingly expensive to continue from Mobile.
+                var afterSeq = body.ConversationEvents is { Count: > 0 } snapshot
+                    ? snapshot.Max(entry => entry.Seq)
+                    : -1;
+                answer = answer with
+                {
+                    Events = await away.ReadConversationEventsPageAsync(conversationId, afterSeq,
+                        Concierge.Shared.Chat.ConversationEventPage.MaximumSize, cancellationToken).ConfigureAwait(false),
+                };
+            }
             return Results.Json(answer);
         });
 
         app.MapGet("/api/away/conversations/{conversationId:guid}/events", async (
-            Guid conversationId, int? afterSeq, IAway away, CancellationToken cancellationToken) =>
-            Results.Json((await away.ReadConversationEventsAsync(conversationId, cancellationToken).ConfigureAwait(false))
-                .Where(entry => entry.Seq > (afterSeq ?? -1)));
+            Guid conversationId, int? afterSeq, int? pageSize, IAway away, CancellationToken cancellationToken) =>
+            Results.Json(await away.ReadConversationEventsPageAsync(
+                conversationId, afterSeq ?? -1, pageSize ?? Concierge.Shared.Chat.ConversationEventPage.DefaultSize,
+                cancellationToken).ConfigureAwait(false)));
+
+        app.MapPost("/api/away/conversations/{conversationId:guid}/events", async (
+            Guid conversationId, AwayConversationEvents body, IAway away, CancellationToken cancellationToken) =>
+        {
+            if (conversationId == Guid.Empty || body.Events is null
+                || body.Events.Count > Concierge.Shared.Chat.ConversationEventPage.MaximumSize)
+                return Results.BadRequest(new { synchronized = false, message = "Send a valid event batch of at most 512 events." });
+
+            var synchronized = await away.SynchronizeConversationEventsAsync(
+                conversationId, body.Events, cancellationToken).ConfigureAwait(false);
+            return synchronized
+                ? Results.Ok(new { synchronized = true })
+                : Results.Conflict(new { synchronized = false, message = "Those events do not match this conversation." });
+        });
 
         app.MapGet("/api/away/waiting", async (IAway away, CancellationToken cancellationToken) =>
             Results.Json(await away.WaitingAsync(cancellationToken).ConfigureAwait(false)));
@@ -167,7 +211,14 @@ public static class AwayEndpoints
         string? PictureBase64 = null,
         string? PictureName = null,
         Guid? ConversationId = null,
-        IReadOnlyList<Concierge.Shared.Chat.ConversationEvent>? ConversationEvents = null);
+        IReadOnlyList<Concierge.Shared.Chat.ConversationEvent>? ConversationEvents = null,
+        Guid? RequestId = null,
+        Concierge.Shared.Tools.ToolPermissionMode? PermissionMode = null,
+        Guid? ProjectId = null,
+        Guid? ProjectWorkspaceId = null,
+        string? ProjectContext = null,
+        bool IncludeToolCatalog = true);
 
     public sealed record AnswerBody(Guid Id, bool Allowed);
+    public sealed record CancelBody(Guid RunId);
 }

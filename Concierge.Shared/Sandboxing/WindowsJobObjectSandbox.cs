@@ -27,6 +27,7 @@ public sealed class WindowsJobObjectSandbox : ICodeSandbox, IDisposable
     private const int LimitKillOnJobClose = 0x2000;
     private const int LimitProcessMemory = 0x0100;
     private const int LimitActiveProcess = 0x0008;
+    private const int LimitJobMemory = 0x00000200;
 
     /// <summary>Memory a program may use before Windows stops it.</summary>
     private const long MemoryCapBytes = 512L * 1024 * 1024;
@@ -34,7 +35,35 @@ public sealed class WindowsJobObjectSandbox : ICodeSandbox, IDisposable
     /// <summary>How many processes the program may have at once, itself included.</summary>
     private const int ProcessCap = 4;
 
+    private readonly long _memoryCapBytes;
+    private readonly int _processCap;
+    private readonly long? _jobMemoryCapBytes;
     private nint _job;
+
+    /// <summary>The enforced per-process memory ceiling used by the Host Manager.</summary>
+    public long MemoryBudgetBytes => _memoryCapBytes;
+
+    /// <summary>The aggregate memory ceiling for this job, when one was requested.</summary>
+    public long? JobMemoryBudgetBytes => _jobMemoryCapBytes;
+
+    /// <summary>The maximum number of processes this job may contain.</summary>
+    public int ProcessBudget => _processCap;
+
+    public WindowsJobObjectSandbox(
+        long memoryCapBytes = MemoryCapBytes,
+        int processCap = ProcessCap,
+        long? jobMemoryCapBytes = null)
+    {
+        if (memoryCapBytes <= 0)
+            throw new ArgumentOutOfRangeException(nameof(memoryCapBytes));
+        if (processCap <= 0)
+            throw new ArgumentOutOfRangeException(nameof(processCap));
+        if (jobMemoryCapBytes is <= 0)
+            throw new ArgumentOutOfRangeException(nameof(jobMemoryCapBytes));
+        _memoryCapBytes = memoryCapBytes;
+        _processCap = processCap;
+        _jobMemoryCapBytes = jobMemoryCapBytes;
+    }
 
     /// <inheritdoc />
     public SandboxCapability Capability { get; } = new(
@@ -105,14 +134,19 @@ public sealed class WindowsJobObjectSandbox : ICodeSandbox, IDisposable
             throw new InvalidOperationException("A job object could not be created, so the program was not run.");
         }
 
+        var limitFlags = LimitKillOnJobClose | LimitProcessMemory | LimitActiveProcess;
+        if (_jobMemoryCapBytes is not null)
+            limitFlags |= LimitJobMemory;
+
         var limits = new JobObjectExtendedLimitInformation
         {
             BasicLimitInformation = new JobObjectBasicLimitInformation
             {
-                LimitFlags = LimitKillOnJobClose | LimitProcessMemory | LimitActiveProcess,
-                ActiveProcessLimit = ProcessCap,
+                LimitFlags = limitFlags,
+                ActiveProcessLimit = _processCap,
             },
-            ProcessMemoryLimit = (nuint)MemoryCapBytes,
+            ProcessMemoryLimit = (nuint)_memoryCapBytes,
+            JobMemoryLimit = _jobMemoryCapBytes is { } jobBudget ? (nuint)jobBudget : 0,
         };
 
         var size = Marshal.SizeOf<JobObjectExtendedLimitInformation>();
@@ -122,7 +156,8 @@ public sealed class WindowsJobObjectSandbox : ICodeSandbox, IDisposable
             Marshal.StructureToPtr(limits, buffer, fDeleteOld: false);
             if (!SetInformationJobObject(_job, ExtendedLimitInformation, buffer, (uint)size))
             {
-                throw new InvalidOperationException("The job object limits could not be set, so the program was not run.");
+                var error = Marshal.GetLastWin32Error();
+                throw new InvalidOperationException($"The job object limits could not be set (Win32 error {error}), so the program was not run.");
             }
         }
         finally

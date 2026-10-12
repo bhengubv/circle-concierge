@@ -54,7 +54,12 @@ internal static class TestTempRoot
         Environment.SetEnvironmentVariable("TMP", root);
         Environment.SetEnvironmentVariable("TEMP", root);
 
-        AppDomain.CurrentDomain.ProcessExit += (_, _) => Delete(root);
+        // Do not remove this directory at ProcessExit. Coverlet writes its hit
+        // data to the test process temp directory during shutdown, after test
+        // execution but before the MSBuild coverage task reads it. Removing the
+        // root from this event handler races that flush and produces an all-zero
+        // coverage report. The next test run sweeps this bounded run root before
+        // creating its own, so immediate process-exit cleanup is unnecessary.
     }
 
     /// <summary>Clear what earlier runs left. Best effort throughout: a directory

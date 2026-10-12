@@ -140,7 +140,11 @@ public sealed class WatchFootageTests : BunitContext
     private static void Ask(
         IRenderedComponent<Concierge.Shared.Components.Workspace.Desktop.Workspace> cut, string question)
     {
-        cut.Find("textarea.comp-input").Input(question);
+        // Session autosave can rerender between the test's query and event
+        // dispatch. Resolve and dispatch on the renderer so this targets the
+        // current event handler, not a detached textarea from the prior tree.
+        cut.InvokeAsync(() => cut.Find("textarea.comp-input").Input(question))
+            .GetAwaiter().GetResult();
 
         // The typing comes first and the waiting second, which is not a detail. Send is
         // disabled by an empty box as well as by a turn in flight, so waiting before typing
@@ -152,7 +156,8 @@ public sealed class WatchFootageTests : BunitContext
                 "the workspace is still busy with the last turn"),
             TimeSpan.FromSeconds(10));
 
-        cut.Find("button.icon-btn-send").Click();
+        cut.InvokeAsync(() => cut.Find("button.icon-btn-send").Click())
+            .GetAwaiter().GetResult();
     }
 
     /// <summary>

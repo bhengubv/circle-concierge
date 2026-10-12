@@ -1,10 +1,14 @@
 @using CircleAI.ContentPolicy
+@using Concierge.Shared.Butler
 @using Concierge.Shared.Safety
+@using Microsoft.Extensions.Logging
 @inject IConciergeStateService Concierge
 @inject ILlmRuntimeService LlmRuntime
 @inject ConciergeSafetySettings SafetySettings
 @inject ISafetyAuditLog SafetyAudit
 @inject IJSRuntime JS
+@inject ILogger<Settings> Logger
+@implements IAsyncDisposable
 
 @*
     Settings, as a panel over the work.
@@ -27,7 +31,7 @@
 
 <div class="sheet-back" @onclick="Close" aria-hidden="true"></div>
 
-<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+<div class="sheet" @ref="_dialog" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="settings-title">
     <div class="sheet-head">
         <h1 class="sheet-title" id="settings-title">Settings</h1>
         <button class="icon-btn" type="button" title="Close" @onclick="Close">
@@ -69,6 +73,18 @@
                 <span class="row-sub">It picks from the options available on this device. Add provider keys below; Circle AI handles the routing.</span>
             </span>
         </div>
+    </section>
+
+    @* ── Butler account ──────────────────────────────────────────────── *@
+    <section class="sheet-group">
+        <button class="sheet-head-btn" type="button" @onclick="@(() => Toggle("butler"))">
+            <svg class="ws-chev @(IsOpen("butler") ? "is-open" : null)" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
+            <span class="sheet-label">Butler account</span>
+        </button>
+        @if (IsOpen("butler"))
+        {
+            <ButlerAccountSettings />
+        }
     </section>
 
     @* ── Keys ────────────────────────────────────────────────────────── *@

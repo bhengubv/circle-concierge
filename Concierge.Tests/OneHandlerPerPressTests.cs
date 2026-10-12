@@ -35,6 +35,16 @@ namespace Concierge.Tests;
 /// </summary>
 public sealed class OneHandlerPerPressTests
 {
+    private static readonly HashSet<string> IgnoredDirectories = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".git",
+        ".vs",
+        "bin",
+        "node_modules",
+        "obj",
+        "work"
+    };
+
     private static IEnumerable<string> Pages()
     {
         var here = new DirectoryInfo(AppContext.BaseDirectory);
@@ -46,10 +56,28 @@ public sealed class OneHandlerPerPressTests
 
         Assert.NotNull(here);
 
-        return Directory
-            .EnumerateFiles(here!.FullName, "*.razor", SearchOption.AllDirectories)
-            .Where(path => !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
-                && !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}"));
+        var pending = new Stack<string>();
+        pending.Push(here!.FullName);
+
+        while (pending.TryPop(out var directory))
+        {
+            foreach (var page in Directory.EnumerateFiles(directory, "*.razor", SearchOption.TopDirectoryOnly))
+            {
+                yield return page;
+            }
+
+            foreach (var child in Directory.EnumerateDirectories(directory, "*", SearchOption.TopDirectoryOnly))
+            {
+                var childInfo = new DirectoryInfo(child);
+                if (IgnoredDirectories.Contains(childInfo.Name)
+                    || (childInfo.Attributes & FileAttributes.ReparsePoint) != 0)
+                {
+                    continue;
+                }
+
+                pending.Push(child);
+            }
+        }
     }
 
     /// <summary>

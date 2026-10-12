@@ -52,6 +52,39 @@ public sealed class InteractiveToolApprovalTests
     }
 
     [Fact]
+    public async Task A_turn_override_allows_without_changing_the_global_mode()
+    {
+        using var approver = new InteractiveToolApprovalService();
+        using (approver.ForTurn(allowWithoutAsking: true))
+        {
+            Assert.Equal(ToolApprovalDecision.Allowed, await approver.RequestAsync(AnyRequest()));
+        }
+
+        Assert.False(approver.AllowWithoutAsking);
+        var asks = approver.RequestAsync(AnyRequest()).AsTask();
+        await WaitUntil(() => approver.Pending.Count == 1);
+        approver.Answer(approver.Pending[0].Id, ToolApprovalDecision.Denied);
+        Assert.Equal(ToolApprovalDecision.Denied, await asks);
+    }
+
+    [Fact]
+    public async Task Ask_first_turn_overrides_a_global_act_freely_preference()
+    {
+        using var approver = new InteractiveToolApprovalService { AllowWithoutAsking = true };
+        Task<ToolApprovalDecision> ask;
+        using (approver.ForTurn(allowWithoutAsking: false))
+        {
+            ask = approver.RequestAsync(AnyRequest()).AsTask();
+            await WaitUntil(() => approver.Pending.Count == 1);
+            Assert.False(ask.IsCompleted);
+        }
+
+        approver.Answer(approver.Pending[0].Id, ToolApprovalDecision.Denied);
+        Assert.Equal(ToolApprovalDecision.Denied, await ask);
+        Assert.True(approver.AllowWithoutAsking);
+    }
+
+    [Fact]
     public async Task Denying_completes_the_call()
     {
         using var approver = new InteractiveToolApprovalService();

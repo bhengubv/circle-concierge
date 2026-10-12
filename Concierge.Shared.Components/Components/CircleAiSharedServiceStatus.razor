@@ -1,0 +1,73 @@
+@implements IDisposable
+@inject IServiceProvider Services
+@using Concierge.Shared.Devices
+
+@if (_service is not null)
+{
+    <RoomSection Title="Circle AI shared service">
+        <p class="room-note">Checks the separate AI service on this device. This does not download or run a model.</p>
+        <button type="button" class="room-btn" disabled="@_checking" @onclick="InspectAsync">@(_checking ? "Checking…" : "Check connection")</button>
+        @if (_snapshot is { Installed: true, Authorized: false } && _service is ICircleAiSharedServiceLink)
+        {
+            <button type="button" class="room-btn" disabled="@_checking" @onclick="ConnectAsync">Connect Circle AI</button>
+            <p class="room-note">Allow Concierge to use the AI service. Your device may ask you to confirm.</p>
+        }
+        <p role="status" aria-live="polite">@_status</p>
+        @if (_snapshot is not null)
+        {
+            <div class="rows">
+                <div class="row"><span class="row-name">Package</span><span class="row-val">@_snapshot.Package</span></div>
+                <div class="row"><span class="row-name">Installed build</span><span class="row-val">@(_snapshot.PackageBuild?.ToString() ?? "Not found")</span></div>
+                <div class="row"><span class="row-name">Authorized catalogue</span><span class="row-val">@(_snapshot.Authorized ? "Yes" : "No")</span></div>
+                <div class="row"><span class="row-name">Model readiness</span><span class="row-val">Unverified</span></div>
+            </div>
+            @foreach (var capability in _snapshot.Capabilities)
+            {
+                <p class="room-note"><strong>@capability.Id</strong> · @capability.ImplementationStatus — @capability.Summary</p>
+            }
+        }
+    </RoomSection>
+}
+
+@code {
+    private ICircleAiSharedService? _service;
+    private CircleAiSharedServiceSnapshot? _snapshot;
+    private string _status = "Connection has not been checked.";
+    private bool _checking;
+    private readonly CancellationTokenSource _stop = new();
+    protected override void OnInitialized() => _service = Services.GetService(typeof(ICircleAiSharedService)) as ICircleAiSharedService;
+    private async Task ConnectAsync()
+    {
+        if (_checking || _service is not ICircleAiSharedServiceLink link) return;
+        _checking = true;
+        _status = "Waiting for your device to approve the connection…";
+        try
+        {
+            if (await link.RequestConnectionAsync(_stop.Token))
+            {
+                _snapshot = await _service.InspectAsync(_stop.Token);
+                _status = _snapshot.Status;
+            }
+            else _status = "Connection was not approved. You can try again when you are ready.";
+        }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
+        catch (Exception) { _status = "The device could not open the Circle AI connection approval."; }
+        finally { _checking = false; }
+    }
+    private async Task InspectAsync()
+    {
+        if (_checking || _service is null) return;
+        _checking = true;
+        _status = "Checking the installed Circle AI service…";
+        try
+        {
+            _snapshot = await _service.InspectAsync(_stop.Token);
+            _status = _snapshot.Status;
+        }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
+        catch (TimeoutException) { _status = "The shared service has not answered. No additional request was started."; }
+        catch (Exception) { _status = "The shared service could not be checked."; }
+        finally { _checking = false; }
+    }
+    public void Dispose() => _stop.Cancel();
+}

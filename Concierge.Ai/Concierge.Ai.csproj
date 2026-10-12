@@ -12,8 +12,20 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="CircleAI.Core" Version="3.6.0" />
-    <PackageReference Include="CircleAI.Inference" Version="3.6.0" />
+    <InternalsVisibleTo Include="Concierge.Tests" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(CircleAiSourceRoot)' == ''">
+    <PackageReference Include="CircleAI" Version="$(CircleAiPackageVersion)" />
+  </ItemGroup>
+
+  <!-- Optional source integration for local end-to-end verification. Normal builds
+       continue consuming the published Circle AI packages above. -->
+  <ItemGroup Condition="'$(CircleAiSourceRoot)' != ''">
+    <ProjectReference Include="$(CircleAiSourceRoot)\src\CircleAI.Inference\CircleAI.Inference.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.2" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.0" />

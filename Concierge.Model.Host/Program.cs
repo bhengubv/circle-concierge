@@ -21,22 +21,47 @@ namespace Concierge.Model.Host;
 /// </summary>
 internal static class Program
 {
+    private static readonly TimeSpan CapabilityRefreshInterval = TimeSpan.FromSeconds(15);
     private static CircleAiChatRuntime? _runtime;
     private static CancellationTokenSource? _current;
+    private static int _currentRequestId;
     private static CancellationTokenSource? _downloadCancellation;
-    private static Task? _downloadTask;
     private static readonly SemaphoreSlim OutputGate = new(1, 1);
+    private static CoalescingProgressReporter<ModelHostResponse>? _runtimeStateOutput;
 
     private static async Task<int> Main()
     {
+        try
+        {
+            await WaitForHostManagerAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"The model host could not enter its managed process boundary: {ex.Message}");
+            return 2;
+        }
+
         // stdin and stdout carry the protocol. Anything the runtime logs must
         // not land in the middle of it.
         var output = Console.Out;
         Console.SetOut(Console.Error);
+        using var capabilityUpdates = new CancellationTokenSource();
+        Task? capabilityPublisher = null;
+        Task? acceptedDownloadResume = null;
 
         try
         {
             _runtime = Build();
+
+            // Tell the parent that the host is alive before loading starts.
+            // Loading an existing model can take minutes; withholding the first
+            // response leaves both clients unable to show meaningful activity.
+            await WriteRuntimeStateAsync(output, _runtime);
+            var runtimeStateOutput = new CoalescingProgressReporter<ModelHostResponse>(
+                response => WriteAsync(output, response));
+            _runtimeStateOutput = runtimeStateOutput;
+            _runtime.StatusChanged += (_, _) => runtimeStateOutput.Report(CreateRuntimeStateResponse(_runtime));
+            capabilityPublisher = PublishCapabilityUpdatesAsync(output, capabilityUpdates.Token);
 
             // Load it here rather than waiting for something else to.
             //
@@ -47,13 +72,35 @@ internal static class Program
             // running this executable by hand.
             await _runtime.LoadAsync(CancellationToken.None);
 
-            await WriteAsync(output, new ModelHostResponse(
-                Ready: _runtime.IsReady,
-                EngineLabel: _runtime.EngineLabel,
-                Status: _runtime.StatusMessage,
-                PendingDownload: null));
-            if (ShouldAutomaticallyPrepareSelectedModel())
-                _downloadTask = DownloadAsync(output, requestId: 0);
+            await WriteRuntimeStateAsync(output, _runtime);
+
+            // Resume only a download whose exact model plan was accepted earlier. Run it
+            // beside the command reader so the parent can attach, show progress, or stop it.
+            acceptedDownloadResume = Task.Run(async () =>
+            {
+                ModelHostResponse completion;
+                await using (var progress = new CoalescingProgressReporter<ModelDownloadProgress>(report =>
+                    WriteAsync(output, new ModelHostResponse(
+                        ProgressRatio: report.Ratio,
+                        ProgressDescription: report.Description))))
+                {
+                    try
+                    {
+                        await _runtime.ResumeAcceptedDownloadAsync(progress).ConfigureAwait(false);
+                        completion = CreateRuntimeStateResponse(_runtime) with { Id = 0, Done = true };
+                    }
+                    catch (Exception ex)
+                    {
+                        completion = CreateRuntimeStateResponse(_runtime) with
+                        {
+                            Id = 0,
+                            Done = true,
+                            Status = $"Could not resume the accepted Circle AI download: {ex.Message}",
+                        };
+                    }
+                }
+                await WriteAsync(output, completion).ConfigureAwait(false);
+            });
         }
         catch (Exception ex)
         {
@@ -66,48 +113,69 @@ internal static class Program
             return 1;
         }
 
-        string? line;
-        while ((line = await Console.In.ReadLineAsync()) is not null)
+        await ModelHostCommandLoop.RunAsync(
+            Console.In,
+            request => StreamAsync(output, request),
+            request => WriteAsync(output, new ModelHostResponse(
+                request.Id, Error: "Another model response is already running.", Done: true)),
+            requestId =>
+            {
+                if (_currentRequestId == requestId)
+                    _current?.Cancel();
+            },
+            request => DownloadAsync(output, request.Id),
+            CancelAcceptedDownload,
+            PauseAcceptedDownload,
+            acceptedDownloadResume,
+            request => WriteAsync(output, new ModelHostResponse(
+                Id: request.Id,
+                Done: true,
+                Ready: _runtime.IsReady,
+                EngineLabel: _runtime.EngineLabel,
+                Status: _runtime.StatusMessage,
+                PendingDownload: _runtime.PendingDownload,
+                CapabilityCatalog: _runtime.CapabilityCatalog)));
+
+        if (acceptedDownloadResume is not null)
+            await acceptedDownloadResume.ConfigureAwait(false);
+
+        capabilityUpdates.Cancel();
+        if (capabilityPublisher is not null)
         {
-            ModelHostRequest? request;
             try
             {
-                request = JsonSerializer.Deserialize<ModelHostRequest>(line, ModelHostProtocol.Json);
+                await capabilityPublisher;
             }
-            catch (JsonException)
+            catch (OperationCanceledException)
             {
-                continue;
+                // Expected when the parent closes the protocol pipe.
             }
+        }
 
-            if (request is null)
-            {
-                continue;
-            }
-
-            switch (request.Op)
-            {
-                case ModelHostProtocol.Cancel:
-                    _current?.Cancel();
-                    break;
-
-                case ModelHostProtocol.Download:
-                    if (_downloadTask is null || _downloadTask.IsCompleted)
-                        _downloadTask = DownloadAsync(output, request.Id);
-                    break;
-
-                case ModelHostProtocol.CancelDownload:
-                    _downloadCancellation?.Cancel();
-                    break;
-
-                case ModelHostProtocol.Stream:
-                    await StreamAsync(output, request);
-                    break;
-            }
+        if (_runtimeStateOutput is not null)
+        {
+            await _runtimeStateOutput.DisposeAsync().ConfigureAwait(false);
+            _runtimeStateOutput = null;
         }
 
         // stdin closed: the parent has gone, so this should too rather than
         // linger holding a model in memory.
         return 0;
+    }
+
+    private static async Task WaitForHostManagerAsync()
+    {
+        var gateFile = Environment.GetEnvironmentVariable("CONCIERGE_HOST_MANAGER_GATE_FILE");
+        if (string.IsNullOrWhiteSpace(gateFile))
+            return;
+
+        var deadline = DateTimeOffset.UtcNow.AddSeconds(15);
+        while (File.Exists(gateFile))
+        {
+            if (DateTimeOffset.UtcNow >= deadline)
+                throw new TimeoutException("Concierge did not apply the worker's process budget in time.");
+            await Task.Delay(25).ConfigureAwait(false);
+        }
     }
 
     private static CircleAiChatRuntime Build()
@@ -128,7 +196,10 @@ internal static class Program
         // still the careful one.
         services.AddConciergeAi(new CircleAiChatOptions
         {
-            AllowAutomaticDownload = true,
+            // The parent Concierge surface must receive the selected bundle size and ask
+            // before sending the Download command; the isolated host never auto-fetches.
+            AllowAutomaticDownload = false,
+            StageEligibleModelsSmallestFirst = true,
             UsePrefixCache = string.Equals(
                 Environment.GetEnvironmentVariable("CONCIERGE_PREFIX_CACHE"), "1", StringComparison.Ordinal),
         });
@@ -141,6 +212,7 @@ internal static class Program
     {
         _current?.Dispose();
         _current = new CancellationTokenSource();
+        _currentRequestId = request.Id;
         var token = _current.Token;
 
         var turns = (request.Turns ?? Array.Empty<ModelHostTurn>())
@@ -169,6 +241,15 @@ internal static class Program
             // reaches here — that is what the closed pipe is for.
             await WriteAsync(output, new ModelHostResponse(request.Id, Error: ex.Message, Done: true));
         }
+        finally
+        {
+            if (_currentRequestId == request.Id)
+            {
+                _currentRequestId = 0;
+                _current.Dispose();
+                _current = null;
+            }
+        }
     }
 
     private static async Task DownloadAsync(TextWriter output, int requestId)
@@ -176,36 +257,79 @@ internal static class Program
         _downloadCancellation?.Dispose();
         _downloadCancellation = new CancellationTokenSource();
         var token = _downloadCancellation.Token;
-        try
+        ModelHostResponse completion;
+        await using (var progress = new CoalescingProgressReporter<ModelDownloadProgress>(report =>
+            WriteAsync(output, new ModelHostResponse(requestId,
+                ProgressRatio: report.Ratio,
+                ProgressDescription: report.Description))))
         {
-            var progress = new InlineProgress<ModelDownloadProgress>(report =>
-                WriteAsync(output, new ModelHostResponse(requestId,
-                    ProgressRatio: report.Ratio,
-                    ProgressDescription: report.Description)).GetAwaiter().GetResult());
-            await _runtime!.AcceptDownloadAsync(progress, token);
-            await WriteAsync(output, new ModelHostResponse(requestId,
-                Done: true,
-                Ready: _runtime.IsReady,
-                EngineLabel: _runtime.EngineLabel,
-                Status: _runtime.StatusMessage));
+            try
+            {
+                await _runtime!.AcceptDownloadAsync(progress, token).ConfigureAwait(false);
+                completion = CreateRuntimeStateResponse(_runtime) with { Id = requestId, Done = true };
+            }
+            catch (OperationCanceledException)
+            {
+                completion = CreateRuntimeStateResponse(_runtime!) with { Id = requestId, Done = true };
+            }
+            catch (Exception ex)
+            {
+                completion = CreateRuntimeStateResponse(_runtime!) with
+                {
+                    Id = requestId,
+                    Done = true,
+                    Status = $"Model download failed: {ex.Message}",
+                };
+            }
         }
-        catch (OperationCanceledException)
+        await WriteAsync(output, completion).ConfigureAwait(false);
+    }
+
+    private static void CancelAcceptedDownload()
+    {
+        _downloadCancellation?.Cancel();
+        if (_runtime is not null)
+            _runtime.CancelCurrentDownloadAsync().GetAwaiter().GetResult();
+    }
+
+    private static void PauseAcceptedDownload()
+    {
+        _downloadCancellation?.Cancel();
+        if (_runtime is not null)
+            _ = _runtime.PauseCurrentDownloadAsync();
+    }
+
+    private static async Task PublishCapabilityUpdatesAsync(TextWriter output, CancellationToken cancellationToken)
+    {
+        using var timer = new PeriodicTimer(CapabilityRefreshInterval);
+        while (await timer.WaitForNextTickAsync(cancellationToken))
         {
-            await WriteAsync(output, new ModelHostResponse(requestId, Done: true,
-                Ready: _runtime!.IsReady, EngineLabel: _runtime.EngineLabel,
-                Status: _runtime.StatusMessage));
-        }
-        catch (Exception ex)
-        {
-            await WriteAsync(output, new ModelHostResponse(requestId, Done: true,
-                Ready: _runtime!.IsReady, EngineLabel: _runtime.EngineLabel,
-                Status: $"Model download failed: {ex.Message}"));
+            var runtime = _runtime;
+            if (runtime is null)
+                continue;
+
+            var catalog = runtime.RefreshCapabilityCatalog();
+            try
+            {
+                await WriteAsync(output, new ModelHostResponse(CapabilityCatalog: catalog));
+            }
+            catch (IOException)
+            {
+                return;
+            }
         }
     }
 
-    private static bool ShouldAutomaticallyPrepareSelectedModel()
-        => _runtime?.Selected is { Quality: not CircleAI.Inference.SelectionQuality.NothingFits } selected
-            && (!_runtime.IsReady || !_runtime.EngineLabel.Contains(selected.ModelId, StringComparison.OrdinalIgnoreCase));
+    private static Task WriteRuntimeStateAsync(TextWriter output, CircleAiChatRuntime runtime)
+        => WriteAsync(output, CreateRuntimeStateResponse(runtime));
+
+    private static ModelHostResponse CreateRuntimeStateResponse(CircleAiChatRuntime runtime)
+        => new(
+            Ready: runtime.IsReady,
+            EngineLabel: runtime.EngineLabel,
+            Status: runtime.StatusMessage,
+            PendingDownload: runtime.PendingDownload,
+            CapabilityCatalog: runtime.CapabilityCatalog);
 
     private static async Task WriteAsync(TextWriter output, ModelHostResponse response)
     {
@@ -221,8 +345,4 @@ internal static class Program
         }
     }
 
-    private sealed class InlineProgress<T>(Action<T> report) : IProgress<T>
-    {
-        public void Report(T value) => report(value);
-    }
 }

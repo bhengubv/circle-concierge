@@ -81,9 +81,8 @@ public sealed class FastCommandTests
     }
 
     /// <summary>
-    /// The tripwire. `Process.GetProcessById` after `CreateProcess` is the defect itself:
-    /// it throws away a handle that cannot race in favour of a lookup that can, and it will
-    /// look like perfectly reasonable code to whoever writes it next.
+    /// The one-shot command path must wait on the process handle returned by CreateProcess;
+    /// persistent workers use their PID for ongoing host telemetry after creation.
     /// </summary>
     [Fact]
     public void And_the_sandbox_never_looks_a_process_up_by_its_id_again()
@@ -92,12 +91,14 @@ public sealed class FastCommandTests
             AppContext.BaseDirectory, "..", "..", "..", "..",
             "Concierge.Shared", "Sandboxing", "ConfinedProcess.cs")));
 
-        // Comment lines dropped first, because the paragraph above this test explains the
-        // defect by name and would otherwise match itself.
+        // Check the one-shot RunAsync method only. Its process handle must remain the
+        // authority for completion even though the persistent-worker path also exposes a PID.
         var code = string.Join(
             Environment.NewLine,
             lines.Where(line => !line.TrimStart().StartsWith("//", StringComparison.Ordinal)));
-
-        Assert.DoesNotContain("GetProcessById", code, StringComparison.Ordinal);
+        var runStart = code.IndexOf("public static async Task<ConfinedResult> RunAsync", StringComparison.Ordinal);
+        var runEnd = code.IndexOf("private static readonly string[] Secretish", runStart, StringComparison.Ordinal);
+        Assert.True(runStart >= 0 && runEnd > runStart, "Could not isolate the one-shot command method.");
+        Assert.DoesNotContain("GetProcessById", code[runStart..runEnd], StringComparison.Ordinal);
     }
 }

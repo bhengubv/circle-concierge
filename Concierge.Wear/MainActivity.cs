@@ -12,42 +12,21 @@ using Concierge.Shared;
 
 namespace Concierge.Wear;
 
-/// <summary>
-/// Concierge on the wrist.
-///
-/// Two screens, and only two — the same pair the Blazor wearable recipe has,
-/// for the same reason. A watch is for a glance and a decision, and the arm
-/// holding it is usually doing something else:
-///
-///   1. Something is waiting on you. Allow or Deny, nothing else on screen.
-///      This is the thing a watch is genuinely better at than a phone, because
-///      it is already on your wrist.
-///   2. Otherwise, speak. There is no keyboard worth using at this size.
-///
-/// What is deliberately absent: the thread list, skills, rooms, settings, the
-/// typed composer. Not hidden — never built, because a watch that offers all
-/// of it offers none of it well.
-///
-/// The views are built in code rather than XML. Two screens of a dozen widgets
-/// do not earn a resource pipeline, and keeping the colours next to the layout
-/// makes them easier to hold against concierge.css, which is the other place
-/// this palette is written down.
-/// </summary>
-[Activity(Label = "Concierge", MainLauncher = true, Theme = "@android:style/Theme.DeviceDefault.NoActionBar",
+/// <summary>Voice-first wrist client with a durable inbox, shared history and native input.</summary>
+[Activity(Label = "Concierge", MainLauncher = true, Theme = "@style/ConciergeWear",
     ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.ScreenLayout)]
-public class MainActivity : Activity, ISensorEventListener
+public partial class MainActivity : Activity, ISensorEventListener
 {
-    // The palette, from concierge.css. Chrome is greyscale; the accent is the
-    // only saturated colour, and status is a dot and a word.
-    private static readonly Color Ground = Color.ParseColor("#141414");
-    private static readonly Color Raised = Color.ParseColor("#1F1F1F");
-    private static readonly Color Ink = Color.ParseColor("#EDEDEC");
-    private static readonly Color InkSoft = Color.ParseColor("#A3A3A1");
-    private static readonly Color InkFaint = Color.ParseColor("#6E6E6C");
-    private static readonly Color Accent = Color.ParseColor("#2196F3");
-    private static readonly Color Danger = Color.ParseColor("#F85149");
-    private static readonly Color Waiting = Color.ParseColor("#D29922");
-    private static readonly Color Done = Color.ParseColor("#3FB950");
+    private static Color Token(int id) => new(Android.App.Application.Context.GetColor(id));
+    private static readonly Color Ground = Token(Resource.Color.cm_color_canvas);
+    private static readonly Color Raised = Token(Resource.Color.cm_color_surface_raised);
+    private static readonly Color Ink = Token(Resource.Color.cm_color_text_primary);
+    private static readonly Color InkSoft = Token(Resource.Color.cm_color_text_secondary);
+    private static readonly Color InkFaint = Token(Resource.Color.cm_color_text_disabled);
+    private static readonly Color Accent = Token(Resource.Color.cm_color_accent_text);
+    private static readonly Color Danger = Token(Resource.Color.cm_color_critical);
+    private static readonly Color Waiting = Token(Resource.Color.cm_color_warning);
+    private static readonly Color Done = Token(Resource.Color.cm_color_positive);
 
     private const int SpeechRequest = 1;
 
@@ -82,12 +61,30 @@ public class MainActivity : Activity, ISensorEventListener
     private string _lastHeard = string.Empty;
 
     private FrameLayout? _root;
+    private IReadOnlyList<Concierge.Away.ConnectedDevice> _devices = [];
+    private CancellationTokenSource? _presenceStop;
+    private bool _showDevices;
+    private bool _resumed;
+    private bool _thinking;
+    private ApprovalRequest? _visibleApproval;
+    private string? _spokenApprovalId;
+    private float _touchX, _touchY;
+    private bool _swipeConsumed;
 
     public MainActivity() => _hands = new Concierge.Away.WatchHands(_desk);
 
     protected override void OnCreate(Bundle? savedInstanceState)
     {
         base.OnCreate(savedInstanceState);
+#if DEBUG
+        // Keep the connection proof visible during device testing. The flag is
+        // scoped to this foreground window and is absent from release builds.
+        Window?.AddFlags(WindowManagerFlags.KeepScreenOn);
+#endif
+
+        _desk.DeviceName = Android.Provider.Settings.Global.GetString(ContentResolver, "device_name") ?? "StarDust";
+        _desk.DeviceId = Android.Provider.Settings.Secure.GetString(ContentResolver, Android.Provider.Settings.Secure.AndroidId) ?? _desk.DeviceName;
+        _desk.DevicePlatform = "WearOS";
 
         _root = new FrameLayout(this);
         _root.SetBackgroundColor(Ground);
@@ -111,11 +108,21 @@ public class MainActivity : Activity, ISensorEventListener
             return;
         }
 
+        var scrollY = _scroll?.ScrollY ?? 0;
+        _scroll = null;
         _root.RemoveAllViews();
+        if (_pane != WristPane.Home) { _visibleApproval = null; _root.AddView(BuildWristPane()); var scroller = _scroll; scroller?.Post(() => scroller.ScrollTo(0, scrollY)); return; }
+        _visibleApproval = null;
+        if (_showDevices)
+        {
+            _root.AddView(BuildDevices());
+            return;
+        }
 
         var view = _face.Next(
             [.. _waiting.Select(a => new ApprovalRequest(a.Id.ToString(), a.Tool, a.Risk, a.Summary, a.AskedAt))],
             _changed?.What);
+        _visibleApproval = view.Waiting;
 
         _root.AddView(view.Screen switch
         {
@@ -123,6 +130,10 @@ public class MainActivity : Activity, ISensorEventListener
             WatchScreen.Change => BuildChange(view.Changed!),
             _ => BuildSpeak(),
         });
+        var inbox = Label("Inbox", 11f, Accent);
+        inbox.ContentDescription = "Open conversations, queue and status";
+        inbox.Click += (_, _) => OpenPane(WristPane.Menu);
+        _root.AddView(inbox, new FrameLayout.LayoutParams(Dp(92), Dp(32), GravityFlags.Bottom | GravityFlags.CenterHorizontal) { BottomMargin = Dp(12) });
     }
 
     // ── A decision, and nothing else ──────────────────────────────────────
@@ -134,22 +145,24 @@ public class MainActivity : Activity, ISensorEventListener
         column.AddView(Eyebrow("NEEDS YOU", RiskColour(approval.Risk)));
 
         var title = Label(approval.Title, 16f, Ink, bold: true);
-        title.SetMaxLines(3);
+        title.SetMaxLines(2);
         title.Ellipsize = Android.Text.TextUtils.TruncateAt.End;
         column.AddView(title, Spaced(6));
 
         var reach = Label(ReachOf(approval.Risk), 12f, InkSoft);
-        reach.SetMaxLines(2);
+        reach.SetMaxLines(1);
         reach.Ellipsize = Android.Text.TextUtils.TruncateAt.End;
         column.AddView(reach, Spaced(4));
 
         // Two controls, side by side, each big enough to hit without looking.
         var actions = new LinearLayout(this) { Orientation = Orientation.Horizontal };
-        actions.AddView(Pill("Allow", Accent, Color.ParseColor("#0B1218"),
+        actions.AddView(Pill("Yes", Token(Resource.Color.cm_color_accent), Ink,
             () => Decide(approval.Id, allowed: true)), Weighted());
-        actions.AddView(Pill("Deny", Raised, Ink,
+        actions.AddView(Pill("No", Raised, Ink,
             () => Decide(approval.Id, allowed: false)), Weighted(leftMargin: Dp(6)));
         column.AddView(actions, Spaced(12));
+        column.AddView(Pill("Say yes / no", Raised, Ink, Listen), Spaced(4));
+        column.AddView(Label("Swipe → Yes · ← No", 9f, InkSoft), Spaced(3));
 
         return column;
     }
@@ -173,13 +186,19 @@ public class MainActivity : Activity, ISensorEventListener
 
     /// <summary>Send what was said, and put the answer on the face.</summary>
     private Task SendAsync(string said)
-        => DrawAsync(_hands.SaidAsync(
-            said,
+    {
+        _thinking = true;
+        Render();
+        return DrawAsync(_hands.SaidAsync(said,
             new Concierge.Away.Situation(DateTimeOffset.Now, Motion: Moving(), AmbientLux: Light())));
+    }
 
     /// <summary>Deliver anything held, then read what is true now.</summary>
     private Task RefreshWaitingAsync()
-        => DrawAsync(_hands.LookedAgainAsync());
+    {
+        if (_desk.Waiting > 0) { _thinking = true; Render(); }
+        return DrawAsync(_hands.LookedAgainAsync());
+    }
 
     /// <summary>
     /// The only thing this file does with an answer: draw it.
@@ -195,6 +214,7 @@ public class MainActivity : Activity, ISensorEventListener
 
         RunOnUiThread(() =>
         {
+            _thinking = false;
             if (update.Say is { Length: > 0 } say)
             {
                 _lastHeard = say;
@@ -203,6 +223,7 @@ public class MainActivity : Activity, ISensorEventListener
             _waiting = update.Waiting;
             _changed = update.Changed;
             Render();
+            _ = RefreshWristAsync();
         });
     }
 
@@ -285,36 +306,20 @@ public class MainActivity : Activity, ISensorEventListener
         var held = _desk.Waiting;
 
         var said = !string.IsNullOrWhiteSpace(_lastHeard) ? _lastHeard
-            : held == 1 ? "1 waiting to go"
-            : held > 1 ? $"{held} waiting to go"
+            : held > 0 ? $"Tap to talk · {held} queued"
             : "Tap to talk";
-        var text = Label(said, string.IsNullOrWhiteSpace(_lastHeard) ? 13f : 15f,
-                         string.IsNullOrWhiteSpace(_lastHeard) ? InkFaint : Ink);
-        text.SetMaxLines(5);
-        text.Ellipsize = Android.Text.TextUtils.TruncateAt.End;
-        column.AddView(text);
-
-        // The microphone is the interface, so it is the biggest thing here.
-        // An ImageButton with the same three strokes the web recipe draws: a
-        // filled circle with a glyph in it, not a filled circle with a dot in
-        // it, which is what a text bullet actually looked like on the watch.
-        var mic = new ImageButton(this);
-        mic.SetImageResource(Resource.Drawable.ic_mic);
-        mic.SetScaleType(ImageView.ScaleType.CenterInside);
-        mic.Background = Round(Accent);
-        mic.SetPadding(Dp(16), Dp(16), Dp(16), Dp(16));
-        mic.ContentDescription = "Speak";
-        mic.Click += (_, _) => Listen();
-
-        var micParams = new LinearLayout.LayoutParams(Dp(64), Dp(64)) { TopMargin = Dp(14) };
-        micParams.Gravity = GravityFlags.CenterHorizontal;
-        column.AddView(mic, micParams);
+        var ring = new AudiogramView(this, _thinking ? "Thinking…" : said, _thinking);
+        ring.Click += (_, _) => Listen();
+        ring.LongClick += (_, _) => OpenPane(WristPane.Menu);
+        var ringParams = new LinearLayout.LayoutParams(Dp(166), Dp(166)) { TopMargin = Dp(4), Gravity = GravityFlags.CenterHorizontal };
+        column.AddView(ring, ringParams);
 
         return column;
     }
 
     private void Listen()
     {
+        _spokenApprovalId = _visibleApproval?.Id;
         // Wear OS carries a recogniser, but a stripped image may not. Say so
         // rather than appear to listen and never answer.
         if (!SpeechRecognizer.IsRecognitionAvailable(this))
@@ -342,6 +347,8 @@ public class MainActivity : Activity, ISensorEventListener
     protected override void OnActivityResult(int requestCode, [GeneratedEnum] Result resultCode, Intent? data)
     {
         base.OnActivityResult(requestCode, resultCode, data);
+        var approvalId = _spokenApprovalId;
+        _spokenApprovalId = null;
 
         if (requestCode != SpeechRequest || resultCode != Result.Ok || data is null)
         {
@@ -352,6 +359,11 @@ public class MainActivity : Activity, ISensorEventListener
 
         if (heard is { Count: > 0 } && heard[0] is { Length: > 0 } said)
         {
+            if (WatchInteraction.ApprovalReply(said, approvalId is not null) is { } allowed)
+            {
+                Decide(approvalId!, allowed);
+                return;
+            }
             // Shown first, then sent. A wrist held up mid-sentence should confirm it was
             // understood before anything slower happens — and what happens next takes a
             // network, which on a train takes a while or never.
@@ -407,6 +419,14 @@ public class MainActivity : Activity, ISensorEventListener
     protected override void OnResume()
     {
         base.OnResume();
+        _resumed = true;
+        StartHandGestures();
+        _ = RefreshWristAsync();
+        if (_presenceStop is null)
+        {
+            _presenceStop = new CancellationTokenSource();
+            _ = RefreshDevicesAsync(_presenceStop.Token);
+        }
 
         _sensors = GetSystemService(SensorService) as SensorManager;
 
@@ -428,6 +448,11 @@ public class MainActivity : Activity, ISensorEventListener
 
     protected override void OnPause()
     {
+        _resumed = false;
+        StopHandGestures();
+        _presenceStop?.Cancel();
+        _presenceStop?.Dispose();
+        _presenceStop = null;
         _sensors?.UnregisterListener(this);
         base.OnPause();
     }
@@ -508,6 +533,10 @@ public class MainActivity : Activity, ISensorEventListener
             Orientation = Orientation.Vertical
         };
         column.SetGravity(GravityFlags.Center);
+        column.AddView(Label("Concierge", 17f, Ink, bold: true));
+        var status = Label(_devices.Count == 0 ? "Finding Desktop…" : $"{_devices.Count(d => d.Connected)} devices connected", 10f, Accent);
+        status.Click += (_, _) => { _showDevices = !_showDevices; Render(); };
+        column.AddView(status, Spaced(4));
 
         var round = Resources?.Configuration?.IsScreenRound ?? false;
         var inset = Dp(round ? 26 : 12);
@@ -518,6 +547,94 @@ public class MainActivity : Activity, ISensorEventListener
             ViewGroup.LayoutParams.MatchParent);
 
         return column;
+    }
+
+    private async Task RefreshDevicesAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                var devices = await _desk.RefreshDevicesAsync(ct).ConfigureAwait(false);
+                RunOnUiThread(() =>
+                {
+                    var changed = !_devices.Select(d => (d.Id, d.Name, d.Platform, d.Connected))
+                        .SequenceEqual(devices.Select(d => (d.Id, d.Name, d.Platform, d.Connected)));
+                    _devices = devices;
+                    if (_resumed && changed) Render();
+                });
+                if (_resumed) await RefreshWristAsync(ct).ConfigureAwait(false);
+                await Task.Delay(10000, ct).ConfigureAwait(false);
+            }
+        }
+        catch (System.OperationCanceledException) { }
+    }
+
+    private View BuildDevices()
+    {
+        var column = Column();
+        foreach (var device in _devices)
+        {
+            column.AddView(Label(device.Name, 12f, Ink, bold: true), Spaced(4));
+            column.AddView(Label($"{device.Platform} · {(device.Connected ? "Connected" : "Offline")}", 10f,
+                device.Connected ? Accent : InkFaint));
+        }
+        column.AddView(Pill("Back", Raised, Ink, () => { _showDevices = false; Render(); }), Spaced(8));
+        return column;
+    }
+
+    protected override void OnDestroy()
+    {
+        _presenceStop?.Cancel();
+        StopHandGestures();
+        base.OnDestroy();
+    }
+
+    public override bool DispatchTouchEvent(MotionEvent? motion)
+    {
+        if (motion is null) return base.DispatchTouchEvent(motion);
+        if (motion.Action == MotionEventActions.Down) { _touchX = motion.GetX(); _touchY = motion.GetY(); _swipeConsumed = false; }
+        if (motion.Action == MotionEventActions.Move && !_swipeConsumed)
+        {
+            var density = Resources?.DisplayMetrics?.Density ?? 1f;
+            var x = (motion.GetX() - _touchX) / density;
+            var y = (motion.GetY() - _touchY) / density;
+            var navigation = Math.Abs(x) > 64 && Math.Abs(x) > Math.Abs(y) * 1.5f
+                || _pane == WristPane.Home && y < -64 && Math.Abs(y) > Math.Abs(x) * 1.5f;
+            if (navigation)
+            {
+                using var cancel = MotionEvent.Obtain(motion);
+                cancel!.Action = MotionEventActions.Cancel;
+                base.DispatchTouchEvent(cancel);
+                _swipeConsumed = Swipe(x, y);
+            }
+        }
+        if (_swipeConsumed) return true;
+        return base.DispatchTouchEvent(motion);
+    }
+
+    [Obsolete("WearOS uses the legacy callback for the device-list back action.")]
+    public override void OnBackPressed()
+    {
+        if (_pane != WristPane.Home) BackToWrist();
+        else if (_showDevices) { _showDevices = false; Render(); }
+        else base.OnBackPressed();
+    }
+
+    private bool Swipe(float x, float y)
+    {
+        if (_pane != WristPane.Home) { if (x > 64 && Math.Abs(x) > Math.Abs(y) * 1.5f) { BackToWrist(); return true; } return false; }
+        if (y < -64 && Math.Abs(y) > Math.Abs(x) * 1.5f) { OpenPane(WristPane.Menu); return true; }
+        switch (WatchInteraction.Swipe(x, y, _showDevices, _visibleApproval is not null))
+        {
+            case WatchSwipeAction.Devices: OpenPane(WristPane.Menu); return true;
+            case WatchSwipeAction.Back:
+                if (_showDevices) { _showDevices = false; Render(); } else Finish();
+                return true;
+            case WatchSwipeAction.Yes: Decide(_visibleApproval!.Id, true); return true;
+            case WatchSwipeAction.No: Decide(_visibleApproval!.Id, false); return true;
+            default: return false;
+        }
     }
 
     /// <summary>Status is a dot and a word. Never a filled card, never a badge.</summary>

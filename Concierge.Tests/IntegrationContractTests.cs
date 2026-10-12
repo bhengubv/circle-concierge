@@ -150,8 +150,8 @@ public sealed class IntegrationContractTests
         Assert.Contains("ILlmRuntimeService LlmRuntime", File.ReadAllText(basePath), StringComparison.Ordinal);
 
         var page = File.ReadAllText(desktop);
-        Assert.Contains("runtime.Engine", page, StringComparison.Ordinal);
-        Assert.Contains("on device", page, StringComparison.Ordinal);
+        Assert.Contains("AI and app settings", page, StringComparison.Ordinal);
+        Assert.Contains("Circle AI", page, StringComparison.Ordinal);
     }
 
     [Fact]

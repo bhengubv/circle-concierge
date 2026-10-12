@@ -39,10 +39,13 @@
   --cm-skin-circle-accent: #005EA8;
   --cm-skin-tide-accent: #00695C;
   --cm-skin-berry-accent: #8A315E;
+  --cm-skin-lala-accent: #40826D;
+  --cm-skin-sana-accent: #EAA221;
   --cm-color-canvas: #F3F6FA;
   --cm-color-surface: #FFFFFF;
   --cm-color-surface-raised: #F9FBFD;
   --cm-color-surface-glass-tint: rgb(255 255 255 / 0.92);
+  --cm-color-surface-glass-tint-edge: rgb(255 255 255 / 0.42);
   --cm-color-text-primary: #14202C;
   --cm-color-text-secondary: #475667;
   --cm-color-text-disabled: #5B6877;
@@ -57,6 +60,8 @@
   --cm-color-warning: #805300;
   --cm-color-critical: #B3261E;
   --cm-color-glass-stroke: #B6C6D6;
+  --cm-color-glass-edge-highlight: rgb(255 255 255 / 0.85);
+  --cm-color-glass-edge-shadow: rgb(0 0 0 / 0.55);
   --cm-color-accent-text: #00548F;
 }
 [data-theme="dark"] {
@@ -65,6 +70,7 @@
   --cm-color-surface: #161616;
   --cm-color-surface-raised: #222222;
   --cm-color-surface-glass-tint: rgb(22 22 22 / 0.94);
+  --cm-color-surface-glass-tint-edge: rgb(22 22 22 / 0.42);
   --cm-color-text-primary: #FFFFFF;
   --cm-color-text-secondary: rgb(255 255 255 / 0.7);
   --cm-color-text-disabled: rgb(255 255 255 / 0.55);
@@ -79,6 +85,8 @@
   --cm-color-warning: #FFB300;
   --cm-color-critical: #FF8A80;
   --cm-color-glass-stroke: #565656;
+  --cm-color-glass-edge-highlight: rgb(255 255 255 / 0.85);
+  --cm-color-glass-edge-shadow: rgb(0 0 0 / 0.55);
   --cm-color-accent-text: #56B4FF;
 }
 :root[data-theme="light"][data-skin="circle"] {
@@ -89,6 +97,7 @@
   --cm-color-tile: #005EA8;
   --cm-color-on-tile: #FFFFFF;
   --cm-color-surface-glass-tint: rgb(232 245 255 / 0.86);
+  --cm-color-surface-glass-tint-edge: rgb(232 245 255 / 0.34);
   --cm-color-glass-stroke: #A7CDED;
 }
 :root[data-theme="dark"][data-skin="circle"] {
@@ -99,6 +108,7 @@
   --cm-color-tile: #005EA8;
   --cm-color-on-tile: #FFFFFF;
   --cm-color-surface-glass-tint: rgb(8 17 29 / 0.86);
+  --cm-color-surface-glass-tint-edge: rgb(8 17 29 / 0.34);
   --cm-color-glass-stroke: #2F8ED4;
 }
 :root[data-theme="light"][data-skin="tide"] {
@@ -109,6 +119,7 @@
   --cm-color-tile: #087568;
   --cm-color-on-tile: #FFFFFF;
   --cm-color-surface-glass-tint: rgb(225 248 242 / 0.86);
+  --cm-color-surface-glass-tint-edge: rgb(225 248 242 / 0.34);
   --cm-color-glass-stroke: #83C7B9;
 }
 :root[data-theme="dark"][data-skin="tide"] {
@@ -119,6 +130,7 @@
   --cm-color-tile: #165B50;
   --cm-color-on-tile: #FFFFFF;
   --cm-color-surface-glass-tint: rgb(7 45 39 / 0.86);
+  --cm-color-surface-glass-tint-edge: rgb(7 45 39 / 0.34);
   --cm-color-glass-stroke: #45A994;
 }
 :root[data-theme="light"][data-skin="berry"] {
@@ -129,6 +141,7 @@
   --cm-color-tile: #843450;
   --cm-color-on-tile: #FFFFFF;
   --cm-color-surface-glass-tint: rgb(255 236 244 / 0.86);
+  --cm-color-surface-glass-tint-edge: rgb(255 236 244 / 0.34);
   --cm-color-glass-stroke: #D9A0B6;
 }
 :root[data-theme="dark"][data-skin="berry"] {
@@ -139,5 +152,50 @@
   --cm-color-tile: #69324A;
   --cm-color-on-tile: #FFFFFF;
   --cm-color-surface-glass-tint: rgb(49 18 35 / 0.86);
+  --cm-color-surface-glass-tint-edge: rgb(49 18 35 / 0.34);
   --cm-color-glass-stroke: #D579A0;
+}
+:root[data-theme="light"][data-skin="lala"] {
+  --cm-color-accent: #40826D;
+  --cm-color-accent-text: #2B5A4B;
+  --cm-color-accent-soft: #ECF2F0;
+  --cm-color-on-accent: #FFFFFF;
+  --cm-color-tile: #40826D;
+  --cm-color-on-tile: #FFFFFF;
+  --cm-color-surface-glass-tint: rgb(236 242 240 / 0.86);
+  --cm-color-surface-glass-tint-edge: rgb(236 242 240 / 0.34);
+  --cm-color-glass-stroke: #96BAAF;
+}
+:root[data-theme="dark"][data-skin="lala"] {
+  --cm-color-accent: #96BAAF;
+  --cm-color-accent-text: #96BAAF;
+  --cm-color-accent-soft: #12241F;
+  --cm-color-on-accent: #06140F;
+  --cm-color-tile: #40826D;
+  --cm-color-on-tile: #FFFFFF;
+  --cm-color-surface-glass-tint: rgb(18 36 31 / 0.86);
+  --cm-color-surface-glass-tint-edge: rgb(18 36 31 / 0.34);
+  --cm-color-glass-stroke: #669B8A;
+}
+:root[data-theme="light"][data-skin="sana"] {
+  --cm-color-accent: #EAA221;
+  --cm-color-accent-text: #0A192F;
+  --cm-color-accent-soft: #FDF6E9;
+  --cm-color-on-accent: #FFFFFF;
+  --cm-color-tile: #EAA221;
+  --cm-color-on-tile: #FFFFFF;
+  --cm-color-surface-glass-tint: rgb(253 246 233 / 0.86);
+  --cm-color-surface-glass-tint-edge: rgb(253 246 233 / 0.34);
+  --cm-color-glass-stroke: #F3CC85;
+}
+:root[data-theme="dark"][data-skin="sana"] {
+  --cm-color-accent: #F3CC85;
+  --cm-color-accent-text: #F3CC85;
+  --cm-color-accent-soft: #422D09;
+  --cm-color-on-accent: #1C1304;
+  --cm-color-tile: #EAA221;
+  --cm-color-on-tile: #FFFFFF;
+  --cm-color-surface-glass-tint: rgb(66 45 9 / 0.86);
+  --cm-color-surface-glass-tint-edge: rgb(66 45 9 / 0.34);
+  --cm-color-glass-stroke: #EEB54D;
 }

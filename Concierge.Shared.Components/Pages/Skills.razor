@@ -1,5 +1,7 @@
 @inject ISkillCatalogService SkillCatalog
 @inject Concierge.Shared.Skills.UserSkillFolders Folders
+@inject IJSRuntime JS
+@implements IAsyncDisposable
 
 @*
     Skills, as something you switch on — not a catalogue you read.
@@ -29,7 +31,7 @@
 
 <div class="sheet-back" @onclick="Close" aria-hidden="true"></div>
 
-<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="skills-title">
+<div class="sheet" @ref="_dialog" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="skills-title">
     <div class="sheet-head">
         <h1 class="sheet-title" id="skills-title">Skills</h1>
         <button class="icon-btn" type="button" title="Close" @onclick="Close">

@@ -1,0 +1,1758 @@
+@page "/projects"
+@using System.Text.Json
+@using Concierge.Shared.Chat
+@using Concierge.Shared.Butler
+@using Concierge.Shared.Planning
+@implements IDisposable
+@inject IProjectStore ProjectStore
+@inject ProjectAgentCoordinator AgentCoordinator
+@inject IConversationStore ConversationStore
+@inject BackgroundRuns BackgroundRuns
+@inject IEnumerable<IChatRuntime> Runtimes
+@inject NavigationManager Nav
+@inject IButlerWorkRunApi ButlerRunsApi
+@inject ProjectButlerRunMonitor ButlerMonitor
+
+<main class="projects-page" aria-labelledby="projects-heading">
+    <header class="projects-header">
+        <a class="projects-back" href="/">← Back to Concierge</a>
+        <p class="projects-eyebrow">YOUR WORK</p>
+        <h1 id="projects-heading">Projects</h1>
+        <p class="projects-intro">Keep a bigger goal, its workflows, decisions, and outputs together. A simple chat can stay a simple chat.</p>
+    </header>
+
+    @if (_error is not null)
+    {
+        <p class="projects-error" role="alert">@_error</p>
+    }
+
+    <div class="projects-layout">
+        <aside class="projects-list" aria-label="Your projects">
+            <div class="projects-list-head">
+                <h2>Your projects</h2>
+                <button class="projects-new" type="button" @onclick="StartNew">New project</button>
+                <button class="projects-new" type="button" @onclick="StartNewBusiness">Start a business</button>
+            </div>
+            @if (_loading)
+            {
+                <p class="projects-empty">Loading your projects…</p>
+            }
+            else if (_projects.Count == 0)
+            {
+                <p class="projects-empty">Your projects will show here. Start with an outcome you want to reach.</p>
+            }
+            else
+            {
+                @foreach (var project in _projects)
+                {
+                    <button class="project-list-item @(project.Id == _selected?.Id ? "is-selected" : null)" type="button"
+                            aria-pressed="@(project.Id == _selected?.Id ? "true" : "false")" @onclick="@(() => SelectAsync(project.Id))">
+                        <strong>@project.Name</strong>
+                        <span>@project.Status · @project.Workflows.Count workflow@(project.Workflows.Count == 1 ? "" : "s")</span>
+                    </button>
+                }
+            }
+            @if (_startups.Count > 0)
+            {
+                <section class="project-startup-list" aria-labelledby="startup-list-heading">
+                    <h3 id="startup-list-heading">Start-Up journeys</h3>
+                    @foreach (var startup in _startups)
+                    {
+                        <button class="project-list-item @(startup.Id == _selectedStartup?.Id ? "is-selected" : null)" type="button"
+                                aria-pressed="@(startup.Id == _selectedStartup?.Id ? "true" : "false")" @onclick="@(() => SelectStartupAsync(startup.Id))">
+                            <strong>@startup.Name</strong>
+                            <span>@(startup.Type == BusinessJourneyType.NewBusiness ? "New business" : "Existing business") · @startup.ProjectIds.Count project@(startup.ProjectIds.Count == 1 ? "" : "s")</span>
+                        </button>
+                    }
+                </section>
+            }
+        </aside>
+
+        <section class="projects-detail" aria-live="polite">
+            @if (_creatingBusiness)
+            {
+                <div class="project-create-panel startup-create-panel">
+                    <p class="projects-eyebrow">START-UP MODE · A BUSINESS-LEVEL JOURNEY</p>
+                    <h2>New business or existing business?</h2>
+                    <div class="startup-choice" role="group" aria-label="Business journey type">
+                        <button type="button" aria-pressed="@(_newBusinessType == BusinessJourneyType.NewBusiness ? "true" : "false")"
+                                class="@(_newBusinessType == BusinessJourneyType.NewBusiness ? "is-selected" : null)"
+                                @onclick="@(() => _newBusinessType = BusinessJourneyType.NewBusiness)">New business</button>
+                        <button type="button" aria-pressed="@(_newBusinessType == BusinessJourneyType.ExistingBusiness ? "true" : "false")"
+                                class="@(_newBusinessType == BusinessJourneyType.ExistingBusiness ? "is-selected" : null)"
+                                @onclick="@(() => _newBusinessType = BusinessJourneyType.ExistingBusiness)">Existing business</button>
+                    </div>
+                    <label for="startup-name">@(_newBusinessType == BusinessJourneyType.NewBusiness ? "Working name (optional)" : "Business name")</label>
+                    <input id="startup-name" @bind="_startupName" placeholder="For example: Northside Ads" />
+                    @if (_newBusinessType == BusinessJourneyType.ExistingBusiness)
+                    {
+                        <label for="startup-context">What is happening in the business today?</label>
+                        <textarea id="startup-context" @bind="_startupContext" rows="4" placeholder="People, customers, what is working, and what is difficult"></textarea>
+                    }
+                    else
+                    {
+                        <label for="startup-context">What are you thinking of building?</label>
+                        <textarea id="startup-context" @bind="_startupContext" rows="4" placeholder="The idea, who it might help, or what you are still deciding"></textarea>
+                    }
+                    <label for="startup-goal">Where would you like the business to get to?</label>
+                    <textarea id="startup-goal" @bind="_startupGoal" rows="3" placeholder="Describe the outcome in your own words"></textarea>
+                    <p class="project-linked-chat">This saves the business journey first. You can connect Projects and workflows as the plan takes shape.</p>
+                    <button class="project-primary" type="button" disabled="@_saving" @onclick="CreateStartupAsync">
+                        @(_saving ? "Saving…" : "Create Start-Up journey")
+                    </button>
+                </div>
+            }
+            else if (_selectedStartup is not null)
+            {
+                <div class="project-detail-head startup-detail-head">
+                    <div>
+                        <p class="projects-eyebrow">START-UP MODE · @(_selectedStartup.Type == BusinessJourneyType.NewBusiness ? "NEW BUSINESS" : "EXISTING BUSINESS") · REVISION @_selectedStartup.Revision</p>
+                        <h2>@_selectedStartup.Name</h2>
+                        <p>@_selectedStartup.Goal</p>
+                    </div>
+                    <button class="startup-edit-toggle" type="button" disabled="@_saving" @onclick="BeginEditStartupDetails">Edit business details</button>
+                    <label class="project-status-label" for="startup-status">Status</label>
+                    <select id="startup-status" value="@_selectedStartup.Status" @onchange="ChangeStartupStatusAsync">
+                        @foreach (var status in Enum.GetValues<ProjectStatus>())
+                        {
+                            <option value="@status">@status</option>
+                        }
+                    </select>
+                </div>
+                <section class="project-section" aria-labelledby="startup-context-title">
+                    <div class="project-section-head"><div><p class="projects-eyebrow">BUSINESS CONTEXT</p><h3 id="startup-context-title">@(_selectedStartup.Type == BusinessJourneyType.NewBusiness ? "Starting point" : "Current business")</h3></div></div>
+                    @if (_editingStartupDetails)
+                    {
+                        <div class="startup-edit-form">
+                            <label for="startup-edit-name">Business name</label>
+                            <input id="startup-edit-name" @bind="_startupEditName" />
+                            <label for="startup-edit-goal">Business goal</label>
+                            <textarea id="startup-edit-goal" @bind="_startupEditGoal" rows="3"></textarea>
+                            <label for="startup-edit-context">@(_selectedStartup.Type == BusinessJourneyType.NewBusiness ? "Starting point" : "What is happening in the business today?")</label>
+                            <textarea id="startup-edit-context" @bind="_startupEditContext" rows="4"></textarea>
+                            <div class="startup-edit-actions">
+                                <button class="project-primary" type="button" disabled="@_saving" @onclick="SaveStartupDetailsAsync">@(_saving ? "Saving…" : "Save business details")</button>
+                                <button class="startup-edit-toggle" type="button" disabled="@_saving" @onclick="CancelEditStartupDetails">Cancel</button>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <p>@_selectedStartup.CurrentContext</p>
+                    }
+                    <p>Concierge will use this business context and goal to help shape the next steps. You can review the planning prompt before sending it.</p>
+                    <button class="project-primary" type="button" @onclick="@(() => StartPlanningForStartup(_selectedStartup.Id))">Plan with Concierge</button>
+                </section>
+                @if (_selectedStartup.ConversationIds.Count > 0)
+                {
+                    <section class="project-section" aria-labelledby="startup-conversations-title">
+                        <div class="project-section-head"><div><p class="projects-eyebrow">CONTINUE THE PLAN</p><h3 id="startup-conversations-title">Planning conversations</h3></div></div>
+                        <ul class="startup-conversation-list">
+                            @foreach (var conversationId in _selectedStartup.ConversationIds)
+                            {
+                                <li><a href="@($"/chat/{conversationId}?startup={_selectedStartup.Id}")">Open business planning conversation</a></li>
+                            }
+                        </ul>
+                    </section>
+                }
+                <section class="project-section" aria-labelledby="startup-projects-title">
+                    <div class="project-section-head"><div><p class="projects-eyebrow">CONNECTED WORK</p><h3 id="startup-projects-title">Projects</h3></div></div>
+                    @if (_selectedStartup.ProjectIds.Count == 0)
+                    {
+                        <p class="projects-empty">No projects are connected yet. Start with one focused area of work, then add related projects as the business grows.</p>
+                    }
+                    else
+                    {
+                        <div class="startup-linked-projects">
+                            @foreach (var project in _projects.Where(project => _selectedStartup.ProjectIds.Contains(project.Id)))
+                            {
+                                <button class="project-list-item" type="button" @onclick="@(() => SelectAsync(project.Id))">
+                                    <strong>@project.Name</strong><span>@project.Status · @project.Workflows.Count workflow@(project.Workflows.Count == 1 ? "" : "s")</span>
+                                </button>
+                            }
+                        </div>
+                    }
+                    <div class="project-add-workflow startup-add-project">
+                        <label for="startup-project-select">Connect an existing project</label>
+                        <select id="startup-project-select" value="@_projectToLink" @onchange="SelectProjectToLink">
+                            <option value="">Choose a project</option>
+                            @foreach (var project in _projects.Where(project => project.StartupJourneyId is null && !_selectedStartup.ProjectIds.Contains(project.Id)))
+                            {
+                                <option value="@project.Id">@project.Name</option>
+                            }
+                        </select>
+                        <button type="button" disabled="@(_saving || _projectToLink is null)" @onclick="LinkProjectAsync">Connect project</button>
+                    </div>
+                    <button class="project-primary" type="button" @onclick="@(() => StartNewProjectForStartup(_selectedStartup.Id))">Create a project for this business</button>
+                </section>
+            }
+            else if (_creating || _selected is null)
+            {
+                <div class="project-create-panel">
+                    <p class="projects-eyebrow">A GOAL WORTH TRACKING</p>
+                    <h2>What do you want to make happen?</h2>
+                    <section class="project-starters" aria-labelledby="project-starters-title">
+                        <p class="projects-eyebrow">START WITH AN EXAMPLE</p>
+                        <h3 id="project-starters-title">Explore a starter Project</h3>
+                        <p>Choose one to see a useful first workflow. You can edit it before saving.</p>
+                        @foreach (var group in ProjectStarterTemplates.All.GroupBy(template => template.Group))
+                        {
+                            <div class="project-starter-group" aria-label="@group.Key starter Projects">
+                                <h4>@group.Key</h4>
+                                <div class="project-starter-grid">
+                                    @foreach (var template in group)
+                                    {
+                                        <button type="button" class="project-starter-card @(template.Id == _selectedStarter?.Id ? "is-selected" : null)"
+                                                aria-pressed="@(template.Id == _selectedStarter?.Id ? "true" : "false")"
+                                                @onclick="@(() => SelectStarter(template))">
+                                            <strong>@template.Name</strong><span>@template.Outcome</span>
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        }
+                        @if (_selectedStarter is not null)
+                        {
+                            <div class="project-starter-preview" role="status">
+                                <h4>@_selectedStarter.WorkflowName</h4>
+                                <p>@_selectedStarter.WorkflowOutcome</p>
+                                <p><strong>Assistant focus:</strong> @_selectedStarter.AssistantFocus</p>
+                                <ol>
+                                    @foreach (var step in _selectedStarter.Steps) { <li>@step.Name</li> }
+                                </ol>
+                                <p>These are editable examples. The assistant focus describes the intended capability; availability depends on Circle AI and configured integrations.</p>
+                            </div>
+                        }
+                    </section>
+                    <label for="project-name">Project name</label>
+                    <input id="project-name" @bind="_newName" placeholder="For example: Start an advertising business" />
+                    <label for="project-outcome">What would a good result look like?</label>
+                    <textarea id="project-outcome" @bind="_newOutcome" rows="3" placeholder="Describe the outcome in your own words"></textarea>
+                    @if (_projectBeingCreatedForStartup is { } startupProjectId && _startups.FirstOrDefault(startup => startup.Id == startupProjectId) is { } parentStartup)
+                    {
+                        <p class="project-linked-chat">This project will be connected to the @parentStartup.Name Start-Up journey.</p>
+                    }
+                    <label for="project-kind">What kind of work is this?</label>
+                    <select id="project-kind" @bind="_newWorkType">
+                        <option>Business</option>
+                        <option>Personal &amp; creative</option>
+                        <option>General</option>
+                    </select>
+                    @if (ConversationId is not null)
+                    {
+                        <p class="project-linked-chat">This project will include the conversation you came from.</p>
+                    }
+                    <button class="project-primary" type="button" disabled="@_saving" @onclick="CreateProjectAsync">
+                        @(_saving ? "Saving…" : _projectBeingCreatedForStartup is null ? "Create project" : "Create project for this business")
+                    </button>
+                </div>
+            }
+            else
+            {
+                <div class="project-detail-head">
+                    <div>
+                        <p class="projects-eyebrow">@_selected.WorkType · REVISION @_selected.Revision</p>
+                        <h2>@_selected.Name</h2>
+                        <p>@_selected.DesiredOutcome</p>
+                    </div>
+                    <label class="project-status-label" for="project-status">Status</label>
+                    <select id="project-status" value="@_selected.Status" @onchange="ChangeProjectStatusAsync">
+                        @foreach (var status in Enum.GetValues<ProjectStatus>())
+                        {
+                            <option value="@status">@status</option>
+                        }
+                    </select>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(_selected.StarterAgentFocus))
+                {
+                    <p class="project-starter-focus"><strong>Starter assistant focus:</strong> @_selected.StarterAgentFocus</p>
+                }
+
+                @if (_selected.ConversationIds.Count > 0)
+                {
+                    <p class="project-linked-chat">Includes @_selected.ConversationIds.Count conversation@( _selected.ConversationIds.Count == 1 ? "" : "s")</p>
+                }
+                @if (ConversationId is { } currentConversationId && currentConversationId != Guid.Empty)
+                {
+                    @if (_selected.ConversationIds.Contains(currentConversationId))
+                    {
+                        <p class="project-linked-chat" role="status">This conversation is linked to the project.</p>
+                    }
+                    else
+                    {
+                        <button class="project-primary project-link-conversation" type="button" disabled="@_saving" @onclick="LinkCurrentConversationAsync">
+                            @(_saving ? "Linking conversation…" : "Add this conversation to the project")
+                        </button>
+                    }
+                }
+
+                <section class="project-section" aria-labelledby="project-agents-title" aria-live="polite">
+                    <div class="project-section-head">
+                        <div><p class="projects-eyebrow">BOUNDED CIRCLE AI WORK</p><h3 id="project-agents-title">Project agents</h3></div>
+                    </div>
+                    <p>Concierge can research and analyse this Project in the background. These reviews cannot change files or take external actions; check the notes before using them. Concierge runs one review at a time on this device, with additional tasks queued.</p>
+                    @if (CircleAiRuntime is not { } agentRuntime)
+                    {
+                        <p class="projects-empty">Concierge's AI is not available in this app.</p>
+                    }
+                    else if (!agentRuntime.IsReady)
+                    {
+                        <p class="projects-empty" role="status">Concierge's AI is getting ready. Project reviews will be available when it is ready.</p>
+                    }
+                    else if (_selected.Status is ProjectStatus.Completed or ProjectStatus.Archived)
+                    {
+                        <p class="projects-empty">Reopen this Project before assigning agent work.</p>
+                    }
+                    else
+                    {
+                        <div class="project-add-workflow project-agent-create">
+                            <label for="project-agent-name">Agent name</label>
+                            <input id="project-agent-name" @bind="_agentName" maxlength="80" />
+                            <label for="project-agent-task">What should it investigate?</label>
+                            <textarea id="project-agent-task" @bind="_agentTask" rows="3" maxlength="4000" placeholder="For example: Compare the first three customer groups for this idea. Return evidence to look for, assumptions, and a recommendation."></textarea>
+                            <button type="button" disabled="@_saving" @onclick="QueueAgentAsync">@(_saving ? "Queuing…" : "Ask Concierge to review this Project")</button>
+                        </div>
+                    }
+                    @if (!_selected.AgentRuns.Any(run => run.WorkspaceId is null))
+                    {
+                        <p class="projects-empty">No agent tasks yet.</p>
+                    }
+                    else
+                    {
+                        <ol class="project-agent-list">
+                            @foreach (var agentRun in _selected.AgentRuns.Where(run => run.WorkspaceId is null).OrderByDescending(run => run.CreatedAt))
+                            {
+                                <li class="project-agent-item">
+                                    <div class="project-activity-heading"><strong>@agentRun.Name</strong><span>@AgentStatusLabel(agentRun.Status)</span></div>
+                                    <p>@agentRun.Task</p>
+                                    <ProjectAgentEventFeed Events="AgentEventsFor(agentRun.Id)" />
+                                    @if (!string.IsNullOrWhiteSpace(agentRun.Output))
+                                    {
+                                        <details open="@(agentRun.Status == ProjectAgentStatus.Review)">
+                                            <summary>@(agentRun.Status == ProjectAgentStatus.Review ? "Review findings" : "Saved notes so far")</summary>
+                                            <pre>@agentRun.Output</pre>
+                                        </details>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(agentRun.Problem))
+                                    {
+                                        <p class="projects-error" role="status">@agentRun.Problem</p>
+                                    }
+                                    <div class="project-agent-actions">
+                                        @if (agentRun.Status is ProjectAgentStatus.Queued or ProjectAgentStatus.Running)
+                                        {
+                                            <button type="button" disabled="@_pausingAgentIds.Contains(agentRun.Id)"
+                                                    @onclick="@(() => PauseAgentAsync(agentRun.Id))">
+                                                @(_pausingAgentIds.Contains(agentRun.Id) ? "Pausing…" : "Pause analysis")
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <button type="button" @onclick="@(() => ReviseAgent(agentRun))">Revise task</button>
+                                            <button type="button" disabled="@_saving" @onclick="@(() => RerunAgentAsync(agentRun))">Run again</button>
+                                        }
+                                    </div>
+                                </li>
+                            }
+                        </ol>
+                    }
+                </section>
+
+                <section class="project-section" aria-labelledby="project-butler-title" aria-live="polite">
+                    <div class="project-section-head"><div><p class="projects-eyebrow">OPERATIONAL EXECUTION</p><h3 id="project-butler-title">Butler activity</h3></div></div>
+                    <p>Concierge keeps Butler's external work attached to this Project so you can check progress and results here.</p>
+                    @if (_selected.ButlerRuns.Count == 0)
+                    {
+                        <p class="projects-empty">No work has been sent to Butler from this Project.</p>
+                    }
+                    else
+                    {
+                        <ol class="project-agent-list">
+                            @foreach (var run in _selected.ButlerRuns.OrderByDescending(run => run.CreatedAt))
+                            {
+                                <li class="project-agent-item">
+                                    <div class="project-activity-heading"><strong>@run.Summary</strong><span>@(run.CancellationRequested ? "Stop requested" : ButlerStatusLabel(run.Status))</span></div>
+                                    <p>@(run.ButlerRunId == Guid.Empty ? "Waiting for Butler to confirm the run" : $"Run {run.ButlerRunId}") · @run.OperationId</p>
+                                    @if (run.Events.Count > 0)
+                                    {
+                                        <ol class="project-activity-list">
+                                            @foreach (var item in run.Events.TakeLast(12))
+                                            {
+                                                <li class="project-activity-item"><strong>@item.Type</strong> <span>@item.Data</span></li>
+                                            }
+                                        </ol>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(run.Problem))
+                                    {
+                                        <p class="projects-error" role="status">@run.Problem</p>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(run.LastMonitorError))
+                                    {
+                                        <p class="projects-error" role="status">Concierge cannot reach Butler right now. Last confirmed status: @run.Status. @run.LastMonitorError</p>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(run.ResultJson))
+                                    {
+                                        <details><summary>Butler result</summary><pre>@run.ResultJson</pre></details>
+                                    }
+                                    <div class="project-agent-actions">
+                                        @if (!IsButlerTerminal(run.Status) && run.ButlerRunId != Guid.Empty)
+                                        {
+                                            <button type="button" disabled="@_refreshingButlerIds.Contains(run.Id)" @onclick="@(() => RefreshButlerRunAsync(run.Id))">
+                                                @(_refreshingButlerIds.Contains(run.Id) ? "Checking…" : "Check progress")
+                                            </button>
+                                        }
+                                        @if (!IsButlerTerminal(run.Status))
+                                        {
+                                            <button type="button" disabled="@(_refreshingButlerIds.Contains(run.Id) || run.CancellationRequested)" @onclick="@(() => CancelButlerRunAsync(run.Id))">@(run.CancellationRequested ? "Stop requested" : "Stop Butler run")</button>
+                                        }
+                                    </div>
+                                </li>
+                            }
+                        </ol>
+                    }
+                </section>
+
+                <section class="project-section" aria-labelledby="project-activity-title" aria-live="polite">
+                    <div class="project-section-head"><div><p class="projects-eyebrow">FROM THE CONVERSATIONS</p><h3 id="project-activity-title">Recent activity</h3></div></div>
+                    @if (_activity.Count == 0)
+                    {
+                        <p class="projects-empty">No conversations are linked to this project yet.</p>
+                    }
+                    else
+                    {
+                        <ol class="project-activity-list">
+                            @foreach (var activity in _activity)
+                            {
+                                <li class="project-activity-item">
+                                    <div class="project-activity-heading">
+                                        <strong>@activity.Title</strong>
+                                        <span class="project-activity-state" data-state="@activity.StateKey">@activity.State</span>
+                                    </div>
+                                    <p>@activity.Detail</p>
+                                    <div class="project-activity-footer">
+                                        @if (activity.At is { } at)
+                                        {
+                                            <time datetime="@at.ToString("O")">@at.ToLocalTime().ToString("g")</time>
+                                        }
+                                        <a href="@($"/chat/{activity.ConversationId}?project={_selected.Id}")">Open conversation</a>
+                                    </div>
+                                </li>
+                            }
+                        </ol>
+                    }
+                </section>
+
+                <section class="project-section" aria-labelledby="workspaces-title">
+                    <div class="project-section-head"><div><p class="projects-eyebrow">FOCUSED AREAS OF WORK</p><h3 id="workspaces-title">Workspaces</h3></div></div>
+                    @if (_selected.Workspaces.Count > 0)
+                    {
+                        <div class="project-workspaces">
+                            @foreach (var workspace in _selected.Workspaces)
+                            {
+                                <article class="project-workspace">
+                                    <header><div><h4>@workspace.Name</h4><p>@workspace.DesiredOutcome</p></div>
+                                        <select aria-label="@($"{workspace.Name} status")" value="@workspace.Status"
+                                                @onchange="@(args => ChangeWorkspaceStatusAsync(workspace.Id, args))">
+                                            @foreach (var status in Enum.GetValues<ProjectWorkStatus>())
+                                            {
+                                                <option value="@status">@status</option>
+                                            }
+                                        </select>
+                                    </header>
+                                    <p class="project-dependency">@workspace.WorkflowIds.Count workflow@(workspace.WorkflowIds.Count == 1 ? "" : "s") · @workspace.ConversationIds.Count conversation@(workspace.ConversationIds.Count == 1 ? "" : "s")</p>
+                                    @if (workspace.WorkflowIds.Count > 0)
+                                    {
+                                        <ul class="project-workspace-links">
+                                            @foreach (var linkedWorkflow in _selected.Workflows.Where(workflow => workspace.WorkflowIds.Contains(workflow.Id)))
+                                            {
+                                                <li>@linkedWorkflow.Name</li>
+                                            }
+                                        </ul>
+                                    }
+                                    @if (workspace.ConversationIds.Count > 0)
+                    {
+                                        <nav class="project-workspace-conversations" aria-label="Workspace conversations">
+                                            @foreach (var conversationId in workspace.ConversationIds)
+                                            {
+                                                <a href="@($"/chat/{conversationId}?project={_selected.Id}&workspace={workspace.Id}")">Open conversation</a>
+                                            }
+                        </nav>
+                    }
+                                    <section class="project-workspace-agent" aria-label="Workspace agent work">
+                                        <h5>Workspace agents</h5>
+                                        @foreach (var agentRun in _selected.AgentRuns.Where(run => run.WorkspaceId == workspace.Id).OrderByDescending(run => run.CreatedAt))
+                                        {
+                                            <article class="project-agent-item">
+                                                <div class="project-activity-heading"><strong>@agentRun.Name</strong><span>@AgentStatusLabel(agentRun.Status)</span></div>
+                                                <p>@agentRun.Task</p>
+                                                <ProjectAgentEventFeed Events="AgentEventsFor(agentRun.Id)" />
+                                                @if (!string.IsNullOrWhiteSpace(agentRun.Output))
+                                                {
+                                                    <details open="@(agentRun.Status == ProjectAgentStatus.Review)">
+                                                        <summary>@(agentRun.Status == ProjectAgentStatus.Review ? "Review findings" : "Saved notes so far")</summary>
+                                                        <pre>@agentRun.Output</pre>
+                                                    </details>
+                                                }
+                                                @if (!string.IsNullOrWhiteSpace(agentRun.Problem))
+                                                {
+                                                    <p class="projects-error" role="status">@agentRun.Problem</p>
+                                                }
+                                                <div class="project-agent-actions">
+                                                    @if (agentRun.Status is ProjectAgentStatus.Queued or ProjectAgentStatus.Running)
+                                                    {
+                                                        <button type="button" disabled="@_pausingAgentIds.Contains(agentRun.Id)"
+                                                                @onclick="@(() => PauseAgentAsync(agentRun.Id))">
+                                                            @(_pausingAgentIds.Contains(agentRun.Id) ? "Pausing…" : "Pause analysis")
+                                                        </button>
+                                                    }
+                                                    else
+                                                    {
+                                                        <button type="button" @onclick="@(() => ReviseAgent(agentRun))">Revise task</button>
+                                                        <button type="button" disabled="@_saving" @onclick="@(() => RerunAgentAsync(agentRun))">Run again</button>
+                                                    }
+                                                </div>
+                                            </article>
+                                        }
+                                        <label for="@($"workspace-agent-task-{workspace.Id}")">What should an agent investigate in this Workspace?</label>
+                                        <textarea id="@($"workspace-agent-task-{workspace.Id}")" rows="2" maxlength="4000"
+                                                  value="@WorkspaceAgentTask(workspace.Id)"
+                                                  @oninput="@(args => SetWorkspaceAgentTask(workspace.Id, args.Value?.ToString()))"></textarea>
+                                        @if (CircleAiRuntime is { IsReady: true })
+                                        {
+                                            <button type="button" disabled="@_saving" @onclick="@(() => QueueWorkspaceAgentAsync(workspace.Id))">Ask Concierge to review this Workspace</button>
+                                        }
+                                        else
+                                        {
+                                            <p class="projects-empty" role="status">Concierge's AI must be ready on this device before Workspace reviews can run.</p>
+                                        }
+                                    </section>
+                                </article>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="projects-empty">Create a focused Workspace for a related set of conversations and workflows.</p>
+                    }
+                    <div class="project-add-workflow project-add-workspace">
+                        <label class="sr" for="workspace-name">Workspace name</label>
+                        <input id="workspace-name" @bind="_workspaceName" placeholder="For example: Product launch" />
+                        <label class="sr" for="workspace-outcome">Workspace outcome</label>
+                        <input id="workspace-outcome" @bind="_workspaceOutcome" placeholder="What should this area of work accomplish?" />
+                        @if (_selected.Workflows.Count > 0)
+                        {
+                            <fieldset class="project-workspace-workflows">
+                                <legend>Include workflows</legend>
+                                @foreach (var workflow in _selected.Workflows)
+                                {
+                                    <label><input type="checkbox" checked="@_workspaceWorkflowIds.Contains(workflow.Id)"
+                                                  @onchange="@(args => ToggleWorkspaceWorkflow(workflow.Id, args))" /> @workflow.Name</label>
+                                }
+                            </fieldset>
+                        }
+                        <button type="button" disabled="@_saving" @onclick="CreateWorkspaceAsync">Create workspace</button>
+                    </div>
+                </section>
+
+                <section class="project-section" aria-labelledby="workflows-title">
+                    <div class="project-section-head">
+                        <div><p class="projects-eyebrow">HOW THE WORK MOVES</p><h3 id="workflows-title">Workflows</h3></div>
+                    </div>
+                    @if (_selected.Workflows.Count == 0)
+                    {
+                        <p class="projects-empty">Break the goal into separate streams of work. For example, an app business might have product, launch, and marketing workflows.</p>
+                    }
+                    @foreach (var workflow in _selected.Workflows)
+                    {
+                        <article class="project-workflow">
+                            <header>
+                                @if (_editingWorkflowId == workflow.Id)
+                                {
+                                    <div class="project-inline-edit">
+                                        <label class="sr" for="@($"workflow-edit-name-{workflow.Id}")">Workflow name</label>
+                                        <input id="@($"workflow-edit-name-{workflow.Id}")" @bind="_workflowEditName" />
+                                        <label class="sr" for="@($"workflow-edit-outcome-{workflow.Id}")">Workflow outcome</label>
+                                        <textarea id="@($"workflow-edit-outcome-{workflow.Id}")" @bind="_workflowEditOutcome" rows="2"></textarea>
+                                        <div><button type="button" disabled="@_saving" @onclick="SaveWorkflowEditAsync">Save workflow</button>
+                                            <button type="button" disabled="@_saving" @onclick="CancelWorkflowEdit">Cancel</button></div>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div><h4>@workflow.Name</h4><p>@workflow.DesiredOutcome</p></div>
+                                    <button class="project-edit-control" type="button" disabled="@_saving" aria-label="Edit @workflow.Name workflow"
+                                            @onclick="@(() => BeginWorkflowEdit(workflow))">Edit</button>
+                                }
+                                <select aria-label="@($"{workflow.Name} status")" value="@workflow.Status"
+                                        @onchange="@(args => ChangeWorkflowStatusAsync(workflow.Id, args))">
+                                    @foreach (var status in Enum.GetValues<ProjectWorkStatus>())
+                                    {
+                                        <option value="@status">@status</option>
+                                    }
+                                </select>
+                            </header>
+                            @if (workflow.Steps.Count > 0)
+                            {
+                                <ol class="project-steps">
+                                    @foreach (var step in workflow.Steps)
+                                    {
+                                        <li>
+                                            @if (_editingStepId == step.Id)
+                                            {
+                                                <div class="project-inline-edit project-step-inline-edit">
+                                                    <label class="sr" for="@($"step-edit-name-{step.Id}")">Step name</label>
+                                                    <input id="@($"step-edit-name-{step.Id}")" @bind="_stepEditName" />
+                                                    <label class="sr" for="@($"step-edit-description-{step.Id}")">Step details</label>
+                                                    <textarea id="@($"step-edit-description-{step.Id}")" @bind="_stepEditDescription" rows="2"></textarea>
+                                                    <fieldset class="project-step-dependency-edit">
+                                                        <legend>Wait for these steps</legend>
+                                                        @foreach (var dependency in _selected.Workflows.SelectMany(candidateWorkflow => candidateWorkflow.Steps
+                                                            .Where(candidateStep => candidateStep.Id != step.Id)
+                                                            .Select(candidateStep => (Workflow: candidateWorkflow, Step: candidateStep))))
+                                                        {
+                                                            <label><input type="checkbox" aria-label="@($"Wait for {dependency.Workflow.Name}: {dependency.Step.Name}")"
+                                                                          disabled="@WouldCreateDependencyCycle(step, dependency.Step)"
+                                                                          checked="@_stepEditDependencyIds.Contains(dependency.Step.Id)"
+                                                                          @onchange="@(args => ToggleStepEditDependency(dependency.Step.Id, args))" />
+                                                                @dependency.Workflow.Name: @dependency.Step.Name</label>
+                                                        }
+                                                        <small>Steps that would create a circular dependency are disabled.</small>
+                                                        @if (_selected.Workflows.SelectMany(candidateWorkflow => candidateWorkflow.Steps).Count() <= 1)
+                                                        {
+                                                            <small>This is the only step so far. Add another step to create a dependency.</small>
+                                                        }
+                                                    </fieldset>
+                                                    <div><button type="button" disabled="@_saving" @onclick="@(() => SaveStepEditAsync(workflow.Id, step.Id))">Save step</button>
+                                                        <button type="button" disabled="@_saving" @onclick="CancelStepEdit">Cancel</button></div>
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <span><strong>@step.Name</strong>@if (!string.IsNullOrWhiteSpace(step.Description)) { <small>@step.Description</small> }</span>
+                                                <button class="project-edit-control" type="button" disabled="@_saving" aria-label="Edit @step.Name step"
+                                                        @onclick="@(() => BeginStepEdit(step))">Edit</button>
+                                            }
+                                            <select aria-label="@($"{step.Name} status")" value="@step.Status"
+                                                    @onchange="@(args => ChangeStepStatusAsync(workflow.Id, step.Id, args))">
+                                                @foreach (var status in Enum.GetValues<ProjectWorkStatus>())
+                                                {
+                                                    <option value="@status">@status</option>
+                                                }
+                                            </select>
+                                            @if (step.DependsOn.Count > 0)
+                                            {
+                                                <small class="project-dependency">Depends on: @DescribeDependencies(step)</small>
+                                            }
+                                        </li>
+                                    }
+                                </ol>
+                            }
+                            <div class="project-add-step">
+                                <label class="sr" for="@($"step-{workflow.Id}")">New step in @workflow.Name</label>
+                                <input id="@($"step-{workflow.Id}")" @bind="_stepName" placeholder="Add a milestone or next step" />
+                                <select aria-label="Depends on" @bind="_stepDependency">
+                                    <option value="">No dependency</option>
+                                    @foreach (var dependency in _selected.Workflows.SelectMany(candidateWorkflow => candidateWorkflow.Steps.Select(candidateStep => (Workflow: candidateWorkflow, Step: candidateStep))))
+                                    {
+                                        <option value="@dependency.Step.Id">After @dependency.Workflow.Name: @dependency.Step.Name</option>
+                                    }
+                                </select>
+                                <button type="button" disabled="@_saving" @onclick="@(() => AddStepAsync(workflow.Id))">Add step</button>
+                            </div>
+                        </article>
+                    }
+                    <div class="project-add-workflow">
+                        <label class="sr" for="workflow-name">New workflow name</label>
+                        <input id="workflow-name" @bind="_workflowName" placeholder="For example: Launch and marketing" />
+                        <label class="sr" for="workflow-outcome">Workflow outcome</label>
+                        <input id="workflow-outcome" @bind="_workflowOutcome" placeholder="What should this workflow deliver?" />
+                        <button type="button" disabled="@_saving" @onclick="AddWorkflowAsync">Add workflow</button>
+                    </div>
+                </section>
+
+                <section class="project-section" aria-labelledby="assumptions-title">
+                    <div class="project-section-head"><div><p class="projects-eyebrow">KEEP THE CONTEXT</p><h3 id="assumptions-title">Assumptions</h3></div></div>
+                    @if (_selected.Assumptions.Count > 0)
+                    {
+                        <ul class="project-assumptions">@foreach (var assumption in _selected.Assumptions) { <li>@assumption</li> }</ul>
+                    }
+                    <div class="project-add-workflow">
+                        <label class="sr" for="assumption-input">New assumption</label>
+                        <input id="assumption-input" @bind="_assumption" placeholder="Add something the plan assumes" />
+                        <button type="button" disabled="@_saving" @onclick="AddAssumptionAsync">Add assumption</button>
+                    </div>
+                </section>
+
+                <section class="project-section" aria-labelledby="decisions-title">
+                    <div class="project-section-head"><div><p class="projects-eyebrow">WHY THE PLAN LOOKS THIS WAY</p><h3 id="decisions-title">Decisions</h3></div></div>
+                    @if (_selected.Decisions.Count > 0)
+                    {
+                        @foreach (var decision in _selected.Decisions)
+                        {
+                            <article class="project-decision"><strong>@decision.Question</strong><p>@decision.Answer</p><small>@decision.DecidedAt.ToLocalTime().ToString("d MMM yyyy")</small></article>
+                        }
+                    }
+                    <div class="project-add-workflow project-add-decision">
+                        <label class="sr" for="decision-question">Decision or question</label>
+                        <input id="decision-question" @bind="_decisionQuestion" placeholder="What did you decide?" />
+                        <label class="sr" for="decision-answer">Decision answer</label>
+                        <input id="decision-answer" @bind="_decisionAnswer" placeholder="Record the answer and why" />
+                        <button type="button" disabled="@_saving" @onclick="AddDecisionAsync">Record decision</button>
+                    </div>
+                </section>
+
+                <section class="project-section" aria-labelledby="artifacts-title">
+                    <div class="project-section-head"><div><p class="projects-eyebrow">WHAT THE WORK PRODUCED</p><h3 id="artifacts-title">Artifacts</h3></div></div>
+                    @if (_selected.Artifacts.Count > 0 || _conversationArtifacts.Count > 0)
+                    {
+                        <ul class="project-artifacts">
+                            @foreach (var artifact in _selected.Artifacts)
+                            {
+                                <li>
+                                    <strong>@artifact.Name</strong><span>@artifact.MediaType</span>
+                                    @if (artifact.ConversationId is { } sourceConversationId)
+                                    {
+                                        <a href="@($"/chat/{sourceConversationId}?project={_selected.Id}")">Open in conversation</a>
+                                    }
+                                    else
+                                    {
+                                        <code>@artifact.Location</code>
+                                    }
+                                </li>
+                            }
+                            @foreach (var artifact in _conversationArtifacts)
+                            {
+                                <li data-conversation-artifact="@artifact.ArtifactId">
+                                    <strong>@artifact.Name</strong><span>@artifact.MediaType</span>
+                                    <a href="@($"/chat/{artifact.ConversationId}?project={_selected.Id}")">Open in conversation</a>
+                                </li>
+                            }
+                        </ul>
+                    }
+                    <div class="project-add-workflow project-add-artifact">
+                        <label class="sr" for="artifact-name">Artifact name</label>
+                        <input id="artifact-name" @bind="_artifactName" placeholder="Add a file, deliverable, or link" />
+                        <label class="sr" for="artifact-location">Artifact location</label>
+                        <input id="artifact-location" @bind="_artifactLocation" placeholder="Path or URL" />
+                        <button type="button" disabled="@_saving" @onclick="AddArtifactAsync">Attach reference</button>
+                    </div>
+                </section>
+
+                <section class="project-section project-resources" aria-labelledby="resources-title">
+                    <div><p class="projects-eyebrow">PLAN WITHIN YOUR LIMITS</p><h3 id="resources-title">Budget &amp; timing</h3></div>
+                    <label for="project-budget">Budget limit</label>
+                    <input id="project-budget" type="number" min="0" step="0.01" @bind="_budgetText" placeholder="Optional" />
+                    <label for="project-target">Target date</label>
+                    <input id="project-target" type="date" value="@_targetDateText" @onchange="@(args => _targetDateText = args.Value?.ToString() ?? string.Empty)" />
+                    <button type="button" disabled="@_saving" @onclick="SavePlanningLimitsAsync">Save planning limits</button>
+                </section>
+            }
+        </section>
+    </div>
+</main>
+
+@code {
+    [SupplyParameterFromQuery(Name = "conversation")]
+    public Guid? ConversationId { get; set; }
+
+    private sealed record ProjectConversationActivity(Guid ConversationId, string Title, string State,
+        string StateKey, string Detail, DateTimeOffset? At);
+    private sealed record ProjectConversationArtifact(Guid ArtifactId, string Name, string MediaType,
+        Guid ConversationId, Guid SourceEventId);
+
+    private List<ConciergeProject> _projects = [];
+    private List<StartupJourney> _startups = [];
+    private ConciergeProject? _selected;
+    private StartupJourney? _selectedStartup;
+    private bool _loading = true;
+    private bool _creating;
+    private bool _creatingBusiness;
+    private bool _editingStartupDetails;
+    private bool _saving;
+    private string? _error;
+    private string _newName = string.Empty;
+    private string _newOutcome = string.Empty;
+    private string _newWorkType = "Business";
+    private ProjectStarterTemplate? _selectedStarter;
+    private BusinessJourneyType _newBusinessType = BusinessJourneyType.NewBusiness;
+    private string _startupName = string.Empty;
+    private string _startupContext = string.Empty;
+    private string _startupGoal = string.Empty;
+    private string _startupEditName = string.Empty;
+    private string _startupEditContext = string.Empty;
+    private string _startupEditGoal = string.Empty;
+    private Guid? _projectBeingCreatedForStartup;
+    private Guid? _projectToLink;
+    private string _workflowName = string.Empty;
+    private string _workflowOutcome = string.Empty;
+    private string _workspaceName = string.Empty;
+    private string _workspaceOutcome = string.Empty;
+    private readonly HashSet<Guid> _workspaceWorkflowIds = [];
+    private string _stepName = string.Empty;
+    private Guid? _stepDependency;
+    private Guid? _editingWorkflowId;
+    private string _workflowEditName = string.Empty;
+    private string _workflowEditOutcome = string.Empty;
+    private Guid? _editingStepId;
+    private string _stepEditName = string.Empty;
+    private string _stepEditDescription = string.Empty;
+    private readonly HashSet<Guid> _stepEditDependencyIds = [];
+    private string _assumption = string.Empty;
+    private string _decisionQuestion = string.Empty;
+    private string _decisionAnswer = string.Empty;
+    private string _artifactName = string.Empty;
+    private string _artifactLocation = string.Empty;
+    private string _budgetText = string.Empty;
+    private string _targetDateText = string.Empty;
+    private string _agentName = "Analysis agent";
+    private string _agentTask = string.Empty;
+    private readonly Dictionary<Guid, string> _workspaceAgentTasks = [];
+    private List<ProjectConversationActivity> _activity = [];
+    private List<ProjectConversationArtifact> _conversationArtifacts = [];
+    private readonly HashSet<Guid> _pausingAgentIds = [];
+    private readonly Dictionary<Guid, int> _agentEventCursors = [];
+    private readonly Dictionary<Guid, List<ProjectAgentEvent>> _agentEvents = [];
+    private readonly HashSet<Guid> _refreshingButlerIds = [];
+
+    private IChatRuntime? CircleAiRuntime
+        => Runtimes.FirstOrDefault(runtime => string.Equals(runtime.Id, "circleai", StringComparison.OrdinalIgnoreCase));
+
+    protected override void OnInitialized()
+    {
+        BackgroundRuns.Changed += OnBackgroundRunsChanged;
+        AgentCoordinator.Changed += OnProjectAgentsChanged;
+        ButlerMonitor.Changed += OnButlerRunsChanged;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await AgentCoordinator.RecoverInterruptedAsync();
+        _loading = true;
+        _projects = (await ProjectStore.ListAsync()).ToList();
+        _startups = (await ProjectStore.ListStartupsAsync()).ToList();
+        if (_selected is not null)
+            _selected = _projects.FirstOrDefault(project => project.Id == _selected.Id);
+        if (_selectedStartup is not null)
+            _selectedStartup = _startups.FirstOrDefault(startup => startup.Id == _selectedStartup.Id);
+        if (_selected is null && _selectedStartup is null && !_creatingBusiness && !_creating && _projects.Count > 0 && ConversationId is null)
+            await SelectAsync(_projects[0].Id);
+        else if (_selected is null && _selectedStartup is null && !_creatingBusiness && !_creating && _startups.Count > 0 && ConversationId is null)
+            await SelectStartupAsync(_startups[0].Id);
+        else
+            await LoadActivityAsync();
+        if (_selected is not null)
+            await ReadNewAgentEventsAsync(_selected);
+        _loading = false;
+    }
+
+    private void OnBackgroundRunsChanged(object? sender, EventArgs args)
+        => _ = InvokeAsync(async () =>
+        {
+            await LoadActivityAsync();
+            StateHasChanged();
+        });
+
+    private void OnProjectAgentsChanged(object? sender, EventArgs args)
+        => _ = InvokeAsync(async () =>
+        {
+            if (_selected is not null)
+            {
+                _selected = await ProjectStore.GetAsync(_selected.Id);
+                if (_selected is not null)
+                    await ReadNewAgentEventsAsync(_selected);
+            }
+            StateHasChanged();
+        });
+
+    private void OnButlerRunsChanged(object? sender, EventArgs args)
+        => _ = RefreshSelectedProjectAfterButlerChangeAsync();
+
+    private async Task RefreshSelectedProjectAfterButlerChangeAsync()
+    {
+        try
+        {
+            if (_selected is null) return;
+            var projectId = _selected.Id;
+            var refreshed = await ProjectStore.GetAsync(projectId);
+            var projects = await ProjectStore.ListAsync();
+            await InvokeAsync(() =>
+            {
+                if (refreshed is not null && _selected?.Id == projectId)
+                    _selected = refreshed;
+                _projects = projects.ToList();
+                StateHasChanged();
+            });
+        }
+        catch (ObjectDisposedException) { }
+    }
+
+    public void Dispose()
+    {
+        BackgroundRuns.Changed -= OnBackgroundRunsChanged;
+        AgentCoordinator.Changed -= OnProjectAgentsChanged;
+        ButlerMonitor.Changed -= OnButlerRunsChanged;
+    }
+
+    private static string AgentStatusLabel(ProjectAgentStatus status) => status switch
+    {
+        ProjectAgentStatus.Queued => "Queued",
+        ProjectAgentStatus.Running => "Working",
+        ProjectAgentStatus.Paused => "Paused",
+        ProjectAgentStatus.Review => "Ready for review",
+        ProjectAgentStatus.Failed => "Could not finish",
+        _ => status.ToString(),
+    };
+
+    private async Task QueueAgentAsync()
+    {
+        if (_selected is null) return;
+        await QueueScopedAgentAsync(null, _agentName, _agentTask);
+        if (_error is null)
+        {
+            _agentName = "Analysis agent";
+            _agentTask = string.Empty;
+        }
+    }
+
+    private string WorkspaceAgentTask(Guid workspaceId)
+        => _workspaceAgentTasks.TryGetValue(workspaceId, out var task) ? task : string.Empty;
+
+    private void SetWorkspaceAgentTask(Guid workspaceId, string? task)
+        => _workspaceAgentTasks[workspaceId] = task ?? string.Empty;
+
+    private async Task QueueWorkspaceAgentAsync(Guid workspaceId)
+    {
+        if (_selected is null) return;
+        var workspace = _selected.Workspaces.SingleOrDefault(item => item.Id == workspaceId);
+        if (workspace is null) return;
+        var task = WorkspaceAgentTask(workspaceId);
+        await QueueScopedAgentAsync(workspaceId, $"{workspace.Name} analysis", task);
+        if (_error is null)
+            _workspaceAgentTasks[workspaceId] = string.Empty;
+    }
+
+    private async Task QueueScopedAgentAsync(Guid? workspaceId, string name, string task, bool forceNewRun = false)
+    {
+        if (_selected is null) return;
+        await WithSaving(async () =>
+        {
+            var projectId = _selected.Id;
+            var runtime = CircleAiRuntime ?? throw new InvalidOperationException("Circle AI is not available in this client.");
+            Guid? sourceConversationId = ConversationId is { } id
+                && _selected.ConversationIds.Contains(id)
+                && (workspaceId is null || _selected.Workspaces.Single(workspace => workspace.Id == workspaceId).ConversationIds.Contains(id))
+                    ? id
+                    : null;
+            var requestRunId = forceNewRun ? Guid.NewGuid() : (Guid?)null;
+            await AgentCoordinator.QueueAsync(projectId, runtime, name, task,
+                sourceConversationId, workspaceId, CancellationToken.None, requestRunId);
+            _selected = await ProjectStore.GetAsync(projectId);
+        });
+    }
+
+    private async Task PauseAgentAsync(Guid runId)
+    {
+        if (_selected is null || !_pausingAgentIds.Add(runId)) return;
+        try
+        {
+            await AgentCoordinator.PauseAsync(_selected.Id, runId);
+        }
+        finally
+        {
+            _pausingAgentIds.Remove(runId);
+            StateHasChanged();
+        }
+    }
+
+    private void ReviseAgent(ProjectAgentRun run)
+    {
+        if (run.WorkspaceId is { } workspaceId)
+            _workspaceAgentTasks[workspaceId] = run.Task;
+        else
+        {
+            _agentName = run.Name;
+            _agentTask = run.Task;
+        }
+    }
+
+    private Task RerunAgentAsync(ProjectAgentRun run)
+        => QueueScopedAgentAsync(run.WorkspaceId, run.Name, run.Task, forceNewRun: true);
+
+    private async Task LoadActivityAsync()
+    {
+        if (_selected is null)
+        {
+            _activity = [];
+            _conversationArtifacts = [];
+            return;
+        }
+
+        var activity = new List<ProjectConversationActivity>();
+        var artifacts = new List<ProjectConversationArtifact>();
+        foreach (var conversationId in _selected.ConversationIds.Distinct())
+        {
+            var conversation = await ConversationStore.GetAsync(conversationId);
+            var events = await ConversationStore.ReadEventsAsync(conversationId);
+            var artifactSourceEventIds = events.Where(entry => entry.Type is ConversationEventType.AssistantMessage
+                    or ConversationEventType.ToolResult)
+                .Select(entry => entry.Id).ToHashSet();
+            foreach (var entry in events.Where(entry => entry.Type == ConversationEventType.ArtifactCreated))
+            {
+                var artifact = ReadConversationArtifact(entry.Data);
+                if (artifact is not null && artifact.ArtifactId != Guid.Empty
+                    && artifact.SourceEventId != Guid.Empty && artifactSourceEventIds.Contains(artifact.SourceEventId))
+                {
+                    artifacts.Add(new ProjectConversationArtifact(artifact.ArtifactId, artifact.Name,
+                        artifact.MediaType, conversationId, artifact.SourceEventId));
+                }
+            }
+            var latestEvent = events.LastOrDefault();
+            var starts = events.Where(entry => entry.Type == ConversationEventType.TurnStart).ToList();
+            var latestStart = starts.LastOrDefault();
+            var receipt = latestStart is null
+                ? null
+                : events.Where(entry => entry.Type == ConversationEventType.TurnEnd)
+                    .Select(entry => ReadReceipt(entry.Data))
+                    .LastOrDefault(candidate => candidate?.RunId == latestStart.Id);
+
+            string state;
+            string detail;
+            if (BackgroundRuns.IsRunning(conversationId))
+            {
+                state = "In progress";
+                detail = "Circle AI is working on this conversation.";
+            }
+            else if (latestStart is not null && receipt is null)
+            {
+                state = "Interrupted";
+                detail = "This run stopped before a completion was recorded. Open the conversation to review its saved progress.";
+            }
+            else if (receipt is not null)
+            {
+                (state, detail) = DescribeReceipt(receipt);
+            }
+            else if (latestEvent is not null)
+            {
+                state = "Conversation updated";
+                detail = DescribeEvent(latestEvent);
+            }
+            else
+            {
+                state = "Not started";
+                detail = "No conversation activity has been recorded yet.";
+            }
+
+            activity.Add(new ProjectConversationActivity(
+                conversationId,
+                conversation?.Title ?? "Linked conversation",
+                state,
+                state.ToLowerInvariant().Replace(' ', '-'),
+                detail,
+                latestEvent?.CreatedAt ?? conversation?.UpdatedAt));
+        }
+
+        _activity = activity.OrderByDescending(item => item.At).ToList();
+        _conversationArtifacts = artifacts.DistinctBy(artifact => artifact.ArtifactId)
+            .OrderBy(artifact => artifact.Name, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    private static ConversationArtifactRecord? ReadConversationArtifact(string data)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<ConversationArtifactRecord>(data);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static TurnRunReceipt? ReadReceipt(string data)
+    {
+        try { return JsonSerializer.Deserialize<TurnRunReceipt>(data); }
+        catch (JsonException) { return null; }
+    }
+
+    private static (string State, string Detail) DescribeReceipt(TurnRunReceipt receipt)
+        => receipt.Status switch
+        {
+            "completed" => ("Completed", FirstUsefulLine(receipt.Text) ?? "The run completed."),
+            "cancelled" => ("Stopped", FirstUsefulLine(receipt.Stopped) ?? "The run was stopped."),
+            "failed" => ("Needs attention", FirstUsefulLine(receipt.Stopped) ?? "The run failed. Open the conversation to review."),
+            _ => ("Needs review", FirstUsefulLine(receipt.Stopped) ?? "Open the conversation to review the latest run."),
+        };
+
+    private static string DescribeEvent(ConversationEvent entry) => entry.Type switch
+    {
+        ConversationEventType.UserMessage => "A request was added to this conversation.",
+        ConversationEventType.AssistantMessage => FirstUsefulLine(entry.Data) ?? "Circle AI replied.",
+        ConversationEventType.ToolCall => "Circle AI started a work step.",
+        ConversationEventType.ToolResult => "A work step recorded a result.",
+        ConversationEventType.ApprovalAsked => "A permission request was recorded; review the conversation for its current status.",
+        ConversationEventType.ApprovalDecided => "A permission decision was recorded.",
+        ConversationEventType.TodoWrite => "The saved plan was updated.",
+        _ => "Conversation activity was recorded.",
+    };
+
+    private static string? FirstUsefulLine(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        var line = value.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault();
+        return line is { Length: > 180 } ? line[..177] + "…" : line;
+    }
+
+    private void StartNew()
+    {
+        _error = null;
+        _selected = null;
+        _selectedStartup = null;
+        _creatingBusiness = false;
+        _creating = true;
+        _projectBeingCreatedForStartup = null;
+        _selectedStarter = null;
+    }
+
+    private void SelectStarter(ProjectStarterTemplate template)
+    {
+        _selectedStarter = template;
+        _newName = template.Name;
+        _newOutcome = template.Outcome;
+        _newWorkType = template.WorkType;
+    }
+
+    private void StartNewBusiness()
+    {
+        _error = null;
+        _selected = null;
+        _selectedStartup = null;
+        _creating = false;
+        _creatingBusiness = true;
+        _newBusinessType = BusinessJourneyType.NewBusiness;
+        _startupName = string.Empty;
+        _startupContext = string.Empty;
+        _startupGoal = string.Empty;
+        _projectBeingCreatedForStartup = null;
+    }
+
+    private async Task SelectAsync(Guid id)
+    {
+        if (_selected?.Id != id)
+        {
+            _agentEventCursors.Clear();
+            _agentEvents.Clear();
+        }
+        _selected = _projects.FirstOrDefault(project => project.Id == id);
+        _selectedStartup = null;
+        _creatingBusiness = false;
+        _creating = false;
+        _projectBeingCreatedForStartup = null;
+        _error = null;
+        _budgetText = _selected?.BudgetLimit?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty;
+        _targetDateText = _selected?.TargetDate?.ToString("yyyy-MM-dd") ?? string.Empty;
+        await LoadActivityAsync();
+        if (_selected is not null)
+            await ReadNewAgentEventsAsync(_selected);
+    }
+
+    private IReadOnlyList<ProjectAgentEvent> AgentEventsFor(Guid runId)
+        => _agentEvents.TryGetValue(runId, out var events) ? events : [];
+
+    private async Task ReadNewAgentEventsAsync(ConciergeProject project)
+    {
+        foreach (var run in project.AgentRuns)
+        {
+            var cursor = _agentEventCursors.TryGetValue(run.Id, out var sequence) ? sequence : -1;
+            var updates = await ProjectStore.ReadAgentEventsAsync(project.Id, run.Id, cursor);
+            if (updates.Count == 0)
+                continue;
+            if (!_agentEvents.TryGetValue(run.Id, out var events))
+                _agentEvents[run.Id] = events = [];
+            events.AddRange(updates);
+            if (events.Count > 100)
+                events.RemoveRange(0, events.Count - 100);
+            _agentEventCursors[run.Id] = updates[^1].Sequence;
+        }
+    }
+
+    private async Task SelectStartupAsync(Guid id)
+    {
+        _selectedStartup = _startups.FirstOrDefault(startup => startup.Id == id)
+            ?? await ProjectStore.GetStartupAsync(id);
+        _selected = null;
+        _creatingBusiness = false;
+        _creating = false;
+        _projectBeingCreatedForStartup = null;
+        _editingStartupDetails = false;
+        _projectToLink = null;
+        _error = null;
+        await LoadActivityAsync();
+    }
+
+    private void StartNewProjectForStartup(Guid startupId)
+    {
+        _selected = null;
+        _selectedStartup = null;
+        _creatingBusiness = false;
+        _creating = true;
+        _projectBeingCreatedForStartup = startupId;
+        _newWorkType = "Business";
+        _newName = string.Empty;
+        _newOutcome = string.Empty;
+    }
+
+    private async Task CreateStartupAsync()
+    {
+        if (_newBusinessType == BusinessJourneyType.ExistingBusiness && string.IsNullOrWhiteSpace(_startupName))
+        {
+            _error = "Add the name of the existing business.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_startupGoal))
+        {
+            _error = "Describe where you want the business to get to.";
+            return;
+        }
+        if (_newBusinessType == BusinessJourneyType.ExistingBusiness && string.IsNullOrWhiteSpace(_startupContext))
+        {
+            _error = "Describe what is happening in the existing business today.";
+            return;
+        }
+
+        await WithSaving(async () =>
+        {
+            var name = _startupName.Trim();
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                var summary = string.Join(' ', _startupGoal.Split(' ', StringSplitOptions.RemoveEmptyEntries).Take(5));
+                name = string.IsNullOrWhiteSpace(summary) ? "New business" : $"New business: {summary}";
+            }
+            var created = await ProjectStore.CreateStartupAsync(StartupJourney.Create(
+                _newBusinessType, name, _startupGoal, _startupContext));
+            _startups.Insert(0, created);
+            _creatingBusiness = false;
+            _selectedStartup = created;
+            _startupName = string.Empty;
+            _startupContext = string.Empty;
+            _startupGoal = string.Empty;
+        });
+    }
+
+    private Task ChangeStartupStatusAsync(ChangeEventArgs args)
+        => SaveStartupAsync(startup => startup with
+        {
+            Status = Enum.TryParse<ProjectStatus>(args.Value?.ToString(), out var status) ? status : startup.Status,
+        });
+
+    private void BeginEditStartupDetails()
+    {
+        if (_selectedStartup is null) return;
+        _startupEditName = _selectedStartup.Name;
+        _startupEditContext = _selectedStartup.CurrentContext;
+        _startupEditGoal = _selectedStartup.Goal;
+        _editingStartupDetails = true;
+    }
+
+    private void CancelEditStartupDetails() => _editingStartupDetails = false;
+
+    private async Task SaveStartupDetailsAsync()
+    {
+        if (_selectedStartup is null) return;
+        if (string.IsNullOrWhiteSpace(_startupEditName) || string.IsNullOrWhiteSpace(_startupEditGoal))
+        {
+            _error = "Add a business name and a clear goal.";
+            return;
+        }
+        if (_selectedStartup.Type == BusinessJourneyType.ExistingBusiness && string.IsNullOrWhiteSpace(_startupEditContext))
+        {
+            _error = "Describe what is happening in the existing business today.";
+            return;
+        }
+
+        await WithSaving(async () =>
+        {
+            _selectedStartup = await ProjectStore.SaveStartupAsync(_selectedStartup with
+            {
+                Name = _startupEditName.Trim(),
+                CurrentContext = _startupEditContext.Trim(),
+                Goal = _startupEditGoal.Trim(),
+            });
+            _editingStartupDetails = false;
+            await RefreshListAsync();
+        });
+    }
+
+    private Task SaveStartupAsync(Func<StartupJourney, StartupJourney> update)
+    {
+        if (_selectedStartup is null) return Task.CompletedTask;
+        return WithSaving(async () =>
+        {
+            _selectedStartup = await ProjectStore.SaveStartupAsync(update(_selectedStartup));
+            await RefreshListAsync();
+        });
+    }
+
+    private void SelectProjectToLink(ChangeEventArgs args)
+        => _projectToLink = Guid.TryParse(args.Value?.ToString(), out var id) ? id : null;
+
+    private void StartPlanningForStartup(Guid startupId)
+        => Nav.NavigateTo($"/chat?startup={startupId}");
+
+    private async Task LinkProjectAsync()
+    {
+        if (_selectedStartup is null || _projectToLink is not { } projectId) return;
+        await WithSaving(async () =>
+        {
+            _selectedStartup = await ProjectStore.LinkProjectToStartupAsync(_selectedStartup.Id, projectId);
+            _projectToLink = null;
+            await RefreshListAsync();
+        });
+    }
+
+    private async Task CreateProjectAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_newName) || string.IsNullOrWhiteSpace(_newOutcome))
+        {
+            _error = "Add a project name and describe the result you want.";
+            return;
+        }
+
+        await WithSaving(async () =>
+        {
+            var project = _selectedStarter is { } starter
+                ? starter.CreateProject() with { Name = _newName.Trim(), DesiredOutcome = _newOutcome.Trim(), WorkType = _newWorkType.Trim() }
+                : ConciergeProject.Create(_newName, _newOutcome, _newWorkType);
+            if (ConversationId is { } conversationId && conversationId != Guid.Empty)
+                project = project with { ConversationIds = [conversationId] };
+            var created = await ProjectStore.CreateAsync(project);
+            var saved = created;
+            if (_projectBeingCreatedForStartup is { } startupId)
+            {
+                _selectedStartup = await ProjectStore.LinkProjectToStartupAsync(startupId, created.Id);
+                saved = await ProjectStore.GetAsync(created.Id) ?? created;
+                _startups = (await ProjectStore.ListStartupsAsync()).ToList();
+            }
+            _projects.Insert(0, saved);
+            _newName = string.Empty;
+            _newOutcome = string.Empty;
+            _selectedStarter = null;
+            await SelectAsync(saved.Id);
+            _creating = false;
+            _projectBeingCreatedForStartup = null;
+        });
+    }
+
+    private async Task LinkCurrentConversationAsync()
+    {
+        if (_selected is null || ConversationId is not { } conversationId || conversationId == Guid.Empty
+            || _saving || _selected.ConversationIds.Contains(conversationId))
+            return;
+
+        var conversation = await ConversationStore.GetAsync(conversationId);
+        if (conversation is null)
+        {
+            _error = "This conversation could not be found, so it was not added to the project.";
+            return;
+        }
+
+        await WithSaving(async () =>
+        {
+            var saved = await ProjectStore.SaveAsync(_selected with
+            {
+                ConversationIds = _selected.ConversationIds.Append(conversationId).Distinct().ToArray()
+            });
+            _selected = saved;
+            await RefreshListAsync();
+            await LoadActivityAsync();
+        });
+    }
+
+    private async Task SaveProjectAsync(Func<ConciergeProject, ConciergeProject> update)
+    {
+        if (_selected is null) return;
+        await WithSaving(async () =>
+        {
+            var saved = await ProjectStore.SaveAsync(update(_selected));
+            _selected = saved;
+            await RefreshListAsync();
+            await LoadActivityAsync();
+        });
+    }
+
+    private static bool IsButlerTerminal(string status)
+        => status.Equals("completed", StringComparison.OrdinalIgnoreCase)
+            || status.Equals("failed", StringComparison.OrdinalIgnoreCase)
+            || status.Equals("cancelled", StringComparison.OrdinalIgnoreCase);
+
+    private static string ButlerStatusLabel(string status) => status switch
+    {
+        "dispatch_pending" => "Starting with Butler",
+        "cancellation_requested" => "Stopping",
+        _ => status,
+    };
+
+    private async Task RefreshButlerRunAsync(Guid projectRunId)
+    {
+        if (_selected is null || !_refreshingButlerIds.Add(projectRunId)) return;
+        var projectId = _selected.Id;
+        try
+        {
+            var tracked = _selected.ButlerRuns.SingleOrDefault(run => run.Id == projectRunId);
+            if (tracked is null) return;
+            if (tracked.ButlerRunId == Guid.Empty) return;
+            var butlerRunId = tracked.ButlerRunId;
+            var envelope = await ButlerRunsApi.GetRunAsync(butlerRunId);
+            var events = await ButlerRunsApi.ReadEventsAsync(butlerRunId, tracked.LastEventSequence);
+            await SaveProjectAsync(project => project.Id != projectId ? project : project with
+            {
+                ButlerRuns = project.ButlerRuns.Select(run => run.Id == projectRunId
+                    ? run with
+                    {
+                        Status = envelope.Run.Status,
+                        CancellationRequested = envelope.Run.CancellationRequested,
+                        Problem = envelope.Run.Problem,
+                        ResultJson = envelope.Run.Result?.GetRawText(),
+                        LastEventSequence = events.Count == 0 ? run.LastEventSequence : Math.Max(run.LastEventSequence, events.Max(item => item.Sequence)),
+                        Events = MergeButlerEvents(run.Events, events),
+                        UpdatedAt = DateTimeOffset.UtcNow,
+                    }
+                    : run).ToArray(),
+            });
+        }
+        catch (Exception exception) when (exception is HttpRequestException or InvalidOperationException or IOException)
+        {
+            _error = $"Could not refresh Butler's run: {exception.Message}";
+        }
+        finally
+        {
+            _refreshingButlerIds.Remove(projectRunId);
+        }
+    }
+
+    private async Task CancelButlerRunAsync(Guid projectRunId)
+    {
+        if (_selected is null || !_refreshingButlerIds.Add(projectRunId)) return;
+        try
+        {
+            var tracked = _selected.ButlerRuns.SingleOrDefault(run => run.Id == projectRunId);
+            if (tracked is null) return;
+            var accepted = tracked.ButlerRunId == Guid.Empty
+                ? true
+                : await ButlerRunsApi.CancelAsync(tracked.ButlerRunId);
+            await SaveProjectAsync(project => project with
+            {
+                ButlerRuns = project.ButlerRuns.Select(run => run.Id == projectRunId
+                    ? run with
+                    {
+                        Status = accepted ? (run.ButlerRunId == Guid.Empty ? "dispatch_pending" : "cancellation_requested") : run.Status,
+                        CancellationRequested = accepted || run.CancellationRequested,
+                        UpdatedAt = DateTimeOffset.UtcNow,
+                    }
+                    : run).ToArray(),
+            });
+        }
+        catch (Exception exception) when (exception is HttpRequestException or InvalidOperationException or IOException)
+        {
+            _error = $"Could not request Butler cancellation: {exception.Message}";
+        }
+        finally
+        {
+            _refreshingButlerIds.Remove(projectRunId);
+        }
+    }
+
+    private static IReadOnlyList<ProjectButlerEvent> MergeButlerEvents(IReadOnlyList<ProjectButlerEvent> current,
+        IReadOnlyList<ButlerWorkRunEvent> updates)
+    {
+        var events = current.ToDictionary(item => item.Sequence);
+        foreach (var item in updates)
+            events[item.Sequence] = new ProjectButlerEvent(item.Sequence, item.Type, item.Data.GetRawText(), item.CreatedAt);
+        return events.Values.OrderBy(item => item.Sequence).ToArray();
+    }
+
+    private Task ChangeProjectStatusAsync(ChangeEventArgs args)
+        => SaveProjectAsync(project => project with { Status = Enum.TryParse<ProjectStatus>(args.Value?.ToString(), out var status) ? status : project.Status });
+
+    private Task ChangeWorkflowStatusAsync(Guid workflowId, ChangeEventArgs args)
+        => SaveProjectAsync(project => project with
+        {
+            Workflows = project.Workflows.Select(workflow => workflow.Id == workflowId
+                ? workflow with { Status = Enum.TryParse<ProjectWorkStatus>(args.Value?.ToString(), out var status) ? status : workflow.Status }
+                : workflow).ToList(),
+        });
+
+    private Task ChangeStepStatusAsync(Guid workflowId, Guid stepId, ChangeEventArgs args)
+        => SaveProjectAsync(project => project with
+        {
+            Workflows = project.Workflows.Select(workflow => workflow.Id == workflowId
+                ? workflow with
+                {
+                    Steps = workflow.Steps.Select(step => step.Id == stepId
+                        ? step with { Status = Enum.TryParse<ProjectWorkStatus>(args.Value?.ToString(), out var status) ? status : step.Status }
+                        : step).ToList(),
+                }
+                : workflow).ToList(),
+        });
+
+    private Task ChangeWorkspaceStatusAsync(Guid workspaceId, ChangeEventArgs args)
+        => SaveProjectAsync(project => project with
+        {
+            Workspaces = project.Workspaces.Select(workspace => workspace.Id == workspaceId
+                ? workspace with { Status = Enum.TryParse<ProjectWorkStatus>(args.Value?.ToString(), out var status) ? status : workspace.Status }
+                : workspace).ToList(),
+        });
+
+    private void ToggleWorkspaceWorkflow(Guid workflowId, ChangeEventArgs args)
+    {
+        if (args.Value is true || string.Equals(args.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase))
+            _workspaceWorkflowIds.Add(workflowId);
+        else
+            _workspaceWorkflowIds.Remove(workflowId);
+    }
+
+    private async Task CreateWorkspaceAsync()
+    {
+        if (_selected is null || string.IsNullOrWhiteSpace(_workspaceName) || string.IsNullOrWhiteSpace(_workspaceOutcome))
+        {
+            _error = "Give the Workspace a name and a clear outcome.";
+            return;
+        }
+        var workspace = new ProjectWorkspace
+        {
+            Name = _workspaceName.Trim(),
+            DesiredOutcome = _workspaceOutcome.Trim(),
+            WorkflowIds = _selected.Workflows.Where(workflow => _workspaceWorkflowIds.Contains(workflow.Id)).Select(workflow => workflow.Id).ToList(),
+            ConversationIds = ConversationId is { } conversationId && _selected.ConversationIds.Contains(conversationId) ? [conversationId] : [],
+        };
+        await SaveProjectAsync(project => project with { Workspaces = project.Workspaces.Append(workspace).ToList() });
+        _workspaceName = string.Empty;
+        _workspaceOutcome = string.Empty;
+        _workspaceWorkflowIds.Clear();
+    }
+
+    private async Task AddWorkflowAsync()
+    {
+        if (_selected is null || string.IsNullOrWhiteSpace(_workflowName) || string.IsNullOrWhiteSpace(_workflowOutcome))
+        {
+            _error = "Give the workflow a name and a clear outcome.";
+            return;
+        }
+        await SaveProjectAsync(project => project with
+        {
+            Status = project.Status == ProjectStatus.Planning ? ProjectStatus.Active : project.Status,
+            Workflows = project.Workflows.Append(new ProjectWorkflow { Name = _workflowName.Trim(), DesiredOutcome = _workflowOutcome.Trim() }).ToList(),
+        });
+        _workflowName = string.Empty;
+        _workflowOutcome = string.Empty;
+    }
+
+    private void BeginWorkflowEdit(ProjectWorkflow workflow)
+    {
+        _editingWorkflowId = workflow.Id;
+        _editingStepId = null;
+        _workflowEditName = workflow.Name;
+        _workflowEditOutcome = workflow.DesiredOutcome;
+    }
+
+    private void CancelWorkflowEdit() => _editingWorkflowId = null;
+
+    private async Task SaveWorkflowEditAsync()
+    {
+        if (_selected is null || _editingWorkflowId is not { } workflowId) return;
+        if (string.IsNullOrWhiteSpace(_workflowEditName) || string.IsNullOrWhiteSpace(_workflowEditOutcome))
+        {
+            _error = "Add a workflow name and a clear outcome.";
+            return;
+        }
+
+        await SaveProjectAsync(project => project with
+        {
+            Workflows = project.Workflows.Select(workflow => workflow.Id == workflowId
+                ? workflow with { Name = _workflowEditName.Trim(), DesiredOutcome = _workflowEditOutcome.Trim() }
+                : workflow).ToList(),
+        });
+        if (_error is null) _editingWorkflowId = null;
+    }
+
+    private void BeginStepEdit(ProjectStep step)
+    {
+        _editingStepId = step.Id;
+        _editingWorkflowId = null;
+        _stepEditName = step.Name;
+        _stepEditDescription = step.Description;
+        _stepEditDependencyIds.Clear();
+        _stepEditDependencyIds.UnionWith(step.DependsOn);
+    }
+
+    private void CancelStepEdit()
+    {
+        _editingStepId = null;
+        _stepEditDependencyIds.Clear();
+    }
+
+    private void ToggleStepEditDependency(Guid dependencyId, ChangeEventArgs args)
+    {
+        if (args.Value is true || string.Equals(args.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase))
+            _stepEditDependencyIds.Add(dependencyId);
+        else
+            _stepEditDependencyIds.Remove(dependencyId);
+    }
+
+    private bool WouldCreateDependencyCycle(ProjectStep editedStep, ProjectStep proposedDependency)
+    {
+        if (_selected is null) return false;
+        var steps = _selected.Workflows.SelectMany(workflow => workflow.Steps).ToDictionary(step => step.Id);
+        var visited = new HashSet<Guid>();
+
+        bool ReachesEditedStep(ProjectStep current)
+        {
+            if (current.Id == editedStep.Id) return true;
+            if (!visited.Add(current.Id)) return false;
+            return current.DependsOn.Any(dependencyId =>
+                steps.TryGetValue(dependencyId, out var dependency) && ReachesEditedStep(dependency));
+        }
+
+        return ReachesEditedStep(proposedDependency);
+    }
+
+    private async Task SaveStepEditAsync(Guid workflowId, Guid stepId)
+    {
+        if (_selected is null) return;
+        if (string.IsNullOrWhiteSpace(_stepEditName))
+        {
+            _error = "Add a name for this step.";
+            return;
+        }
+
+        await SaveProjectAsync(project => project with
+        {
+            Workflows = project.Workflows.Select(workflow => workflow.Id == workflowId
+                ? workflow with
+                {
+                    Steps = workflow.Steps.Select(step => step.Id == stepId
+                        ? step with
+                        {
+                            Name = _stepEditName.Trim(),
+                            Description = _stepEditDescription.Trim(),
+                            DependsOn = _stepEditDependencyIds.Order().ToList(),
+                        }
+                        : step).ToList(),
+                }
+                : workflow).ToList(),
+        });
+        if (_error is null) CancelStepEdit();
+    }
+
+    private async Task AddStepAsync(Guid workflowId)
+    {
+        if (_selected is null || string.IsNullOrWhiteSpace(_stepName))
+        {
+            _error = "Give the next step a name.";
+            return;
+        }
+        await SaveProjectAsync(project => project with
+        {
+            Workflows = project.Workflows.Select(workflow => workflow.Id == workflowId
+                ? workflow with
+                {
+                    Steps = workflow.Steps.Append(new ProjectStep
+                    {
+                        Name = _stepName.Trim(),
+                        DependsOn = _stepDependency is { } dependency ? [dependency] : [],
+                    }).ToList(),
+                }
+                : workflow).ToList(),
+        });
+        _stepName = string.Empty;
+        _stepDependency = null;
+    }
+
+    private string DescribeDependencies(ProjectStep step)
+        => string.Join(", ", _selected!.Workflows
+            .SelectMany(workflow => workflow.Steps.Select(dependency => (Workflow: workflow, Step: dependency)))
+            .Where(dependency => step.DependsOn.Contains(dependency.Step.Id))
+            .Select(dependency => $"{dependency.Workflow.Name}: {dependency.Step.Name}"));
+
+    private async Task AddAssumptionAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_assumption)) return;
+        var value = _assumption.Trim();
+        await SaveProjectAsync(project => project with { Assumptions = project.Assumptions.Append(value).ToList() });
+        _assumption = string.Empty;
+    }
+
+    private async Task AddDecisionAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_decisionQuestion) || string.IsNullOrWhiteSpace(_decisionAnswer))
+        {
+            _error = "Record both the decision and its answer.";
+            return;
+        }
+        var decision = new ProjectDecision
+        {
+            Question = _decisionQuestion.Trim(),
+            Answer = _decisionAnswer.Trim(),
+            ConversationId = ConversationId,
+        };
+        await SaveProjectAsync(project => project with { Decisions = project.Decisions.Append(decision).ToList() });
+        _decisionQuestion = string.Empty;
+        _decisionAnswer = string.Empty;
+    }
+
+    private async Task AddArtifactAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_artifactName) || string.IsNullOrWhiteSpace(_artifactLocation))
+        {
+            _error = "Add an artifact name and its path or link.";
+            return;
+        }
+        var artifact = new ProjectArtifact { Name = _artifactName.Trim(), Location = _artifactLocation.Trim() };
+        await SaveProjectAsync(project => project with { Artifacts = project.Artifacts.Append(artifact).ToList() });
+        _artifactName = string.Empty;
+        _artifactLocation = string.Empty;
+    }
+
+    private async Task SavePlanningLimitsAsync()
+    {
+        decimal? budget = decimal.TryParse(_budgetText, System.Globalization.NumberStyles.Number,
+            System.Globalization.CultureInfo.InvariantCulture, out var parsedBudget) ? parsedBudget : null;
+        DateTimeOffset? date = DateTimeOffset.TryParse(_targetDateText, out var parsedDate) ? parsedDate : null;
+        await SaveProjectAsync(project => project with { BudgetLimit = budget, TargetDate = date });
+    }
+
+    private async Task RefreshListAsync()
+    {
+        _projects = (await ProjectStore.ListAsync()).ToList();
+        _startups = (await ProjectStore.ListStartupsAsync()).ToList();
+    }
+
+    private async Task WithSaving(Func<Task> action)
+    {
+        _saving = true;
+        _error = null;
+        try
+        {
+            await action();
+        }
+        catch (ProjectRevisionConflictException conflict)
+        {
+            _error = conflict.Message;
+            _projects = (await ProjectStore.ListAsync()).ToList();
+            _selected = await ProjectStore.GetAsync(conflict.ProjectId);
+        }
+        catch (StartupJourneyRevisionConflictException conflict)
+        {
+            _error = conflict.Message;
+            _startups = (await ProjectStore.ListStartupsAsync()).ToList();
+            _selectedStartup = await ProjectStore.GetStartupAsync(conflict.JourneyId);
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or IOException or ArgumentException)
+        {
+            _error = exception.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

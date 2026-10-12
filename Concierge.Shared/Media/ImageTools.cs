@@ -176,6 +176,9 @@ public sealed class ImageToolSource : IAgentToolSource
                 // failure, because somebody can still open it.
                 return picture.Url is { Length: > 0 } address
                     ? new AgentToolResult(true, $"It is at {address}. Nothing here could fetch it to save it.")
+                    {
+                        Artifacts = [new AgentToolArtifact("Generated image", picture.MimeType)],
+                    }
                     : new AgentToolResult(false, string.Empty, problemGetting ?? "Nothing came back.");
             }
 
@@ -188,7 +191,10 @@ public sealed class ImageToolSource : IAgentToolSource
                 await File.WriteAllBytesAsync(path, bytes, cancellationToken).ConfigureAwait(false);
 
                 return new AgentToolResult(
-                    true, $"{path} — {bytes.Length / 1024}KB from {maker.EngineLabel}.");
+                    true, $"{path} — {bytes.Length / 1024}KB from {maker.EngineLabel}.")
+                {
+                    Artifacts = [new AgentToolArtifact(Path.GetFileName(path), picture.MimeType)],
+                };
             }
             catch (IOException problem)
             {

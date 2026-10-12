@@ -1,0 +1,41 @@
+<Project>
+  <!-- CircleAI 3.8.1 requires this patch floor. Apply it after project items so
+       older direct pins cannot downgrade the SDK's shared service contracts. -->
+  <ItemGroup>
+    <PackageReference Update="Microsoft.Extensions.DependencyInjection;Microsoft.Extensions.DependencyInjection.Abstractions;Microsoft.Extensions.Hosting.Abstractions;Microsoft.Extensions.Http;Microsoft.Extensions.Logging.Abstractions"
+                      Version="10.0.12" />
+  </ItemGroup>
+  <!--
+    Source ProjectReference builds need explicit native assets. The merged
+    CircleAI NuGet already supplies Android runtime assets; adding them again
+    produces duplicate APK entries. Keep the explicit source-build path only.
+  -->
+  <PropertyGroup Condition="'$(UseMaui)' == 'true' and '$(TargetPlatformIdentifier)' == 'android'">
+    <CircleAIBundleMnn Condition="'$(CircleAIBundleMnn)' == '' and '$(CircleAiSourceRoot)' != ''">true</CircleAIBundleMnn>
+    <CircleAIBundleMnn Condition="'$(CircleAIBundleMnn)' == ''">false</CircleAIBundleMnn>
+    <_ConciergeCircleAIRuntimesRoot Condition="'$(CircleAiSourceRoot)' != ''">$(CircleAiSourceRoot)\src\CircleAI.Inference\runtimes\</_ConciergeCircleAIRuntimesRoot>
+    <_ConciergeCircleAIRuntimesRoot Condition="'$(_ConciergeCircleAIRuntimesRoot)' == '' and '$(NuGetPackageRoot)' != ''">$(NuGetPackageRoot)circleai\$(CircleAiPackageVersion)\runtimes\</_ConciergeCircleAIRuntimesRoot>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(UseMaui)' == 'true' and '$(TargetPlatformIdentifier)' == 'android' and '$(CircleAIBundleMnn)' == 'true'">
+    <AndroidNativeLibrary Include="$(_ConciergeCircleAIRuntimesRoot)android-arm64\native\*.so">
+      <Abi>arm64-v8a</Abi>
+    </AndroidNativeLibrary>
+    <AndroidNativeLibrary Include="$(_ConciergeCircleAIRuntimesRoot)android-arm\native\*.so">
+      <Abi>armeabi-v7a</Abi>
+    </AndroidNativeLibrary>
+    <AndroidNativeLibrary Include="$(_ConciergeCircleAIRuntimesRoot)android-x64\native\*.so">
+      <Abi>x86_64</Abi>
+    </AndroidNativeLibrary>
+  </ItemGroup>
+
+  <Target Name="ConciergeReportCircleAiAndroidNativeAssets"
+          BeforeTargets="Build"
+          Condition="'$(UseMaui)' == 'true' and '$(TargetPlatformIdentifier)' == 'android'">
+    <Message Importance="high"
+             Condition="'$(CircleAIBundleMnn)' == 'true' and '@(AndroidNativeLibrary)' != ''"
+             Text="[Concierge] Bundling Circle AI Android native libraries: @(AndroidNativeLibrary->Count())." />
+    <Error Condition="'$(CircleAIBundleMnn)' == 'true' and !Exists('$(_ConciergeCircleAIRuntimesRoot)android-arm64\native\libmnnbridge.so')"
+           Text="Circle AI native Android assets were not found at '$(_ConciergeCircleAIRuntimesRoot)'. Set CircleAiSourceRoot or restore CircleAI $(CircleAiPackageVersion)." />
+  </Target>
+</Project>

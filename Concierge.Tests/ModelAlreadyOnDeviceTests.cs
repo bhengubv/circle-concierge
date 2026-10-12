@@ -111,6 +111,7 @@ public sealed class ModelAlreadyOnDeviceTests
         new CircleAiChatOptions
         {
             ModelsDirectory = Path.Combine(Path.GetTempPath(), $"concierge-present-{Guid.NewGuid():N}"),
+            DeviceProbeFactory = CircleAiTestDefaults.Probe,
             ModelPresence = presence,
             ModelFetcher = (modelId, _, _) => Task.FromResult($"/models/{modelId}"),
             GeneratorFactory = _ => new StubGenerator(),
@@ -220,6 +221,7 @@ public sealed class StartWithWhatIsHereTests
         new CircleAiChatOptions
         {
             ModelsDirectory = Path.Combine(Path.GetTempPath(), $"concierge-here-{Guid.NewGuid():N}"),
+            DeviceProbeFactory = CircleAiTestDefaults.Probe,
             ModelPresence = present,
             ModelFetcher = (modelId, _, _) => Task.FromResult($"/models/{modelId}"),
             GeneratorFactory = _ => new Stub(),

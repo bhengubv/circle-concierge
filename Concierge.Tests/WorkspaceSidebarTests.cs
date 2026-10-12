@@ -99,7 +99,7 @@ public sealed class WorkspaceSidebarTests : BunitContext
     // ── What is open when you arrive ──────────────────────────────────────
 
     /// <summary>
-    /// One group at a time, and it is Threads — the work.
+    /// One group at a time, and it is Recent conversations — the work.
     ///
     /// Threads and Approvals both opened until Rooms made a fourth group: four
     /// headers with two bodies unfolded overflowed the sidebar by 67px in a
@@ -119,11 +119,11 @@ public sealed class WorkspaceSidebarTests : BunitContext
         var groups = cut.FindAll("section.ws-group");
         Assert.Equal(5, groups.Count);
 
-        Assert.Contains("is-open", groups[0].ClassName);        // Threads
-        Assert.DoesNotContain("is-open", groups[1].ClassName);  // Approvals
-        Assert.DoesNotContain("is-open", groups[2].ClassName);  // Skills
-        Assert.DoesNotContain("is-open", groups[3].ClassName);  // Rooms
-        Assert.DoesNotContain("is-open", groups[4].ClassName);  // Tools
+        Assert.Contains("is-open", groups[0].ClassName);        // Recent conversations
+        Assert.DoesNotContain("is-open", groups[1].ClassName);  // Needs your OK
+        Assert.DoesNotContain("is-open", groups[2].ClassName);  // Personalize Circle AI
+        Assert.DoesNotContain("is-open", groups[3].ClassName);  // Make something
+        Assert.DoesNotContain("is-open", groups[4].ClassName);  // About & updates
     }
 
     /// <summary>
@@ -135,11 +135,11 @@ public sealed class WorkspaceSidebarTests : BunitContext
     {
         var cut = RenderWorkspace();
 
-        Header(cut, "Rooms").Click();
+        Header(cut, "Make something").Click();
 
         var groups = cut.FindAll("section.ws-group");
-        Assert.DoesNotContain("is-open", groups[0].ClassName);  // Threads folded
-        Assert.Contains("is-open", groups[3].ClassName);        // Rooms open
+        Assert.DoesNotContain("is-open", groups[0].ClassName);  // Recent conversations folded
+        Assert.Contains("is-open", groups[3].ClassName);        // Make something open
     }
 
     /// <summary>
@@ -153,7 +153,7 @@ public sealed class WorkspaceSidebarTests : BunitContext
         var cut = RenderWorkspace();
 
         var names = cut.FindAll(".ws-head-name").Select(e => e.TextContent.Trim()).ToArray();
-        Assert.Equal(new[] { "Threads", "Approvals", "Skills", "Rooms", "Tools" }, names);
+        Assert.Equal(new[] { "Recent conversations", "Needs your OK", "Personalize Circle AI", "Make something", "About & updates" }, names);
     }
 
     /// <summary>
@@ -165,14 +165,14 @@ public sealed class WorkspaceSidebarTests : BunitContext
     public void Every_tool_is_reachable_from_the_sidebar()
     {
         var cut = RenderWorkspace();
-        Header(cut, "Tools").Click();
+        Header(cut, "Make something").Click();
 
-        var hrefs = cut.FindAll("section.ws-group")[4]
+        var hrefs = cut.FindAll("section.ws-group")[3]
             .QuerySelectorAll("a.ws-room")
             .Select(a => a.GetAttribute("href"))
             .ToArray();
 
-        Assert.Equal(new[] { "history", "diagrams", "images" }, hrefs);
+        Assert.Equal(new[] { "diagrams", "images" }, hrefs);
     }
 
     /// <summary>
@@ -185,9 +185,12 @@ public sealed class WorkspaceSidebarTests : BunitContext
     public void Every_room_is_reachable_from_the_sidebar()
     {
         var cut = RenderWorkspace();
-        Header(cut, "Rooms").Click();
+        Header(cut, "About & updates").Click();
 
-        var hrefs = cut.FindAll("a.ws-room").Select(a => a.GetAttribute("href")).ToArray();
+        var hrefs = cut.FindAll("section.ws-group")[4]
+            .QuerySelectorAll("a.ws-room")
+            .Select(a => a.GetAttribute("href"))
+            .ToArray();
 
         Assert.Equal(
             new[] { "product", "engineering", "beyond", "business-apis", "roadmap", "release", "pricing" },
@@ -201,10 +204,10 @@ public sealed class WorkspaceSidebarTests : BunitContext
     {
         var cut = RenderWorkspace();
 
-        Header(cut, "Skills").Click();
+        Header(cut, "Personalize Circle AI").Click();
         Assert.Contains("is-open", cut.FindAll("section.ws-group")[2].ClassName);
 
-        Header(cut, "Skills").Click();
+        Header(cut, "Personalize Circle AI").Click();
         Assert.DoesNotContain("is-open", cut.FindAll("section.ws-group")[2].ClassName);
     }
 
@@ -243,11 +246,11 @@ public sealed class WorkspaceSidebarTests : BunitContext
         var group = cut.FindAll("section.ws-group")[1];
         Assert.Equal("0", group.QuerySelector(".ws-head-count")!.TextContent.Trim());
 
-        Header(cut, "Approvals").Click();
+        Header(cut, "Needs your OK").Click();
 
         // Re-found after the click: the earlier reference is to the element as
         // it was before the group unfolded.
-        Assert.Contains("Nothing waiting", cut.FindAll("section.ws-group")[1].TextContent);
+        Assert.Contains("You're all caught up", cut.FindAll("section.ws-group")[1].TextContent);
     }
 
     [Fact]
@@ -255,12 +258,12 @@ public sealed class WorkspaceSidebarTests : BunitContext
     {
         var cut = RenderWorkspace();
 
-        // Skills is closed on arrival, so none of its sixty-nine rows exist.
+        // The catalogue is closed on arrival, so its body is absent from the DOM.
         var skills = cut.FindAll("section.ws-group")[2];
         Assert.Empty(skills.QuerySelectorAll(".ws-item"));
 
-        Header(cut, "Skills").Click();
-        Assert.NotEmpty(cut.FindAll("section.ws-group")[2].QuerySelectorAll(".ws-item"));
+        Header(cut, "Personalize Circle AI").Click();
+        Assert.Contains("Browse abilities", cut.FindAll("section.ws-group")[2].TextContent);
     }
 
     // ── Approvals ─────────────────────────────────────────────────────────
@@ -277,7 +280,7 @@ public sealed class WorkspaceSidebarTests : BunitContext
         Raise("Edit config", Concierge.Shared.ConciergeToolRisk.Medium);
 
         var cut = RenderWorkspace();
-        Header(cut, "Approvals").Click();
+        Header(cut, "Needs your OK").Click();
 
         var approvals = cut.FindAll("section.ws-group")[1];
         var rows = approvals.QuerySelectorAll(".ws-item");
@@ -305,7 +308,7 @@ public sealed class WorkspaceSidebarTests : BunitContext
         Raise("Run git status", Concierge.Shared.ConciergeToolRisk.Low);
 
         var cut = RenderWorkspace();
-        Header(cut, "Approvals").Click();
+        Header(cut, "Needs your OK").Click();
 
         var titles = cut.FindAll("section.ws-group")[1]
             .QuerySelectorAll(".ws-item-label")
@@ -333,7 +336,8 @@ public sealed class WorkspaceSidebarTests : BunitContext
             var threads = cut.FindAll("section.ws-group")[0];
             var labels = threads.QuerySelectorAll(".ws-item-label").Select(e => e.TextContent.Trim()).ToArray();
 
-            Assert.Equal(new[] { "New thread" }, labels);
+            Assert.Empty(labels);
+            Assert.Contains("New conversation", cut.Find("button.ws-start-conversation").TextContent);
         });
     }
 
@@ -400,7 +404,7 @@ public sealed class WorkspaceSidebarTests : BunitContext
         var cut = RenderWorkspace();
 
         var runtime = cut.Find(".ws-runtime");
-        Assert.Single(runtime.QuerySelectorAll(".dot"));
+        Assert.Equal("Circle AI", runtime.QuerySelector(".ws-ai-title")!.TextContent.Trim());
         Assert.False(string.IsNullOrWhiteSpace(runtime.QuerySelector(".ws-runtime-name")!.TextContent));
     }
 
@@ -421,7 +425,7 @@ public sealed class WorkspaceSidebarTests : BunitContext
     {
         var cut = RenderWorkspace();
 
-        Assert.DoesNotContain("on device", cut.Find(".ws-runtime").TextContent);
+        Assert.DoesNotContain("on device", cut.Find(".ws-runtime").TextContent, StringComparison.OrdinalIgnoreCase);
     }
 
     // ── What the sidebar must not be ──────────────────────────────────────

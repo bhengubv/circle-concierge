@@ -146,6 +146,8 @@ public sealed class ImageToolTests : IDisposable
 
         Assert.True(result.Success, result.FailureMessage);
         Assert.Equal("a fox in the snow", maker.Asked);
+        Assert.Equal(new AgentToolArtifact("a-fox-in-the-snow.png", "image/png"),
+            Assert.Single(result.Artifacts!));
 
         // Named from the words, so a folder of pictures can be read rather than searched.
         var path = Path.Combine(_folder, "a-fox-in-the-snow.png");

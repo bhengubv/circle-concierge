@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Concierge.Shared.Chat;
+using Concierge.Shared.Sandboxing;
 
 namespace Concierge.Ai.Isolated;
 
@@ -21,6 +22,9 @@ public sealed class IsolatedRuntimeOptions
     /// timeout was tight will reasonably conclude the product is broken.
     /// </summary>
     public TimeSpan StartTimeout { get; set; } = TimeSpan.FromMinutes(2);
+
+    /// <summary>Overrides the live Windows budget measurement in deterministic host tests.</summary>
+    internal Func<ManagedHostMemoryBudget?>? WorkerMemoryBudgetProvider { get; set; }
 
     /// <summary>
     /// Finds the host, or null. Checked rather than assumed because a missing
@@ -120,6 +124,7 @@ public static class IsolatedAiServiceCollectionExtensions
 
         services.TryAddSingleton(options ?? new IsolatedRuntimeOptions());
         services.AddSingleton<IsolatedChatRuntime>();
+        services.AddSingleton<IManagedHostTelemetrySource>(sp => sp.GetRequiredService<IsolatedChatRuntime>());
         services.RemoveAll<IChatRuntime>();
         services.AddSingleton<IChatRuntime>(sp => sp.GetRequiredService<IsolatedChatRuntime>());
 

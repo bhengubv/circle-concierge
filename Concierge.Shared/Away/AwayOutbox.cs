@@ -1,11 +1,14 @@
 using System.Text.Json;
+using Concierge.Shared.Tools;
 
 namespace Concierge.Away;
 
 /// <summary>Something said that has not been delivered yet.</summary>
 /// <param name="Id">Its own name on disk, so delivering it can remove exactly it.</param>
 public sealed record AwayPending(Guid Id, string Text, Situation Situation, Guid? ConversationId = null,
-    IReadOnlyList<Concierge.Shared.Chat.ConversationEvent>? ConversationEvents = null);
+    IReadOnlyList<Concierge.Shared.Chat.ConversationEvent>? ConversationEvents = null,
+    ToolPermissionMode? PermissionMode = null, Guid? ProjectId = null, Guid? ProjectWorkspaceId = null,
+    string? ProjectContext = null, bool IncludeToolCatalog = true);
 
 /// <summary>
 /// What was said while there was nowhere to send it.
@@ -43,9 +46,23 @@ public sealed class AwayOutbox
 
     /// <summary>Keep it until it can go.</summary>
     public AwayPending Keep(string text, Situation situation, Guid? conversationId = null,
-        IReadOnlyList<Concierge.Shared.Chat.ConversationEvent>? conversationEvents = null)
+        IReadOnlyList<Concierge.Shared.Chat.ConversationEvent>? conversationEvents = null,
+        ToolPermissionMode? permissionMode = null, Guid? projectId = null, Guid? projectWorkspaceId = null,
+        string? projectContext = null, Guid? requestId = null, bool includeToolCatalog = true)
     {
-        var pending = new AwayPending(Guid.NewGuid(), text, situation, conversationId, conversationEvents);
+        if (requestId == Guid.Empty)
+            throw new ArgumentException("A request ID must be non-empty.", nameof(requestId));
+
+        var pending = new AwayPending(requestId ?? Guid.NewGuid(), text, situation, conversationId, conversationEvents, permissionMode,
+            projectId, projectWorkspaceId, projectContext, includeToolCatalog);
+
+        if (requestId is { } stableId && Waiting().FirstOrDefault(item => item.Id == stableId) is { } existing)
+        {
+            if (!SameRequest(existing, pending))
+                throw new InvalidOperationException($"Away request ID {stableId} was already used for a different request.");
+
+            return existing;
+        }
 
         try
         {
@@ -67,6 +84,21 @@ public sealed class AwayOutbox
 
         return pending;
     }
+
+    private static bool SameRequest(AwayPending first, AwayPending second)
+        => first.Text == second.Text
+           && first.ConversationId == second.ConversationId
+           && first.PermissionMode == second.PermissionMode
+           && first.ProjectId == second.ProjectId
+           && first.ProjectWorkspaceId == second.ProjectWorkspaceId
+           && first.ProjectContext == second.ProjectContext
+           && first.IncludeToolCatalog == second.IncludeToolCatalog
+           && first.Situation.Latitude == second.Situation.Latitude
+           && first.Situation.Longitude == second.Situation.Longitude
+           && first.Situation.Motion == second.Situation.Motion
+           && first.Situation.HeartRate == second.Situation.HeartRate
+           && first.Situation.AmbientLux == second.Situation.AmbientLux
+           && (first.ConversationEvents ?? []).SequenceEqual(second.ConversationEvents ?? []);
 
     /// <summary>
     /// What is still waiting, oldest first.

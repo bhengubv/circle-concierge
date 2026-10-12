@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Threading.Channels;
 using Concierge.Shared.Chat;
 using Concierge.Shared.Chat.Isolation;
+using Concierge.Shared.Sandboxing;
 
 namespace Concierge.Ai.Isolated;
 
@@ -27,12 +28,17 @@ namespace Concierge.Ai.Isolated;
 /// and quietly re-running a generation that just crashed the model is how you
 /// get a loop. The next message starts a fresh child.
 /// </summary>
-public sealed class IsolatedChatRuntime : IChatRuntime, IModelDownloadRequired, IInitializableChatRuntime, IChatRuntimeStatusEvents, IDisposable, IAsyncDisposable
+public sealed class IsolatedChatRuntime : IChatRuntime, IModelDownloadRequired, IInitializableChatRuntime, IChatRuntimeStatusEvents, IChatRuntimeCapabilitySource, IVisionCapableRuntime, IManagedHostTelemetrySource, IDisposable, IAsyncDisposable
 {
     private readonly IsolatedRuntimeOptions _options;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private readonly SemaphoreSlim _streamGate = new(1, 1);
 
     private Process? _process;
+    private WindowsJobObjectSandbox? _hostJob;
+    private long? _workerMemoryBudgetBytes;
+    private long? _workerResidentMemoryBudgetBytes;
+    private readonly object _workerBudgetGate = new();
     private StreamWriter? _toChild;
     private int _nextRequestId;
 
@@ -42,6 +48,7 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IModelDownloadRequired, 
     private string _status = "Not started yet.";
     private PendingModelDownload? _pendingDownload;
     private ModelDownloadProgress? _currentDownloadProgress;
+    private ChatRuntimeCapabilityCatalog? _capabilityCatalog;
     private TaskCompletionSource<bool>? _downloadCompletion;
     private int _downloadRequestId;
     private IProgress<ModelDownloadProgress>? _downloadProgress;
@@ -73,34 +80,147 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IModelDownloadRequired, 
 
     public ModelDownloadProgress? CurrentDownloadProgress => _currentDownloadProgress;
 
+    public string HostId => "circleai-model";
+
+    public string DisplayName => "Circle AI model worker";
+
+    private volatile InferenceMeasurement? _latestInference;
+    private long _inferenceStarted;
+    public InferenceMeasurement? LatestInference
+    {
+        get
+        {
+            var measurement = _latestInference;
+            return measurement is { State: "waiting" or "streaming" }
+                ? measurement with { ElapsedMilliseconds = Stopwatch.GetElapsedTime(_inferenceStarted).TotalMilliseconds }
+                : measurement;
+        }
+    }
+
+    internal void StartInferenceMeasurement(int id, IReadOnlyList<ChatTurn> messages)
+    {
+        _inferenceStarted = Stopwatch.GetTimestamp();
+        _latestInference = new(id, messages.Count,
+            messages.Sum(message => (long)message.Content.Length),
+            messages.Where(message => message.Role == "system").Sum(message => (long)message.Content.Length),
+            DateTimeOffset.UtcNow, 0, null, 0, "waiting");
+    }
+
+    internal void MeasureInferenceResponse(ModelHostResponse response)
+    {
+        var measurement = _latestInference;
+        if (measurement is null || measurement.RequestId != response.Id) return;
+        var elapsed = Stopwatch.GetElapsedTime(_inferenceStarted).TotalMilliseconds;
+        if (response.Chunk is { Length: > 0 } chunk)
+            measurement = measurement with
+            {
+                FirstChunkMilliseconds = measurement.FirstChunkMilliseconds ?? elapsed,
+                OutputCharacters = measurement.OutputCharacters + chunk.Length,
+                State = "streaming"
+            };
+        if (response.Error is { Length: > 0 }) measurement = measurement with { State = "failed" };
+        if (response.Done && measurement.State != "failed") measurement = measurement with { State = "completed" };
+        _latestInference = measurement with { ElapsedMilliseconds = elapsed };
+    }
+
+    /// <summary>Current .NET model-worker memory/CPU snapshot for the Host Manager.</summary>
+    public ManagedHostSnapshot? CurrentSnapshot
+    {
+        get
+        {
+            var process = _process;
+            if (process is null)
+                return null;
+            try
+            {
+                process.Refresh();
+                if (process.HasExited)
+                    return null;
+                RefreshWorkerResidentMemoryBudget(process);
+                return new ManagedHostSnapshot(
+                    process.Id,
+                    process.WorkingSet64,
+                    process.PrivateMemorySize64,
+                    process.TotalProcessorTime,
+                    _workerMemoryBudgetBytes,
+                    DateTimeOffset.UtcNow,
+                    _workerResidentMemoryBudgetBytes);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception)
+            {
+                return null;
+            }
+        }
+    }
+
+    public ChatRuntimeCapabilityCatalog? CapabilityCatalog
+    {
+        get
+        {
+            var catalog = _capabilityCatalog;
+            if (catalog is null)
+                return null;
+
+            if (_currentDownloadProgress is { } progress)
+                return catalog with
+                {
+                    Activity = new ChatRuntimeActivity(
+                        "model-download",
+                        progress.Description,
+                        Math.Clamp(progress.Ratio, 0, 1))
+                };
+
+            return catalog;
+        }
+    }
+
+    public IReadOnlyCollection<string> SupportedImageMediaTypes
+        => _capabilityCatalog?.SupportedImageMediaTypes ?? [];
+
     public event EventHandler? StatusChanged;
 
     public async IAsyncEnumerable<string> StreamAsync(
         IReadOnlyList<ChatTurn> messages,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        // Setting up is done outside the iterator: C# will not let a yield sit
-        // in a catch, and every failure here needs to become a sentence in the
-        // conversation rather than an exception into the composer.
-        var (started, requestId, chunks, failure) = await BeginAsync(messages, cancellationToken)
-            .ConfigureAwait(false);
-
-        if (!started)
+        await _streamGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
         {
-            yield return $"[{failure}]";
-            yield break;
+            // The host has one active generation slot. Serialize callers so a
+            // second conversation cannot replace the first stream's channel or
+            // cancellation identity while the child is still answering.
+            var (started, requestId, chunks, failure) = await BeginAsync(messages, cancellationToken)
+                .ConfigureAwait(false);
+
+            if (!started)
+            {
+                yield return $"[{failure}]";
+                yield break;
+            }
+
+            // Cancelling asks the child to stop rather than killing it: a model
+            // that stopped when asked is still a good model to keep loaded.
+            using var registration = cancellationToken.Register(() => _ = CancelAsync(requestId));
+
+            // Read with None, not the caller's token: when the caller cancels, the
+            // child still owes a Done, and the pump still owes the closing note if
+            // it faulted. Tearing the channel down here would lose both.
+            await foreach (var chunk in chunks!.Reader.ReadAllAsync(CancellationToken.None).ConfigureAwait(false))
+            {
+                yield return chunk;
+            }
+
+            // The child reports Done after acknowledging Cancel. Preserve that
+            // response boundary, then rethrow cancellation so TurnRunner writes
+            // a cancelled receipt and keeps any chunks as partial output.
+            if (cancellationToken.IsCancellationRequested && _latestInference is { } cancelled
+                && cancelled.RequestId == requestId)
+                _latestInference = cancelled with { State = "cancelled" };
+            cancellationToken.ThrowIfCancellationRequested();
         }
-
-        // Cancelling asks the child to stop rather than killing it: a model
-        // that stopped when asked is still a good model to keep loaded.
-        using var registration = cancellationToken.Register(() => _ = CancelAsync(requestId));
-
-        // Read with None, not the caller's token: when the caller cancels, the
-        // child still owes a Done, and the pump still owes the closing note if
-        // it faulted. Tearing the channel down here would lose both.
-        await foreach (var chunk in chunks!.Reader.ReadAllAsync(CancellationToken.None).ConfigureAwait(false))
+        finally
         {
-            yield return chunk;
+            _streamGate.Release();
         }
     }
 
@@ -122,11 +242,15 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IModelDownloadRequired, 
                 return (false, 0, null, _status);
             }
 
+            if (_process is { HasExited: false } runningWorker)
+                RefreshWorkerResidentMemoryBudget(runningWorker);
+
             if (!IsReady)
                 return (false, 0, null, _status);
 
             var requestId = ++_nextRequestId;
-            _pending = chunks;
+            SetPendingReply(requestId, chunks);
+            StartInferenceMeasurement(requestId, messages);
 
             var request = new ModelHostRequest(
                 ModelHostProtocol.Stream,
@@ -142,7 +266,8 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IModelDownloadRequired, 
             catch (IOException)
             {
                 // The child went between the check and the write.
-                MarkFaulted();
+                MarkFaulted(_isReady);
+                MeasureInferenceResponse(new ModelHostResponse(requestId, Error: "Host connection lost.", Done: true));
                 _pending = null;
                 return (false, 0, null, _status);
             }
@@ -156,6 +281,7 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IModelDownloadRequired, 
     }
 
     private Channel<string>? _pending;
+    private int _pendingRequestId;
 
     public async Task<bool> AcceptDownloadAsync(
         IProgress<ModelDownloadProgress>? progress = null,
@@ -165,7 +291,11 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IModelDownloadRequired, 
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (!await EnsureChildAsync().ConfigureAwait(false) || _pendingDownload is null || IsReady)
+            // A ready local model does not mean the staged offline upgrade is
+            // finished. Circle AI may deliberately keep answering with its
+            // smallest compatible model while the larger selected tier downloads.
+            // Only the child's current offer decides whether there is work to do.
+            if (!await EnsureChildAsync().ConfigureAwait(false) || _pendingDownload is null)
                 return false;
 
             _downloadRequestId = ++_nextRequestId;
@@ -194,6 +324,8 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IModelDownloadRequired, 
             return false;
         }
     }
+
+    public Task CancelCurrentDownloadAsync() => CancelDownloadAsync();
 
     private async Task CancelDownloadAsync()
     {
@@ -242,6 +374,7 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IModelDownloadRequired, 
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            EnsureCapabilityCatalogPreparing();
             await EnsureChildAsync().ConfigureAwait(false);
         }
         finally
@@ -268,9 +401,65 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IModelDownloadRequired, 
         var executable = _options.ResolveHostPath();
         if (executable is null)
         {
-            _status = "The model host is missing from this install, so nothing can answer on this device.";
-            _isReady = false;
+            SetUnavailable("The model host is missing from this install, so nothing can answer on this device.");
             return false;
+        }
+
+        ManagedHostMemoryBudget? memoryBudget = null;
+        WindowsJobObjectSandbox? hostJob = null;
+        string? managerGateFile = null;
+        if (OperatingSystem.IsWindows())
+        {
+            memoryBudget = _options.WorkerMemoryBudgetProvider is { } budgetProvider
+                ? budgetProvider()
+                : ManagedHostMemoryBudget.MeasureWindows();
+            if (memoryBudget is null)
+            {
+                var measuredMemory = ManagedHostMemoryBudget.MeasureWindowsSnapshot();
+                var explanation = measuredMemory is { } snapshot
+                    ? "Circle AI is paused on Desktop because it does not have enough free memory to safely start its worker. Close some apps and try again."
+                    : "Circle AI is paused on Desktop because Windows could not measure free memory safely. Close some apps and try again.";
+                var resources = measuredMemory is { } current
+                    ? new ChatRuntimeResourceSnapshot(
+                        current.AvailableBytes / (1024d * 1024 * 1024),
+                        null,
+                        Environment.ProcessorCount,
+                        null,
+                        "Free physical memory is measured; no safe worker budget is currently available.",
+                        DateTimeOffset.UtcNow)
+                    : null;
+                SetUnavailable(explanation, resources);
+                return false;
+            }
+
+            hostJob = new WindowsJobObjectSandbox(
+                memoryCapBytes: memoryBudget.WorkerLimitBytes,
+                processCap: 1);
+            try
+            {
+                hostJob.OpenJob();
+            }
+            catch (Exception ex)
+            {
+                DisposeHostJob(hostJob);
+                SetUnavailable($"Circle AI could not start its managed worker: {ex.Message}");
+                return false;
+            }
+
+            // The worker waits at its entry point until it has been assigned to
+            // the job. This closes the startup window in which an over-budget
+            // model load could run before the OS limits were attached.
+            managerGateFile = Path.Combine(Path.GetTempPath(), $"concierge-host-{Guid.NewGuid():N}.gate");
+            try
+            {
+                File.WriteAllText(managerGateFile, string.Empty);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                DisposeHostJob(hostJob);
+                SetUnavailable($"Circle AI could not prepare its managed worker: {ex.Message}");
+                return false;
+            }
         }
 
         var start = new ProcessStartInfo(executable)
@@ -283,26 +472,62 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IModelDownloadRequired, 
             WorkingDirectory = Path.GetDirectoryName(executable) ?? Environment.CurrentDirectory
         };
 
+        if (memoryBudget is not null)
+            start.Environment["CONCIERGE_HOST_MEMORY_BUDGET_BYTES"] = memoryBudget.WorkerLimitBytes.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        if (managerGateFile is not null)
+            start.Environment["CONCIERGE_HOST_MANAGER_GATE_FILE"] = managerGateFile;
+
         try
         {
             _process = Process.Start(start);
+            if (_process is null)
+                throw new InvalidOperationException("The model host would not start.");
+
+            if (OperatingSystem.IsWindows() && hostJob is not null)
+            {
+                hostJob.Confine(_process);
+                WindowsProcessMemoryLimiter.Apply(_process, memoryBudget!.WorkerLimitBytes);
+            }
+
+            DisposeHostJob(_hostJob);
+            _hostJob = hostJob;
+            hostJob = null;
+            _workerMemoryBudgetBytes = memoryBudget?.WorkerLimitBytes;
+            _workerResidentMemoryBudgetBytes = memoryBudget?.WorkerLimitBytes;
+            _toChild = _process.StandardInput;
+            if (managerGateFile is not null)
+                File.Delete(managerGateFile);
+            try { _process.PriorityClass = ProcessPriorityClass.BelowNormal; }
+            catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException) { }
         }
         catch (Exception ex)
         {
-            _status = $"The model host would not start: {ex.Message}";
-            _isReady = false;
-            return false;
-        }
-
-        if (_process is null)
-        {
-            _status = "The model host would not start.";
-            _isReady = false;
+            try
+            {
+                if (_process is { HasExited: false })
+                    _process.Kill(entireProcessTree: true);
+            }
+            catch (Exception) { }
+            _process?.Dispose();
+            _process = null;
+            _toChild = null;
+            DisposeHostJob(_hostJob);
+            _hostJob = null;
+            _workerMemoryBudgetBytes = null;
+            _workerResidentMemoryBudgetBytes = null;
+            DisposeHostJob(hostJob);
+            try
+            {
+                if (managerGateFile is not null && File.Exists(managerGateFile))
+                    File.Delete(managerGateFile);
+            }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            SetUnavailable($"The model host would not start: {ex.Message}");
             return false;
         }
 
         _childFaulted = false;
-        _toChild = _process.StandardInput;
 
         // Read the child's stdout on its own loop for the life of the process.
         _ = Task.Run(() => PumpAsync(_process));
@@ -338,7 +563,7 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IModelDownloadRequired, 
 
         if (!_helloReceived && !_childFaulted)
         {
-            _status = "The model did not finish loading in time.";
+            SetUnavailable("The model did not finish loading in time. Restart Concierge to retry its managed worker.");
         }
 
         if (_isReady)
@@ -351,6 +576,40 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IModelDownloadRequired, 
         // The child may be alive and waiting for download approval. It is
         // initialized, even though it cannot answer until the model is ready.
         return _helloReceived && _process is { HasExited: false };
+    }
+
+    private void RefreshWorkerResidentMemoryBudget(Process process)
+    {
+        if (!OperatingSystem.IsWindows() || _workerMemoryBudgetBytes is not { } startupLimit)
+            return;
+
+        lock (_workerBudgetGate)
+        {
+            var liveBudget = _options.WorkerMemoryBudgetProvider is { } budgetProvider
+                ? budgetProvider()
+                : ManagedHostMemoryBudget.MeasureWindows(process);
+            if (liveBudget is null)
+                return;
+
+            try
+            {
+                process.Refresh();
+                if (process.HasExited)
+                    return;
+
+                var currentLimit = _workerResidentMemoryBudgetBytes ?? startupLimit;
+                _workerResidentMemoryBudgetBytes = ManagedHostMemoryBudget.TightenAndApplyResidentLimit(
+                    currentLimit,
+                    startupLimit,
+                    liveBudget.WorkerLimitBytes,
+                    process);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or ArgumentOutOfRangeException)
+            {
+                // Keep the last successfully enforced value visible. The configured commit
+                // ceiling remains in force; a later live sample can retry the resident cap.
+            }
+        }
     }
 
     /// <summary>
@@ -387,10 +646,12 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IModelDownloadRequired, 
 
                 if (response.Status is not null)
                     _status = response.Status;
+                if (response.CapabilityCatalog is not null)
+                    _capabilityCatalog = response.CapabilityCatalog;
                 if (response.PendingDownload is not null || response.Ready)
                     _pendingDownload = response.PendingDownload;
-                if (response.EngineLabel is not null || response.Done)
-                    _isReady = response.Ready;
+                ApplyReadinessResponse(response);
+                MeasureInferenceResponse(response);
                 if (response.ProgressRatio is { } ratio)
                 {
                     var downloadProgress = new ModelDownloadProgress(ratio, response.ProgressDescription ?? _status);
@@ -411,24 +672,10 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IModelDownloadRequired, 
                     StatusChanged?.Invoke(this, EventArgs.Empty);
                 }
 
-                if (response.Status is not null || response.Ready || response.Error is not null)
+                if (response.Status is not null || response.Ready || response.Error is not null || response.CapabilityCatalog is not null)
                     StatusChanged?.Invoke(this, EventArgs.Empty);
 
-                if (response.Chunk is { Length: > 0 })
-                {
-                    _pending?.Writer.TryWrite(response.Chunk);
-                }
-
-                if (response.Error is { Length: > 0 })
-                {
-                    _pending?.Writer.TryWrite($"[{response.Error}]");
-                }
-
-                if (response.Done)
-                {
-                    _pending?.Writer.TryComplete();
-                    _pending = null;
-                }
+                DeliverPendingReply(response);
             }
         }
         catch (Exception)
@@ -442,15 +689,29 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IModelDownloadRequired, 
         // composer spinning on a stream that will never produce another token.
         if (_pending is { } waiting)
         {
-            MarkFaulted();
+            if (_latestInference is { } activeInference)
+                MeasureInferenceResponse(new ModelHostResponse(activeInference.RequestId, Error: "Host stopped.", Done: true));
+            var wasReady = _isReady;
+            MarkFaulted(wasReady);
             waiting.Writer.TryWrite(
                 "\n\n[The model stopped unexpectedly. Concierge is still running — send the message again to try once more.]");
             waiting.Writer.TryComplete();
             _pending = null;
         }
-        else if (process.HasExited && process.ExitCode != 0)
+        else if (process.HasExited)
         {
-            MarkFaulted();
+            // A clean exit is still an unexpected loss of the runtime: the
+            // parent did not ask the host to stop. Do not leave the last
+            // Preparing catalog published to remote devices indefinitely.
+            MarkFaulted(_isReady);
+        }
+
+        if (ReferenceEquals(_process, process))
+        {
+            DisposeHostJob(_hostJob);
+            _hostJob = null;
+            _workerMemoryBudgetBytes = null;
+            _workerResidentMemoryBudgetBytes = null;
         }
 
         _downloadCompletion?.TrySetResult(false);
@@ -465,12 +726,73 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IModelDownloadRequired, 
 
     private const int MaxRestarts = 3;
 
-    private void MarkFaulted()
+    internal void ApplyReadinessResponse(ModelHostResponse response)
+    {
+        // Stream completion carries no runtime state. Its default Ready=false
+        // must not advertise a loaded engine as unavailable between turns.
+        if (response.EngineLabel is not null
+            || response.Done && (response.Id == 0 || response.Id == _downloadRequestId))
+            _isReady = response.Ready;
+    }
+
+    internal void SetPendingReply(int requestId, Channel<string> reply)
+    {
+        _pendingRequestId = requestId;
+        _pending = reply;
+    }
+
+    internal void DeliverPendingReply(ModelHostResponse response)
+    {
+        // Download/setup completions share this pipe with inference. Only the
+        // matching request may deliver output or close its conversation's stream.
+        if (_pending is not { } reply || response.Id != _pendingRequestId) return;
+        if (response.Chunk is { Length: > 0 }) reply.Writer.TryWrite(response.Chunk);
+        if (response.Error is { Length: > 0 }) reply.Writer.TryWrite($"[{response.Error}]");
+        if (response.Done)
+        {
+            reply.Writer.TryComplete();
+            _pending = null;
+            _pendingRequestId = 0;
+        }
+    }
+
+    private void MarkFaulted(bool wasReady)
     {
         _childFaulted = true;
         _isReady = false;
-        _status = "The model stopped unexpectedly.";
-        StatusChanged?.Invoke(this, EventArgs.Empty);
+        // A stopped host cannot still be downloading. Drop both the live
+        // overlay and any activity captured in its last capability snapshot
+        // so Desktop and connected clients do not display frozen progress.
+        _currentDownloadProgress = null;
+        _downloadProgress = null;
+        _downloadCompletion?.TrySetResult(false);
+        _downloadCompletion = null;
+        _status = wasReady
+            ? "The model stopped unexpectedly."
+            : "Circle AI could not finish starting.";
+        if (_capabilityCatalog is { } catalog)
+            _capabilityCatalog = MarkCatalogUnavailable(
+                catalog,
+                DateTimeOffset.UtcNow,
+                wasReady
+                    ? "Circle AI stopped while preparing. It will try once more automatically."
+                    : "Circle AI stopped while preparing and will not retry this startup. Check Concierge status before retrying.");
+        else
+            _capabilityCatalog = CreateCapabilityCatalog(
+                ChatRuntimeCapabilityState.Unavailable,
+                _status,
+                resources: null);
+
+        // A host that dies before it has ever become ready is failing during
+        // initialization (including native model loading). Restarting the same
+        // deterministic failure several times burns CPU and shows false activity.
+        // Let the person see the unavailable state; a model that faults during a
+        // real turn can still receive the bounded recovery attempt below.
+        if (!wasReady)
+        {
+            StatusChanged?.Invoke(this, EventArgs.Empty);
+            return;
+        }
 
         // Restart it, rather than waiting to be asked.
         //
@@ -485,10 +807,17 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IModelDownloadRequired, 
         if (_restarts >= MaxRestarts)
         {
             _status = "The model stopped repeatedly, so it has not been started again. Restart Concierge to try once more.";
+            if (_capabilityCatalog is { } failedCatalog)
+                _capabilityCatalog = MarkCatalogUnavailable(
+                    failedCatalog,
+                    DateTimeOffset.UtcNow,
+                    "Circle AI stopped repeatedly while preparing. Check Concierge status before retrying.");
+            StatusChanged?.Invoke(this, EventArgs.Empty);
             return;
         }
 
         _restarts++;
+        StatusChanged?.Invoke(this, EventArgs.Empty);
 
         _ = Task.Run(async () =>
         {
@@ -506,6 +835,65 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IModelDownloadRequired, 
             }
         });
     }
+
+    internal static ChatRuntimeCapabilityCatalog MarkCatalogUnavailable(
+        ChatRuntimeCapabilityCatalog catalog, DateTimeOffset observedAt, string explanation)
+        => catalog with
+        {
+            ObservedAt = observedAt,
+            Activity = null,
+            Capabilities = catalog.Capabilities.Select(capability =>
+                capability.State == ChatRuntimeCapabilityState.Preparing
+                    ? capability with
+                    {
+                        State = ChatRuntimeCapabilityState.Unavailable,
+                        Explanation = explanation
+                    }
+                    : capability).ToArray(),
+            Resources = catalog.Resources is { } resources
+                ? resources with { MeasuredAt = observedAt }
+                : null
+        };
+
+    private void EnsureCapabilityCatalogPreparing()
+    {
+        _capabilityCatalog ??= CreateCapabilityCatalog(
+            ChatRuntimeCapabilityState.Preparing,
+            "Circle AI is checking this Desktop's resources and starting its managed worker.",
+            resources: null);
+    }
+
+    private void SetUnavailable(string explanation, ChatRuntimeResourceSnapshot? resources = null)
+    {
+        _status = explanation;
+        _isReady = false;
+        _capabilityCatalog = CreateCapabilityCatalog(
+            ChatRuntimeCapabilityState.Unavailable,
+            explanation,
+            resources);
+        StatusChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private static ChatRuntimeCapabilityCatalog CreateCapabilityCatalog(
+        ChatRuntimeCapabilityState state,
+        string explanation,
+        ChatRuntimeResourceSnapshot? resources)
+        => new(
+            SchemaVersion: 1,
+            RuntimeId: "circleai",
+            // The isolated parent intentionally does not reference Circle AI's
+            // inference assemblies. Until its child reports a version, be honest.
+            RuntimeVersion: "unreported",
+            ObservedAt: DateTimeOffset.UtcNow,
+            Capabilities:
+            [
+                new("conversation", "Conversation", state, explanation),
+                new("tool-use", "Working with tools", state, explanation),
+                new("visual-input", "Understanding images", state, explanation),
+                new("reasoning", "Careful reasoning", state, explanation),
+                new("long-context", "Longer conversations", state, explanation)
+            ],
+            Resources: resources);
 
     private async Task CancelAsync(int requestId)
     {
@@ -563,6 +951,16 @@ public sealed class IsolatedChatRuntime : IChatRuntime, IModelDownloadRequired, 
         }
 
         _process?.Dispose();
+        DisposeHostJob(_hostJob);
+        _hostJob = null;
+        _workerMemoryBudgetBytes = null;
+        _workerResidentMemoryBudgetBytes = null;
         _gate.Dispose();
+    }
+
+    private static void DisposeHostJob(WindowsJobObjectSandbox? job)
+    {
+        if (OperatingSystem.IsWindows())
+            job?.Dispose();
     }
 }

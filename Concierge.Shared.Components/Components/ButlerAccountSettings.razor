@@ -1,0 +1,126 @@
+@using Concierge.Shared.Butler
+@inject IButlerAccountSession ButlerSession
+
+<div class="rows" aria-live="polite">
+    @if (_status is null)
+    {
+        <p class="row-sub">Checking Butler account status…</p>
+    }
+    else if (!_status.IsSupported)
+    {
+        <p class="row-sub">Account linking is not available on this Concierge head yet.</p>
+    }
+    else if (_status.IsConnected)
+    {
+        <div class="row">
+            <span class="row-name">Connected as @_status.Email</span>
+            <span class="state"><span class="dot dot-done" aria-hidden="true"></span>Connected</span>
+        </div>
+        <p class="row-sub">Concierge can attribute Butler work to your account. Signing in does not start or approve an operation.</p>
+        <button class="btn" type="button" disabled="@_busy" @onclick="SignOutAsync">
+            @(_busy ? "Disconnecting…" : "Disconnect Butler")
+        </button>
+    }
+    else if (_status.NeedsTwoFactor)
+    {
+        <p class="row-sub">Enter the code from your authenticator to finish connecting Butler.</p>
+        <input class="comp-input" type="text" inputmode="numeric" autocomplete="one-time-code"
+               placeholder="Verification code" aria-label="Butler verification code" @bind="_code" />
+        <button class="btn btn-primary" type="button" disabled="@(_busy || string.IsNullOrWhiteSpace(_code))" @onclick="VerifyAsync">
+            @(_busy ? "Checking…" : "Verify and connect")
+        </button>
+    }
+    else
+    {
+        <p class="row-sub">Sign in with your Butler account. Your password is used only to sign in and is not saved by Concierge.</p>
+        <input class="comp-input" type="text" autocomplete="username" placeholder="Email or mobile number"
+               aria-label="Butler email or mobile number" @bind="_emailOrMobile" />
+        <input class="comp-input" type="password" autocomplete="current-password" placeholder="Password"
+               aria-label="Butler password" @bind="_password" />
+        <button class="btn btn-primary" type="button" disabled="@(_busy || string.IsNullOrWhiteSpace(_emailOrMobile) || string.IsNullOrWhiteSpace(_password))" @onclick="SignInAsync">
+            @(_busy ? "Connecting…" : "Connect Butler")
+        </button>
+    }
+    @if (!string.IsNullOrWhiteSpace(_message))
+    {
+        <p class="room-note" role="status">@_message</p>
+    }
+</div>
+
+@code {
+    private ButlerAccountStatus? _status;
+    private string _emailOrMobile = string.Empty;
+    private string _password = string.Empty;
+    private string _code = string.Empty;
+    private string? _message;
+    private bool _busy;
+
+    protected override async Task OnInitializedAsync() => await RefreshAsync();
+
+    private async Task RefreshAsync()
+    {
+        try
+        {
+            _status = await ButlerSession.GetStatusAsync();
+        }
+        catch (Exception)
+        {
+            _status = new ButlerAccountStatus(false, false, null, false);
+            _message = "Butler account storage could not be opened on this device.";
+        }
+    }
+
+    private async Task SignInAsync()
+    {
+        await RunAsync(() => ButlerSession.SignInAsync(_emailOrMobile, _password));
+        if (_status?.NeedsTwoFactor != true)
+            _password = string.Empty;
+    }
+
+    private async Task VerifyAsync()
+    {
+        await RunAsync(() => ButlerSession.CompleteTwoFactorAsync(_code));
+        if (_status?.IsConnected == true)
+            _code = string.Empty;
+    }
+
+    private async Task SignOutAsync()
+    {
+        _busy = true;
+        _message = null;
+        try
+        {
+            await ButlerSession.SignOutAsync();
+            _message = "Butler disconnected.";
+            await RefreshAsync();
+        }
+        catch (Exception)
+        {
+            _message = "Butler could not be disconnected right now. Try again.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task RunAsync(Func<Task<ButlerSignInResult>> action)
+    {
+        _busy = true;
+        _message = null;
+        try
+        {
+            var result = await action();
+            _message = result.Message;
+            await RefreshAsync();
+        }
+        catch (Exception)
+        {
+            _message = "Butler account connection failed. Check your connection and try again.";
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+}

@@ -133,6 +133,7 @@ public sealed class ChatStackTests
         {
             ModelsDirectory = Path.Combine(Path.GetTempPath(), $"concierge-models-{Guid.NewGuid():N}"),
             RepositoryUrl = null,
+            DeviceProbeFactory = CircleAiTestDefaults.Probe,
         };
         var logger = Microsoft.Extensions.Logging.Abstractions.NullLogger<CircleAiChatRuntime>.Instance;
         var runtime = new CircleAiChatRuntime(logger, options);

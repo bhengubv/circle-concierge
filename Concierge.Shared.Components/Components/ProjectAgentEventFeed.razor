@@ -1,0 +1,41 @@
+@using Concierge.Shared.Planning
+
+@if (VisibleEvents.Count > 0)
+{
+    <ol class="project-agent-event-feed" aria-label="Analysis run updates" aria-live="polite">
+        @foreach (var item in VisibleEvents)
+        {
+            <li class="project-agent-event" data-event-sequence="@item.Sequence">
+                <span>@EventLabel(item.Type)</span>
+                <time datetime="@item.CreatedAt.ToString("O")">@item.CreatedAt.ToLocalTime().ToString("t")</time>
+            </li>
+        }
+    </ol>
+}
+
+@code {
+    [Parameter] public IReadOnlyList<ProjectAgentEvent> Events { get; set; } = [];
+
+    private IReadOnlyList<ProjectAgentEvent> VisibleEvents
+    {
+        get
+        {
+            var visible = Events.Where(item => item.Type != ProjectAgentEventType.Output)
+                .TakeLast(4).ToList();
+            if (Events.LastOrDefault(item => item.Type == ProjectAgentEventType.Output) is { } output)
+                visible.Add(output);
+            return visible.OrderBy(item => item.Sequence).TakeLast(5).ToArray();
+        }
+    }
+
+    private static string EventLabel(ProjectAgentEventType type) => type switch
+    {
+        ProjectAgentEventType.Queued => "Review queued",
+        ProjectAgentEventType.Started => "Analysis started",
+        ProjectAgentEventType.Output => "New notes saved",
+        ProjectAgentEventType.ReviewReady => "Findings ready to review",
+        ProjectAgentEventType.Paused => "Analysis paused",
+        ProjectAgentEventType.Failed => "Analysis could not finish",
+        _ => "Run updated",
+    };
+}

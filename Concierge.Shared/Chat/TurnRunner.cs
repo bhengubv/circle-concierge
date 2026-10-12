@@ -1,8 +1,12 @@
 using System.Text;
+using System.Text.Json;
+using System.Security.Cryptography;
 using Concierge.Shared.Context;
 using Concierge.Shared.Media;
+using Concierge.Shared.Planning;
 using Concierge.Shared.Skills;
 using Concierge.Shared.Tools;
+using Microsoft.EntityFrameworkCore;
 
 namespace Concierge.Shared.Chat;
 
@@ -14,6 +18,9 @@ public enum TurnStage
 
     /// <summary>Something was written to the log, so a surface showing it should re-read.</summary>
     Recorded,
+
+    /// <summary>The user's input is durably in the conversation log.</summary>
+    UserMessageRecorded,
 
     /// <summary>A new round of the tool loop started.</summary>
     Round,
@@ -47,7 +54,8 @@ public sealed record TurnSettings(
     bool ExecuteTools = true,
     bool IncludeToolCatalog = true,
     IReadOnlyList<string>? SkillIds = null,
-    string? SystemPrompt = null);
+    string? SystemPrompt = null,
+    ToolPermissionMode PermissionMode = ToolPermissionMode.AskFirst);
 
 /// <summary>A turn to run.</summary>
 /// <param name="ConversationId">Which conversation it belongs to.</param>
@@ -65,7 +73,11 @@ public sealed record TurnRequest(
     IReadOnlyList<IChatRuntime>? Alternatives = null,
     IReadOnlyList<ChatImage>? Images = null,
     TurnSettings? Settings = null,
-    bool InputAlreadyRecorded = false);
+    bool InputAlreadyRecorded = false,
+    Guid? RunId = null,
+    Guid? ProjectId = null,
+    Guid? ProjectWorkspaceId = null,
+    Guid? StartupJourneyId = null);
 
 /// <summary>What a turn came to.</summary>
 public sealed record TurnResult(
@@ -74,6 +86,31 @@ public sealed record TurnResult(
     IReadOnlyList<string> PlanSteps,
     int PlanDone,
     string? Stopped = null);
+
+/// <summary>Durable receipt kept in the conversation event log when a turn closes.</summary>
+public sealed record TurnRunStart(
+    Guid RunId,
+    string Fingerprint,
+    Guid? ProjectId = null,
+    Guid? ProjectWorkspaceId = null,
+    Guid? StartupJourneyId = null);
+
+public sealed record TurnRunReceipt(
+    Guid RunId,
+    string Status,
+    string? Text,
+    string? AnsweredBy,
+    IReadOnlyList<string> PlanSteps,
+    int PlanDone,
+    string? Stopped);
+
+/// <summary>A durable snapshot of the plan presented for one turn.</summary>
+public sealed record TurnPlanSnapshot(
+    Guid RunId,
+    IReadOnlyList<string> Steps,
+    int Done,
+    int Revisions,
+    DateTimeOffset UpdatedAt);
 
 /// <summary>
 /// Running one turn: ask, read the reply, run whatever it called for, ask again.
@@ -100,15 +137,20 @@ public sealed class TurnRunner(
     ConciergeToolLoopOptions options,
     BackgroundRuns runs,
     CapturedImages captured,
-    RuntimeResolver? resolver = null)
+    RuntimeResolver? resolver = null,
+    ConversationRunGate? runGate = null)
 {
     private readonly RuntimeResolver _resolver = resolver ?? new RuntimeResolver();
+    private readonly ConversationRunGate _runGate = runGate ?? new ConversationRunGate();
+    private const string ConciergeIdentityPrompt = """
+        You are the assistant inside Concierge, powered by Circle AI. Help people turn questions, ideas, and goals into useful work. Answer the person directly in clear, everyday language.
 
-    /// <summary>
-    /// The plan for the turn in flight. Live state, like the strip that shows it — a plan
-    /// describes a run, and a run does not survive a restart either.
-    /// </summary>
-    private readonly PlanProgress _plan = new();
+        Ground capability claims in the tools, connected services, and current work context available on this turn. Explain the difference between a suggestion or plan and an action that has actually completed. Never say a task was executed, a file was created, or a service was contacted unless the available tool or service confirms it.
+
+        Concierge owns the person's conversations, Workspaces, Projects, durable work history, permissions, and progress view. Circle AI supplies intelligence and chooses suitable capabilities and device resources. When an integrated Butler execution run is actually available, Butler performs the dispatched operational work and Concierge reports its confirmed progress and results. Do not imply Butler is connected or that a run has started unless the app confirms it.
+
+        Do not ask the person to choose a model or runtime. Follow the action-control mode and approval results supplied by the app. If asked what Concierge can help with, name a few practical things supported by the current tools and work surfaces, then offer one useful next step. Ask only the follow-up needed to proceed.
+        """;
 
     /// <summary>
     /// Run a turn to completion.
@@ -122,26 +164,90 @@ public sealed class TurnRunner(
         IProgress<TurnStep>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.ProjectId == Guid.Empty || request.ProjectWorkspaceId == Guid.Empty || request.StartupJourneyId == Guid.Empty
+            || request.ProjectWorkspaceId is not null && request.ProjectId is null)
+            throw new ArgumentException("Work context requires non-empty IDs and a Workspace's owning Project ID.", nameof(request));
+
+        using var conversationLease = await _runGate.EnterAsync(request.ConversationId, cancellationToken)
+            .ConfigureAwait(false);
         var settings = request.Settings ?? new TurnSettings();
         var images = request.Images is { Count: > 0 } given ? given.ToList() : [];
+        var runId = request.RunId is { } requestedId && requestedId != Guid.Empty ? requestedId : Guid.NewGuid();
+        var fingerprint = Fingerprint(request, settings, images);
 
-        if (!request.InputAlreadyRecorded)
-            await store.AppendEventAsync(
-                request.ConversationId, ConversationEventType.UserMessage, request.Text, cancellationToken: cancellationToken)
+        // The event ID is the stable request identity. SQLite's primary key prevents two
+        // copies of the same request from both opening a run, including across processes.
+        // A completed retry replays its receipt; an open marker after a crash is reported
+        // as interrupted because the native model/tool loop cannot resume mid-call yet.
+        var existingRun = (await store.ReadEventsAsync(request.ConversationId, cancellationToken)
+            .ConfigureAwait(false)).FirstOrDefault(entry => entry.Id == runId);
+        if (existingRun is not null)
+        {
+            var recordedStart = TryReadRunStart(existingRun.Data);
+            if (existingRun.Type != ConversationEventType.TurnStart || recordedStart?.RunId != runId)
+                throw new InvalidOperationException($"Run ID {runId} is already used by another conversation event.");
+            if (!string.Equals(recordedStart.Fingerprint, fingerprint, StringComparison.Ordinal))
+                throw new InvalidOperationException($"Run ID {runId} was already used for a different request.");
+
+            return await ExistingRunResultAsync(request.ConversationId, runId, existingRun.Seq, cancellationToken)
                 .ConfigureAwait(false);
+        }
 
-        progress?.Report(new TurnStep(TurnStage.Recorded));
+        try
+        {
+            await store.AppendEventAsync(
+                request.ConversationId, ConversationEventType.TurnStart,
+                JsonSerializer.Serialize(new TurnRunStart(runId, fingerprint, request.ProjectId, request.ProjectWorkspaceId, request.StartupJourneyId)),
+                cancellationToken: cancellationToken, eventId: runId).ConfigureAwait(false);
+        }
+        catch (DbUpdateException)
+        {
+            // Another process may have committed the same request after the read above.
+            // Resolve only a matching run marker; unrelated primary-key/sequence failures
+            // still surface to the caller.
+            var raced = (await store.ReadEventsAsync(request.ConversationId, cancellationToken)
+                .ConfigureAwait(false)).FirstOrDefault(entry => entry.Id == runId);
+            if (raced?.Type != ConversationEventType.TurnStart
+                || TryReadRunStart(raced.Data) is not { } racedStart
+                || racedStart.RunId != runId
+                || !string.Equals(racedStart.Fingerprint, fingerprint, StringComparison.Ordinal))
+                throw;
 
-        _plan.Clear();
+            return await ExistingRunResultAsync(request.ConversationId, runId, raced.Seq, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        // Plan progress belongs to this run, not the scoped runner. A turn may
+        // outlive its workspace while another conversation starts using the same
+        // runner instance; instance state would let those plans overwrite each other.
+        var plan = new PlanProgress();
 
         FailoverOutcome? answeredBy = null;
         string? last = null;
         string? stopped = null;
+        var runStatus = "completed";
 
-        runs.Started(request.ConversationId, CancellationTokenSource.CreateLinkedTokenSource(cancellationToken));
+        using var runCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var runToken = runCancellation.Token;
+        runs.Started(request.ConversationId, runCancellation);
+        using var approvalRunContext = ToolApprovalRunContext.Enter(request.ConversationId, runId);
+        using var projectToolRunContext = ProjectToolRunContext.Enter(
+            new ProjectToolRun(request.ProjectId, request.ProjectWorkspaceId, request.ConversationId, runId,
+                request.StartupJourneyId, settings.PermissionMode));
 
         try
         {
+            if (!request.InputAlreadyRecorded)
+            {
+                await store.AppendEventAsync(
+                    request.ConversationId, ConversationEventType.UserMessage, request.Text,
+                    cancellationToken: runToken).ConfigureAwait(false);
+                progress?.Report(new TurnStep(TurnStage.UserMessageRecorded));
+            }
+
+            progress?.Report(new TurnStep(TurnStage.Recorded));
+
             // The outer loop drives the tool-call cycle: stream, persist, and if the reply
             // called for tools and the caller allows it, run them, write the results in as a
             // turn of their own, and stream again. Capped so a reply that keeps calling the
@@ -156,7 +262,7 @@ public sealed class TurnRunner(
                         answeredBy = outcome;
                         progress?.Report(new TurnStep(TurnStage.Answered, Answered: outcome));
                     },
-                    progress, cancellationToken).ConfigureAwait(false);
+                    progress, runToken).ConfigureAwait(false);
 
                 // Pictures ride exactly one turn. A filmstrip attached to every later
                 // question is worse than no filmstrip at all.
@@ -173,18 +279,22 @@ public sealed class TurnRunner(
                 // rather than reconstructed afterwards from what did.
                 if (PlanProtocol.Extract(streamed) is { Count: > 0 } stated)
                 {
-                    var revised = _plan.State(stated);
+                    var previousSteps = plan.Steps.ToArray();
+                    var revised = plan.State(stated);
+
+                    if (!previousSteps.SequenceEqual(plan.Steps, StringComparer.Ordinal))
+                        await RecordPlanAsync(request.ConversationId, runId, plan, runToken).ConfigureAwait(false);
 
                     if (revised)
                     {
                         await store.AppendEventAsync(
                             request.ConversationId, ConversationEventType.ToolResult,
-                            $"The plan was revised ({_plan.Revisions} so far this turn).",
-                            cancellationToken: cancellationToken).ConfigureAwait(false);
+                            $"The plan was revised ({plan.Revisions} so far this turn).",
+                            cancellationToken: runToken).ConfigureAwait(false);
                     }
 
                     progress?.Report(new TurnStep(
-                        TurnStage.Plan, PlanSteps: _plan.Steps, PlanDone: _plan.Done, PlanRevised: revised));
+                        TurnStage.Plan, PlanSteps: plan.Steps, PlanDone: plan.Done, PlanRevised: revised));
                 }
 
                 if (!settings.ExecuteTools || tools.Tools.Count == 0)
@@ -205,7 +315,7 @@ public sealed class TurnRunner(
 
                     await store.AppendEventAsync(
                         request.ConversationId, ConversationEventType.ToolResult, stopped,
-                        cancellationToken: cancellationToken).ConfigureAwait(false);
+                        cancellationToken: runToken).ConfigureAwait(false);
                     break;
                 }
 
@@ -216,16 +326,19 @@ public sealed class TurnRunner(
                     await store.AppendEventAsync(
                         request.ConversationId, ConversationEventType.ToolCall,
                         call.Name + " " + (call.Arguments?.ToJsonString() ?? "{}"),
-                        cancellationToken: cancellationToken).ConfigureAwait(false);
+                        cancellationToken: runToken).ConfigureAwait(false);
                 }
 
                 var planned = calls.Select(call => new PlannedToolCall(call.Name, call.Arguments)).ToList();
-                var outcomes = await scheduler.ExecuteAsync(planned, cancellationToken).ConfigureAwait(false);
+                var outcomes = await scheduler.ExecuteAsync(planned, runToken).ConfigureAwait(false);
 
                 // One round of calls is one step done — but only a round where something
                 // actually worked. Ticking regardless is the strip asserting progress
                 // nobody made, in the place a person looks to decide whether to let it run on.
-                var verdict = _plan.Round(outcomes.Select(o => o.Result.Success).ToList());
+                var previousDone = plan.Done;
+                var verdict = plan.Round(outcomes.Select(o => o.Result.Success).ToList());
+                if (plan.Done != previousDone)
+                    await RecordPlanAsync(request.ConversationId, runId, plan, runToken).ConfigureAwait(false);
 
                 foreach (var outcome in outcomes)
                 {
@@ -233,13 +346,23 @@ public sealed class TurnRunner(
                     // later request in this conversation.
                     var trimmed = pruner.Prune(outcome.Result.Output);
                     var result = trimmed.WasPruned
-                        ? new AgentToolResult(outcome.Result.Success, trimmed.Text, outcome.Result.FailureMessage)
+                        ? outcome.Result with { Output = trimmed.Text }
                         : outcome.Result;
 
-                    await store.AppendEventAsync(
+                    var toolResultEvent = await store.AppendEventAsync(
                         request.ConversationId, ConversationEventType.ToolResult,
                         ToolCallProtocol.FormatResult(outcome.ToolName, result),
-                        cancellationToken: cancellationToken).ConfigureAwait(false);
+                        cancellationToken: runToken).ConfigureAwait(false);
+
+                    foreach (var artifact in result.Artifacts ?? [])
+                    {
+                        await store.AppendEventAsync(
+                            request.ConversationId,
+                            ConversationEventType.ArtifactCreated,
+                            JsonSerializer.Serialize(new ConversationArtifactRecord(
+                                Guid.NewGuid(), artifact.Name, artifact.MediaType, toolResultEvent.Id, runId)),
+                            cancellationToken: runToken).ConfigureAwait(false);
+                    }
 
                     // A model going round in circles is told so, rather than left to spend
                     // the whole iteration budget discovering it.
@@ -247,7 +370,7 @@ public sealed class TurnRunner(
                     {
                         await store.AppendEventAsync(
                             request.ConversationId, ConversationEventType.UserMessage, reminder,
-                            cancellationToken: cancellationToken).ConfigureAwait(false);
+                            cancellationToken: runToken).ConfigureAwait(false);
                     }
                 }
 
@@ -259,11 +382,11 @@ public sealed class TurnRunner(
                         request.ConversationId,
                         verdict.AskForRevision ? ConversationEventType.UserMessage : ConversationEventType.ToolResult,
                         verdict.Note,
-                        cancellationToken: cancellationToken).ConfigureAwait(false);
+                        cancellationToken: runToken).ConfigureAwait(false);
                 }
 
                 progress?.Report(new TurnStep(
-                    TurnStage.Plan, PlanSteps: _plan.Steps, PlanDone: _plan.Done));
+                    TurnStage.Plan, PlanSteps: plan.Steps, PlanDone: plan.Done));
                 progress?.Report(new TurnStep(TurnStage.Recorded));
 
                 // Enough rounds failing in a row, or enough rewrites, and it stops. The
@@ -276,25 +399,135 @@ public sealed class TurnRunner(
                 }
             }
         }
+        catch (OperationCanceledException)
+        {
+            runStatus = "cancelled";
+            throw;
+        }
+        catch
+        {
+            runStatus = "failed";
+            throw;
+        }
         finally
         {
-            runs.Finished(request.ConversationId);
-            progress?.Report(new TurnStep(TurnStage.Recorded));
+            var receipt = new TurnRunReceipt(
+                runId, runStatus, last, answeredBy?.Runtime.EngineLabel ?? request.Runtime.EngineLabel,
+                plan.Steps, plan.Done, stopped);
+            try
+            {
+                await store.AppendEventAsync(
+                    request.ConversationId, ConversationEventType.TurnEnd,
+                    JsonSerializer.Serialize(receipt), cancellationToken: CancellationToken.None).ConfigureAwait(false);
+            }
+            finally
+            {
+                runs.Finished(request.ConversationId);
+                progress?.Report(new TurnStep(TurnStage.Recorded));
+            }
         }
 
         return new TurnResult(
             last,
             answeredBy?.Runtime.EngineLabel ?? request.Runtime.EngineLabel,
-            _plan.Steps,
-            _plan.Done,
+            plan.Steps,
+            plan.Done,
             stopped);
     }
+
+    private async Task<TurnResult> ExistingRunResultAsync(
+        Guid conversationId, Guid runId, int startSequence, CancellationToken cancellationToken)
+    {
+        var events = await store.ReadEventsAfterAsync(conversationId, startSequence, cancellationToken)
+            .ConfigureAwait(false);
+        var priorEnd = events.FirstOrDefault(entry => entry.Type == ConversationEventType.TurnEnd
+            && TryReadRunReceipt(entry.Data)?.RunId == runId);
+        if (priorEnd is not null && TryReadRunReceipt(priorEnd.Data) is { } receipt)
+        {
+            var stopped = receipt.Stopped;
+            if (string.IsNullOrWhiteSpace(stopped))
+            {
+                stopped = receipt.Status switch
+                {
+                    "cancelled" => "This run was cancelled. It was not run again.",
+                    "failed" => "This run failed. It was not run again.",
+                    _ => null,
+                };
+            }
+
+            return new TurnResult(receipt.Text, receipt.AnsweredBy, receipt.PlanSteps, receipt.PlanDone, stopped);
+        }
+
+        var latestPlan = events.Where(entry => entry.Type == ConversationEventType.TodoWrite)
+            .Select(entry => TryReadPlanSnapshot(entry.Data))
+            .LastOrDefault(snapshot => snapshot?.RunId == runId);
+        return new TurnResult(null, null, latestPlan?.Steps ?? [], latestPlan?.Done ?? 0,
+            $"Run {runId} was interrupted after it started. Its recorded events are available for review; it was not run again.");
+    }
+
+    private static string Fingerprint(TurnRequest request, TurnSettings settings, IReadOnlyList<ChatImage> images)
+    {
+        var canonical = JsonSerializer.Serialize(new
+        {
+            request.ConversationId,
+            request.Text,
+            settings.ExecuteTools,
+            settings.IncludeToolCatalog,
+            SkillIds = settings.SkillIds ?? [],
+            settings.SystemPrompt,
+            Images = images.Select(image => new
+            {
+                image.FileName,
+                image.MediaType,
+                Digest = Convert.ToHexString(SHA256.HashData(image.Bytes)),
+            }),
+        });
+        // Preserve the pre-context fingerprint for ordinary Chat so durable retries
+        // created by earlier versions remain valid. Project-scoped requests include
+        // their owner identities, so one request ID cannot be replayed in another scope.
+        if (request.ProjectId is not null || request.ProjectWorkspaceId is not null || request.StartupJourneyId is not null)
+            canonical += "\n" + JsonSerializer.Serialize(new { request.ProjectId, request.ProjectWorkspaceId, request.StartupJourneyId });
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
+    }
+
+    /// <summary>Computes the canonical identity used to reject changed-payload retries.</summary>
+    public static string FingerprintRequest(TurnRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var settings = request.Settings ?? new TurnSettings();
+        var images = request.Images is { Count: > 0 } supplied ? supplied : Array.Empty<ChatImage>();
+        return Fingerprint(request, settings, images);
+    }
+
+    private static TurnRunStart? TryReadRunStart(string data)
+    {
+        try { return JsonSerializer.Deserialize<TurnRunStart>(data); }
+        catch (JsonException) { return null; }
+    }
+
+    private static TurnRunReceipt? TryReadRunReceipt(string data)
+    {
+        try { return JsonSerializer.Deserialize<TurnRunReceipt>(data); }
+        catch (JsonException) { return null; }
+    }
+
+    private static TurnPlanSnapshot? TryReadPlanSnapshot(string data)
+    {
+        try { return JsonSerializer.Deserialize<TurnPlanSnapshot>(data); }
+        catch (JsonException) { return null; }
+    }
+
+    private Task<ConversationEvent> RecordPlanAsync(
+        Guid conversationId, Guid runId, PlanProgress plan, CancellationToken cancellationToken)
+        => store.AppendEventAsync(conversationId, ConversationEventType.TodoWrite,
+            JsonSerializer.Serialize(new TurnPlanSnapshot(runId, plan.Steps, plan.Done, plan.Revisions,
+                DateTimeOffset.UtcNow)), cancellationToken: cancellationToken);
 
     /// <summary>
     /// One pass: compose the history, ask, and write down what came back.
     ///
-    /// Returns the reply, or null when it was cancelled or nothing arrived — both of which
-    /// end the loop, and neither of which is an error worth throwing over.
+    /// Returns the reply, or null when nothing arrived. Cancellation is rethrown so the
+    /// owning run can persist a cancelled receipt instead of reporting a completed turn.
     /// </summary>
     private async Task<string?> StreamOnceAsync(
         TurnRequest request,
@@ -327,10 +560,10 @@ public sealed class TurnRunner(
                 cancellationToken: cancellationToken).ConfigureAwait(false);
         }
 
-        var systemParts = new List<string>();
+        var systemParts = new List<string> { ConciergeIdentityPrompt };
 
-        // Skills first, so the specialist guidance is read as the identity for the turn and
-        // anything specific to this conversation layers on top of it.
+        // Specialist guidance layers onto Concierge's stable product identity, followed by
+        // anything specific to this conversation and the tools exposed on this turn.
         if (settings.SkillIds is { Count: > 0 } active
             && skills.ComposeSystemPrompt(active) is { Length: > 0 } skillPrompt)
         {
@@ -392,7 +625,6 @@ public sealed class TurnRunner(
         }
 
         var buffer = new StringBuilder();
-        var cancelled = false;
         FailoverOutcome? outcome = null;
 
         // The reply used to be written down only after the last token arrived, so anything
@@ -451,7 +683,20 @@ public sealed class TurnRunner(
         }
         catch (OperationCanceledException)
         {
-            cancelled = true;
+            var partial = buffer.ToString();
+            if (partial.Length > 0)
+            {
+                // The caller's token is already cancelled. Persist the partial answer
+                // independently, then let RunAsync write the terminal cancelled receipt.
+                await store.AppendEventAsync(
+                    request.ConversationId, ConversationEventType.AssistantMessage,
+                    partial + "\n[stream cancelled before completion]",
+                    outcome?.Runtime.EngineLabel ?? request.Runtime.EngineLabel,
+                    CancellationToken.None).ConfigureAwait(false);
+            }
+
+            TurnDrafts.Delete(request.ConversationId);
+            throw;
         }
         catch (Exception error)
         {
@@ -462,23 +707,6 @@ public sealed class TurnRunner(
 
         var label = outcome?.Runtime.EngineLabel ?? request.Runtime.EngineLabel;
         var said = buffer.ToString();
-
-        if (cancelled)
-        {
-            if (said.Length > 0)
-            {
-                await store.AppendEventAsync(
-                    request.ConversationId, ConversationEventType.AssistantMessage,
-                    said + "\n[stream cancelled before completion]", label,
-                    cancellationToken).ConfigureAwait(false);
-            }
-
-            // Whatever happened, the text is in the log now, so the checkpoint has nothing
-            // left to protect.
-            TurnDrafts.Delete(request.ConversationId);
-            progress?.Report(new TurnStep(TurnStage.Recorded));
-            return null;
-        }
 
         if (!string.IsNullOrWhiteSpace(said))
         {

@@ -1,4 +1,5 @@
 using Concierge.Ai;
+using Concierge.Shared.Chat;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Concierge.Tests;
@@ -78,6 +79,9 @@ public sealed class ModelDownloadConsentTests : IDisposable
 
         await runtime.LoadAsync(CancellationToken.None);
 
+        var catalog = Assert.IsAssignableFrom<IChatRuntimeCapabilitySource>(runtime).CapabilityCatalog;
+        Assert.Contains(catalog.Capabilities, capability => capability.Id == "conversation"
+            && capability.State == ChatRuntimeCapabilityState.ActionRequired);
         Assert.Contains("GB", runtime.StatusMessage, StringComparison.Ordinal);
         Assert.Contains("download", runtime.StatusMessage, StringComparison.OrdinalIgnoreCase);
         await runtime.DisposeAsync();
@@ -119,6 +123,7 @@ public sealed class ModelDownloadConsentTests : IDisposable
         new CircleAiChatOptions
         {
             ModelsDirectory = _modelsDirectory,
+            DeviceProbeFactory = CircleAiTestDefaults.Probe,
             // The default, stated here because it is the point of these tests.
             AllowAutomaticDownload = false,
         });

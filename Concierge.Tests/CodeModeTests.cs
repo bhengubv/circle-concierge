@@ -109,6 +109,36 @@ public sealed class CodeModeTests
     }
 
     [Fact]
+    public async Task The_managed_worker_is_visible_and_runs_one_program_at_a_time()
+    {
+        var runtime = Runtime();
+        var first = runtime.RunAsync("await Task.Delay(1800); return \"first\";");
+
+        var deadline = Stopwatch.StartNew();
+        ManagedHostSnapshot? snapshot = null;
+        while (deadline.Elapsed < TimeSpan.FromSeconds(10) && snapshot is null)
+        {
+            snapshot = runtime.CurrentSnapshot;
+            if (snapshot is null)
+                await Task.Delay(25);
+        }
+
+        Assert.NotNull(snapshot);
+        Assert.True(snapshot.ProcessId > 0);
+        Assert.True(snapshot.WorkingSetBytes > 0);
+        Assert.Equal("code-mode-worker", runtime.HostId);
+
+        var second = runtime.RunAsync("return \"second\";");
+        await Task.Delay(100);
+        Assert.False(second.IsCompleted, "A second program must wait for the bounded worker slot.");
+        Assert.Equal(snapshot.ProcessId, runtime.CurrentSnapshot?.ProcessId);
+
+        Assert.True((await first).Success);
+        Assert.True((await second).Success);
+        Assert.Null(runtime.CurrentSnapshot);
+    }
+
+    [Fact]
     public async Task A_program_can_print()
     {
         var result = await Runtime().RunAsync("""Print("hello"); return "done";""");

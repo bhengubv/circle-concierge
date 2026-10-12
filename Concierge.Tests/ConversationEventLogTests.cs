@@ -65,6 +65,24 @@ public sealed class ConversationEventLogTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task A_caller_can_assign_a_stable_event_id_that_survives_reopen()
+    {
+        var conversation = await _store.StartAsync("local");
+        var requestId = Guid.NewGuid();
+
+        var appended = await _store.AppendEventAsync(conversation.Id, ConversationEventType.TurnStart,
+            requestId.ToString("D"), cancellationToken: default, eventId: requestId);
+
+        Assert.Equal(requestId, appended.Id);
+        await using var reopened = new ServiceCollection()
+            .AddConciergeChat(_databasePath)
+            .BuildServiceProvider();
+        var persisted = Assert.Single(await reopened.GetRequiredService<IConversationStore>()
+            .ReadEventsAsync(conversation.Id));
+        Assert.Equal(requestId, persisted.Id);
+    }
+
+    [Fact]
     public async Task Sequence_numbers_have_no_gaps()
     {
         var conversation = await _store.StartAsync("local");
@@ -101,6 +119,38 @@ public sealed class ConversationEventLogTests : IAsyncLifetime
         var events = await _store.ReadEventsAsync(conversation.Id);
 
         Assert.Equal(["first", "second", "third"], events.Select(e => e.Data));
+    }
+
+    [Fact]
+    public async Task Reading_after_a_cursor_returns_only_newer_events_in_order()
+    {
+        var conversation = await _store.StartAsync("local");
+        await _store.AppendEventAsync(conversation.Id, ConversationEventType.UserMessage, "first");
+        await _store.AppendEventAsync(conversation.Id, ConversationEventType.AssistantMessage, "second");
+        await _store.AppendEventAsync(conversation.Id, ConversationEventType.UserMessage, "third");
+
+        var events = await _store.ReadEventsAfterAsync(conversation.Id, afterSeq: 0);
+
+        Assert.Equal([1, 2], events.Select(entry => entry.Seq));
+        Assert.Equal(["second", "third"], events.Select(entry => entry.Data));
+        Assert.Equal(2, await _store.GetLastEventSequenceAsync(conversation.Id));
+        Assert.Null(await _store.GetLastEventSequenceAsync(Guid.NewGuid()));
+    }
+
+    [Fact]
+    public async Task Reading_a_bounded_page_advances_from_its_last_sequence()
+    {
+        var conversation = await _store.StartAsync("local");
+        for (var index = 0; index < 7; index++)
+            await _store.AppendEventAsync(conversation.Id, ConversationEventType.UserMessage, $"event-{index}");
+
+        var first = await _store.ReadEventsPageAsync(conversation.Id, afterSeq: -1, pageSize: 3);
+        var second = await _store.ReadEventsPageAsync(conversation.Id, afterSeq: first[^1].Seq, pageSize: 3);
+        var third = await _store.ReadEventsPageAsync(conversation.Id, afterSeq: second[^1].Seq, pageSize: 3);
+
+        Assert.Equal([0, 1, 2], first.Select(entry => entry.Seq));
+        Assert.Equal([3, 4, 5], second.Select(entry => entry.Seq));
+        Assert.Collection(third, entry => Assert.Equal(6, entry.Seq));
     }
 
     // ── What the rows now distinguish ──────────────────────────────────
@@ -164,6 +214,43 @@ public sealed class ConversationEventLogTests : IAsyncLifetime
         var turns = await _store.DeriveMessagesAsync(conversation.Id);
 
         Assert.Equal(["user", "assistant"], turns.Select(turn => turn.Role));
+    }
+
+    [Fact]
+    public async Task Connection_status_is_durable_but_never_becomes_a_message_or_model_input()
+    {
+        var conversation = await _store.StartAsync("local");
+        await _store.AppendEventAsync(conversation.Id, ConversationEventType.UserMessage, "continue the saved work");
+        await _store.AppendEventAsync(conversation.Id, ConversationEventType.ConnectionStatus,
+            """{"state":"unreachable","peer":"desktop"}""");
+        await _store.AppendEventAsync(conversation.Id, ConversationEventType.AssistantMessage, "Here is the result.", "Circle AI");
+
+        var saved = await _store.GetAsync(conversation.Id);
+        var derived = await _store.DeriveMessagesAsync(conversation.Id);
+        var replay = new ConversationReplay(await _store.ReadEventsAsync(conversation.Id)).Steps().Last();
+
+        Assert.Equal(["continue the saved work", "Here is the result."], saved!.Messages.Select(message => message.Content));
+        Assert.Equal(["continue the saved work", "Here is the result."], derived.Select(turn => turn.Content));
+        Assert.Equal(["continue the saved work", "Here is the result."], replay.HistorySoFar.Select(turn => turn.Content));
+        Assert.Contains(await _store.ReadEventsAsync(conversation.Id), entry => entry.Type == ConversationEventType.ConnectionStatus);
+    }
+
+    [Fact]
+    public async Task Legacy_connection_error_assistant_events_are_hidden_from_history_after_upgrade()
+    {
+        var conversation = await _store.StartAsync("local");
+        await _store.AppendEventAsync(conversation.Id, ConversationEventType.UserMessage, "multiply 12 by 13");
+        await _store.AppendEventAsync(conversation.Id, ConversationEventType.AssistantMessage,
+            "Could not reach your Desktop: Socket closed", "Connection status");
+        await _store.AppendEventAsync(conversation.Id, ConversationEventType.AssistantMessage, "156", "Circle AI on Desktop");
+
+        Assert.Equal(["multiply 12 by 13", "156"], (await _store.GetAsync(conversation.Id))!.Messages.Select(message => message.Content));
+        Assert.Equal(["multiply 12 by 13", "156"], (await _store.DeriveMessagesAsync(conversation.Id)).Select(turn => turn.Content));
+        Assert.Equal(["multiply 12 by 13", "156"], new ConversationReplay(await _store.ReadEventsAsync(conversation.Id))
+            .Steps().Last().HistorySoFar.Select(turn => turn.Content));
+
+        await _store.RebuildProjectionAsync(conversation.Id);
+        Assert.Equal(["multiply 12 by 13", "156"], (await _store.GetAsync(conversation.Id))!.Messages.Select(message => message.Content));
     }
 
     [Fact]

@@ -20,7 +20,7 @@ namespace Concierge.Shared.Safety;
 /// engine can still ask before fetching a model. Nothing holds the real runtime — every
 /// host resolves this — so a capability that stops here stops existing.
 /// </remarks>
-public sealed class ContentFilterChatRuntimeDecorator : IChatRuntime, IPersistableChatRuntime, IModelDownloadRequired, IInitializableChatRuntime, IChatRuntimeStatusEvents
+public sealed class ContentFilterChatRuntimeDecorator : IChatRuntime, IPersistableChatRuntime, IModelDownloadRequired, IModelDownloadApprovalPreparer, IResumableModelDownload, IInitializableChatRuntime, IChatRuntimeStatusEvents, IChatRuntimeCapabilitySource, IVisionCapableRuntime
 {
     // Stable message the UI shows when a refusal lands. Kept short + warm
     // because Bell's voice is "honest, never punitive". The actual reason
@@ -64,6 +64,12 @@ public sealed class ContentFilterChatRuntimeDecorator : IChatRuntime, IPersistab
     public ModelDownloadProgress? CurrentDownloadProgress
         => (_inner as IChatRuntimeStatusEvents)?.CurrentDownloadProgress;
 
+    public ChatRuntimeCapabilityCatalog? CapabilityCatalog
+        => (_inner as IChatRuntimeCapabilitySource)?.CapabilityCatalog;
+
+    public IReadOnlyCollection<string> SupportedImageMediaTypes
+        => (_inner as IVisionCapableRuntime)?.SupportedImageMediaTypes ?? [];
+
     public Task InitializeAsync(CancellationToken cancellationToken = default)
         => _inner is IInitializableChatRuntime initializable
             ? initializable.InitializeAsync(cancellationToken)
@@ -98,6 +104,28 @@ public sealed class ContentFilterChatRuntimeDecorator : IChatRuntime, IPersistab
         => _inner is IModelDownloadRequired inner
             ? inner.AcceptDownloadAsync(progress, cancellationToken)
             : Task.FromResult(false);
+
+    public Task CancelCurrentDownloadAsync()
+        => _inner is IModelDownloadRequired inner
+            ? inner.CancelCurrentDownloadAsync()
+            : Task.CompletedTask;
+
+    public Task<bool> PrepareDownloadApprovalAsync(CancellationToken cancellationToken = default)
+        => _inner is IModelDownloadApprovalPreparer preparer
+            ? preparer.PrepareDownloadApprovalAsync(cancellationToken)
+            : Task.FromResult(false);
+
+    public Task<bool> ResumeAcceptedDownloadAsync(
+        IProgress<ModelDownloadProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+        => _inner is IResumableModelDownload resumable
+            ? resumable.ResumeAcceptedDownloadAsync(progress, cancellationToken)
+            : Task.FromResult(false);
+
+    public Task PauseCurrentDownloadAsync()
+        => _inner is IResumableModelDownload resumable
+            ? resumable.PauseCurrentDownloadAsync()
+            : Task.CompletedTask;
 
     public async IAsyncEnumerable<string> StreamAsync(
         IReadOnlyList<ChatTurn> messages,

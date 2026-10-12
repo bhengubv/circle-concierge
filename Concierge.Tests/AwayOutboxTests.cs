@@ -1,7 +1,9 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.Json;
 using Concierge.Away;
+using Concierge.Shared.Tools;
 
 namespace Concierge.Tests;
 
@@ -66,7 +68,7 @@ public sealed class AwayOutboxTests : IDisposable
     }
 
     /// <summary>Concierge is running again.</summary>
-    private void Listen(int? only = null)
+    private void Listen(int? only = null, HttpStatusCode statusCode = HttpStatusCode.OK)
     {
         _stopping = new CancellationTokenSource();
         _listener = new HttpListener();
@@ -112,6 +114,7 @@ public sealed class AwayOutboxTests : IDisposable
                 }
 
                 var said = Encoding.UTF8.GetBytes("""{"understood":true,"what":"Done","reply":"Done"}""");
+                context.Response.StatusCode = (int)statusCode;
                 context.Response.ContentType = "application/json";
                 context.Response.ContentLength64 = said.Length;
                 await context.Response.OutputStream.WriteAsync(said, stopping);
@@ -230,6 +233,35 @@ public sealed class AwayOutboxTests : IDisposable
 
         Assert.Equal(0, await client.FlushAsync());
         Assert.Equal(2, client.Waiting);
+    }
+
+    [Fact]
+    public async Task Temporary_server_failure_keeps_the_request_and_reuses_its_idempotency_key()
+    {
+        var client = Pointed();
+        var queued = await client.SayAsync("continue the project", At("06:14"));
+
+        Assert.False(queued.Understood);
+        Assert.Equal(1, client.Waiting);
+        var requestId = Assert.Single(new AwayOutbox(_folder).Waiting()).Id;
+
+        Silence();
+        Listen(statusCode: HttpStatusCode.ServiceUnavailable);
+        Assert.Equal(0, await client.FlushAsync());
+        Assert.Equal(1, client.Waiting);
+        Assert.Equal(requestId, ReadRequestId(Assert.Single(Arrived())));
+
+        Silence();
+        Listen();
+        Assert.Equal(1, await client.FlushAsync());
+        Assert.Equal(0, client.Waiting);
+        Assert.Equal(requestId, ReadRequestId(Arrived()[1]));
+    }
+
+    private static Guid ReadRequestId(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement.GetProperty("requestId").GetGuid();
     }
 
     /// <summary>
@@ -352,6 +384,60 @@ public sealed class AwayOutboxTests : IDisposable
 
         Assert.Equal(0, outbox.Count());
         Assert.Empty(outbox.Waiting());
+    }
+
+    [Fact]
+    public void A_caller_owned_run_id_is_preserved_and_retries_do_not_duplicate_the_outbox_entry()
+    {
+        var outbox = new AwayOutbox(_folder);
+        var runId = Guid.NewGuid();
+        var first = outbox.Keep("analyse this Project", At("06:14"), permissionMode: ToolPermissionMode.PlanOnly,
+            requestId: runId);
+        var retry = outbox.Keep("analyse this Project", At("06:15"), permissionMode: ToolPermissionMode.PlanOnly,
+            requestId: runId);
+
+        Assert.Equal(runId, first.Id);
+        Assert.Equal(first, retry);
+        Assert.Single(outbox.Waiting());
+    }
+
+    [Fact]
+    public void Reusing_a_caller_owned_run_id_for_different_work_is_rejected()
+    {
+        var outbox = new AwayOutbox(_folder);
+        var runId = Guid.NewGuid();
+        outbox.Keep("analyse this Project", At("06:14"), requestId: runId);
+
+        Assert.Throws<InvalidOperationException>(() =>
+            outbox.Keep("send a message", At("06:15"), requestId: runId));
+        Assert.Single(outbox.Waiting());
+    }
+
+    [Fact]
+    public void A_queued_action_keeps_its_permission_mode()
+    {
+        var outbox = new AwayOutbox(_folder);
+
+        outbox.Keep("change the design", At("06:14"), permissionMode: ToolPermissionMode.PlanOnly);
+
+        Assert.Equal(ToolPermissionMode.PlanOnly, Assert.Single(outbox.Waiting()).PermissionMode);
+    }
+
+    [Fact]
+    public void A_queued_project_turn_keeps_its_context_and_identity()
+    {
+        var outbox = new AwayOutbox(_folder);
+        var projectId = Guid.NewGuid();
+        var workspaceId = Guid.NewGuid();
+        const string context = "Project: \"Launch plan\".";
+
+        outbox.Keep("continue", At("06:14"), projectId: projectId, projectWorkspaceId: workspaceId,
+            projectContext: context);
+
+        var queued = Assert.Single(outbox.Waiting());
+        Assert.Equal(projectId, queued.ProjectId);
+        Assert.Equal(workspaceId, queued.ProjectWorkspaceId);
+        Assert.Equal(context, queued.ProjectContext);
     }
 
     /// <summary>

@@ -62,6 +62,19 @@ public interface IChatRuntime
 }
 
 /// <summary>
+/// Optional runtime seam for work that already has a durable Concierge run identity.
+/// Adapters that dispatch to another head can carry this ID through the transport so a
+/// retry at the destination replays the same run instead of starting duplicate work.
+/// </summary>
+public interface IRunIdentityChatRuntime
+{
+    IAsyncEnumerable<string> StreamAsync(
+        IReadOnlyList<ChatTurn> messages,
+        Guid runId,
+        CancellationToken cancellationToken = default);
+}
+
+/// <summary>
 /// Host-neutral chat turn. Mirrors CircleAI.Inference.ChatMessage so the adapter can
 /// translate without leaking the upstream type into UI code.
 /// </summary>
@@ -208,6 +221,39 @@ public interface IModelDownloadRequired
     Task<bool> AcceptDownloadAsync(
         IProgress<ModelDownloadProgress>? progress = null,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Stop a model transfer that is already in progress, including one that began
+    /// automatically while the isolated runtime was starting.
+    /// </summary>
+    Task CancelCurrentDownloadAsync();
+}
+
+/// <summary>Persists explicit consent before an OS background owner is scheduled.</summary>
+public interface IModelDownloadApprovalPreparer
+{
+    Task<bool> PrepareDownloadApprovalAsync(CancellationToken cancellationToken = default);
+}
+
+/// <summary>Resumes or pauses an explicitly approved model download in an OS-owned worker.</summary>
+public interface IResumableModelDownload
+{
+    Task<bool> ResumeAcceptedDownloadAsync(
+        IProgress<ModelDownloadProgress>? progress = null,
+        CancellationToken cancellationToken = default);
+
+    Task PauseCurrentDownloadAsync();
+}
+
+/// <summary>Runs an accepted model download without tying its lifetime to a screen.</summary>
+public interface IModelDownloadCoordinator
+{
+    Task<bool> StartAcceptedDownloadAsync(
+        IModelDownloadRequired runtime,
+        IProgress<ModelDownloadProgress>? progress = null,
+        CancellationToken cancellationToken = default);
+
+    Task StopAsync(IModelDownloadRequired runtime);
 }
 
 /// <summary>
@@ -226,6 +272,85 @@ public interface IChatRuntimeStatusEvents
 
     /// <summary>The current model download, when this runtime is preparing one.</summary>
     ModelDownloadProgress? CurrentDownloadProgress { get; }
+}
+
+/// <summary>Runtime-supplied facts Concierge can use to shape its interface.</summary>
+public interface IChatRuntimeCapabilitySource
+{
+    ChatRuntimeCapabilityCatalog? CapabilityCatalog { get; }
+}
+
+/// <summary>
+/// Versioned, host-neutral snapshot of a runtime's actual abilities and the resources
+/// measured when it selected its execution path. It deliberately omits provider/model
+/// choice from person-facing copy; consumers should use the ability states and explanations.
+/// </summary>
+public sealed record ChatRuntimeCapabilityCatalog(
+    int SchemaVersion,
+    string RuntimeId,
+    string RuntimeVersion,
+    DateTimeOffset ObservedAt,
+    IReadOnlyList<ChatRuntimeCapability> Capabilities,
+    ChatRuntimeResourceSnapshot? Resources,
+    IReadOnlyList<string>? SupportedImageMediaTypes = null,
+    ChatRuntimeActivity? Activity = null);
+
+/// <summary>Current runtime work that a client can describe without inventing progress.</summary>
+public sealed record ChatRuntimeActivity(
+    string Kind,
+    string Description,
+    double? ProgressRatio = null);
+
+public sealed record ChatRuntimeCapability(
+    string Id,
+    string Name,
+    ChatRuntimeCapabilityState State,
+    string? Explanation = null);
+
+public enum ChatRuntimeCapabilityState
+{
+    Available,
+    Preparing,
+    ActionRequired,
+    Unavailable
+}
+
+public sealed record ChatRuntimeResourceSnapshot(
+    double? UsableMemoryGb,
+    double? FreeStorageGb,
+    int? CpuCores,
+    string? Connectivity,
+    string? MeasurementNote,
+    DateTimeOffset? MeasuredAt = null);
+
+/// <summary>Execution target selected by the Circle AI device-routing adapter.</summary>
+public enum ChatExecutionTarget
+{
+    LocalDevice,
+    ConnectedDesktop
+}
+
+/// <summary>Why Circle AI selected an execution device for one turn.</summary>
+public sealed record ChatExecutionDecision(
+    ChatExecutionTarget Target,
+    string RequiredCapability,
+    string Reason);
+
+/// <summary>
+/// Circle AI's automatic per-turn route across the active device and its connected Desktop.
+/// The person-facing client supplies live runtime snapshots and carries out the target selected
+/// here; it does not expose model/provider selection.
+/// </summary>
+public interface IChatExecutionDeviceSelector
+{
+    ChatExecutionDecision Select(
+        string userInput,
+        bool hasImage,
+        bool localCanAnswer,
+        ChatRuntimeCapabilityCatalog? local,
+        bool desktopCanAnswer,
+        ChatRuntimeCapabilityCatalog? desktop,
+        DateTimeOffset now);
 }
 
 /// <summary>
@@ -252,4 +377,13 @@ public sealed record PendingModelDownload(string ModelId, long Bytes, bool FitsT
 {
     /// <summary>Size in GB, for showing to a person.</summary>
     public double Gigabytes => Bytes / 1024d / 1024d / 1024d;
+
+    /// <summary>Total remaining bytes when setup stages multiple eligible models.</summary>
+    public long StagingBytes { get; init; }
+
+    /// <summary>Number of model bundles still to prepare, including the selected model.</summary>
+    public int StagedModelCount { get; init; } = 1;
+
+    /// <summary>Total remaining staged size in GB.</summary>
+    public double StagingGigabytes => (StagingBytes > 0 ? StagingBytes : Bytes) / 1024d / 1024d / 1024d;
 }

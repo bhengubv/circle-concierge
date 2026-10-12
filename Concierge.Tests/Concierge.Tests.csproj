@@ -59,6 +59,7 @@
     <ProjectReference Include="..\Concierge.Web\Concierge.Web.csproj" />
     <ProjectReference Include="..\Concierge.CodeMode\Concierge.CodeMode.csproj" />
     <ProjectReference Include="..\Concierge.CodeMode.Host\Concierge.CodeMode.Host.csproj" />
+    <ProjectReference Include="..\Concierge.Model.Host\Concierge.Model.Host.csproj" />
   </ItemGroup>
 
 </Project>

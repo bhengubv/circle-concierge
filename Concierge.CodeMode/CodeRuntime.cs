@@ -56,7 +56,7 @@ public interface ICodeRuntime
 /// so the tools, the workspace and the approval seam all stay on this side of the boundary.
 /// </para>
 /// </remarks>
-public sealed class ProcessCodeRuntime : ICodeRuntime
+public sealed class ProcessCodeRuntime : ICodeRuntime, IManagedHostTelemetrySource
 {
     private const int MaxLogEntries = 200;
 
@@ -65,6 +65,8 @@ public sealed class ProcessCodeRuntime : ICodeRuntime
     private readonly string _hostPath;
     private readonly string _workspaceRoot;
     private readonly TimeSpan _timeout;
+    private readonly SemaphoreSlim _runGate = new(1, 1);
+    private Process? _activeProcess;
 
     /// <param name="tools">
     /// What programs may call, resolved when a program runs rather than when this is built.
@@ -112,6 +114,43 @@ public sealed class ProcessCodeRuntime : ICodeRuntime
     public SandboxCapability Sandbox { get; }
 
     /// <inheritdoc />
+    public string HostId => "code-mode-worker";
+
+    /// <inheritdoc />
+    public string DisplayName => "Code Mode worker";
+
+    /// <summary>Live sample while a generated program is running.</summary>
+    public ManagedHostSnapshot? CurrentSnapshot
+    {
+        get
+        {
+            var process = Volatile.Read(ref _activeProcess);
+            if (process is null)
+                return null;
+            try
+            {
+                process.Refresh();
+                if (process.HasExited)
+                    return null;
+                long? memoryBudget = OperatingSystem.IsWindows() && _sandbox is WindowsJobObjectSandbox windows
+                    ? windows.MemoryBudgetBytes
+                    : null;
+                return new ManagedHostSnapshot(
+                    process.Id,
+                    process.WorkingSet64,
+                    process.PrivateMemorySize64,
+                    process.TotalProcessorTime,
+                    memoryBudget,
+                    DateTimeOffset.UtcNow);
+            }
+            catch (Exception exception) when (exception is InvalidOperationException or System.ComponentModel.Win32Exception)
+            {
+                return null;
+            }
+        }
+    }
+
+    /// <inheritdoc />
     public async Task<CodeRunResult> RunAsync(string program, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(program))
@@ -119,50 +158,60 @@ public sealed class ProcessCodeRuntime : ICodeRuntime
             return new CodeRunResult(false, string.Empty, [], "There is no program to run.");
         }
 
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(_timeout);
-
-        using var process = StartHost();
-        if (process is null)
-        {
-            return new CodeRunResult(false, string.Empty, [], "The code host could not be started.");
-        }
-
+        await _runGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            _sandbox.Confine(process);
-        }
-        catch (Exception exception)
-        {
-            // Refusing to run is the right answer: a boundary that was asked for and could
-            // not be applied is worse than one that was never claimed.
-            KillQuietly(process);
-            return new CodeRunResult(false, string.Empty, [], exception.Message);
-        }
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(_timeout);
 
-        try
-        {
-            return await ConverseAsync(process, program, timeout.Token).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            // This is the case in-process execution could not handle. The child is killed
-            // whatever it was doing, including a loop with no await in it.
-            KillQuietly(process);
-            return new CodeRunResult(
-                false,
-                string.Empty,
-                [],
-                $"The program did not finish within {_timeout.TotalSeconds:0} seconds and was stopped.");
-        }
-        catch (Exception exception)
-        {
-            KillQuietly(process);
-            return new CodeRunResult(false, string.Empty, [], exception.Message);
+            using var process = StartHost();
+            if (process is null)
+            {
+                return new CodeRunResult(false, string.Empty, [], "The code host could not be started.");
+            }
+            Volatile.Write(ref _activeProcess, process);
+
+            try
+            {
+                _sandbox.Confine(process);
+            }
+            catch (Exception exception)
+            {
+                // Refusing to run is the right answer: a boundary that was asked for and could
+                // not be applied is worse than one that was never claimed.
+                KillQuietly(process);
+                return new CodeRunResult(false, string.Empty, [], exception.Message);
+            }
+
+            try
+            {
+                return await ConverseAsync(process, program, timeout.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // This is the case in-process execution could not handle. The child is killed
+                // whatever it was doing, including a loop with no await in it.
+                KillQuietly(process);
+                return new CodeRunResult(
+                    false,
+                    string.Empty,
+                    [],
+                    $"The program did not finish within {_timeout.TotalSeconds:0} seconds and was stopped.");
+            }
+            catch (Exception exception)
+            {
+                KillQuietly(process);
+                return new CodeRunResult(false, string.Empty, [], exception.Message);
+            }
+            finally
+            {
+                KillQuietly(process);
+            }
         }
         finally
         {
-            KillQuietly(process);
+            Volatile.Write(ref _activeProcess, null);
+            _runGate.Release();
         }
     }
 

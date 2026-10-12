@@ -10,6 +10,12 @@ namespace Concierge.Shared.Design;
 /// <param name="At">When, so a long session can say "a minute ago".</param>
 public sealed record DesignMoment(DesignDocument Document, string What, DateTimeOffset At);
 
+/// <summary>The bounded, restorable state of one canvas session.</summary>
+public sealed record DesignSessionSnapshot(
+    IReadOnlyList<DesignMoment> Moments,
+    int Position,
+    string? Selected);
+
 /// <summary>
 /// A design being worked on, and every state it has been in.
 ///
@@ -52,11 +58,43 @@ public sealed class DesignSession
         Position = 0;
     }
 
+    /// <summary>Starts a session from an existing document, for stores and imports.</summary>
+    public DesignSession(DesignDocument initial, string what = "Started")
+    {
+        ArgumentNullException.ThrowIfNull(initial);
+        _moments.Add(new DesignMoment(initial, what, DateTimeOffset.UtcNow));
+        Position = 0;
+    }
+
+    /// <summary>Reopens a saved session, including its visual history and undo position.</summary>
+    public DesignSession(DesignSessionSnapshot snapshot)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        if (snapshot.Moments is null || snapshot.Moments.Count == 0)
+            throw new ArgumentException("A saved design session must contain at least one moment.", nameof(snapshot));
+        if (snapshot.Moments.Count > MaxMoments)
+            throw new ArgumentException($"A saved design session cannot contain more than {MaxMoments} moments.", nameof(snapshot));
+        if (snapshot.Position < 0 || snapshot.Position >= snapshot.Moments.Count)
+            throw new ArgumentOutOfRangeException(nameof(snapshot), "The saved position is outside the design history.");
+        if (snapshot.Moments.Any(moment => moment is null || moment.Document is null))
+            throw new ArgumentException("A saved design session contains an empty moment.", nameof(snapshot));
+
+        _moments.AddRange(snapshot.Moments);
+        Position = snapshot.Position;
+        Selected = snapshot.Selected is not null && Current.Find(snapshot.Selected) is not null
+            ? snapshot.Selected
+            : null;
+    }
+
     /// <summary>Which state is showing.</summary>
     public int Position { get; private set; }
 
     /// <summary>Everything it has looked like, oldest first.</summary>
     public IReadOnlyList<DesignMoment> Moments => _moments;
+
+    /// <summary>Captures all retained history, current position, and valid selection.</summary>
+    public DesignSessionSnapshot Capture()
+        => new(_moments.ToArray(), Position, Selected);
 
     /// <summary>The design as it stands.</summary>
     public DesignDocument Current => _moments[Position].Document;

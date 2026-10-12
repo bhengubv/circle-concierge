@@ -1,0 +1,97 @@
+@if (Show)
+{
+    <section class="model-setup-tutorial @(Busy ? "is-busy" : string.Empty)" aria-label="Concierge quick-start tutorial">
+        @if (_isCollapsed)
+        {
+            <div class="model-setup-tutorial-heading">
+                <p class="model-setup-tutorial-hidden">Tutorial paused at step @(_currentStep + 1). Your setup and conversation can continue.</p>
+                <button type="button" class="model-setup-tutorial-toggle" @onclick="Resume">Resume tutorial</button>
+            </div>
+        }
+        else
+        {
+            <div class="model-setup-tutorial-heading">
+                <div>
+                    <p class="model-setup-tutorial-count">STEP @(_currentStep + 1) OF 3</p>
+                    <h3>@(Busy ? "Keep exploring while Circle AI prepares" : "Explore Concierge")</h3>
+                    @if (Busy)
+                    {
+                        <p class="model-setup-tutorial-staging">Eligible models are prepared from smallest upward. Concierge stays available, and the first compatible model can become ready while later downloads continue.</p>
+                    }
+                </div>
+                <button type="button" class="model-setup-tutorial-toggle" @onclick="Pause">Save and pause</button>
+            </div>
+            <div class="model-setup-tutorial-step" aria-live="polite">
+                @if (_currentStep == 0)
+                {
+                    <strong>Start with the outcome</strong>
+                    <p>Say what you want to achieve. Concierge can help shape the steps before any work begins.</p>
+                    <button type="button" @onclick="AddSample">Try a sample request</button>
+                    <p class="model-setup-tutorial-footnote">The sample is placed in your composer. Review or edit it; nothing is sent for you.</p>
+                }
+                else if (_currentStep == 1)
+                {
+                    <strong>Choose how much control you want</strong>
+                    <p>Plan only drafts a plan. Ask first checks before actions. Act freely lets Circle AI proceed within your safety settings.</p>
+                    <p>Ask first is the default. You can change it beside the composer at any time.</p>
+                }
+                else
+                {
+                    <strong>Keep working across devices</strong>
+                    <p>When Desktop is connected, continue the same work there when its resources are a better fit. Mobile remains your window into progress and decisions.</p>
+                    <p>Circle AI chooses where work runs; Concierge keeps the work visible to you.</p>
+                }
+            </div>
+            <div class="model-setup-tutorial-navigation">
+                <button type="button" disabled="@(_currentStep == 0)" @onclick="Previous">Back</button>
+                @if (_currentStep < 2)
+                {
+                    <button type="button" @onclick="Next">Next</button>
+                }
+                else
+                {
+                    <button type="button" @onclick="Finish">Finish tutorial</button>
+                }
+            </div>
+        }
+    </section>
+}
+
+@code {
+    private const string SamplePrompt = "Help me plan a small project. Ask what outcome I want, then suggest the first three steps.";
+    private int _currentStep;
+    private bool _isCollapsed;
+
+    protected override void OnParametersSet()
+    {
+        _currentStep = Math.Clamp(Step, 0, 2);
+        _isCollapsed = Collapsed;
+    }
+
+    private Task AddSample() => OnPromptSelected.InvokeAsync(SamplePrompt);
+    private Task Previous() => ChangeStepAsync(Math.Max(0, _currentStep - 1));
+    private Task Next() => ChangeStepAsync(Math.Min(2, _currentStep + 1));
+    private Task Finish() => SetCollapsedAsync(true);
+    private Task Pause() => SetCollapsedAsync(true);
+    private Task Resume() => SetCollapsedAsync(false);
+
+    private async Task ChangeStepAsync(int step)
+    {
+        _currentStep = step;
+        await OnStepChanged.InvokeAsync(step);
+    }
+
+    private async Task SetCollapsedAsync(bool collapsed)
+    {
+        _isCollapsed = collapsed;
+        await OnCollapsedChanged.InvokeAsync(collapsed);
+    }
+
+    [Parameter] public bool Show { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public int Step { get; set; }
+    [Parameter] public bool Collapsed { get; set; }
+    [Parameter] public EventCallback<int> OnStepChanged { get; set; }
+    [Parameter] public EventCallback<bool> OnCollapsedChanged { get; set; }
+    [Parameter] public EventCallback<string> OnPromptSelected { get; set; }
+}
