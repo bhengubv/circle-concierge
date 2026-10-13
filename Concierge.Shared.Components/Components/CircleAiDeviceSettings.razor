@@ -1,0 +1,116 @@
+@using Concierge.Shared.Devices
+@implements IDisposable
+@inject IServiceProvider Services
+
+@if (_gateway is not null)
+{
+    <section class="sheet-group" aria-label="Circle AI device settings">
+        <div class="row"><span class="row-name">Circle AI on this device
+            <span class="row-sub">Language, voice, readiness, permissions, storage, and trusted-device assistance. Circle AI owns these settings.</span>
+        </span></div>
+        <div class="row">
+            <span class="row-sub" role="status" aria-live="polite">@_status</span>
+            <button type="button" class="ai-settings-action" disabled="@_busy" @onclick="Refresh">@(_busy ? "Checking…" : "Refresh status")</button>
+        </div>
+        @if (_connection is not null)
+        {
+            <div class="row"><span class="row-sub">If reports say access is not approved, connect Concierge to Circle AI first. Approval is handled by Circle AI.</span>
+                <button type="button" class="ai-settings-action" disabled="@_busy" @onclick="ConnectService">Connect Circle AI</button></div>
+        }
+        @if (_report is not null)
+        {
+            @foreach (var section in _report.Sections)
+            {
+                <button class="sheet-head-btn" type="button" aria-expanded="@(_open == section.Id ? "true" : "false")"
+                    aria-controls="circleai-settings-@section.Id" @onclick="() => Toggle(section.Id)">
+                    <span aria-hidden="true">@(_open == section.Id ? "⌄" : "›")</span>
+                    <span class="sheet-label">@section.Title</span>
+                </button>
+                @if (_open == section.Id)
+                {
+                    <div id="circleai-settings-@section.Id">
+                        <div class="row"><span class="row-sub">@section.Explanation</span></div>
+                        @foreach (var fact in section.Facts)
+                        {
+                            <div class="row"><span class="row-name">@fact.Name
+                                @if (fact.Explanation is not null) { <span class="row-sub">@fact.Explanation</span> }
+                            </span><span class="row-val">@fact.Value</span></div>
+                        }
+                        @if (section.ManageInCircleAi && _report.CanOpenCircleAi)
+                        {
+                            <div class="row"><button type="button" class="ai-settings-action" disabled="@_busy" @onclick="OpenCircleAi">Open Circle AI controls</button></div>
+                        }
+                        @if (section.Id == "permissions" && _report.CanOpenPermissions)
+                        {
+                            <div class="row"><button type="button" class="ai-settings-action" disabled="@_busy" @onclick="OpenPermissions">Open service permissions</button></div>
+                        }
+                        @if (section.Id == "voice" && _gateway is ICircleAiVoiceSettingsLink)
+                        {
+                            <div class="row"><span class="row-sub">To read voice settings, allow Concierge's voice connection in Circle AI. This does not grant microphone permission or turn listening on.</span></div>
+                            <div class="row"><button type="button" class="ai-settings-action" disabled="@_busy" @onclick="ConnectVoice">Connect voice settings</button></div>
+                        }
+                    </div>
+                }
+            }
+        }
+    </section>
+}
+
+@code {
+    private ICircleAiSettingsGateway? _gateway;
+    private ICircleAiSharedServiceLink? _connection;
+    private CircleAiSettingsReport? _report;
+    private string _status = "Not checked yet.";
+    private string? _open = "readiness";
+    private bool _busy;
+    private readonly CancellationTokenSource _stop = new();
+    protected override async Task OnInitializedAsync()
+    {
+        _gateway = Services.GetService(typeof(ICircleAiSettingsGateway)) as ICircleAiSettingsGateway;
+        _connection = Services.GetService(typeof(ICircleAiSharedService)) as ICircleAiSharedServiceLink;
+        if (_gateway is not null) await Refresh();
+    }
+    private void Toggle(string id) => _open = _open == id ? null : id;
+    private async Task Refresh()
+    {
+        if (_busy || _gateway is null) return;
+        _busy = true;
+        try { _report = await _gateway.ReadAsync(_stop.Token); _status = _report.Status; }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
+        catch (Exception) { _status = "Could not refresh Circle AI settings. Any details below are from the previous check."; }
+        finally { _busy = false; }
+    }
+    private Task OpenCircleAi() => Open(() => _gateway!.OpenCircleAiAsync());
+    private Task OpenPermissions() => Open(() => _gateway!.OpenPermissionsAsync());
+    private async Task ConnectService()
+    {
+        if (_busy || _connection is null) return;
+        _busy = true;
+        try { _status = await _connection.RequestConnectionAsync(_stop.Token)
+            ? "Circle AI connection approved. Refresh status to read current reports."
+            : "Circle AI connection was not approved. Your settings were not changed."; }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
+        catch (Exception) { _status = "Could not open Circle AI's connection approval."; }
+        finally { _busy = false; }
+    }
+    private async Task ConnectVoice()
+    {
+        if (_busy || _gateway is not ICircleAiVoiceSettingsLink link) return;
+        _busy = true;
+        try { _status = await link.RequestVoiceConnectionAsync(_stop.Token)
+            ? "Voice connection approved. Refresh status to read the service's current state."
+            : "Voice connection was not approved. Your settings were not changed."; }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
+        catch (Exception) { _status = "Could not open Circle AI's voice connection approval."; }
+        finally { _busy = false; }
+    }
+    private async Task Open(Func<Task> action)
+    {
+        if (_busy) return;
+        _busy = true;
+        try { await action(); }
+        catch (Exception) { _status = "Could not open Circle AI controls on this device."; }
+        finally { _busy = false; }
+    }
+    public void Dispose() => _stop.Cancel();
+}

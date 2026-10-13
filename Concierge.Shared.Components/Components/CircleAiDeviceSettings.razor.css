@@ -1,0 +1,17 @@
+.ai-settings-action {
+    min-height: 2.75rem;
+    padding: .65rem 1rem;
+    border: 1px solid var(--cm-color-accent);
+    border-radius: var(--cm-radius-control);
+    background: var(--cm-color-accent);
+    color: var(--cm-color-on-accent);
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+.ai-settings-action:disabled { opacity: .6; cursor: wait; }
+.ai-settings-action:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+.sheet-head-btn { justify-content: flex-start; min-height: 2.75rem; color: var(--ink-soft); }
+.row { flex-wrap: wrap; gap: .65rem; }
+.row-name { flex: 1; min-width: 12rem; }
+.row-val { max-inline-size: 100%; overflow-wrap: anywhere; }

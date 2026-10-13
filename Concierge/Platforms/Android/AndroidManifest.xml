@@ -7,6 +7,7 @@
          package visibility. This permits discovery, not authorization or readiness. -->
     <queries>
         <package android:name="com.bhengubv.circleai.service" />
+        <package android:name="com.bhengubv.circleai.hybrid" />
     </queries>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.INTERNET" />

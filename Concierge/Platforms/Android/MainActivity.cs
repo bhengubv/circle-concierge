@@ -14,7 +14,8 @@ public class MainActivity : MauiAppCompatActivity
 
     // Start FOR RESULT: Android supplies the real calling package to Circle AI.
     // No client-written grant, signature bypass, or impersonated approval.
-    public Task<bool> RequestCircleAiLinkAsync(CancellationToken cancellationToken)
+    public Task<bool> RequestCircleAiLinkAsync(CancellationToken cancellationToken,
+        CircleAI.Linking.LinkScope scope = CircleAI.Linking.LinkScope.Chat)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (_circleAiLink is null)
@@ -24,7 +25,7 @@ public class MainActivity : MauiAppCompatActivity
             {
                 using var intent = new global::Android.Content.Intent(CircleAI.Linking.LinkIpc.ConsentAction);
                 intent.SetPackage(CircleAI.Linking.LinkIpc.HostPackage);
-                intent.PutExtra(CircleAI.Linking.LinkIpc.ScopeExtra, (int)CircleAI.Linking.LinkScope.Chat);
+                intent.PutExtra(CircleAI.Linking.LinkIpc.ScopeExtra, (int)scope);
                 StartActivityForResult(intent, CircleAiLinkRequest);
             }
             catch

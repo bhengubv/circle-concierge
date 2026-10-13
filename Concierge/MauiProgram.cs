@@ -255,7 +255,9 @@ public static class MauiProgram
 		builder.Services.AddSingleton<IDeviceContext, MauiDeviceContext>();
 
 #if ANDROID
-		builder.Services.AddSingleton<ICircleAiSharedService, Concierge.Platforms.Android.AndroidCircleAiSharedService>();
+		builder.Services.AddSingleton<Concierge.Platforms.Android.AndroidCircleAiSharedService>();
+		builder.Services.AddSingleton<ICircleAiSharedService>(sp => sp.GetRequiredService<Concierge.Platforms.Android.AndroidCircleAiSharedService>());
+		builder.Services.AddSingleton<ICircleAiSettingsGateway, Concierge.Platforms.Android.AndroidCircleAiSettingsGateway>();
 		builder.Services.RemoveAll<IModelDownloadCoordinator>();
 		builder.Services.AddSingleton<IModelDownloadCoordinator, Concierge.Platforms.Android.AndroidModelDownloadCoordinator>();
 #endif

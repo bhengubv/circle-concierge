@@ -9,6 +9,35 @@ namespace Concierge.Tests;
 
 public sealed class CircleAiWindowsServiceRuntimeTests
 {
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Startup_only_reads_the_service_and_never_selects_downloads_or_loads_models(bool ready)
+    {
+        var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json");
+        await File.WriteAllTextAsync(path, "{\"BaseUrl\":\"http://127.0.0.1:5208\",\"ApiKey\":\"test-only\"}");
+        var handler = new ReadOnlyStartup(ready);
+        try
+        {
+            using var runtime = new CircleAiWindowsServiceRuntime(path, new HttpClient(handler));
+            await runtime.InitializeAsync(default);
+            Assert.Equal(ready, runtime.IsReady);
+            Assert.Equal(new[] { "/v1/diagnostics", "/v1/models" }, handler.Paths);
+            Assert.All(handler.Methods, method => Assert.Equal(HttpMethod.Get, method));
+        }
+        finally { File.Delete(path); }
+    }
+    private sealed class ReadOnlyStartup(bool ready) : HttpMessageHandler
+    {
+        public List<string> Paths = []; public List<HttpMethod> Methods = [];
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Paths.Add(request.RequestUri!.AbsolutePath); Methods.Add(request.Method);
+            var json = request.RequestUri.AbsolutePath == "/v1/diagnostics" ? "{\"server_version\":\"3.8.1\"}" : ready
+                ? "{\"data\":[{\"id\":\"service-chosen\",\"supports_streaming\":true}]}" : "{\"data\":[]}";
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(json, Encoding.UTF8, "application/json") });
+        }
+    }
     [Fact]
     public void Prompt_diagnostics_include_all_system_layers_without_retaining_text()
     {
@@ -48,6 +77,42 @@ public sealed class CircleAiWindowsServiceRuntimeTests
         var text = new StringBuilder();
         await foreach (var delta in runtime.StreamAsync([new ChatTurn("user", "A question")], token)) text.Append(delta);
         return text.ToString();
+    }
+
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    public async Task Streaming_choice_reaches_HTTP_and_unavailable_agentic_is_not_claimed(bool stream, bool agentic)
+    {
+        var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json");
+        try
+        {
+            var preferences = new Concierge.Shared.Settings.CircleAiServicePreferences(path);
+            await preferences.SaveAsync(new(stream, agentic));
+            using var runtime = new CircleAiWindowsServiceRuntime(null,
+                new HttpClient(new ChoiceHandler(stream)) { BaseAddress = new("http://127.0.0.1:5208") }, preferences);
+            typeof(CircleAiWindowsServiceRuntime).GetProperty(nameof(runtime.IsReady))!.SetValue(runtime, true);
+            Assert.Equal("13", await Answer(runtime));
+            if (agentic) Assert.Contains(stream ? "does not combine" : "not connected", runtime.StatusMessage);
+        }
+        finally { File.Delete(path); }
+    }
+
+    private sealed class ChoiceHandler(bool stream) : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            Assert.Equal("/v1/chat/completions", request.RequestUri!.AbsolutePath);
+            using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(token));
+            Assert.Equal(stream, body.RootElement.GetProperty("stream").GetBoolean());
+            Assert.False(body.RootElement.TryGetProperty("agentic", out _)); // Not a field in this endpoint's contract.
+            return new(HttpStatusCode.OK) { Content = new StringContent(stream
+                ? "data: {\"choices\":[{\"delta\":{\"content\":\"13\"}}]}\n\ndata: [DONE]\n\n"
+                : "{\"choices\":[{\"message\":{\"content\":\"13\"}}]}", Encoding.UTF8,
+                stream ? "text/event-stream" : "application/json") };
+        }
     }
 
     [Fact]

@@ -2,18 +2,29 @@ using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using CircleAI.Core;
-using CircleAI.Core.Models;
-using CircleAI.Inference;
 using Concierge.Shared.Chat;
+using Concierge.Shared.Settings;
+using Concierge.Shared.Devices;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 namespace Concierge.Ai;
 
 /// <summary>HTTP client only. Circle AI's Windows service owns native inference and weights.</summary>
-public sealed class CircleAiWindowsServiceRuntime : IChatRuntime, IChatRuntimeCapabilitySource, IChatRuntimeStatusEvents, IDisposable
+public sealed class CircleAiWindowsServiceRuntime : IChatRuntime, IChatRuntimeCapabilitySource, IChatRuntimeStatusEvents, ICircleAiSettingsGateway, IDisposable
 {
-    private readonly HttpClient _http = new() { Timeout = Timeout.InfiniteTimeSpan };
+    private readonly HttpClient _http;
+    private readonly string _connectionPath;
+    private readonly CircleAiServicePreferences? _preferences;
+    public CircleAiWindowsServiceRuntime(CircleAiServicePreferences preferences) : this(null, null, preferences) { }
+    internal CircleAiWindowsServiceRuntime(string? connectionPath = null, HttpClient? http = null,
+        CircleAiServicePreferences? preferences = null)
+    {
+        _preferences = preferences;
+        _http = http ?? new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+        _connectionPath = connectionPath ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            "Concierge", "CircleAIService", "connection.json");
+    }
     private readonly SemaphoreSlim _inference = new(1, 1);
     private string? _model;
     private string _version = "unverified";
@@ -50,87 +61,29 @@ public sealed class CircleAiWindowsServiceRuntime : IChatRuntime, IChatRuntimeCa
         StatusMessage = "Connecting to Circle AI service…";
         try
         {
-            var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
-                "Concierge", "CircleAIService", "connection.json");
-            using var config = JsonDocument.Parse(await File.ReadAllTextAsync(path, cancellationToken));
+            using var config = JsonDocument.Parse(await File.ReadAllTextAsync(_connectionPath, cancellationToken));
             var baseUrl = new Uri(config.RootElement.GetProperty("BaseUrl").GetString()!);
             if (!baseUrl.IsLoopback || baseUrl.Scheme != "http")
                 throw new InvalidOperationException("The installed service must use a local endpoint.");
             if (_http.BaseAddress is null) _http.BaseAddress = baseUrl;
             _http.DefaultRequestHeaders.Remove("X-CircleAI-Api-Key");
             _http.DefaultRequestHeaders.Add("X-CircleAI-Api-Key", config.RootElement.GetProperty("ApiKey").GetString());
-            string? serviceBackend = null;
-            string? serviceTier = null;
-            try
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(15));
+            using var diagnosticResponse = await _http.GetAsync("/v1/diagnostics", timeout.Token);
+            if (diagnosticResponse.IsSuccessStatusCode)
             {
-                using var diagnosticTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                diagnosticTimeout.CancelAfter(TimeSpan.FromSeconds(15));
-                using var diagnosticResponse = await _http.GetAsync("/v1/diagnostics", diagnosticTimeout.Token);
-                if (diagnosticResponse.IsSuccessStatusCode)
-                {
-                    using var diagnostics = await diagnosticResponse.Content.ReadFromJsonAsync<JsonDocument>(diagnosticTimeout.Token);
-                    if (diagnostics?.RootElement.TryGetProperty("server_version", out var version) == true)
-                        _version = version.GetString() ?? "unverified";
-                    if (diagnostics?.RootElement.TryGetProperty("backend_selection", out var selection) == true)
-                    {
-                        serviceBackend = selection.GetProperty("backend").GetString();
-                        serviceTier = selection.GetProperty("tier").GetString();
-                    }
-                }
+                using var diagnostics = await diagnosticResponse.Content.ReadFromJsonAsync<JsonDocument>(timeout.Token);
+                if (diagnostics?.RootElement.TryGetProperty("server_version", out var version) == true)
+                    _version = version.GetString() ?? "unverified";
             }
-            catch (Exception exception) when (!cancellationToken.IsCancellationRequested
-                && exception is HttpRequestException or OperationCanceledException or JsonException) { }
+            using var models = await _http.GetFromJsonAsync<JsonDocument>("/v1/models", timeout.Token);
+            _model = SingleLoadedStreamingModel(models);
+            IsReady = _model is not null;
+            _state = IsReady ? ChatRuntimeCapabilityState.Available : ChatRuntimeCapabilityState.Preparing;
+            StatusMessage = IsReady ? "Circle AI service is ready."
+                : "Circle AI service has not reported a ready model yet. The service manages model preparation.";
 
-            using var residentModels = await _http.GetFromJsonAsync<JsonDocument>("/v1/models", cancellationToken);
-            if (SingleLoadedStreamingModel(residentModels) is { } residentModel)
-            {
-                // The service already owns this allocation. Re-assessing it
-                // against remaining free RAM would count its memory twice.
-                _model = residentModel;
-                IsReady = true;
-                StatusMessage = "Circle AI service is ready.";
-                return;
-            }
-            var modelsRoot = config.RootElement.GetProperty("ModelsRoot").GetString()!;
-            // The SDK owns the choice. This client never loads a generator or weights.
-            DeviceProbe.PlatformMemoryProbe = WindowsAvailableMemoryProbe.Read;
-            var probe = DeviceProbe.Snapshot(modelsRoot);
-            using var selector = new CircleAiModelSelectorContext(modelsRoot);
-            selector.Assess(probe);
-            var selected = selector.BestFit(probe, ChatCapability.None);
-            using var cache = new BundleModelLoader(modelsRoot);
-            if (selected.Quality != SelectionQuality.NothingFits && !cache.ModelPresent(selected.ModelId))
-                selected = selector.AllCandidates(probe).FirstOrDefault(candidate =>
-                    candidate.Quality != SelectionQuality.NothingFits && cache.ModelPresent(candidate.ModelId)) ?? selected;
-            if (selected.Quality == SelectionQuality.NothingFits)
-            {
-                _state = ChatRuntimeCapabilityState.Preparing;
-                StatusMessage = "Circle AI is waiting for enough free memory to prepare assistance. Concierge will retry automatically.";
-                return;
-            }
-            if (!cache.ModelPresent(selected.ModelId))
-            {
-                _state = ChatRuntimeCapabilityState.ActionRequired;
-                StatusMessage = "Circle AI service needs model preparation before it can answer. Downloads have not been started.";
-                return;
-            }
-            _model = selected.ModelId;
-            using var models = await _http.GetFromJsonAsync<JsonDocument>("/v1/models", cancellationToken);
-            if (!ContainsModel(models, _model))
-            {
-                if (string.IsNullOrWhiteSpace(serviceBackend) || string.IsNullOrWhiteSpace(serviceTier))
-                    throw new InvalidOperationException("The service has not reported its device backend and resource tier yet.");
-                StatusMessage = "Circle AI service is preparing the model already on this device…";
-                using var response = await _http.PostAsJsonAsync("/v1/admin/models/load", new
-                {
-                    modelId = _model, backend = serviceBackend, tier = serviceTier,
-                    vramRequiredBytes = 0L, ramRequiredBytes = selected.EstimatedBytes
-                }, cancellationToken);
-                response.EnsureSuccessStatusCode();
-            }
-            using var readyModels = await _http.GetFromJsonAsync<JsonDocument>("/v1/models", cancellationToken);
-            IsReady = ContainsModel(readyModels, _model);
-            StatusMessage = IsReady ? "Circle AI service is ready." : "Circle AI service has not reported a ready model.";
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         catch (Exception exception)
@@ -140,10 +93,6 @@ public sealed class CircleAiWindowsServiceRuntime : IChatRuntime, IChatRuntimeCa
             StatusMessage = "Circle AI service could not prepare assistance: " + exception.Message;
         }
     }
-
-    private static bool ContainsModel(JsonDocument? models, string id)
-        => models?.RootElement.TryGetProperty("data", out var data) == true
-            && data.EnumerateArray().Any(entry => entry.TryGetProperty("id", out var modelId) && modelId.GetString() == id);
 
     internal static string? SingleLoadedStreamingModel(JsonDocument? models)
     {
@@ -165,15 +114,39 @@ public sealed class CircleAiWindowsServiceRuntime : IChatRuntime, IChatRuntimeCa
         try
         {
         LastPromptDiagnostics = MeasurePrompt(messages, _model);
+        // Snapshot preferences once: changing Settings does not reroute an active answer.
+        var options = _preferences?.Current ?? new CircleAiServiceOptions();
+        if (!options.StreamAnswers && options.AgenticWork)
+        {
+            // Companion owns its session history. Never silently replace the existing
+            // Concierge conversation or send its system instructions as a user message.
+            // 3.8.1 exposes no history/approval import contract, so this cannot safely
+            // take over Concierge runs yet, even if its offline backend is connected.
+            StatusMessage = "Circle AI is answering conversationally. Service agentic work is not connected yet.";
+        }
+        else StatusMessage = options.AgenticWork
+            ? "Circle AI is streaming conversationally. Service 3.8.1 does not combine streaming with agentic work."
+            : "Circle AI service is ready for conversation.";
         using var request = new HttpRequestMessage(HttpMethod.Post, "/v1/chat/completions")
         {
             // Concierge's action/approval responses should not depend on a
             // randomly sampled completion. The service still owns inference.
-            Content = JsonContent.Create(new { model = _model, stream = true, temperature = 0,
+            Content = JsonContent.Create(new { model = _model, stream = options.StreamAnswers, temperature = 0,
                 messages = messages.Select(message => new { role = message.Role, content = message.Content }) })
         };
         using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         response.EnsureSuccessStatusCode();
+        if (!options.StreamAnswers)
+        {
+            using var answer = await response.Content.ReadFromJsonAsync<JsonDocument>(cancellationToken);
+            if (answer?.RootElement.TryGetProperty("choices", out var completeChoices) != true)
+                throw new IOException("Circle AI service returned no completed answer.");
+            foreach (var choice in completeChoices.EnumerateArray())
+                if (choice.TryGetProperty("message", out var message)
+                    && message.TryGetProperty("content", out var content) && content.ValueKind == JsonValueKind.String)
+                    yield return content.GetString()!;
+            yield break;
+        }
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var reader = new StreamReader(stream);
         while (await reader.ReadLineAsync(cancellationToken) is { } line)
@@ -194,6 +167,39 @@ public sealed class CircleAiWindowsServiceRuntime : IChatRuntime, IChatRuntimeCa
         }
         finally { _inference.Release(); }
     }
+    public async Task<CircleAiSettingsReport> ReadAsync(CancellationToken cancellationToken)
+    {
+        var readiness = new List<CircleAiSettingFact>();
+        if (_http.BaseAddress is null) readiness.Add(new("Connection", "Not connected", StatusMessage));
+        else
+        {
+            try
+            {
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                timeout.CancelAfter(TimeSpan.FromSeconds(12));
+                using var models = await _http.GetFromJsonAsync<JsonDocument>("/v1/models", timeout.Token);
+                var model = SingleLoadedStreamingModel(models);
+                readiness.Add(new("Service connection", "Responding"));
+                readiness.Add(new("Service version", _version));
+                readiness.Add(new("Conversation model", model ?? "Not reported ready",
+                    "Reported by the service; this check does not run a conversation or select a model."));
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+            catch (Exception) { readiness.Add(new("Service connection", "Unavailable", "The local service did not return a current model report.")); }
+        }
+        var sections = new CircleAiSettingsSection[]
+        {
+            new("language", "Language and replies", "Input and fixed reply language controls are not exposed by the installed Windows service contract.", []),
+            new("voice", "Voice and wake", "Wake phrase and background listening controls are not exposed by this Windows service. Concierge does not start its own listener.", []),
+            new("readiness", "Readiness and capabilities", "Current local service report. A ready conversation model does not establish readiness of voice, images, or agentic work.", readiness),
+            new("permissions", "Permissions and setup", "The Windows service uses its installed local connection credentials. Microphone and notification setup must be supplied by the service before Concierge can manage them.", []),
+            new("storage", "Storage and housekeeping", "Models, retention, cache limits, and cleanup belong to Circle AI. The installed Windows API does not expose these settings; Concierge does not delete or rank its models.", []),
+            new("borrowing", "Trusted-device assistance", "The installed Windows service does not expose borrowing preferences. Concierge's device connection is separate from Circle AI borrowing.", [])
+        };
+        return new("Checked the local Windows service. Settings not exposed by its contract are labelled explicitly.", sections, false, false);
+    }
+    public Task OpenCircleAiAsync() => Task.FromException(new NotSupportedException("Windows service controls are not exposed."));
+    public Task OpenPermissionsAsync() => Task.FromException(new NotSupportedException("Windows service permission controls are not exposed."));
     public void Dispose() => _http.Dispose();
 }
 
@@ -241,7 +247,11 @@ public static class CircleAiWindowsServiceRegistration
             || descriptor.ServiceType == typeof(CircleAiChatRuntime)).ToArray())
             services.Remove(descriptor);
         services.AddSingleton<CircleAiWindowsServiceRuntime>();
+        services.AddSingleton(_ => new CircleAiServicePreferences(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            "Concierge", "CircleAIService", "concierge-preferences.json")));
         services.AddSingleton<IChatRuntime>(provider => provider.GetRequiredService<CircleAiWindowsServiceRuntime>());
+        services.AddSingleton<ICircleAiSettingsGateway>(provider => provider.GetRequiredService<CircleAiWindowsServiceRuntime>());
         services.AddHostedService<CircleAiWindowsServiceLoader>();
         return services;
     }
