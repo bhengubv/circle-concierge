@@ -68,6 +68,24 @@ CheckForUpgradesOnStart setting. CheckForUpgradesOnStart's default is false.
 Earlier live inference logs reported "generalist: no router configured".
 Existing-node reuse skips even the cold-node selector call.
 
+### Installed-model housekeeping is explicitly disabled
+
+The installed ServiceApplication startup delegate calls CatalogueBootstrap.Run
+with its final argument false (delegate <OnCreate>b__6, IL 006B–006E). The
+published SDK identifies that argument as `reclaimInferior`. Therefore this
+startup path does not invoke CatalogueHousekeeping.Reclaim.
+
+The startup sweep that does run is CatalogueHousekeeping.SweepAbandoned with a
+one-hour idle window. Its compiled code examines temporary downloads and orphaned
+sidecars; it does not reclaim complete installed models. Resumable temporary files
+with a sidecar are retained.
+
+Even enabling reclaimInferior alone would not close the provisioning gap. Reclaim
+only removes installed models superseded by a better compatible same-modality
+model already installed. FirstRun.Plan's any-installed-model shortcut can prevent
+that better model from being downloaded in the first place. Selection,
+provisioning and reclamation must be joined into the same lifecycle.
+
 ## Model metadata and limits of this finding
 
 The installed embedded registry contains 90 entries, re-derived from its resource.
@@ -91,6 +109,9 @@ loading and later resource-driven upgrades. An arbitrary installed brain must no
 make the selected target disappear from the plan. Apply supported-engine,
 resource, refusal and user download-policy constraints consistently. When the
 service retains a fallback, report both the selected target and fallback reason.
+Prepare and verify the chosen replacement, load it, then reclaim models it has
+superseded. Wire installed-model housekeeping on according to the service setting;
+an abandoned-download sweep is not a replacement for it.
 
 Verify with an older small model already installed and a different eligible
 target: the plan must offer/prepare that target, the service must await its load,
