@@ -25,6 +25,7 @@ public sealed class CircleAiSharedServiceChatRuntimeTests
 
     [Theory]
     [InlineData(true, "Ready", ChatRuntimeCapabilityState.Available)]
+    [InlineData(true, "TextReady", ChatRuntimeCapabilityState.Available)]
     [InlineData(false, "NeedsSetup", ChatRuntimeCapabilityState.ActionRequired)]
     [InlineData(false, "Unavailable", ChatRuntimeCapabilityState.Unavailable)]
     public async Task Readiness_comes_from_service_not_an_embedded_model(bool ready, string stage, ChatRuntimeCapabilityState state)

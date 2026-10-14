@@ -7,6 +7,23 @@ namespace Concierge.Tests;
 public sealed class CircleAiDeviceSettingsTests : BunitContext
 {
     [Theory]
+    [InlineData("On", true)]
+    [InlineData("Ready", false)]
+    [InlineData("Available", false)]
+    [InlineData("TooBig", false)]
+    [InlineData("unknown", false)]
+    public void Text_readiness_requires_service_reported_answering_On(string state, bool expected)
+        => Assert.Equal(expected, CircleAiServiceReadiness.TextAnsweringIsOn([["Answering", "Answers questions", state, "", "/chat"]]));
+
+    [Fact]
+    public void Other_or_malformed_abilities_do_not_enable_text_chat()
+    {
+        Assert.False(CircleAiServiceReadiness.TextAnsweringIsOn([["Talking", "Speaks", "On", "", "/talk"]]));
+        Assert.False(CircleAiServiceReadiness.TextAnsweringIsOn([["Answering", "", "On"]]));
+        Assert.False(CircleAiServiceReadiness.TextAnsweringIsOn([]));
+    }
+
+    [Theory]
     [InlineData("0.5", 0.5)]
     [InlineData("0", 0.0)]
     [InlineData("1", 1.0)]

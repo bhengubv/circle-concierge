@@ -16,7 +16,7 @@ public static class CircleAiSettingsRows
             case "ResidentStatus" when row.Count >= 4:
                 return [new("Background listening", row[0], row[1]), new("Listening guidance", row[2])];
             case "SetupReadiness" when row.Count >= 4:
-                return [new(row[1], row[0], row[2]), new("Conversation readiness", Flag(row[3], "Ready", "Not ready"))];
+                return [new(row[1], row[0], row[2]), new("Overall setup readiness", Flag(row[3], "Ready", "Not ready"))];
             case "Abilities" when row.Count >= 5:
                 return [new(row[0], row[2], row[1])];
             case "Permissions" when row.Count >= 4:

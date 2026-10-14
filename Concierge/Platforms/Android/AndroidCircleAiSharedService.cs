@@ -92,6 +92,16 @@ public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICirc
 
     public async Task<CircleAiServiceChatStatus> ReadChatStatusAsync(CancellationToken cancellationToken)
     {
+        var setup = await ReadSetupStatusAsync(cancellationToken);
+        if (setup.Ready || setup.Stage is "AuthorizationRequired" or "Unavailable") return setup;
+        var abilities = await ExecuteVerbAsync(new LinkVerbRequest(LinkVerb.Abilities), cancellationToken);
+        if (abilities.Ok && CircleAiServiceReadiness.TextAnsweringIsOn(abilities.Rows))
+            return new(true, "TextReady", "Circle AI can answer here. Voice setup is still incomplete.", setup.Version);
+        return setup;
+    }
+
+    internal async Task<CircleAiServiceChatStatus> ReadSetupStatusAsync(CancellationToken cancellationToken)
+    {
         var response = await ExecuteVerbAsync(new LinkVerbRequest(LinkVerb.SetupReadiness), cancellationToken);
         var info = global::Android.App.Application.Context.PackageManager!.GetPackageInfo(Package, (PackageInfoFlags)0)!;
         var version = $"{info.VersionName} build {info.LongVersionCode}";

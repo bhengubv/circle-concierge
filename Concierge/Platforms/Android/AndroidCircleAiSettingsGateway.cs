@@ -15,7 +15,7 @@ public sealed class AndroidCircleAiSettingsGateway(AndroidCircleAiSharedService 
 
     public async Task<CircleAiSetupProgress> ReadSetupProgressAsync(CancellationToken cancellationToken)
     {
-        var readiness = await service.ReadChatStatusAsync(cancellationToken);
+        var readiness = await service.ReadSetupStatusAsync(cancellationToken);
         if (readiness.Ready) return new(true, readiness.Explanation, null, null, null);
         var reply = await service.ExecuteVerbAsync(new LinkVerbRequest(LinkVerb.SetupProgress), cancellationToken);
         if (!reply.Ok) throw new InvalidOperationException(reply.Error ?? "Circle AI did not report setup progress.");
@@ -44,6 +44,16 @@ public sealed class AndroidCircleAiSettingsGateway(AndroidCircleAiSharedService 
             "These are reports from the service on this device. Supported does not mean ready or currently running.",
             [.. await Facts(LinkVerb.SetupReadiness, cancellationToken), .. await Facts(LinkVerb.Abilities, cancellationToken),
              .. await Facts(LinkVerb.SetupPlan, cancellationToken), .. await Facts(LinkVerb.SetupCensus, cancellationToken)]));
+        CircleAiSettingFact chatFact;
+        try
+        {
+            var chat = await service.ReadChatStatusAsync(cancellationToken);
+            chatFact = new("Text conversations", chat.Ready ? "Ready" : "Not ready", chat.Explanation);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception e) { chatFact = new("Text conversations", "Unavailable", e.Message); }
+        var readinessSection = sections[^1];
+        sections[^1] = readinessSection with { Facts = [chatFact, .. readinessSection.Facts] };
         sections.Add(new("permissions", "Permissions and setup",
             "Microphone access is needed to hear you; notifications show background listening. Turning either off can prevent listening or hide its notification. Android controls these permissions.",
             await Facts(LinkVerb.Permissions, cancellationToken)));

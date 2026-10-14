@@ -154,8 +154,9 @@
             catch (OperationCanceledException) when (_stop.IsCancellationRequested) { throw; }
             catch { _connected = null; }
         }
-        var readiness = _report.Sections.FirstOrDefault(s => s.Id == "readiness")?.Facts
-            .FirstOrDefault(f => f.Name == "Conversation readiness")?.Value;
+        var readinessFacts = _report.Sections.FirstOrDefault(s => s.Id == "readiness")?.Facts;
+        var readiness = readinessFacts?.FirstOrDefault(f => f.Name == "Text conversations")?.Value
+            ?? readinessFacts?.FirstOrDefault(f => f.Name == "Conversation readiness")?.Value;
         _status = $"Checked at {DateTimeOffset.Now:T}. " + (readiness is null ? _report.Status : $"Conversation: {readiness}. " + _report.Status);
     }
     private Task OpenCircleAi() => Open(() => _gateway!.OpenCircleAiAsync());
@@ -187,9 +188,16 @@
     {
         if (_busy || _gateway is not ICircleAiVoiceSettingsLink link) return;
         _busy = true;
-        try { _status = await link.RequestVoiceConnectionAsync(_stop.Token)
-            ? "Voice connection approved. Refresh status to read the service's current state."
-            : "Voice connection was not approved. Your settings were not changed."; }
+        try
+        {
+            if (await link.RequestVoiceConnectionAsync(_stop.Token))
+            {
+                _status = "Voice connection approved. Checking service settings…";
+                await InvokeAsync(StateHasChanged);
+                await ReadReports();
+            }
+            else _status = "Voice connection was not approved. Your settings were not changed.";
+        }
         catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
         catch (Exception) { _status = "Could not open Circle AI's voice connection approval."; }
         finally { _busy = false; }
