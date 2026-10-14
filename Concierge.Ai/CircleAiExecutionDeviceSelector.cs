@@ -32,54 +32,21 @@ public sealed class CircleAiExecutionDeviceSelector : IChatExecutionDeviceSelect
 
         var localReady = localCanAnswer && Supports(local, required);
         var desktopReady = desktopCanAnswer && IsFresh(desktop, now) && Supports(desktop, required);
+        var localConversation = local?.Capabilities.FirstOrDefault(c => c.Id == "conversation");
+        var requiredFact = local?.Capabilities.FirstOrDefault(c => c.Id == required);
 
-        if (route.Organ != Organ.Specialist)
-        {
-            if (localReady)
-                return Local(required, "Ordinary work stays on this device while its Circle AI runtime is ready.");
-            if (desktopReady)
-                return Desktop(required, "This device is not ready for conversation; the connected Desktop is ready.");
-            return Local(required, "No ready Circle AI destination was advertised; keep the request on this device for the normal readiness path.");
-        }
-
-        if (desktopReady && !localReady)
-            return Desktop(required, $"Circle AI selected the Desktop because only it currently advertises {required}.");
-        if (localReady && !desktopReady)
-            return Local(required, $"Circle AI selected this device because only it currently advertises {required}.");
-        if (!localReady && !desktopReady)
-        {
-            // Keep the one existing best-effort path when neither catalogue can meet the
-            // specialist requirement. Runtime readiness still decides whether it can answer.
-            if (!localCanAnswer && desktopCanAnswer && IsFresh(desktop, now) && Supports(desktop, "conversation"))
-                return Desktop(required, $"Neither head advertises {required}; Desktop is the only ready conversation runtime.");
-            return Local(required, $"Neither head advertises {required}; use the local runtime's honest capability limits.");
-        }
-
-        var resourceWinner = CompareResources(local?.Resources, desktop?.Resources);
-        return resourceWinner > 0
-            ? Desktop(required, $"Both heads advertise {required}; Desktop has greater measured resource headroom.")
-            : Local(required, $"Both heads advertise {required}; this device has equal or greater measured resource headroom.");
-    }
-
-    private static int CompareResources(
-        ChatRuntimeResourceSnapshot? local,
-        ChatRuntimeResourceSnapshot? desktop)
-    {
-        var localMemory = local?.UsableMemoryGb;
-        var desktopMemory = desktop?.UsableMemoryGb;
-        if (localMemory is > 0 && desktopMemory is > 0)
-        {
-            var memory = desktopMemory.Value.CompareTo(localMemory.Value);
-            if (memory != 0)
-                return memory;
-        }
-
-        var localCores = local?.CpuCores;
-        var desktopCores = desktop?.CpuCores;
-        if (localCores is > 0 && desktopCores is > 0)
-            return desktopCores.Value.CompareTo(localCores.Value);
-
-        return 0;
+        if (localReady)
+            return Local(required, "This device can handle the query. A larger Desktop alone is not a reason to transfer it.");
+        if (requiredFact?.State is ChatRuntimeCapabilityState.Preparing or ChatRuntimeCapabilityState.ActionRequired
+            || !localCanAnswer && localConversation?.State is ChatRuntimeCapabilityState.Preparing or ChatRuntimeCapabilityState.ActionRequired)
+            return Local(required, "Circle AI on this device needs preparation or approval. Do not silently transfer while it is getting ready.");
+        var confirmedLimit = requiredFact?.State == ChatRuntimeCapabilityState.Unavailable;
+        var confirmedFailure = !localCanAnswer && localConversation?.State == ChatRuntimeCapabilityState.Unavailable;
+        if (desktopReady && (confirmedLimit || confirmedFailure))
+            return Desktop(required, "The current device reports a failure or cannot handle this capability; the connected Desktop can.");
+        if (localCanAnswer && requiredFact is null)
+            return Local(required, "The service has not reported a limit for this query. Try the current device; do not infer a limit from Desktop's greater resources.");
+        return Local(required, "No justified automatic transfer was reported. The user can still choose Desktop manually.");
     }
 
     private static bool IsFresh(ChatRuntimeCapabilityCatalog? catalog, DateTimeOffset now)

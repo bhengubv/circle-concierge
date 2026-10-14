@@ -25,6 +25,21 @@ namespace Concierge.Tests;
 public sealed class HandheldWorkspaceTests : BunitContext
 {
     [Fact]
+    public void Manual_Desktop_transfer_is_explicit_and_available_independently_of_local_readiness()
+    {
+        var cut = RenderWorkspace();
+        var type = typeof(Concierge.Shared.Components.Workspace.WorkspaceBase);
+        var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+        type.GetField("_desktopAvailable", flags)!.SetValue(cut.Instance, true);
+        type.GetField("_desktopCanAnswer", flags)!.SetValue(cut.Instance, true);
+        type.GetField("_composerText", flags)!.SetValue(cut.Instance, "Use the larger device for this query");
+        cut.Render();
+        var transfer = cut.FindAll("button").Single(b => b.TextContent.Trim() == "Use Desktop");
+        Assert.False(transfer.HasAttribute("disabled"));
+        Assert.Equal("Run this query on Desktop instead", transfer.GetAttribute("title"));
+    }
+
+    [Fact]
     public void Mobile_brand_identifies_Concierge_as_the_product_and_Circle_AI_as_its_engine()
     {
         var cut = RenderWorkspace();

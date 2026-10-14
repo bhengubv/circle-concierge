@@ -36,6 +36,21 @@
                                 @if (fact.Explanation is not null) { <span class="row-sub">@fact.Explanation</span> }
                             </span><span class="row-val">@fact.Value</span></div>
                         }
+                        @if (section.Id == "readiness" && _gateway is ICircleAiServiceSetup)
+                        {
+                            <div class="row"><span class="row-sub">Circle AI chooses and prepares the resources for this device. Setup can download large files; progress appears here while you keep using Concierge.</span>
+                                <button type="button" class="ai-settings-action" disabled="@(_busy || _setupRequested || _setupProgress?.Ready == true)" @onclick="StartSetup">Prepare Circle AI on this device</button></div>
+                            <div class="row setup-progress" role="status" aria-live="polite">
+                                <span class="row-name">@_setupStatus
+                                    @if (_setupProgress?.Resource is not null) { <span class="row-sub">@_setupProgress.Resource · @_setupProgress.Phase</span> }
+                                </span>
+                                @if (_setupProgress?.Fraction is double fraction)
+                                {
+                                    <progress max="1" value="@fraction.ToString(System.Globalization.CultureInfo.InvariantCulture)" aria-label="Current resource download progress"></progress>
+                                    <span>@fraction.ToString("P0") of this resource</span>
+                                }
+                            </div>
+                        }
                         @if (section.ManageInCircleAi && _report.CanOpenCircleAi)
                         {
                             <div class="row"><button type="button" class="ai-settings-action" disabled="@_busy" @onclick="OpenCircleAi">Open Circle AI controls</button></div>
@@ -63,12 +78,54 @@
     private string _status = "Not checked yet.";
     private string? _open = "readiness";
     private bool _busy;
+    private bool _setupRequested;
+    private CircleAiSetupProgress? _setupProgress;
+    private string _setupStatus = "Setup progress has not been checked.";
     private readonly CancellationTokenSource _stop = new();
     protected override async Task OnInitializedAsync()
     {
         _gateway = Services.GetService(typeof(ICircleAiSettingsGateway)) as ICircleAiSettingsGateway;
         _connection = Services.GetService(typeof(ICircleAiSharedService)) as ICircleAiSharedServiceLink;
         if (_gateway is not null) await Refresh();
+        if (_gateway is ICircleAiServiceSetup) _ = MonitorSetup();
+    }
+    private async Task StartSetup()
+    {
+        if (_busy || _setupRequested || _gateway is not ICircleAiServiceSetup setup) return;
+        _busy = true;
+        try
+        {
+            await setup.StartSetupAsync(_stop.Token);
+            _setupRequested = true;
+            _setupStatus = "Circle AI accepted setup. Waiting for its progress report.";
+        }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
+        catch (Exception error) { _setupStatus = "Setup could not be confirmed: " + error.Message; }
+        finally { _busy = false; }
+    }
+    private async Task MonitorSetup()
+    {
+        while (!_stop.IsCancellationRequested)
+        {
+            if (!_busy && _gateway is ICircleAiServiceSetup setup)
+            {
+                try
+                {
+                    _setupProgress = await setup.ReadSetupProgressAsync(_stop.Token);
+                    _setupStatus = _setupProgress.Status;
+                    if (_setupProgress.Ready) _setupRequested = false;
+                }
+                catch (OperationCanceledException) when (_stop.IsCancellationRequested) { return; }
+                catch (Exception error)
+                {
+                    _setupProgress = null; // Never display a stale percentage as live progress.
+                    _setupStatus = "Progress unavailable: " + error.Message;
+                }
+                await InvokeAsync(StateHasChanged);
+            }
+            try { await Task.Delay(TimeSpan.FromSeconds(5), _stop.Token); }
+            catch (OperationCanceledException) when (_stop.IsCancellationRequested) { return; }
+        }
     }
     private void Toggle(string id) => _open = _open == id ? null : id;
     private async Task Refresh()

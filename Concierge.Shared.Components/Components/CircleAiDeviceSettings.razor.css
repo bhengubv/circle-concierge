@@ -15,3 +15,4 @@
 .row { flex-wrap: wrap; gap: .65rem; }
 .row-name { flex: 1; min-width: 12rem; }
 .row-val { max-inline-size: 100%; overflow-wrap: anywhere; }
+.setup-progress progress { accent-color: var(--cm-color-accent); width: 100%; }

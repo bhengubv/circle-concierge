@@ -542,6 +542,10 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
               && ((_activeRuntime?.IsReady ?? false)
                   || (_desktopAvailable && _desktopCanAnswer && _pendingAttachments.Count == 0));
 
+    protected bool CanTransferToDesktop => !_streaming && _desktopAvailable && _desktopCanAnswer
+        && _pendingAttachments.Count == 0 && !string.IsNullOrWhiteSpace(_composerText);
+    protected Task TransferToDesktopAsync() => CanTransferToDesktop ? SendToDesktopAsync() : Task.CompletedTask;
+
     protected string? RuntimeReadinessMessage
         => _designOpen
             ? null
@@ -554,7 +558,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
                         ?? "Desktop is connected, but Circle AI is not ready there yet."
                 }
             : _desktopAvailable && _desktopCanAnswer && _activeRuntime?.IsReady != true
-                ? "Circle AI can answer on your Desktop. This message will run there."
+                ? (_activeRuntime?.StatusMessage ?? "Circle AI is not ready here.") + " You can choose Use Desktop to transfer manually."
             : _activeRuntime is null
                 ? "Circle AI is not available on this device yet."
                 : CircleAiIsPreparing
@@ -2211,6 +2215,11 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
                 await SendToDesktopAsync();
                 return;
             }
+            if (_activeRuntime?.IsReady != true)
+            {
+                _composerHint = _activeRuntime?.StatusMessage ?? "Circle AI is not ready on this device.";
+                return;
+            }
         }
 
         if (_activeRuntime is null)
@@ -2493,6 +2502,10 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
             _planDone = result.PlanDone;
             if (!string.IsNullOrWhiteSpace(result.Stopped))
                 _composerHint = result.Stopped;
+        }
+        catch (ChatRuntimeUnavailableException failure)
+        {
+            _composerHint = failure.Message;
         }
         finally
         {

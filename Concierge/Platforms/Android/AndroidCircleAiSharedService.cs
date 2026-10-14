@@ -12,7 +12,7 @@ namespace Concierge.Platforms.Android;
 /// One outstanding Binder transaction maximum; timing out a caller must not
 /// create another blocked native transaction on every subsequent click.
 /// </summary>
-public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICircleAiSharedServiceLink
+public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICircleAiSharedServiceLink, ICircleAiServiceChatLink
 {
     private const string Package = LinkIpc.HostPackage;
     private readonly object _gate = new();
@@ -78,22 +78,63 @@ public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICirc
         }
     }
 
-    private Task<LinkRowsReply>? _transaction;
+    private Task<IReadOnlyDictionary<string, string>>? _transaction;
+    private readonly SemaphoreSlim _requests = new(1, 1);
     internal async Task<LinkRowsReply> ExecuteVerbAsync(LinkVerbRequest request, CancellationToken cancellationToken)
     {
-        Task<LinkRowsReply> transaction;
-        cancellationToken.ThrowIfCancellationRequested();
-        lock (_gate)
-        {
-            if (_transaction is { IsCompleted: false })
-                throw new InvalidOperationException("Circle AI is still answering the previous settings request.");
-            _transaction = transaction = Task.Run(() => SendCoreAsync(request));
-        }
-        // A timed-out native transaction remains owned; subsequent calls cannot multiply it.
-        return await transaction.WaitAsync(TimeSpan.FromSeconds(12), cancellationToken);
+        var fields = await RoundTripAsync(LinkIpc.TransactVerb, LinkVerbCodec.Encode(request), TimeSpan.FromSeconds(12), cancellationToken);
+        if (fields.TryGetValue(LinkVerbCodec.KeyOk, out var ok) && ok == "1"
+            && (!fields.TryGetValue(LinkVerbCodec.KeyRowCount, out var text)
+                || !int.TryParse(text, out var rows) || rows < 0 || rows > fields.Count || rows > 2048))
+            throw new InvalidOperationException("The service returned an invalid row count.");
+        return LinkVerbCodec.DecodeReply(fields);
     }
 
-    private static async Task<LinkRowsReply> SendCoreAsync(LinkVerbRequest request)
+    public async Task<CircleAiServiceChatStatus> ReadChatStatusAsync(CancellationToken cancellationToken)
+    {
+        var response = await ExecuteVerbAsync(new LinkVerbRequest(LinkVerb.SetupReadiness), cancellationToken);
+        var info = global::Android.App.Application.Context.PackageManager!.GetPackageInfo(Package, (PackageInfoFlags)0)!;
+        var version = $"{info.VersionName} build {info.LongVersionCode}";
+        if (!response.Ok) return new(false, response.Error?.Contains("not linked", StringComparison.OrdinalIgnoreCase) == true
+            ? "AuthorizationRequired" : "Unavailable", response.Error ?? "Circle AI did not report readiness.", version);
+        var row = response.Rows.FirstOrDefault();
+        if (row is null || row.Count < 4 || row[3] is not ("0" or "1"))
+            throw new InvalidOperationException("Circle AI returned an invalid readiness report.");
+        return new(row[3] == "1", row[0], string.Join(" ", row.Skip(1).Take(2)), version);
+    }
+
+    public async Task<CircleAiServiceChatReply> SendChatAsync(string sessionId, string message, bool agentic,
+        CancellationToken cancellationToken)
+    {
+        var fields = await RoundTripAsync(LinkIpc.TransactAsk,
+            LinkTurnCodec.Encode(new LinkTurnRequest(sessionId, message, agentic)), TimeSpan.FromMinutes(2), cancellationToken);
+        var reply = LinkTurnCodec.DecodeReply(fields);
+        return new(reply.Ok, reply.Reply, reply.Error);
+    }
+
+    private async Task<IReadOnlyDictionary<string, string>> RoundTripAsync(int code,
+        IReadOnlyDictionary<string, string> fields, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!await _requests.WaitAsync(timeout, cancellationToken))
+            throw new TimeoutException("Circle AI is still handling another request.");
+        try
+        {
+            // Settings progress and readiness polls share this connection. Queue
+            // them rather than misreporting a healthy busy service as unavailable.
+            if (_transaction is { IsCompleted: false })
+            {
+                try { await _transaction.WaitAsync(timeout, cancellationToken); }
+                catch when (_transaction.IsCompleted && !cancellationToken.IsCancellationRequested) { }
+            }
+            _transaction = Task.Run(() => SendCoreAsync(code, fields));
+            // Timeout/cancellation stops waiting, not native execution. Never multiply blocked transactions.
+            return await _transaction.WaitAsync(timeout, cancellationToken);
+        }
+        finally { _requests.Release(); }
+    }
+
+    private static async Task<IReadOnlyDictionary<string, string>> SendCoreAsync(int code, IReadOnlyDictionary<string, string> fieldsToSend)
     {
         var context = global::Android.App.Application.Context;
             using var intent = new Intent(LinkIpc.BindAction);
@@ -109,7 +150,6 @@ public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICirc
             using var data = Parcel.Obtain()!;
             using var reply = Parcel.Obtain()!;
             data.WriteInterfaceToken(LinkIpc.Descriptor);
-            var fieldsToSend = LinkVerbCodec.Encode(request);
             data.WriteInt(fieldsToSend.Count);
             foreach (var field in fieldsToSend)
             {
@@ -117,7 +157,7 @@ public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICirc
                 data.WriteString(field.Value);
             }
             // Runs on the owned background task, never the Android/UI thread.
-            if (!binder.Transact(LinkIpc.TransactVerb, data, reply, (TransactionFlags)0))
+            if (!binder.Transact(code, data, reply, (TransactionFlags)0))
                 throw new InvalidOperationException("The installed service does not support catalogue discovery.");
             reply.ReadException();
             var count = reply.ReadInt();
@@ -131,12 +171,7 @@ public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICirc
                 if (key is null || value is null || !fields.TryAdd(key, value))
                     throw new InvalidOperationException("The service returned an invalid catalogue response.");
             }
-            if (fields.TryGetValue(LinkVerbCodec.KeyOk, out var ok) && ok == "1"
-                && (!fields.TryGetValue(LinkVerbCodec.KeyRowCount, out var rowCountText)
-                    || !int.TryParse(rowCountText, out var rowCount)
-                    || rowCount < 0 || rowCount > count || rowCount > 2048))
-                throw new InvalidOperationException("The service returned an invalid catalogue row count.");
-            return LinkVerbCodec.DecodeReply(fields);
+            return fields;
     }
 
     private sealed class Connection(Context context) : Java.Lang.Object, IServiceConnection

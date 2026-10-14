@@ -566,6 +566,11 @@
                             <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
                         </button>
                     }
+                    @if (_desktopAvailable && _desktopCanAnswer)
+                    {
+                        <button class="btn btn-quiet" type="button" disabled="@(!CanTransferToDesktop)"
+                                title="Run this query on Desktop instead" @onclick="TransferToDesktopAsync">Use Desktop</button>
+                    }
                     <button class="icon-btn icon-btn-send" type="button"
                             aria-disabled="@(!CanSend ? "true" : "false")" disabled="@(!CanSend)"
                             title="Send" @onclick="SendAsync">

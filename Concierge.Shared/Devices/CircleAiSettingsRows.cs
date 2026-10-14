@@ -26,6 +26,8 @@ public static class CircleAiSettingsRows
                 return [new(string.IsNullOrWhiteSpace(row[0]) ? "Storage summary" : row[0],
                     string.IsNullOrWhiteSpace(row[1]) ? "Not reported" : row[1],
                     Flag(row[2], "Reusable resource; removing it may require rebuilding or downloading.", "Service-owned storage."))];
+            case "SetupPlan" when row.Count >= 2:
+                return [new(row[0], row[1] + " bytes planned", "Planned by Circle AI. This check does not start downloads.")];
             default:
                 return [new("Service report", "Unrecognized response", "No readiness or setting value was inferred.")];
         }

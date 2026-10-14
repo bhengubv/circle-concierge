@@ -1,0 +1,12 @@
+namespace Concierge.Shared.Devices;
+
+public sealed record CircleAiServiceChatStatus(bool Ready, string Stage, string Explanation, string Version);
+public sealed record CircleAiServiceChatReply(bool Ok, string? Text, string? Error);
+
+/// <summary>Published service transport. The service owns its conversation sessions and models.</summary>
+public interface ICircleAiServiceChatLink
+{
+    Task<CircleAiServiceChatStatus> ReadChatStatusAsync(CancellationToken cancellationToken);
+    Task<CircleAiServiceChatReply> SendChatAsync(string sessionId, string message, bool agentic,
+        CancellationToken cancellationToken);
+}

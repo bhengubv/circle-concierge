@@ -27,6 +27,9 @@ using Concierge.Shared.Tools;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+#if ANDROID
+using Concierge.Platforms.Android;
+#endif
 
 namespace Concierge;
 
@@ -164,6 +167,8 @@ public static class MauiProgram
 			})
 #if WINDOWS
 			.AddConciergeAiWindowsService()
+#elif ANDROID
+			.AddConciergeAiSharedServiceChat()
 #else
 			.AddConciergeAiIsolated()
 #endif
@@ -257,9 +262,9 @@ public static class MauiProgram
 #if ANDROID
 		builder.Services.AddSingleton<Concierge.Platforms.Android.AndroidCircleAiSharedService>();
 		builder.Services.AddSingleton<ICircleAiSharedService>(sp => sp.GetRequiredService<Concierge.Platforms.Android.AndroidCircleAiSharedService>());
+		builder.Services.AddSingleton<ICircleAiServiceChatLink>(sp => sp.GetRequiredService<Concierge.Platforms.Android.AndroidCircleAiSharedService>());
 		builder.Services.AddSingleton<ICircleAiSettingsGateway, Concierge.Platforms.Android.AndroidCircleAiSettingsGateway>();
-		builder.Services.RemoveAll<IModelDownloadCoordinator>();
-		builder.Services.AddSingleton<IModelDownloadCoordinator, Concierge.Platforms.Android.AndroidModelDownloadCoordinator>();
+        // The shared service owns preparation; do not schedule Concierge's legacy model jobs.
 #endif
 
 #if DEBUG

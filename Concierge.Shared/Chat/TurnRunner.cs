@@ -698,6 +698,7 @@ public sealed class TurnRunner(
             TurnDrafts.Delete(request.ConversationId);
             throw;
         }
+        catch (ChatRuntimeUnavailableException) { throw; }
         catch (Exception error)
         {
             buffer.AppendLine();

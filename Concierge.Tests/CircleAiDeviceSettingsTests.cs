@@ -6,6 +6,59 @@ namespace Concierge.Tests;
 
 public sealed class CircleAiDeviceSettingsTests : BunitContext
 {
+    [Theory]
+    [InlineData("0.5", 0.5)]
+    [InlineData("0", 0.0)]
+    [InlineData("1", 1.0)]
+    [InlineData("1.1", null)]
+    [InlineData("-0.1", null)]
+    [InlineData("NaN", null)]
+    [InlineData("unknown", null)]
+    public void Progress_only_uses_valid_service_fractions(string value, double? expected)
+        => Assert.Equal(expected, CircleAiSetupProgress.ParseFraction(value));
+
+    [Fact]
+    public void Setup_is_not_started_by_opening_settings_and_service_progress_is_rendered()
+    {
+        var gateway = new SetupGateway();
+        Services.AddSingleton<ICircleAiSettingsGateway>(gateway);
+        var panel = Render<Concierge.Shared.Components.Components.CircleAiDeviceSettings>();
+        panel.WaitForAssertion(() => Assert.Equal("0.25", panel.Find("progress").GetAttribute("value")));
+        Assert.Equal(0, gateway.Starts);
+        panel.FindAll("button").Single(b => b.TextContent == "Prepare Circle AI on this device").Click();
+        panel.WaitForAssertion(() => Assert.Equal(1, gateway.Starts));
+        Assert.Contains("accepted setup", panel.Markup);
+        Assert.True(panel.FindAll("button").Single(b => b.TextContent == "Prepare Circle AI on this device").HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public void Failed_setup_is_not_reported_as_accepted()
+    {
+        var gateway = new SetupGateway { Fail = true };
+        Services.AddSingleton<ICircleAiSettingsGateway>(gateway);
+        var panel = Render<Concierge.Shared.Components.Components.CircleAiDeviceSettings>();
+        panel.FindAll("button").Single(b => b.TextContent == "Prepare Circle AI on this device").Click();
+        panel.WaitForAssertion(() => Assert.Contains("Setup could not be confirmed", panel.Markup));
+        Assert.DoesNotContain("accepted setup", panel.Markup);
+    }
+
+    private sealed class SetupGateway : ICircleAiSettingsGateway, ICircleAiServiceSetup
+    {
+        public int Starts;
+        public bool Fail;
+        public Task<CircleAiSettingsReport> ReadAsync(CancellationToken token) => Task.FromResult(
+            new CircleAiSettingsReport("Checked", [new("readiness", "Readiness", "Service report", [])], false, false));
+        public Task StartSetupAsync(CancellationToken token)
+        {
+            Starts++;
+            return Fail ? Task.FromException(new InvalidOperationException("Service refused")) : Task.CompletedTask;
+        }
+        public Task<CircleAiSetupProgress> ReadSetupProgressAsync(CancellationToken token)
+            => Task.FromResult(new CircleAiSetupProgress(false, "Preparing", "The brain", 0.25, "Downloading"));
+        public Task OpenCircleAiAsync() => throw new NotSupportedException();
+        public Task OpenPermissionsAsync() => throw new NotSupportedException();
+    }
+
     [Fact]
     public void Readiness_and_permission_flags_do_not_turn_unknown_into_ready()
     {
