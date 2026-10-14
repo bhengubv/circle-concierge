@@ -28,6 +28,8 @@ public static class CircleAiSettingsRows
                     Flag(row[2], "Reusable resource; removing it may require rebuilding or downloading.", "Service-owned storage."))];
             case "SetupPlan" when row.Count >= 2:
                 return [new(row[0], row[1] + " bytes planned", "Planned by Circle AI. This check does not start downloads.")];
+            case "SetupCensus" when row.Count >= 4:
+                return [new(row[0], Flag(row[1], "Present", "Missing"), row[3])];
             default:
                 return [new("Service report", "Unrecognized response", "No readiness or setting value was inferred.")];
         }

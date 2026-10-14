@@ -42,10 +42,53 @@ public sealed class CircleAiDeviceSettingsTests : BunitContext
         Assert.DoesNotContain("accepted setup", panel.Markup);
     }
 
+    [Fact]
+    public void Reopening_settings_during_service_setup_does_not_offer_to_restart_it()
+    {
+        var gateway = new SetupGateway { InProgress = true };
+        Services.AddSingleton<ICircleAiSettingsGateway>(gateway);
+        var panel = Render<Concierge.Shared.Components.Components.CircleAiDeviceSettings>();
+        panel.WaitForAssertion(() => Assert.True(panel.FindAll("button").Single(b => b.TextContent == "Prepare Circle AI on this device").HasAttribute("disabled")));
+        Assert.Equal(0, gateway.Starts);
+    }
+
+    [Fact]
+    public void Approved_connection_refreshes_reports_and_displays_verified_connection()
+    {
+        var gateway = new FakeGateway();
+        var link = new FakeConnection();
+        Services.AddSingleton<ICircleAiSettingsGateway>(gateway);
+        Services.AddSingleton<ICircleAiSharedService>(link);
+        var panel = Render<Concierge.Shared.Components.Components.CircleAiDeviceSettings>();
+        link.Approved = true;
+        panel.FindAll("button").Single(b => b.TextContent == "Connect Circle AI").Click();
+        panel.WaitForAssertion(() => Assert.Contains("Connected to Circle AI service", panel.Markup));
+        Assert.Contains("Reconnect Circle AI", panel.Markup);
+        Assert.Contains("Checked at", panel.Markup);
+        Assert.Contains("Conversation: Not ready", panel.Markup);
+        Assert.Equal(2, gateway.Reads);
+    }
+
+    [Fact]
+    public void Connection_in_flight_has_its_own_visible_busy_label()
+    {
+        var gateway = new FakeGateway();
+        var link = new FakeConnection { Pending = new(TaskCreationOptions.RunContinuationsAsynchronously) };
+        Services.AddSingleton<ICircleAiSettingsGateway>(gateway);
+        Services.AddSingleton<ICircleAiSharedService>(link);
+        var panel = Render<Concierge.Shared.Components.Components.CircleAiDeviceSettings>();
+        panel.FindAll("button").Single(b => b.TextContent == "Connect Circle AI").Click();
+        panel.WaitForAssertion(() => Assert.True(panel.FindAll("button").Single(b => b.TextContent == "Connecting…").HasAttribute("disabled")));
+        Assert.Contains("Waiting for Circle AI connection approval", panel.Markup);
+        link.Pending.SetResult(false);
+        panel.WaitForAssertion(() => Assert.Contains("connection was not approved", panel.Markup));
+    }
+
     private sealed class SetupGateway : ICircleAiSettingsGateway, ICircleAiServiceSetup
     {
         public int Starts;
         public bool Fail;
+        public bool InProgress;
         public Task<CircleAiSettingsReport> ReadAsync(CancellationToken token) => Task.FromResult(
             new CircleAiSettingsReport("Checked", [new("readiness", "Readiness", "Service report", [])], false, false));
         public Task StartSetupAsync(CancellationToken token)
@@ -54,7 +97,7 @@ public sealed class CircleAiDeviceSettingsTests : BunitContext
             return Fail ? Task.FromException(new InvalidOperationException("Service refused")) : Task.CompletedTask;
         }
         public Task<CircleAiSetupProgress> ReadSetupProgressAsync(CancellationToken token)
-            => Task.FromResult(new CircleAiSetupProgress(false, "Preparing", "The brain", 0.25, "Downloading"));
+            => Task.FromResult(new CircleAiSetupProgress(false, "Preparing", "The brain", 0.25, "Downloading", InProgress));
         public Task OpenCircleAiAsync() => throw new NotSupportedException();
         public Task OpenPermissionsAsync() => throw new NotSupportedException();
     }
@@ -68,6 +111,9 @@ public sealed class CircleAiDeviceSettingsTests : BunitContext
         Assert.Equal("Not reported", Assert.Single(unknown).Value);
         var denied = CircleAiSettingsRows.Project("Permissions", [["Microphone", "Hear you", "0", "1"]]);
         Assert.Equal("Not allowed", Assert.Single(denied).Value);
+        Assert.Equal("Missing", Assert.Single(CircleAiSettingsRows.Project("SetupCensus", [["Voice", "0", "123", "Still needed", "0"]])).Value);
+        Assert.Equal("Present", Assert.Single(CircleAiSettingsRows.Project("SetupCensus", [["Brain", "1", "123", "Installed", "123"]])).Value);
+        Assert.Equal("Not reported", Assert.Single(CircleAiSettingsRows.Project("SetupCensus", [["Brain", "unknown", "123", "", "0"]])).Value);
     }
 
     [Fact]
@@ -100,8 +146,11 @@ public sealed class CircleAiDeviceSettingsTests : BunitContext
     private sealed class FakeConnection : ICircleAiSharedService, ICircleAiSharedServiceLink
     {
         public int Requests;
-        public Task<bool> RequestConnectionAsync(CancellationToken token) { Requests++; return Task.FromResult(false); }
-        public Task<CircleAiSharedServiceSnapshot> InspectAsync(CancellationToken token) => throw new NotSupportedException();
+        public bool Approved;
+        public TaskCompletionSource<bool>? Pending;
+        public Task<bool> RequestConnectionAsync(CancellationToken token) { Requests++; return Pending?.Task ?? Task.FromResult(Approved); }
+        public Task<CircleAiSharedServiceSnapshot> InspectAsync(CancellationToken token)
+            => Task.FromResult(new CircleAiSharedServiceSnapshot("service", "0.1", 58, true, Approved, "Checked", []));
     }
 
     [Fact]
@@ -143,7 +192,7 @@ public sealed class CircleAiDeviceSettingsTests : BunitContext
         {
             Reads++;
             return Task.FromResult(new CircleAiSettingsReport("Checked", [
-                new("readiness", "Readiness and capabilities", "From service", [new("Conversation", "Not ready")]),
+                new("readiness", "Readiness and capabilities", "From service", [new("Conversation readiness", "Not ready")]),
                 new("language", "Language and replies", "Managed in Circle AI", [], true),
                 new("voice", "Voice and wake", "Managed in Circle AI", [], true),
                 new("permissions", "Permissions and setup", "Microphone required", [new("Microphone", "Not allowed")])], true, true));

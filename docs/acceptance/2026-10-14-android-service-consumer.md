@@ -15,35 +15,53 @@ require the separate Circle AI controls app.
   unavailability or local failure can select a ready Desktop; manual Use Desktop
   remains available independently.
 - Settings reads the service's setup plan, invokes SetupStart only from an explicit
-  button, and polls SetupProgress without blocking the UI thread. Percentages are
-  per resource, not an invented overall percentage. Readiness comes from the
+  button, and polls SetupProgress without blocking the UI thread. The published
+  SDK documents the fraction as byte-weighted across the whole planned download;
+  the initial per-resource label was wrong and has been corrected. Current step,
+  phase and the service's remaining-time estimate are retained. Readiness comes from the
   separate service readiness report, never from a 100% download.
 - Opening Settings performs reads only. Closing the panel stops its polling, not
   service-owned preparation. Failed progress checks clear the stale percentage.
 - Android no longer sends users to the sample/controls app for settings. Android
   permission management and service-owned connection consent still use their
   respective platform approval screens.
+- Connection and conversation readiness are visibly separate. Approval refreshes
+  reports automatically; Refresh status shows its completion time and readiness.
+  Reopening the panel during Fetching/Checking does not enable duplicate setup.
 
 ## Measured verification and limits
 
-- The previous Android service-chat build was installed on PixieDust successfully.
+- The updated Android builds were installed on PixieDust successfully.
   The service reported NeedsSetup; its setup plan reported 1,386,691,327 bytes for
   the brain and 311,428,914 bytes for the eyes (1,698,120,241 bytes total).
 - The focused runtime, routing, settings, handheld, and durability suite passed
-  70 tests with zero failures after adding setup controls. Tests cover no download
+  73 tests with zero failures after fixing connection/refresh feedback. Tests cover no download
   on panel opening, genuine service progress, invalid progress rejection, setup
   refusal, local-first routing and manual transfer visibility.
-- Final Android Debug build passed with zero errors and 166 warnings, elapsed
-  6 minutes 51.58 seconds. Warnings include existing package vulnerability and
+- Latest Android Debug build passed with zero errors and 175 warnings, elapsed
+  2 minutes 42.14 seconds. Warnings include existing package vulnerability and
   native-library compatibility reports; a successful compile does not clear them.
-  PixieDust disappeared from existing ADB connections before this in-app setup
-  build could be installed or visually checked. Only AngelDust remained connected.
-- No service setup download was started. Earlier instructions stopped downloads;
-  the later permission question has not received an answer.
-- A real local service answer and actual SetupStart/download completion on
-  PixieDust are **not verified**. The service cannot answer locally until setup is
-  completed. A prior answer from Concierge's own worker failed a simple arithmetic
-  check and is not evidence for this integration.
+  Both installs returned Success. Screenshots and live UI checks were performed
+  on PixieDust, using its existing pairing.
+- User approved starting service setup. Circle AI accepted SetupStart and reported
+  Fetching, Checking and Done through Concierge. The UI remained responsive while
+  changing settings sections and while manually sending a query to Desktop.
+- Normal Send during NeedsSetup retained the query on the phone. Desktop's prompt
+  diagnostic remained at 14:01:32.1339814 JST. Manual Use Desktop then updated it
+  to 19:34:39.4378862 JST; its reply at 19:34:54.101 JST was
+  "Two plus three equals **five**." The conversation event identifies the producer
+  as "Qwen3.5-0.8B-MNN (Circle AI service)".
+- On the updated client, Refresh status completed at 19:52:55 JST. Reconnect
+  obtained native service consent GRANTED at 19:53:08.371 JST, automatically
+  refreshed the report, and displayed Connected to Circle AI service.
+- **Local inference is still blocked by the service's reported readiness.** After
+  setup reached Done/100%, SetupReadiness remained NeedsSetup/canTalk=0 and
+  SetupPlan returned no rows. SetupCensus reported brain and eyes Present, but
+  English voice, South African voices, ears and wake word Missing. One setup retry
+  completed immediately without changing readiness. No model/file provisioning
+  logic was added to Concierge to bypass that service-owned plan.
+- No actual Android service answer is claimed. A prior answer from Concierge's own
+  worker failed arithmetic and is not evidence for this integration.
 - The installed SDK link has no language, cache-limit or borrowing preference
   getters/setters. Concierge labels those gaps rather than storing ineffective
   local switches. Resident/wake mutation verbs exist but are not yet surfaced in
@@ -56,6 +74,10 @@ require the separate Circle AI controls app.
   The service receives the current user query and owns history from its first
   service turn; Concierge retains its displayed conversation log.
 
-The final setup build is not an end-to-end acceptance claim. Service setup,
-accurate local answers, native action approvals, and missing preference setters
-remain explicit acceptance work.
+The settings controls and manual Desktop path have practical verification. Local
+Android answers, native action approvals and missing preference setters remain
+explicit acceptance work.
+
+![Verified connection and refreshed readiness](2026-10-14-pixiedust-service-controls.png)
+
+![Service inventory after its download plan completed](2026-10-14-pixiedust-service-missing-resources.png)

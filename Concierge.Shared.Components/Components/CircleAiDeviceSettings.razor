@@ -10,12 +10,13 @@
         </span></div>
         <div class="row">
             <span class="row-sub" role="status" aria-live="polite">@_status</span>
-            <button type="button" class="ai-settings-action" disabled="@_busy" @onclick="Refresh">@(_busy ? "Checking…" : "Refresh status")</button>
+            <button type="button" class="ai-settings-action" disabled="@_busy" @onclick="Refresh">@(_refreshing ? "Checking…" : "Refresh status")</button>
         </div>
         @if (_connection is not null)
         {
-            <div class="row"><span class="row-sub">If reports say access is not approved, connect Concierge to Circle AI first. Approval is handled by Circle AI.</span>
-                <button type="button" class="ai-settings-action" disabled="@_busy" @onclick="ConnectService">Connect Circle AI</button></div>
+            <div class="row"><span class="row-name" role="status">@(_connected == true ? "Connected to Circle AI service" : _connected == false ? "Circle AI connection needs approval" : "Circle AI connection has not been verified")
+                <span class="row-sub">Connection approval and readiness to answer are separate. Circle AI handles approval.</span></span>
+                <button type="button" class="ai-settings-action" disabled="@_busy" @onclick="ConnectService">@(_connecting ? "Connecting…" : _connected == true ? "Reconnect Circle AI" : "Connect Circle AI")</button></div>
         }
         @if (_report is not null)
         {
@@ -39,15 +40,17 @@
                         @if (section.Id == "readiness" && _gateway is ICircleAiServiceSetup)
                         {
                             <div class="row"><span class="row-sub">Circle AI chooses and prepares the resources for this device. Setup can download large files; progress appears here while you keep using Concierge.</span>
-                                <button type="button" class="ai-settings-action" disabled="@(_busy || _setupRequested || _setupProgress?.Ready == true)" @onclick="StartSetup">Prepare Circle AI on this device</button></div>
+                                <button type="button" class="ai-settings-action" disabled="@(_busy || _setupRequested || _setupProgress?.Ready == true || _setupProgress?.InProgress == true)" @onclick="StartSetup">Prepare Circle AI on this device</button></div>
                             <div class="row setup-progress" role="status" aria-live="polite">
                                 <span class="row-name">@_setupStatus
                                     @if (_setupProgress?.Resource is not null) { <span class="row-sub">@_setupProgress.Resource · @_setupProgress.Phase</span> }
+                                    @if (_setupProgress?.Step is int step && _setupProgress.Steps is int steps) { <span class="row-sub">Step @step of @steps</span> }
+                                    @if (_setupProgress?.RemainingSeconds is double remaining) { <span class="row-sub">About @Math.Ceiling(remaining / 60) min remaining</span> }
                                 </span>
                                 @if (_setupProgress?.Fraction is double fraction)
                                 {
-                                    <progress max="1" value="@fraction.ToString(System.Globalization.CultureInfo.InvariantCulture)" aria-label="Current resource download progress"></progress>
-                                    <span>@fraction.ToString("P0") of this resource</span>
+                                    <progress max="1" value="@fraction.ToString(System.Globalization.CultureInfo.InvariantCulture)" aria-label="Service setup download progress"></progress>
+                                    <span>@fraction.ToString("P0") of planned downloads</span>
                                 }
                             </div>
                         }
@@ -78,6 +81,9 @@
     private string _status = "Not checked yet.";
     private string? _open = "readiness";
     private bool _busy;
+    private bool _refreshing;
+    private bool _connecting;
+    private bool? _connected;
     private bool _setupRequested;
     private CircleAiSetupProgress? _setupProgress;
     private string _setupStatus = "Setup progress has not been checked.";
@@ -91,7 +97,7 @@
     }
     private async Task StartSetup()
     {
-        if (_busy || _setupRequested || _gateway is not ICircleAiServiceSetup setup) return;
+        if (_busy || _setupRequested || _setupProgress?.Ready == true || _setupProgress?.InProgress == true || _gateway is not ICircleAiServiceSetup setup) return;
         _busy = true;
         try
         {
@@ -113,7 +119,7 @@
                 {
                     _setupProgress = await setup.ReadSetupProgressAsync(_stop.Token);
                     _setupStatus = _setupProgress.Status;
-                    if (_setupProgress.Ready) _setupRequested = false;
+                    if (_setupProgress.Ready || _setupProgress.Phase == "Done") _setupRequested = false;
                 }
                 catch (OperationCanceledException) when (_stop.IsCancellationRequested) { return; }
                 catch (Exception error)
@@ -132,10 +138,25 @@
     {
         if (_busy || _gateway is null) return;
         _busy = true;
-        try { _report = await _gateway.ReadAsync(_stop.Token); _status = _report.Status; }
+        _refreshing = true;
+        _status = "Checking Circle AI on this device…";
+        try { await ReadReports(); }
         catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
         catch (Exception) { _status = "Could not refresh Circle AI settings. Any details below are from the previous check."; }
-        finally { _busy = false; }
+        finally { _busy = false; _refreshing = false; }
+    }
+    private async Task ReadReports()
+    {
+        _report = await _gateway!.ReadAsync(_stop.Token);
+        if (Services.GetService(typeof(ICircleAiSharedService)) is ICircleAiSharedService discovery)
+        {
+            try { _connected = (await discovery.InspectAsync(_stop.Token)).Authorized; }
+            catch (OperationCanceledException) when (_stop.IsCancellationRequested) { throw; }
+            catch { _connected = null; }
+        }
+        var readiness = _report.Sections.FirstOrDefault(s => s.Id == "readiness")?.Facts
+            .FirstOrDefault(f => f.Name == "Conversation readiness")?.Value;
+        _status = $"Checked at {DateTimeOffset.Now:T}. " + (readiness is null ? _report.Status : $"Conversation: {readiness}. " + _report.Status);
     }
     private Task OpenCircleAi() => Open(() => _gateway!.OpenCircleAiAsync());
     private Task OpenPermissions() => Open(() => _gateway!.OpenPermissionsAsync());
@@ -143,12 +164,24 @@
     {
         if (_busy || _connection is null) return;
         _busy = true;
-        try { _status = await _connection.RequestConnectionAsync(_stop.Token)
-            ? "Circle AI connection approved. Refresh status to read current reports."
-            : "Circle AI connection was not approved. Your settings were not changed."; }
+        _connecting = true;
+        _status = "Waiting for Circle AI connection approval…";
+        try
+        {
+            _connected = await _connection.RequestConnectionAsync(_stop.Token);
+            if (_connected == true)
+            {
+                _status = "Connection approved. Checking the service…";
+                await InvokeAsync(StateHasChanged);
+                await ReadReports();
+            }
+            else _status = "Circle AI connection was not approved. Your settings were not changed.";
+        }
         catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
-        catch (Exception) { _status = "Could not open Circle AI's connection approval."; }
-        finally { _busy = false; }
+        catch (Exception) { _status = _connected == true
+            ? "Connection approved, but current service reports could not be refreshed. Try Refresh status."
+            : "Could not open Circle AI's connection approval."; }
+        finally { _busy = false; _connecting = false; }
     }
     private async Task ConnectVoice()
     {

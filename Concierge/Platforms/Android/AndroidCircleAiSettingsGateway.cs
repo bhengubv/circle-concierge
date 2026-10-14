@@ -22,7 +22,14 @@ public sealed class AndroidCircleAiSettingsGateway(AndroidCircleAiSharedService 
         var row = reply.Rows.FirstOrDefault();
         if (row is null) return new(false, readiness.Explanation, null, null, null);
         if (row.Count < 6) throw new InvalidOperationException("Circle AI returned an invalid setup progress report.");
-        return new(false, readiness.Explanation, row[2], CircleAiSetupProgress.ParseFraction(row[3]), row[5]);
+        var index = LinkSetupRows.Number(row, 0, -1);
+        var count = LinkSetupRows.Number(row, 1, 0);
+        var remaining = LinkSetupRows.Fraction(row, 4, -1);
+        return new(false, readiness.Explanation, row[2], CircleAiSetupProgress.ParseFraction(row[3]), row[5],
+            row[5] is "Fetching" or "Checking",
+            index >= 0 && index < count && count <= int.MaxValue ? (int)index + 1 : null,
+            count > 0 && count <= int.MaxValue ? (int)count : null,
+            double.IsFinite(remaining) && remaining > 0 ? remaining : null);
     }
 
     public async Task<CircleAiSettingsReport> ReadAsync(CancellationToken cancellationToken)
@@ -36,7 +43,7 @@ public sealed class AndroidCircleAiSettingsGateway(AndroidCircleAiSharedService 
         sections.Add(new("readiness", "Readiness and capabilities",
             "These are reports from the service on this device. Supported does not mean ready or currently running.",
             [.. await Facts(LinkVerb.SetupReadiness, cancellationToken), .. await Facts(LinkVerb.Abilities, cancellationToken),
-             .. await Facts(LinkVerb.SetupPlan, cancellationToken)]));
+             .. await Facts(LinkVerb.SetupPlan, cancellationToken), .. await Facts(LinkVerb.SetupCensus, cancellationToken)]));
         sections.Add(new("permissions", "Permissions and setup",
             "Microphone access is needed to hear you; notifications show background listening. Turning either off can prevent listening or hide its notification. Android controls these permissions.",
             await Facts(LinkVerb.Permissions, cancellationToken)));

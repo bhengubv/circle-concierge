@@ -10,7 +10,8 @@ public interface ICircleAiServiceSetup
 }
 
 public sealed record CircleAiSetupProgress(bool Ready, string Status, string? Resource,
-    double? Fraction, string? Phase)
+    double? Fraction, string? Phase, bool InProgress = false, int? Step = null, int? Steps = null,
+    double? RemainingSeconds = null)
 {
     public static double? ParseFraction(string value) =>
         double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var number)
