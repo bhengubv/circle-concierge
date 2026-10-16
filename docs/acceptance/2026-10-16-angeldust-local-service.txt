@@ -1,0 +1,10 @@
+10-16 19:07:39.986  4737  5463 I Concierge.CircleAI.Transport: kind=chat bindMs=18.22 serviceMs=31.85
+10-16 19:07:39.989  4737  4737 I Concierge.CircleAI.IPC: kind=chat queueMs=0.01 totalMs=58.19
+10-16 19:07:40.037  4012  4717 I CircleAI.Neuron: loading the model…
+10-16 19:07:40.109  4012  4717 I CircleAI.Neuron: model: Qwen3.5-2B-MNN
+10-16 19:07:58.229  4012  4718 I mnnbridge: gen: prompt=193 tok | tokenise=38 ms | prefill=9148 ms | decode=147 ms | total=9333 ms | 1 chunks
+10-16 19:07:58.246  4012  5479 I CircleAI.Neuron: brain ready
+10-16 19:08:26.270  4012  4718 I CircleAI.Neuron: loading the model…
+10-16 19:08:56.290  4012  4718 I mnnbridge: gen: prompt=636 tok | tokenise=58 ms | prefill=29166 ms | decode=692 ms | total=29916 ms | 5 chunks
+10-16 19:08:56.298  4737  4772 I Concierge.CircleAI.Transport: kind=chat bindMs=65.34 serviceMs=30104.92
+10-16 19:08:56.301  4737  4737 I Concierge.CircleAI.IPC: kind=chat queueMs=0.05 totalMs=30180.82

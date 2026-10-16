@@ -13,7 +13,7 @@ The user released deployment. Desktop now runs commit `83d1bfe` from the separat
 | Desktop answer accuracy | **Failed**, including a minimal direct service request without a system message. |
 | AngelDust installation | ADB reported Success. Installed app launched; its background WebView reported the service connected and conversation ready. |
 | AngelDust cache activity | Device log at 16:33:11.013 recorded 2 hits, 13 loads, 7 retained entries and 6,991 content-weight units. Weight is not measured RAM. |
-| AngelDust visible/local-response test | **Unverified.** Another app occupied the foreground. Awaiting confirmation that the device is available. Reported readiness does not prove voice or inference works. |
+| AngelDust visible/local-response test | Follow-up completed at 19:06–19:12 JST: cold request failed while warming; retry returned incorrect **7:55 PM** instead of **09:40**. No new timeout/refusal observed in that short test. See [AngelDust comparison](2026-10-16-angeldust-service-comparison.md); voice and final reply sync remain unverified. |
 | PixieDust deployment | **Installed successfully** after its existing mDNS transport recovered. Device last-update time: 16:54:57; APK SHA-256 matches the recorded build. |
 
 ## Accuracy control
@@ -28,7 +28,7 @@ Windows service reports version **3.8.1.0** and model **Qwen3.5-0.8B-MNN**. Ange
 
 ## Outstanding
 
-- Complete visible mobile service interaction when a device is available; verify local replies and explicit Refresh invalidation.
+- Mobile service interactions are now recorded for both phones. Correct local answering is not accepted; AngelDust generated a wrong answer, while PixieDust failed. AngelDust final reply sync and voice remain unverified.
 - PixieDust refresh comparison is now recorded below; no refresh-speed improvement was established.
 - PixieDust history/draft restoration and phone-to-Desktop event sync were verified below. Mobile project writes, permission/resume behavior and voice remain unverified.
 - Resolve the service accuracy failure through its published contract/build or its owner; do not conceal it with cached responses or client model selection.

@@ -1,0 +1,46 @@
+{
+  "date": "2026-10-16",
+  "device": "AngelDust",
+  "serial": "3B221JEHN16653",
+  "androidVersion": "16",
+  "serviceVersionName": "0.1",
+  "serviceVersionCode": 56,
+  "servicePidBefore": 4012,
+  "servicePidAfter": 4012,
+  "conversationId": "587a0300-d22d-4071-b074-e1faa9027824",
+  "question": "My meeting starts at 10:00. Travel takes 20 minutes. What time should I leave to arrive on time? Reply briefly.",
+  "expected": "09:40",
+  "firstRequest": {
+    "brainReadyDeviceTime": "2026-10-16 19:07:58.246",
+    "startedAt": "2026-10-16T10:07:39.612Z",
+    "status": "failed while warming"
+  },
+  "retry": {
+    "startedAt": "2026-10-16T10:08:25.536Z",
+    "nativeTotalMs": 29916,
+    "reply": "7:55 PM",
+    "observedUiElapsedMs": 30862.0,
+    "accuracyPassed": false,
+    "nativeDecodeMs": 692,
+    "clientChatIpcMs": 30180.82,
+    "nativePrefillMs": 29166,
+    "nativePromptTokens": 636,
+    "nativeTokeniseMs": 58,
+    "observedReplyAt": "2026-10-16T10:08:56.398Z"
+  },
+  "newTimeoutCrashObserved": false,
+  "modelRefusalObserved": false,
+  "foregroundType": "dataSync (0x00000001)",
+  "longDurationTimeoutSafetyVerified": false,
+  "resumedUi": {
+    "url": "https://0.0.0.1/chat/587a0300-d22d-4071-b074-e1faa9027824",
+    "text": "3 devices connected\nConcierge\nBY CIRCLE\n+\nNew conversation\nStart here\n◇\nProjects\nOrganize bigger goals\nRecent conversations\n5\nMy meeting starts at 10:00. Travel takes 20 minutes. What ti…\n2m\nPlease add 1 + 1. Reply with the number only.\n3 Oct\nPlease solve step-by-step: calculate 12 * 13 and show the ar…\n3 Oct\nShow all conversations\nFind an older conversation\nNeeds your OK\n0\nPersonalize Circle AI\nMake something\nAbout & updates\nAI engine\nCircle AI · app settings\nSettings\nMy meeting starts at 10:00. Travel takes 20 minutes. What ti…\nPowered by Circle AI\nYOU\n\nMy meeting starts at 10:00. Travel takes 20 minutes. What time should I leave to arrive on time? Reply briefly.\n\nYOU\n\nMy meeting starts at 10:00. Travel takes 20 minutes. What time should I leave to arrive on time? Reply briefly.\n\nASSISTANT\n\n7:55 PM\n\nAttach a file or a picture\nSpeak\nUse Desktop\nSend\nPlan only\nAsk first\nAct freely\n·\nPowered by Circle AI\n·",
+    "reply": [
+      "ASSISTANT\n\n7:55 PM"
+    ],
+    "inputEnabled": true
+  },
+  "desktopInferenceDiagnosticUnchanged": true,
+  "desktopEventCountAtLastRead": 3,
+  "replySyncVerified": false
+}
