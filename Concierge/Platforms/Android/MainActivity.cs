@@ -55,6 +55,13 @@ public class MainActivity : MauiAppCompatActivity
         base.OnDestroy();
     }
 
+    protected override void OnResume()
+    {
+        base.OnResume();
+        if (Microsoft.Maui.MauiApplication.Current?.Services.GetService(typeof(Concierge.Platforms.Android.AndroidCircleAiSharedService))
+            is Concierge.Platforms.Android.AndroidCircleAiSharedService service) service.InvalidateReads();
+    }
+
     /// <summary>
     /// Keep the app out from under the status and gesture bars.
     ///

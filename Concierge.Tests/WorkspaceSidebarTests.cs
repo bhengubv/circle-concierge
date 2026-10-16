@@ -84,11 +84,10 @@ public sealed class WorkspaceSidebarTests : BunitContext
         // like an isolated flake, each passed on retry, and the sixth was always
         // going to be somebody else's afternoon.
         //
-        // The sidebar is the thing to wait on because every recipe has one and it
-        // is populated from the load. Anything asserted after this is looking at a
-        // workspace that has finished arriving.
+        // Sidebar chrome exists before data restoration finishes. Wait for the
+        // explicit busy state to clear before interacting with the workspace.
         var rendered = Render<Concierge.Shared.Components.Workspace.Desktop.Workspace>();
-        rendered.WaitForState(() => rendered.FindAll("section.ws-group").Count > 0);
+        rendered.WaitForState(() => rendered.FindAll(".ws[aria-busy='false']").Count > 0, TimeSpan.FromSeconds(5));
         return rendered;
     }
 
@@ -385,6 +384,7 @@ public sealed class WorkspaceSidebarTests : BunitContext
 
         var cut = Render<Concierge.Shared.Components.Workspace.Desktop.Workspace>();
 
+        cut.WaitForState(() => cut.FindAll(".ws[aria-busy='false']").Count > 0, TimeSpan.FromSeconds(5));
         var link = cut.FindAll("section.ws-group")[0]
             .QuerySelectorAll("a.ws-item")
             .Single(a => a.TextContent.Contains("Notes tidy-up"));

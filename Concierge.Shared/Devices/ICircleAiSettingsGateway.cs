@@ -19,3 +19,9 @@ public interface ICircleAiVoiceSettingsLink
 {
     Task<bool> RequestVoiceConnectionAsync(CancellationToken cancellationToken);
 }
+
+/// <summary>Explicit refresh/approval bypasses read snapshots; never caches settings writes.</summary>
+public interface ICircleAiSettingsCacheControl
+{
+    void InvalidateSettings();
+}

@@ -198,13 +198,17 @@ public sealed class CircleAiDeviceSettingsTests : BunitContext
         Assert.Contains("Not allowed", panel.Markup);
         panel.FindAll("button").Single(b => b.TextContent == "Open service permissions").Click();
         Assert.Equal(1, gateway.PermissionsOpened);
+        var invalidationsBeforeRefresh = gateway.Invalidations;
         panel.FindAll("button").Single(b => b.TextContent == "Refresh status").Click();
         Assert.Equal(2, gateway.Reads);
+        Assert.Equal(invalidationsBeforeRefresh + 1, gateway.Invalidations);
     }
 
-    private sealed class FakeGateway : ICircleAiSettingsGateway, ICircleAiVoiceSettingsLink
+    private sealed class FakeGateway : ICircleAiSettingsGateway, ICircleAiVoiceSettingsLink, ICircleAiSettingsCacheControl
     {
         public int Reads, Opened, PermissionsOpened, VoiceRequests;
+        public int Invalidations;
+        public void InvalidateSettings() => Invalidations++;
         public Task<CircleAiSettingsReport> ReadAsync(CancellationToken token)
         {
             Reads++;

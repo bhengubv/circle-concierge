@@ -55,6 +55,21 @@ public sealed class CircleAiSharedServiceChatRuntimeTests
     }
 
     [Fact]
+    public async Task Repeating_a_question_still_calls_the_service_and_uses_its_new_reply()
+    {
+        var link = new FakeLink();
+        var runtime = new CircleAiSharedServiceChatRuntime(link);
+        await runtime.RefreshAsync(default);
+        using var scope = ToolApprovalRunContext.Enter(Guid.NewGuid(), Guid.NewGuid());
+        await foreach (var _ in runtime.StreamAsync([new("user", "Same question")])) { }
+        link.Reply = new(true, "New service answer", null);
+        var answer = "";
+        await foreach (var delta in runtime.StreamAsync([new("user", "Same question")])) answer += delta;
+        Assert.Equal(2, link.Sends);
+        Assert.Equal("New service answer", answer);
+    }
+
+    [Fact]
     public async Task A_failed_service_reply_is_a_failure_not_a_generated_answer()
     {
         var link = new FakeLink { Reply = new(false, null, "Service could not run the query") };
@@ -83,8 +98,9 @@ public sealed class CircleAiSharedServiceChatRuntimeTests
         public CircleAiServiceChatReply Reply = new(true, "5", null);
         public string? Session, Message;
         public bool Agentic;
+        public int Sends;
         public Task<CircleAiServiceChatStatus> ReadChatStatusAsync(CancellationToken token) => Task.FromResult(Status);
         public Task<CircleAiServiceChatReply> SendChatAsync(string sessionId, string message, bool agentic, CancellationToken token)
-        { Session = sessionId; Message = message; Agentic = agentic; return Task.FromResult(Reply); }
+        { Sends++; Session = sessionId; Message = message; Agentic = agentic; return Task.FromResult(Reply); }
     }
 }

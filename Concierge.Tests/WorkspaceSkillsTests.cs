@@ -64,7 +64,7 @@ public sealed class WorkspaceSkillsTests : BunitContext
         // is populated from the load. Anything asserted after this is looking at a
         // workspace that has finished arriving.
         var rendered = Render<Concierge.Shared.Components.Workspace.Desktop.Workspace>();
-        rendered.WaitForState(() => rendered.FindAll("section.ws-group").Count > 0);
+        rendered.WaitForState(() => rendered.FindAll(".ws[aria-busy='false']").Count > 0, TimeSpan.FromSeconds(5));
         return rendered;
     }
 
@@ -76,7 +76,7 @@ public sealed class WorkspaceSkillsTests : BunitContext
     private static void OpenPicker(IRenderedComponent<Concierge.Shared.Components.Workspace.Desktop.Workspace> cut)
     {
         OpenSkillsGroup(cut);
-        cut.Find("button.ws-more").Click();
+        cut.WaitForElement("button.ws-more").Click();
     }
 
     // ── The sidebar shows what is on ──────────────────────────────────────

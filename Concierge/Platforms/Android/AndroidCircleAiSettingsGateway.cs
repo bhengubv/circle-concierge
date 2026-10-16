@@ -4,8 +4,9 @@ using Concierge.Shared.Devices;
 
 namespace Concierge.Platforms.Android;
 
-public sealed class AndroidCircleAiSettingsGateway(AndroidCircleAiSharedService service) : ICircleAiSettingsGateway, ICircleAiVoiceSettingsLink, ICircleAiServiceSetup
+public sealed class AndroidCircleAiSettingsGateway(AndroidCircleAiSharedService service) : ICircleAiSettingsGateway, ICircleAiVoiceSettingsLink, ICircleAiServiceSetup, ICircleAiSettingsCacheControl
 {
+    public void InvalidateSettings() => service.InvalidateReads();
 
     public async Task StartSetupAsync(CancellationToken cancellationToken)
     {
@@ -80,16 +81,21 @@ public sealed class AndroidCircleAiSettingsGateway(AndroidCircleAiSharedService 
     public Task OpenCircleAiAsync() => Task.FromException(new NotSupportedException(
         "Service settings belong in Concierge; a separate controls app is not used."));
 
-    public Task<bool> RequestVoiceConnectionAsync(CancellationToken cancellationToken)
-        => MainThread.InvokeOnMainThreadAsync(() =>
+    public async Task<bool> RequestVoiceConnectionAsync(CancellationToken cancellationToken)
+    {
+        service.InvalidateReads();
+        try { return await MainThread.InvokeOnMainThreadAsync(() =>
         {
             var activity = Microsoft.Maui.ApplicationModel.Platform.CurrentActivity as MainActivity
                 ?? throw new InvalidOperationException("Open Concierge before connecting voice settings.");
             return activity.RequestCircleAiLinkAsync(cancellationToken, LinkScope.Chat | LinkScope.Voice);
-        });
+        }); }
+        finally { service.InvalidateReads(); }
+    }
 
     public Task OpenPermissionsAsync() => MainThread.InvokeOnMainThreadAsync(() =>
     {
+        service.InvalidateReads();
         var context = global::Android.App.Application.Context;
         using var intent = new Intent(global::Android.Provider.Settings.ActionApplicationDetailsSettings,
             global::Android.Net.Uri.Parse("package:" + LinkIpc.HostPackage));

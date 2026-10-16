@@ -4,6 +4,9 @@ using Concierge.Shared;
 using Concierge.Shared.Chat;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.EntityFrameworkCore.Diagnostics;
+using System.Data.Common;
+using Microsoft.AspNetCore.Components.Web;
 
 namespace Concierge.Tests;
 
@@ -90,7 +93,8 @@ public sealed class HandheldWorkspaceTests : BunitContext
 
     private IRenderedComponent<Concierge.Shared.Components.Workspace.Handheld.Workspace> RenderWorkspace(
         Guid? conversationId = null, CancellationTokenSource? activeRun = null,
-        Concierge.Away.AwayClient? desktopClient = null)
+        Concierge.Away.AwayClient? desktopClient = null, TaskCompletionSource? readGate = null,
+        bool waitForReady = true)
     {
         var dbPath = Path.Combine(Path.GetTempPath(), $"handheld-{Guid.NewGuid():N}.db");
         Services.AddLogging();
@@ -111,6 +115,8 @@ public sealed class HandheldWorkspaceTests : BunitContext
         if (desktopClient is not null)
             Services.AddSingleton(desktopClient);
         Services.AddConciergeChat(dbPath);
+        if (readGate is not null)
+            Services.AddDbContextFactory<ConciergeChatDbContext>(options => options.AddInterceptors(new ConversationReadGate(readGate)));
         Services.AddSingleton<IEnumerable<IChatRuntime>>(_ => Array.Empty<IChatRuntime>());
         Concierge.Shared.Tools.ConciergeToolsServiceCollectionExtensions.AddConciergeTools(Services);
         Concierge.Shared.Tools.ConciergeToolsServiceCollectionExtensions.AddConciergeRuntime(Services);
@@ -145,13 +151,49 @@ public sealed class HandheldWorkspaceTests : BunitContext
         // like an isolated flake, each passed on retry, and the sixth was always
         // going to be somebody else's afternoon.
         //
-        // The sidebar is the thing to wait on because every recipe has one and it
-        // is populated from the load. Anything asserted after this is looking at a
-        // workspace that has finished arriving.
+        // Sidebar chrome exists before data restoration finishes. Wait for the
+        // explicit busy state to clear before interacting with the workspace.
         var rendered = Render<Concierge.Shared.Components.Workspace.Handheld.Workspace>(parameters =>
             parameters.Add(component => component.ConversationId, conversationId));
-        rendered.WaitForState(() => rendered.FindAll("section.ws-group").Count > 0);
+        if (waitForReady)
+            rendered.WaitForState(() => rendered.FindAll(".ws[aria-busy='false']").Count > 0, TimeSpan.FromSeconds(5));
+        // The sidebar can render before the selected conversation's asynchronous
+        // snapshot arrives. An active-run assertion needs that thread attached.
+        if (activeRun is not null)
+            rendered.WaitForState(() => rendered.FindAll("button[aria-label='Stop this run']").Count > 0);
         return rendered;
+    }
+
+    private sealed class ConversationReadGate(TaskCompletionSource gate) : DbCommandInterceptor
+    {
+        public override async ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command,
+            CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
+        {
+            if (command.CommandText.Contains("FROM \"Conversations\"", StringComparison.Ordinal))
+                await gate.Task.WaitAsync(cancellationToken);
+            return result;
+        }
+    }
+
+    [Fact]
+    public void Cold_history_read_marks_workspace_busy_and_protects_the_composer_until_restored()
+    {
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cut = RenderWorkspace(readGate: gate, waitForReady: false);
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("true", cut.Find(".ws-handheld").GetAttribute("aria-busy"));
+            Assert.True(cut.Find("textarea.comp-input").HasAttribute("disabled"));
+            Assert.True(cut.Find("button.icon-btn-send").HasAttribute("disabled"));
+            Assert.True(cut.Find("input[type='file']").HasAttribute("disabled"));
+        });
+        gate.SetResult();
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal("false", cut.Find(".ws-handheld").GetAttribute("aria-busy"));
+            Assert.False(cut.Find("textarea.comp-input").HasAttribute("disabled"));
+            Assert.False(cut.Find("input[type='file']").HasAttribute("disabled"));
+        });
     }
 
     [Fact]
@@ -230,11 +272,11 @@ public sealed class HandheldWorkspaceTests : BunitContext
     }
 
     [Fact]
-    public void The_menu_control_opens_the_drawer()
+    public async Task The_menu_control_opens_the_drawer()
     {
         var cut = RenderWorkspace();
 
-        cut.Find("button.ws-menu").Click();
+        await cut.InvokeAsync(() => cut.Find("button.ws-menu").ClickAsync(new MouseEventArgs()));
 
         Assert.Contains("is-open", cut.Find("aside.ws-side").ClassName);
         Assert.Equal("true", cut.Find("button.ws-menu").GetAttribute("aria-expanded"));
@@ -245,12 +287,12 @@ public sealed class HandheldWorkspaceTests : BunitContext
     /// Dismissing by pressing the work you can still see behind it.
     /// </summary>
     [Fact]
-    public void Pressing_the_scrim_closes_the_drawer()
+    public async Task Pressing_the_scrim_closes_the_drawer()
     {
         var cut = RenderWorkspace();
-        cut.Find("button.ws-menu").Click();
+        await cut.InvokeAsync(() => cut.Find("button.ws-menu").ClickAsync(new MouseEventArgs()));
 
-        cut.Find("button.ws-scrim").Click();
+        await cut.InvokeAsync(() => cut.WaitForElement("button.ws-scrim").ClickAsync(new MouseEventArgs()));
 
         Assert.DoesNotContain("is-open", cut.Find("aside.ws-side").ClassName);
         Assert.Empty(cut.FindAll("button.ws-scrim"));
@@ -262,21 +304,21 @@ public sealed class HandheldWorkspaceTests : BunitContext
     /// back to the work.
     /// </summary>
     [Fact]
-    public void Opening_a_panel_from_the_drawer_closes_it()
+    public async Task Opening_a_panel_from_the_drawer_closes_it()
     {
         var cut = RenderWorkspace();
 
-        cut.Find("button.ws-menu").Click();
-        cut.Find("button.ws-runtime").Click();
+        await cut.InvokeAsync(() => cut.Find("button.ws-menu").ClickAsync(new MouseEventArgs()));
+        await cut.InvokeAsync(() => cut.Find("button.ws-runtime").ClickAsync(new MouseEventArgs()));
 
         Assert.DoesNotContain("is-open", cut.Find("aside.ws-side").ClassName);
         Assert.NotNull(cut.Find(".sheet"));
 
         // And the same for the skills picker.
-        cut.Find(".sheet-head button.icon-btn").Click();
-        cut.Find("button.ws-menu").Click();
-        Header(cut, "Personalize Circle AI").Click();
-        cut.Find("button.ws-more").Click();
+        await cut.InvokeAsync(() => cut.Find(".sheet-head button.icon-btn").ClickAsync(new MouseEventArgs()));
+        await cut.InvokeAsync(() => cut.Find("button.ws-menu").ClickAsync(new MouseEventArgs()));
+        await cut.InvokeAsync(() => Header(cut, "Personalize Circle AI").ClickAsync(new MouseEventArgs()));
+        await cut.InvokeAsync(() => cut.WaitForElement("button.ws-more").ClickAsync(new MouseEventArgs()));
 
         Assert.DoesNotContain("is-open", cut.Find("aside.ws-side").ClassName);
     }

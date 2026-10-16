@@ -56,7 +56,11 @@ public sealed class WorkspaceThreadTests : BunitContext
     }
 
     private IRenderedComponent<Concierge.Shared.Components.Workspace.Desktop.Workspace> Open(Guid id)
-        => Render<Concierge.Shared.Components.Workspace.Desktop.Workspace>(ps => ps.Add(p => p.ConversationId, id));
+    {
+        var rendered = Render<Concierge.Shared.Components.Workspace.Desktop.Workspace>(ps => ps.Add(p => p.ConversationId, id));
+        rendered.WaitForState(() => rendered.FindAll(".ws[aria-busy='false']").Count > 0, TimeSpan.FromSeconds(5));
+        return rendered;
+    }
 
     // ── What was said ─────────────────────────────────────────────────────
 

@@ -3,6 +3,8 @@ using Android.Content.PM;
 using Android.OS;
 using CircleAI.Linking;
 using Concierge.Shared.Devices;
+using Concierge.Shared.Caching;
+using System.Diagnostics;
 
 namespace Concierge.Platforms.Android;
 
@@ -17,14 +19,21 @@ public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICirc
     private const string Package = LinkIpc.HostPackage;
     private readonly object _gate = new();
     private Task<CircleAiSharedServiceSnapshot>? _probe;
+    private readonly AsyncSnapshotCache<LinkVerb, LinkRowsReply> _reads = new(12, 65_536,
+        reply => reply.Rows.Sum(row => row.Sum(value => (long)value.Length + 16)), reply => reply.Ok);
+    public void InvalidateReads() => _reads.Invalidate();
 
-    public Task<bool> RequestConnectionAsync(CancellationToken cancellationToken = default)
-        => MainThread.InvokeOnMainThreadAsync(() =>
+    public async Task<bool> RequestConnectionAsync(CancellationToken cancellationToken = default)
+    {
+        InvalidateReads();
+        try { return await MainThread.InvokeOnMainThreadAsync(() =>
         {
             var activity = Microsoft.Maui.ApplicationModel.Platform.CurrentActivity as MainActivity
                 ?? throw new InvalidOperationException("Open Concierge before connecting Circle AI.");
             return activity.RequestCircleAiLinkAsync(cancellationToken);
-        });
+        }); }
+        finally { InvalidateReads(); }
+    }
 
     public Task<CircleAiSharedServiceSnapshot> InspectAsync(CancellationToken cancellationToken = default)
     {
@@ -82,12 +91,36 @@ public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICirc
     private readonly SemaphoreSlim _requests = new(1, 1);
     internal async Task<LinkRowsReply> ExecuteVerbAsync(LinkVerbRequest request, CancellationToken cancellationToken)
     {
+        var lifetime = CircleAiReadCachePolicy.LifetimeFor(request.Verb.ToString());
+        if (lifetime > TimeSpan.Zero && request.Query is null && request.Text is null && request.Subject is null)
+        {
+            var result = await _reads.GetAsync(request.Verb, lifetime,
+                () => ExecuteUncachedVerbAsync(request, CancellationToken.None), cancellationToken);
+#if DEBUG
+            var metrics = _reads.Metrics;
+            global::Android.Util.Log.Info("Concierge.CircleAI.Cache", $"hits={metrics.Hits} loads={metrics.Loads} joined={metrics.Joined} entries={metrics.Entries} contentWeight={metrics.ContentWeight}");
+#endif
+            return result;
+        }
+        InvalidateReads();
+        try { return await ExecuteUncachedVerbAsync(request, cancellationToken); }
+        finally { InvalidateReads(); }
+    }
+
+    private async Task<LinkRowsReply> ExecuteUncachedVerbAsync(LinkVerbRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
         var fields = await RoundTripAsync(LinkIpc.TransactVerb, LinkVerbCodec.Encode(request), TimeSpan.FromSeconds(12), cancellationToken);
         if (fields.TryGetValue(LinkVerbCodec.KeyOk, out var ok) && ok == "1"
             && (!fields.TryGetValue(LinkVerbCodec.KeyRowCount, out var text)
                 || !int.TryParse(text, out var rows) || rows < 0 || rows > fields.Count || rows > 2048))
             throw new InvalidOperationException("The service returned an invalid row count.");
-        return LinkVerbCodec.DecodeReply(fields);
+        var result = LinkVerbCodec.DecodeReply(fields);
+        if (!result.Ok) InvalidateReads();
+        return result;
+        }
+        catch { InvalidateReads(); throw; }
     }
 
     public async Task<CircleAiServiceChatStatus> ReadChatStatusAsync(CancellationToken cancellationToken)
@@ -116,15 +149,21 @@ public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICirc
     public async Task<CircleAiServiceChatReply> SendChatAsync(string sessionId, string message, bool agentic,
         CancellationToken cancellationToken)
     {
+        try
+        {
         var fields = await RoundTripAsync(LinkIpc.TransactAsk,
             LinkTurnCodec.Encode(new LinkTurnRequest(sessionId, message, agentic)), TimeSpan.FromMinutes(2), cancellationToken);
         var reply = LinkTurnCodec.DecodeReply(fields);
+        if (!reply.Ok) InvalidateReads();
         return new(reply.Ok, reply.Reply, reply.Error);
+        }
+        catch { InvalidateReads(); throw; }
     }
 
     private async Task<IReadOnlyDictionary<string, string>> RoundTripAsync(int code,
         IReadOnlyDictionary<string, string> fields, TimeSpan timeout, CancellationToken cancellationToken)
     {
+        var roundTrip = Stopwatch.StartNew();
         cancellationToken.ThrowIfCancellationRequested();
         if (!await _requests.WaitAsync(timeout, cancellationToken))
             throw new TimeoutException("Circle AI is still handling another request.");
@@ -137,9 +176,14 @@ public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICirc
                 try { await _transaction.WaitAsync(timeout, cancellationToken); }
                 catch when (_transaction.IsCompleted && !cancellationToken.IsCancellationRequested) { }
             }
+            var queueMs = roundTrip.Elapsed.TotalMilliseconds;
             _transaction = Task.Run(() => SendCoreAsync(code, fields));
             // Timeout/cancellation stops waiting, not native execution. Never multiply blocked transactions.
-            return await _transaction.WaitAsync(timeout, cancellationToken);
+            var result = await _transaction.WaitAsync(timeout, cancellationToken);
+#if DEBUG
+            global::Android.Util.Log.Info("Concierge.CircleAI.IPC", $"kind={(code == LinkIpc.TransactAsk ? "chat" : "metadata")} queueMs={queueMs:F2} totalMs={roundTrip.Elapsed.TotalMilliseconds:F2}");
+#endif
+            return result;
         }
         finally { _requests.Release(); }
     }
@@ -153,7 +197,9 @@ public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICirc
             if (service is null || !service.Exported)
                 throw new InvalidOperationException("Installed, but no exported Circle AI link was found.");
             using var connection = new Connection(context);
+            var bind = Stopwatch.StartNew();
             var binder = await connection.BindAsync(intent).ConfigureAwait(false);
+            var bindMs = bind.Elapsed.TotalMilliseconds;
             if (binder is null)
                 throw new InvalidOperationException("Installed, but the shared service did not connect.");
 
@@ -167,9 +213,13 @@ public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICirc
                 data.WriteString(field.Value);
             }
             // Runs on the owned background task, never the Android/UI thread.
+            var serviceTime = Stopwatch.StartNew();
             if (!binder.Transact(code, data, reply, (TransactionFlags)0))
                 throw new InvalidOperationException("The installed service does not support catalogue discovery.");
             reply.ReadException();
+#if DEBUG
+            global::Android.Util.Log.Info("Concierge.CircleAI.Transport", $"kind={(code == LinkIpc.TransactAsk ? "chat" : "metadata")} bindMs={bindMs:F2} serviceMs={serviceTime.Elapsed.TotalMilliseconds:F2}");
+#endif
             var count = reply.ReadInt();
             if (count is < 0 or > 2048)
                 throw new InvalidOperationException("The service returned an invalid catalogue response.");

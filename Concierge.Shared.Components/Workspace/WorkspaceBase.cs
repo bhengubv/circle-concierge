@@ -672,8 +672,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         // The composer stayed empty and no conversation was created, so every
         // query-string handoff was dropped. LocationChanged always fires.
         Nav.LocationChanged += OnLocationChanged;
-
-        await ConsumeHomeHandoffAsync();
+        // Consume the first handoff after parameters restore the selected thread.
     }
 
     protected async Task FindDesktopAsync(bool showResult = true)
@@ -1017,7 +1016,19 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     /// <summary>Whether this conversation has been put at its end yet.</summary>
     private bool _openedAtTheEnd;
 
+    // Cold reads run off the rendering thread. Keep input from racing session/thread restoration.
+    protected bool WorkspaceReady { get; private set; }
     protected override async Task OnParametersSetAsync()
+    {
+        WorkspaceReady = false;
+        await LoadWorkspaceParametersAsync();
+        WorkspaceReady = true;
+        // A handed-off prompt can run for a while. Restoration is already complete;
+        // keep the composer usable while the assistant works.
+        await ConsumeHomeHandoffAsync();
+    }
+
+    private async Task LoadWorkspaceParametersAsync()
     {
         await RefreshProjectTurnContextAsync();
         if (ConversationId is { } id)
@@ -1061,15 +1072,8 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
                 _composerText = _session.InitialDraftText ?? string.Empty;
         }
 
-        // The handoff also runs here, not only on first initialisation.
-        //
-        // This component now owns "/" as well as "/chat", so moving between
-        // them is a parameter change rather than a new component — and
-        // OnInitializedAsync does not run a second time. Everything that
-        // arrives by query string (?q=, ?voice=1, ?image=1, ?demo=1) was
-        // therefore silently dropped for anyone already on the workspace,
-        // which is every case now that the workspace is the front door.
-        await ConsumeHomeHandoffAsync();
+        // OnParametersSetAsync consumes query handoffs after this restoration,
+        // on both first arrival and later parameter changes.
     }
 
     private async Task RestorePlanAsync(Guid conversationId)

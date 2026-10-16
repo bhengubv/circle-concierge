@@ -27,7 +27,8 @@ public static class ConciergeChatServiceCollectionExtensions
             options.UseSqlite($"Data Source={resolvedPath}");
         });
         services.AddConciergeProjects(resolvedPath);
-        services.AddSingleton<IConversationStore, ConversationStore>();
+        services.AddSingleton<ConversationStore>();
+        services.AddSingleton<IConversationStore>(sp => new CachedConversationStore(sp.GetRequiredService<ConversationStore>()));
 
         // The composer's image queue. Always present, even on a head with no
         // device layer, so the workspace can drain it without first asking

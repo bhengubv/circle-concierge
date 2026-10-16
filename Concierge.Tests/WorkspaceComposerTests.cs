@@ -57,12 +57,14 @@ public sealed class WorkspaceComposerTests : BunitContext
         public bool IsReady => true;
         public string StatusMessage => "ready";
         public TaskCompletionSource<IReadOnlyList<ChatTurn>> SeenMessages { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public Task? AnswerGate { get; init; }
 
         public async IAsyncEnumerable<string> StreamAsync(
             IReadOnlyList<ChatTurn> messages,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             SeenMessages.TrySetResult(messages.ToArray());
+            if (AnswerGate is not null) await AnswerGate.WaitAsync(cancellationToken);
             await Task.CompletedTask;
             yield break;
         }
@@ -255,7 +257,8 @@ public sealed class WorkspaceComposerTests : BunitContext
         string? pendingRunFingerprint = null,
         bool seedInterruptedRun = false,
         Concierge.Away.AwayClient? desktopClient = null,
-        bool windowsDesktop = false)
+        bool windowsDesktop = false,
+        string? initialUri = null)
     {
         // Project persistence uses a sibling `projects.db`; give every rendered workspace
         // its own directory so parallel bUnit tests never initialize the same SQLite file.
@@ -356,14 +359,15 @@ public sealed class WorkspaceComposerTests : BunitContext
         // like an isolated flake, each passed on retry, and the sixth was always
         // going to be somebody else's afternoon.
         //
-        // The sidebar is the thing to wait on because every recipe has one and it
-        // is populated from the load. Anything asserted after this is looking at a
-        // workspace that has finished arriving.
+        // Sidebar chrome exists before data restoration finishes. Wait for the
+        // explicit busy state to clear before interacting with the workspace.
+        if (initialUri is not null)
+            Services.GetRequiredService<Microsoft.AspNetCore.Components.NavigationManager>().NavigateTo(initialUri);
         var rendered = _fixtureConversationId is { } conversationId
             ? Render<Concierge.Shared.Components.Workspace.Desktop.Workspace>(parameters =>
                 parameters.Add(component => component.ConversationId, conversationId))
             : Render<Concierge.Shared.Components.Workspace.Desktop.Workspace>();
-        rendered.WaitForState(() => rendered.FindAll("section.ws-group").Count > 0);
+        rendered.WaitForState(() => rendered.FindAll(".ws[aria-busy='false']").Count > 0, TimeSpan.FromSeconds(5));
         return rendered;
     }
 
@@ -704,6 +708,25 @@ public sealed class WorkspaceComposerTests : BunitContext
     }
 
     [Fact]
+    public void Query_handoff_releases_the_restoration_gate_while_the_answer_is_still_running()
+    {
+        var gate = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var runtime = new ReadyRuntime { AnswerGate = gate.Task };
+        try
+        {
+            var cut = RenderWith(runtimeReady: true, runtimeOverride: runtime, initialUri: "/chat?q=Keep%20the%20composer%20usable");
+            cut.WaitForAssertion(() =>
+            {
+                Assert.True(runtime.SeenMessages.Task.IsCompleted);
+                Assert.False(gate.Task.IsCompleted);
+                Assert.Equal("false", cut.Find(".ws").GetAttribute("aria-busy"));
+                Assert.False(cut.Find("textarea.comp-input").HasAttribute("disabled"));
+            }, TimeSpan.FromSeconds(5));
+        }
+        finally { gate.TrySetResult(); }
+    }
+
+    [Fact]
     public void A_goal_typed_before_circle_ai_is_ready_is_saved_without_creating_a_conversation()
     {
         var cut = RenderWith(runtimeReady: false);
@@ -711,7 +734,7 @@ public sealed class WorkspaceComposerTests : BunitContext
 
         cut.Find("textarea.comp-input").Input(goal);
 
-        Assert.Equal(goal, _sessionState!.Snapshot.InitialDraftText);
+        cut.WaitForAssertion(() => Assert.Equal(goal, _sessionState!.Snapshot.InitialDraftText));
         Assert.True(Send(cut).HasAttribute("disabled"));
         Assert.Equal("0", cut.Find(".ws-head-count").TextContent.Trim());
     }

@@ -1,0 +1,63 @@
+{
+  "date": "2026-10-16",
+  "scope": "Controlled Windows unit/component tests; no device deployment",
+  "sourceCommitBeforeChanges": "9c0de42abfe72985976b653cfdac5250ce07f092",
+  "tests": {
+    "total": 2602,
+    "passed": 2600,
+    "failed": 2,
+    "skipped": 0,
+    "failures": [
+      {
+        "test": "Concierge.Tests.CircleAiModelSelectionTests.CatalogueSelectionAccountsForMnnMappingModeAndOffersBestCompatibleModel",
+        "message": "Assert.Equal() Failure: Strings differ\r\n                 ↓ (pos 6)\r\nExpected: \"Qwen3-30B-A3B-MNN\"\r\nActual:   \"Qwen3-14B-MNN\"\r\n                 ↑ (pos 6)"
+      },
+      {
+        "test": "Concierge.Tests.CircleAiBundleDownloadRecoveryTests.Cancelled_bundle_download_resumes_saved_bytes_after_service_recreation",
+        "message": "Cancellation discarded the resumable file. Remaining files: ; requested ranges: 0, full"
+      }
+    ]
+  },
+  "measurements": {
+    "sourceReads": 100,
+    "sourceMs": 237.8724,
+    "coldMs": 8.5066,
+    "warmReads": 100,
+    "warmMs": 5.9513,
+    "metrics": {
+      "Hits": 100,
+      "Loads": 1,
+      "Joined": 0,
+      "Entries": 1,
+      "ContentWeight": 12244
+    },
+    "projectSourceReads": 100,
+    "projectSourceMs": 170.9787,
+    "projectWarmReads": 100,
+    "projectWarmMs": 31.1905,
+    "projectMetrics": {
+      "Hits": 100,
+      "Loads": 1,
+      "Joined": 0,
+      "Entries": 1,
+      "ContentWeight": 4798
+    }
+  },
+  "deployment": "ON HOLD by user; no updated app installed or launched",
+  "builds": {
+    "windows": {
+      "errors": 0,
+      "warnings": 79,
+      "elapsed": "00:01:05.08",
+      "output": "C:\\Development\\repos\\circle-concierge\\work\\cache-windows-build\\Concierge.exe"
+    },
+    "android": {
+      "errors": 0,
+      "warnings": 171,
+      "elapsed": "00:02:44.29",
+      "apk": "C:\\Development\\repos\\circle-concierge\\Concierge\\bin\\Debug\\net10.0-android\\com.companyname.concierge-Signed.apk",
+      "bytes": 185650372,
+      "sha256": "F2259749AD463618888AE0A95E2E2C7CC1851C2B824141D339CAD38505CBF6F2"
+    }
+  }
+}

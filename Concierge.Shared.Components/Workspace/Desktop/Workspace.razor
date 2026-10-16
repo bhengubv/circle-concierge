@@ -51,7 +51,8 @@
     };
 }
 
-<div class="ws">
+<div class="ws" aria-busy="@(!WorkspaceReady ? "true" : "false")">
+    @if (!WorkspaceReady) { <span class="sr" role="status">Loading your workspace…</span> }
 
     @*
         A column, always on screen. The drawer, the scrim and the menu control
@@ -485,6 +486,7 @@
                    answering. *@
                 <div class="comp-box">
                     <textarea class="comp-input"
+                              disabled="@(!WorkspaceReady)"
                               rows="1"
                               placeholder="@CanvasInvitation"
                               @bind="_composerText"
@@ -503,11 +505,13 @@
                         <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><use href="_content/Concierge.Shared.Components/lib/circlemetro/circle-icons.svg#cm-icon-file"/></svg>
                         <span class="sr">@(_designOpen ? "Put a picture on the page" : "Attach a file or a picture")</span>
                         <InputFile OnChange="OnAttachmentSelected" class="file-over"
+                                   disabled="@(!WorkspaceReady)"
                                    accept=".txt,.md,.markdown,.json,.cs,.razor,.xml,.yaml,.yml,.toml,.csv,.log,.png,.jpg,.jpeg,.gif,.webp" />
                     </label>
 
                     <button class="icon-btn @(_recording ? "is-on" : null)" type="button"
                             title="@(_recording ? "Stop recording" : "Speak")"
+                            disabled="@(!WorkspaceReady)"
                             @onclick="ToggleMicAsync">
                         @if (_recording)
                         {
@@ -533,7 +537,7 @@
                         </button>
                     }
                     <button class="icon-btn icon-btn-send" type="button"
-                            aria-disabled="@(!CanSend ? "true" : "false")" disabled="@(!CanSend)"
+                            aria-disabled="@(!WorkspaceReady || !CanSend ? "true" : "false")" disabled="@(!WorkspaceReady || !CanSend)"
                             title="Send" @onclick="SendAsync">
                         <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><use href="_content/Concierge.Shared.Components/lib/circlemetro/circle-icons.svg#cm-icon-send"/></svg>
                         <span class="sr">Send</span>

@@ -794,7 +794,8 @@ public static class ConciergeProjectServiceCollectionExtensions
         Directory.CreateDirectory(directory);
         var projectDatabasePath = Path.Combine(directory, "projects.db");
         services.AddDbContextFactory<ProjectDbContext>(options => options.UseSqlite($"Data Source={projectDatabasePath}"));
-        services.TryAddSingleton<IProjectStore, SqliteProjectStore>();
+        services.TryAddSingleton<SqliteProjectStore>();
+        services.TryAddSingleton<IProjectStore>(sp => new CachedProjectStore(sp.GetRequiredService<SqliteProjectStore>()));
         services.TryAddSingleton<IButlerWorkRunApi, ButlerWorkRunApiUnavailable>();
         services.TryAddSingleton<ProjectAgentCoordinator>();
         services.TryAddSingleton<ProjectButlerRunMonitor>();

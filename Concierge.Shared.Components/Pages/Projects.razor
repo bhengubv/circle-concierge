@@ -13,7 +13,7 @@
 @inject IButlerWorkRunApi ButlerRunsApi
 @inject ProjectButlerRunMonitor ButlerMonitor
 
-<main class="projects-page" aria-labelledby="projects-heading">
+<main class="projects-page" aria-labelledby="projects-heading" aria-busy="@(_loading ? "true" : "false")">
     <header class="projects-header">
         <a class="projects-back" href="/">← Back to Concierge</a>
         <p class="projects-eyebrow">YOUR WORK</p>

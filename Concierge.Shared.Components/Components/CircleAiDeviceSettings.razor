@@ -139,6 +139,7 @@
         if (_busy || _gateway is null) return;
         _busy = true;
         _refreshing = true;
+        if (_gateway is ICircleAiSettingsCacheControl cache) cache.InvalidateSettings();
         _status = "Checking Circle AI on this device…";
         try { await ReadReports(); }
         catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
