@@ -92,9 +92,83 @@
     "serviceVersionCode": 56
   },
   "pixieDust": {
-    "endpoint": "192.168.0.140:35035",
-    "tcpReachable": true,
-    "connectionError": "SSLV3_ALERT_CERTIFICATE_UNKNOWN",
-    "apkInstalled": false
+    "serial": "adb-32231JEHN17663-xy66DC._adb-tls-connect._tcp",
+    "priorConnectionError": "SSLV3_ALERT_CERTIFICATE_UNKNOWN",
+    "connectionRecovered": true,
+    "apkInstalled": true,
+    "apkInstallResult": "Success",
+    "apkSha256": "F2259749AD463618888AE0A95E2E2C7CC1851C2B824141D339CAD38505CBF6F2",
+    "lastUpdateDeviceTime": "2026-10-16 16:54:57",
+    "serviceVersionName": "0.1",
+    "serviceVersionCode": 58,
+    "serviceReportedConversationReady": true,
+    "serviceReportedVoiceResourcesMissing": true,
+    "refreshBeforeMs": [
+      553.2,
+      336.2,
+      343.5
+    ],
+    "refreshAfterMs": [
+      349.10000002384186,
+      487.30000001192093,
+      359.30000001192093
+    ],
+    "cacheObservation": {
+      "hits": 9,
+      "contentWeight": 7090,
+      "entries": 7,
+      "observedDeviceTime": "2026-10-16 16:56:05.836",
+      "loads": 51
+    },
+    "conversationId": "58d2c8f1-05ad-44d2-a062-dc742c18ff02",
+    "runs": [
+      {
+        "RunId": "aaeffa39-264f-4056-be1f-c7eef9fef9a3",
+        "Status": "failed",
+        "Text": null,
+        "AnsweredBy": "Circle AI Android service",
+        "PlanSteps": [],
+        "PlanDone": 0,
+        "Stopped": null
+      },
+      {
+        "RunId": "303d1dd0-d5a7-4bd7-bf78-2ff694fecd9f",
+        "Status": "failed",
+        "Text": null,
+        "AnsweredBy": "Circle AI Android service",
+        "PlanSteps": [],
+        "PlanDone": 0,
+        "Stopped": null
+      }
+    ],
+    "localAssistantReplies": 0,
+    "sync": {
+      "desktopPromptDiagnosticsUnchangedDuringRetry": true,
+      "desktopEventCount": 6
+    },
+    "history": {
+      "url": "https://0.0.0.1/chat/71506603-aa93-45dd-b6b0-380bdd3c234a",
+      "messages": 5,
+      "inputEnabled": true
+    },
+    "returnToTest": {
+      "url": "https://0.0.0.1/chat/58d2c8f1-05ad-44d2-a062-dc742c18ff02",
+      "messages": 2,
+      "draft": "Draft verification — keep this unsent.",
+      "inputEnabled": true,
+      "text": "2 devices connected\nConcierge\nBY CIRCLE\n+\nNew conversation\nStart here\n◇\nProjects\nOrganize bigger goals\nRecent conversations\n3\nMy meeting starts at 10:00. Travel takes 20 minutes. What ti…\n1m\nWhat is two plus three? Reply with the number only.\n14 Oct\nPixieDust connection check: What is two plus three? Reply wi…\n14 Oct\nFind an older conversation\nNeeds your OK\n0\nPersonalize Circle AI\nMake something\nAbout & updates\nAI engine\nCircle AI · app settings\nSettings\nMy meeting starts at 10:00. Travel takes 20 minutes. What ti…\nPowered by Circle AI\nYOU\n\nMy meeting starts at 10:00. Travel takes 20 minutes. What time should I leave to arrive on time? Reply briefly.\n\nYOU\n\nMy meeting starts at 10:00. Travel takes 20 minutes. What time should I leave to arrive on time? Reply briefly.\n\nThis run failed. Your conversation and recorded activity are saved. Review the activity before trying again.\nAttach a file or a picture\nSpeak\nUse Desktop\nSend\nPlan only\nAsk first\nAct freely\n·\nPowered by Circle AI\n·"
+    },
+    "syntheticDraftCleared": true,
+    "serviceCrash": {
+      "pid": 2360,
+      "modelRefusedOnRetry": "Qwen3.5-2B-MNN",
+      "restartPid": 21987,
+      "description": "A foreground service of type dataSync did not stop within its timeout",
+      "deviceTime": "2026-10-16 16:57:03.712",
+      "alternativeInstalled": false,
+      "exception": "android.app.RemoteServiceException$ForegroundServiceDidNotStopInTimeException",
+      "restartForegroundRefused": true
+    },
+    "accuracyResult": "Not evaluated: no local reply returned"
   }
 }

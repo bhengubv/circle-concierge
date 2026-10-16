@@ -1,0 +1,16 @@
+--------- beginning of crash
+10-16 16:57:03.712  2360  2360 E AndroidRuntime: FATAL EXCEPTION: main
+10-16 16:57:03.712  2360  2360 E AndroidRuntime: Process: com.bhengubv.circleai.service, PID: 2360
+10-16 16:57:03.712  2360  2360 E AndroidRuntime: android.app.RemoteServiceException$ForegroundServiceDidNotStopInTimeException: A foreground service of type dataSync did not stop within its timeout: ComponentInfo{com.bhengubv.circleai.service/ai.circle.CircleNeuronService}
+10-16 16:57:03.712  2360  2360 E AndroidRuntime: 	at android.app.ActivityThread.generateForegroundServiceDidNotStopInTimeException(ActivityThread.java:2621)
+10-16 16:57:03.712  2360  2360 E AndroidRuntime: 	at android.app.ActivityThread.throwRemoteServiceException(ActivityThread.java:2580)
+10-16 16:57:03.712  2360  2360 E AndroidRuntime: 	at android.app.ActivityThread.-$$Nest$mthrowRemoteServiceException(ActivityThread.java:0)
+10-16 16:57:03.712  2360  2360 E AndroidRuntime: 	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:2964)
+10-16 16:57:03.712  2360  2360 E AndroidRuntime: 	at android.os.Handler.dispatchMessageImpl(Handler.java:142)
+10-16 16:57:03.712  2360  2360 E AndroidRuntime: 	at android.os.Handler.dispatchMessage(Handler.java:126)
+10-16 16:57:03.712  2360  2360 E AndroidRuntime: 	at android.os.Looper.loopOnce(Looper.java:295)
+10-16 16:57:03.712  2360  2360 E AndroidRuntime: 	at android.os.Looper.loop(Looper.java:398)
+10-16 16:57:03.712  2360  2360 E AndroidRuntime: 	at android.app.ActivityThread.main(ActivityThread.java:9569)
+10-16 16:57:03.712  2360  2360 E AndroidRuntime: 	at java.lang.reflect.Method.invoke(Native Method)
+10-16 16:57:03.712  2360  2360 E AndroidRuntime: 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:575)
+10-16 16:57:03.712  2360  2360 E AndroidRuntime: 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:918)

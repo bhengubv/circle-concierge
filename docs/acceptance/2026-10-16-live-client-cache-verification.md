@@ -2,7 +2,7 @@
 
 ## Result: partial; answer accuracy failed
 
-The user released deployment. Desktop now runs commit `83d1bfe` from the separate Windows build output. The signed Android APK installed successfully on AngelDust. PixieDust remains blocked by ADB TLS certificate rejection despite a reachable TCP endpoint. No pairing records or keys were removed.
+The user released deployment. Desktop now runs commit `83d1bfe` from the separate Windows build output. The signed Android APK installed successfully on AngelDust. PixieDust subsequently reconnected and accepted the same APK. No pairing records or keys were removed. Its live local conversation test failed in the installed service, as detailed below.
 
 | Check | Observed result |
 | --- | --- |
@@ -14,7 +14,7 @@ The user released deployment. Desktop now runs commit `83d1bfe` from the separat
 | AngelDust installation | ADB reported Success. Installed app launched; its background WebView reported the service connected and conversation ready. |
 | AngelDust cache activity | Device log at 16:33:11.013 recorded 2 hits, 13 loads, 7 retained entries and 6,991 content-weight units. Weight is not measured RAM. |
 | AngelDust visible/local-response test | **Unverified.** Another app occupied the foreground. Awaiting confirmation that the device is available. Reported readiness does not prove voice or inference works. |
-| PixieDust deployment | **Blocked:** `192.168.0.140:35035` is TCP-reachable but ADB returns `SSLV3_ALERT_CERTIFICATE_UNKNOWN`. No APK installed this round. |
+| PixieDust deployment | **Installed successfully** after its existing mDNS transport recovered. Device last-update time: 16:54:57; APK SHA-256 matches the recorded build. |
 
 ## Accuracy control
 
@@ -29,9 +29,35 @@ Windows service reports version **3.8.1.0** and model **Qwen3.5-0.8B-MNN**. Ange
 ## Outstanding
 
 - Complete visible mobile service interaction when a device is available; verify local replies and explicit Refresh invalidation.
-- Repeat PixieDust's original refresh measurement on that same device after installation. AngelDust's timings cannot stand in for it.
-- Verify mobile restoration, project writes, sync invalidation and permission/resume behavior. Voice remains separately unverified.
+- PixieDust refresh comparison is now recorded below; no refresh-speed improvement was established.
+- PixieDust history/draft restoration and phone-to-Desktop event sync were verified below. Mobile project writes, permission/resume behavior and voice remain unverified.
 - Resolve the service accuracy failure through its published contract/build or its owner; do not conceal it with cached responses or client model selection.
 - The two previously recorded automated failures remain unresolved; deployment does not make the suite green. See [cache contract and build evidence](2026-10-16-client-read-caches.md).
 
 No new resource downloads were started. The temporary project was archived after verification. The earlier measurement JSON remains a historical pre-deployment snapshot.
+
+## PixieDust follow-up: deployed, local answering failed
+
+The existing mDNS connection became available. Visual Studio SDK ADB installed the verified signed APK with `--no-incremental -r` and reported **Success**. Concierge process 21774 was brought to the foreground; the installed service reports versionName **0.1**, versionCode **58**.
+
+### Controls, cache and restoration
+
+- Settings opened visibly. **Refresh status** completed three actual UI operations in **349.1, 487.3 and 359.3 ms**, using the same 50 ms initial delay and 20 ms polling method as the original PixieDust samples. Earlier samples were **553.2, 336.2 and 343.5 ms**. Median changed from **343.5 to 359.3 ms**; this does **not** establish an improvement. Explicit Refresh deliberately invalidates cached reports.
+- Transport/cache logs showed fresh metadata requests and cache hits. At 16:56:05.836 the counters were **9 hits, 51 loads, 7 entries, 7,090 weight units**. These are cumulative counters, not a hit rate for the three refreshes alone or measured RAM.
+- **Reconnect Circle AI** completed and re-read reports. The service continued to report text Ready despite failed requests. A successful connection/readiness report is not a successful answer.
+- An actual history link restored an existing conversation with **5 messages** and enabled input. Returning restored the new test conversation's **2 user messages** and its exact unsent synthetic draft. The test draft was then cleared; it was never sent.
+
+### Two requests, no local answer
+
+Conversation `58d2c8f1-05ad-44d2-a062-dc742c18ff02` received the same meeting/travel question twice. Both durable runs ended **failed**, with `AnsweredBy` identifying **Circle AI Android service**. The local chat IPC calls were recorded separately; there was no cached answer. No assistant message returned, so mobile answer accuracy cannot be evaluated.
+
+The observed failure sequence is specific:
+
+1. First request at **16:56:53** returned “brain warming up, try again shortly.” The service began loading **Qwen3.5-2B-MNN**.
+2. At **16:57:03.712**, Android terminated service process **2360** with `ForegroundServiceDidNotStopInTimeException`: its `dataSync` foreground service did not stop within the time limit. Android's exit record classifies this as **APP CRASH (EXCEPTION)**. This is not evidence of an out-of-memory termination or proof the model caused the crash.
+3. Restarted process **21987** logged that the foreground time limit was already exhausted and foreground status was refused.
+4. After using Concierge's Reconnect control, the second request at **16:59:00** also failed. The service logged that **Qwen3.5-2B-MNN** was refused because the previous load had stopped the process and that no alternative was installed. That is the service's recorded crash-protection decision, not a client model-selection decision.
+
+All **6 durable events** from the two runs appeared on Desktop. Desktop's prompt diagnostic was identical before and after the retry, still timestamped 16:29:44.7139979 with the earlier Desktop test. This supports local service execution followed by event sync, with no observed Desktop inference fallback during the retry. It does not demonstrate a successful phone reply or two-way sync under every condition.
+
+[Visible Settings](2026-10-16-pixiedust-service-settings.png), [failed local run and restored draft](2026-10-16-pixiedust-failed-local-run.png), and [service crash log](2026-10-16-pixiedust-service-crash.txt) preserve the observed state. No model files, crash-protection state or Android limits were changed to make the test pass. The installed service needs its foreground-lifecycle and recovery behavior addressed through its owner or a published build; its repository remains outside this task's allowed scope.
