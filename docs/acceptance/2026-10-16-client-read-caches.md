@@ -50,13 +50,13 @@ Neither check calls the new read caches. Their assertions remain intact. They ar
 
 Android Debug build completed October 15: **0 errors, 162 warnings**, elapsed **7m 04.56s**. Signed APK size: **185,646,276 bytes**. Warnings include existing vulnerable dependencies and duplicate native libraries; this work does not clear them.
 
-**Deployment is on hold at the user's request until they explicitly release it.** The new APK has not yet been installed or tested on PixieDust. Investigation on October 16 confirmed that TCP connectivity and the ADB command were correct; TLS failed with `CERTIFICATE_UNKNOWN`. Visual Studio's SDK ADB loaded the existing host key with a fingerprint matching the key file, and the saved known-host records contained PixieDust's exact mDNS identity. The user identified their script in another session as the cause. No keys were changed or pairing records removed. The temporary diagnostic ADB server was stopped.
+**The user released deployment on October 16.** The new APK was installed on AngelDust; PixieDust installation remains blocked. Investigation on October 16 confirmed that TCP connectivity and the ADB command were correct; TLS failed with `CERTIFICATE_UNKNOWN`. Visual Studio's SDK ADB loaded the existing host key with a fingerprint matching the key file, and the saved known-host records contained PixieDust's exact mDNS identity. The user identified their script in another session as the cause. No keys were changed or pairing records removed. The temporary diagnostic ADB server was stopped.
 
-The final Windows build succeeded with **0 errors, 79 warnings**, elapsed **1m 05.08s**, using `-p:OutDir=C:/Development/repos/circle-concierge/work/cache-windows-build/`. The final Android build succeeded with **0 errors, 171 warnings**, elapsed **2m 44.29s**. These warnings include dependency vulnerabilities, duplicate native libraries and native page-size compatibility; they remain unresolved. The APK size/hash and both build results are recorded in the measurement snapshot. The running Desktop app has not been replaced or restarted. Running-app verification remains pending on both heads; shared tests do not establish either device result.
+The final Windows build succeeded with **0 errors, 79 warnings**, elapsed **1m 05.08s**, using `-p:OutDir=C:/Development/repos/circle-concierge/work/cache-windows-build/`. The final Android build succeeded with **0 errors, 171 warnings**, elapsed **2m 44.29s**. These warnings include dependency vulnerabilities, duplicate native libraries and native page-size compatibility; they remain unresolved. The APK size/hash and both build results are recorded in the measurement snapshot. Desktop was restarted with the final build and exercised through real conversations and project writes. AngelDust accepted the APK and its background client reported a ready service with actual cache hits. Its visible conversation test remains pending because another app was foreground. PixieDust still rejects the ADB certificate. See [live deployment verification](2026-10-16-live-client-cache-verification.md): deployment and client-data checks do not establish answer accuracy, which failed on Desktop and in a direct service control request.
 
-## Deferred device acceptance
+## Remaining device acceptance
 
-When deployment is released, install on PixieDust and then:
+Once PixieDust connectivity is restored, install there and complete the following. Desktop navigation, project write/reopen/archive and repeated service calls have been exercised; mobile equivalents and the same-device refresh comparison remain outstanding:
 
 1. Open and refresh service Settings; compare the same UI-timed refresh operation with the recorded baseline and inspect actual cache/transport counters. Explicit Refresh must read current reports.
 2. Navigate away/back through conversations and project catalogues; confirm restored drafts and current messages survive writes and Desktop sync. Check that the app remains usable during cold reads and service work.
@@ -67,3 +67,4 @@ When deployment is released, install on PixieDust and then:
 ## Known service limitations remain
 
 The installed Android service previously answered `2 + 3` as `4` and logged `setPrefixCacheFile requires kvcache_mmap=true`. Its setup/housekeeping selection audit is documented separately. Client read caching neither resolves nor masks these engine issues. Voice permission/setup is also not established by successful text replies.
+

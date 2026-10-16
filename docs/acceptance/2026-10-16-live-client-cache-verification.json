@@ -1,0 +1,100 @@
+{
+  "date": "2026-10-16",
+  "commit": "83d1bfe",
+  "desktop": {
+    "processId": 20128,
+    "serviceVersion": "3.8.1.0",
+    "model": "Qwen3.5-0.8B-MNN",
+    "conversationId": "ecb9ae08-7ff7-4e1b-9639-b5071db45d7c",
+    "userQuestion": "My meeting starts at 10:00. Travel takes 20 minutes. What time should I leave to arrive on time? Reply briefly.",
+    "expectedAnswer": "09:40",
+    "accuracyPassed": false,
+    "runs": [
+      {
+        "runId": "2ea63aa6-b422-4a05-8dbb-51534e62d7eb",
+        "startedAt": "2026-10-16T16:26:30.877+09:00",
+        "endedAt": "2026-10-16T16:26:47.655+09:00",
+        "durationMs": 16778.0,
+        "status": "completed"
+      },
+      {
+        "runId": "7733da02-7f8c-483c-bc41-57373748ed03",
+        "startedAt": "2026-10-16T16:29:43.946+09:00",
+        "endedAt": "2026-10-16T16:30:16.393+09:00",
+        "durationMs": 32447.0,
+        "status": "completed"
+      }
+    ],
+    "assistantReplies": [
+      "**Short answer:** You need to book a flight starting **9:40–9:50**, arriving early. This gives you roughly **60 minutes** to travel through the airport (approx. 3 hours + waiting) well before the start time, allowing time for lunch, shopping, getting settled, and ensuring you have enough hours later for the arrival flight if you choose one.",
+      "Based on your situation, here is the best recommendation:\n\n*   **Arrival Time (at Gate):** **Morning 9:50 – 9:55**.\n    *   Since your meeting ends now at 10:00, you can fly in as soon as you arrive in the airport before 10:05. This is ideal because it allows for immediate prep while the busy 10 AM workday is still underway."
+    ],
+    "ui": {
+      "history": {
+        "elapsedMs": 18.199999809265137,
+        "url": "https://0.0.0.1/chat/71506603-aa93-45dd-b6b0-380bdd3c234a",
+        "messages": 5,
+        "inputEnabled": true
+      },
+      "returnToTest": {
+        "elapsedMs": 16.59999990463257,
+        "url": "https://0.0.0.1/chat/ecb9ae08-7ff7-4e1b-9639-b5071db45d7c",
+        "messages": 4,
+        "inputEnabled": true
+      },
+      "repeat": {
+        "startedAt": "2026-10-16T07:29:43.822Z",
+        "initialAssistantCount": 1,
+        "completed": true,
+        "elapsedMs": 32582.39999961853,
+        "finishedAt": "2026-10-16T07:30:16.405Z",
+        "assistantCount": 2,
+        "inputEnabled": true
+      },
+      "inputEnabled": true,
+      "busy": "false"
+    },
+    "minimalDirectRequest": {
+      "startedAt": "2026-10-16T16:28:32.4533726+09:00",
+      "elapsedMs": 4523.7233,
+      "model": "Qwen3.5-0.8B-MNN",
+      "messages": 1,
+      "systemMessages": 0,
+      "userCharacters": 111,
+      "reply": "To reach the scheduled deadline by 10:00, you should make your final travel stop (e.g., hotel check-in or meeting prep) between **09:00 and 09:30**. This ensures an arrival of at least 15–20 minutes earlier than the specified cut-off times."
+    },
+    "projectJourney": {
+      "reopenedTitle": "Cache verification (temporary)",
+      "revision": "BUSINESS · REVISION 2",
+      "workflow": "Verify cached project reads",
+      "activeCatalogue": [],
+      "status": "Archived",
+      "archived": true
+    }
+  },
+  "angelDust": {
+    "serial": "3B221JEHN16653",
+    "model": "Circle OS",
+    "apkInstall": "Success",
+    "serviceConnected": true,
+    "serviceReportedConversationReady": true,
+    "cacheObservation": {
+      "observedDeviceTime": "2026-10-16 16:33:11.013",
+      "hits": 2,
+      "loads": 13,
+      "entries": 7,
+      "contentWeight": 6991
+    },
+    "foregroundAtScreenshot": "SDPKT",
+    "visibleConciergeTest": "Pending user confirmation that device is available",
+    "localReplyTest": "Pending",
+    "serviceVersionName": "0.1",
+    "serviceVersionCode": 56
+  },
+  "pixieDust": {
+    "endpoint": "192.168.0.140:35035",
+    "tcpReachable": true,
+    "connectionError": "SSLV3_ALERT_CERTIFICATE_UNKNOWN",
+    "apkInstalled": false
+  }
+}
