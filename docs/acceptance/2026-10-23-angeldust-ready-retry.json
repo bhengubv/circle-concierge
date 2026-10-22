@@ -1,0 +1,41 @@
+{
+  "date": "2026-10-23",
+  "device": "AngelDust",
+  "serviceVersionCode": 60,
+  "model": "Qwen3.5-2B-MNN",
+  "automaticDownload": {
+    "upgrade": "Qwen3.5-4B-MNN waits for Wi-Fi and a charger",
+    "brainReady": "2026-10-23T00:53:13.611+09:00",
+    "firstLaunchDenied": "2026-10-23T00:42:23.438+09:00",
+    "updateLaunchAllowed": "2026-10-23T00:45:29.553+09:00",
+    "modelCompleted": "2026-10-23T00:53:00.900+09:00"
+  },
+  "originalRequest": {
+    "id": "80bc287a3bde4a4ea7bcb412b8eba809",
+    "expired": "2026-10-23T00:52:32.565+09:00",
+    "clientTimedOut": true,
+    "waitingSecondsReported": 181,
+    "accepted": "2026-10-23T00:49:31.866+09:00"
+  },
+  "retry": {
+    "expected": "09:40",
+    "passed": true,
+    "id": "051a4c3096594f0c84574112d40e1566",
+    "localInferenceWorkerPid": 16064,
+    "ui": {
+      "startedAt": "2026-10-22T15:56:25.746Z",
+      "start": 320981.59999999776,
+      "reply": [
+        "ASSISTANT\n\nLeave at 9:40 AM."
+      ],
+      "observedAt": "2026-10-22T15:56:32.179Z",
+      "elapsedMs": 6432.699999999255
+    },
+    "serviceTotalMs": 5962
+  },
+  "limits": [
+    "One warm text question; voice and long-duration stability not tested",
+    "Original cold request did not survive preparation; progress was misleading",
+    "No client update was deployed for the successful retry"
+  ]
+}

@@ -22,3 +22,22 @@ The old service was removed through Android App info / Uninstall; Keep app data 
 Before this reinstall, the Prepare button returned “not linked for Setup — approve in Circle AI first.” An observer captured that exact error before a progress poll overwrote it. Chat and Setup approvals are distinct in the published 3.9.1 SDK. Android also denied an automatic ModelFetchService foreground start at the earlier service startup; that denial preceded the Prepare-button attempt and was not established as its cause. Neither observation proves the current queued request ran inference.
 
 No Circle AI source was accessed or edited. Correct local answering, automatic first-use setup, progress delivery, accepted-request recovery and voice remain unverified on this fresh installation. The first-use acceptance gate is not passed.
+
+## Corrected follow-up: automatic download ran; warm retry passed
+
+A broader inspection of **CircleAI.Fetch plus Android ActivityManager** logs corrected the earlier interpretation of NotInstalled waits. Missing resources at a moment in time did not establish that the downloader was inactive. The manual Setup permission rejection did not establish a block on the service's own automatic preparation.
+
+- **00:42:23.438 JST:** Android denied the initial background ModelFetchService start.
+- **00:45:29.553:** After the package update, Android explicitly allowed that service under its package-replacement allowance.
+- **00:49:38.844:** SmolVLM download completed; the service started fetching the selected Qwen3.5-2B-MNN (1,386,691,327 planned bytes).
+- **00:52:32.565:** Original question expired after a service-reported **181 seconds** waiting. Concierge had already reached its separate two-minute transport limit.
+- **00:53:00.900:** Qwen3.5-2B-MNN completed downloading, about **28 seconds after** the service expired that request.
+- **00:53:13.611:** The model was loaded in the separate inference process and reported ready. The larger Qwen3.5-4B tier was deferred pending Wi-Fi and a charger.
+- **00:56:25.870:** After confirming the original request was terminal, one retry was accepted as request **051a4c3096594f0c84574112d40e1566**.
+- **00:56:32.179:** Concierge visibly displayed **“Leave at 9:40 AM.”** The UI observer measured **6,432.7 ms** from click to reply. Service turn total was **5,962 ms**, with the local Qwen3.5-2B-MNN backend and finish=eos.
+
+**Selection and automatic download worked following the update.** The original fresh-use test failed because the wait expired before preparation completed; the displayed progress/readiness did not explain the real state clearly. This was not the same as a permanently blocked downloader. The earlier report that automatic download had not started was incorrect. This follow-up supersedes that interpretation while retaining the initial request's actual failure.
+
+No new Concierge binary was deployed for the successful retry. Client SDK/setup changes discussed earlier are uncommitted work, not the explanation for this passing answer. One correct warm answer does not close voice, multi-client, upgrade recovery or long-duration acceptance.
+
+[Measured retry](2026-10-23-angeldust-ready-retry.json) and [automatic download/startup timeline](2026-10-23-angeldust-download-timeline.txt) preserve the correction.
