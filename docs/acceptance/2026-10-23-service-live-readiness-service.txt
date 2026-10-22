@@ -1,0 +1,6 @@
+10-23 01:28:11.150 16331 16447 I Concierge.CircleAI.IPC: kind=metadata queueMs=0.04 totalMs=55.14
+10-23 01:28:15.841 16331 16447 I Concierge.CircleAI.IPC: kind=metadata queueMs=0.02 totalMs=26.91
+10-23 01:28:15.862 15412 15857 I CircleAI.Link: serve: ask received
+10-23 01:28:15.867 15412 15857 I CircleAI.Asks: ask 309936980677434bba0dbb2c0de4b070 accepted lane=Foreground spoken=0 chars=111
+10-23 01:28:21.623 15412 16527 I CircleAI.Asks: CIRCLEAI-TURN id=309936980677434bba0dbb2c0de4b070 model=Qwen3.5-2B-MNN queue=7 wait=0 enrich=2 prefill=4674ms/104tok(22.3 tok/s) decode=1057ms/9tok(7.6 tok/s) ttft=4692 total=5756 kv=reset finish=eos
+10-23 01:28:21.626 16331 16331 I Concierge.CircleAI.IPC: kind=chat queueMs=0.01 totalMs=5779.45

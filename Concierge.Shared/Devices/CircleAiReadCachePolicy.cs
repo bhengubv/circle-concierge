@@ -8,7 +8,7 @@ public static class CircleAiReadCachePolicy
         "Capabilities" => 30,
         "Abilities" or "SetupPlan" or "SetupCensus" or "Footprint" => 5,
         "Permissions" => 2,
-        "SetupReadiness" or "SetupProgress" or "ResidentStatus" => 1,
+        "Status" or "SetupReadiness" or "SetupProgress" or "ResidentStatus" => 1,
         _ => 0
     });
 }

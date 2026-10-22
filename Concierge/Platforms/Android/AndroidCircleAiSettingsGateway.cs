@@ -1,5 +1,6 @@
 using Android.Content;
 using CircleAI.Linking;
+using CircleAI.Assistant.Lifecycle;
 using Concierge.Shared.Devices;
 
 namespace Concierge.Platforms.Android;
@@ -10,23 +11,39 @@ public sealed class AndroidCircleAiSettingsGateway(AndroidCircleAiSharedService 
 
     public async Task StartSetupAsync(CancellationToken cancellationToken)
     {
+        var approved = await MainThread.InvokeOnMainThreadAsync(() =>
+        {
+            var activity = Microsoft.Maui.ApplicationModel.Platform.CurrentActivity as MainActivity
+                ?? throw new InvalidOperationException("Open Concierge before preparing Circle AI.");
+            return activity.RequestCircleAiLinkAsync(cancellationToken, LinkScope.Chat | LinkScope.Setup);
+        });
+        service.InvalidateReads();
+        if (!approved) throw new InvalidOperationException("Circle AI setup was not approved. No download was requested.");
         var reply = await service.ExecuteVerbAsync(new LinkVerbRequest(LinkVerb.SetupStart), cancellationToken);
         if (!reply.Ok) throw new InvalidOperationException(reply.Error ?? "Circle AI could not start setup.");
     }
 
     public async Task<CircleAiSetupProgress> ReadSetupProgressAsync(CancellationToken cancellationToken)
     {
-        var readiness = await service.ReadSetupStatusAsync(cancellationToken);
-        if (readiness.Ready) return new(true, readiness.Explanation, null, null, null);
+        var live = await service.ReadLiveReadinessAsync(cancellationToken);
+        var chat = CircleAiLiveReadiness.Chat(live, "");
+        var fetch = live.Components.FirstOrDefault(c => c.Component == ReadinessComponents.Fetch);
+        // A usable text model does not mean voice resources or background upgrades are finished.
+        if (fetch is not null && fetch.Phase is BrainPhase.Loading or BrainPhase.Paused or BrainPhase.Failed)
+            return new(false, chat.Explanation, fetch.ModelId, CircleAiLiveReadiness.Fraction(fetch.Progress),
+                fetch.Phase == BrainPhase.Paused ? "Paused · " + fetch.Pause : fetch.Phase.ToString(),
+                fetch.Phase == BrainPhase.Loading);
+        if (fetch?.Phase == BrainPhase.Ready)
+            return new(true, chat.Explanation, fetch.ModelId, null, "Done");
         var reply = await service.ExecuteVerbAsync(new LinkVerbRequest(LinkVerb.SetupProgress), cancellationToken);
-        if (!reply.Ok) throw new InvalidOperationException(reply.Error ?? "Circle AI did not report setup progress.");
+        if (!reply.Ok) return new(false, chat.Explanation + " Setup progress: " + reply.Error, null, null, null);
         var row = reply.Rows.FirstOrDefault();
-        if (row is null) return new(false, readiness.Explanation, null, null, null);
+        if (row is null) return new(false, chat.Explanation, null, null, null);
         if (row.Count < 6) throw new InvalidOperationException("Circle AI returned an invalid setup progress report.");
         var index = LinkSetupRows.Number(row, 0, -1);
         var count = LinkSetupRows.Number(row, 1, 0);
         var remaining = LinkSetupRows.Fraction(row, 4, -1);
-        return new(false, readiness.Explanation, row[2], CircleAiSetupProgress.ParseFraction(row[3]), row[5],
+        return new(row[5] == "Done", chat.Explanation, row[2], CircleAiSetupProgress.ParseFraction(row[3]), row[5],
             row[5] is "Fetching" or "Checking",
             index >= 0 && index < count && count <= int.MaxValue ? (int)index + 1 : null,
             count > 0 && count <= int.MaxValue ? (int)count : null,
@@ -41,20 +58,19 @@ public sealed class AndroidCircleAiSettingsGateway(AndroidCircleAiSharedService 
         sections.Add(new("voice", "Voice and wake",
             "Background listening status comes from Circle AI. Permission and running status below are separate from your saved preference. Saved listening preferences are not yet editable in this panel.",
             await Facts(LinkVerb.ResidentStatus, cancellationToken)));
-        sections.Add(new("readiness", "Readiness and capabilities",
-            "These are reports from the service on this device. Supported does not mean ready or currently running.",
-            [.. await Facts(LinkVerb.SetupReadiness, cancellationToken), .. await Facts(LinkVerb.Abilities, cancellationToken),
-             .. await Facts(LinkVerb.SetupPlan, cancellationToken), .. await Facts(LinkVerb.SetupCensus, cancellationToken)]));
-        CircleAiSettingFact chatFact;
+        IReadOnlyList<CircleAiSettingFact> liveFacts;
         try
         {
-            var chat = await service.ReadChatStatusAsync(cancellationToken);
-            chatFact = new("Text conversations", chat.Ready ? "Ready" : "Not ready", chat.Explanation);
+            liveFacts = CircleAiLiveReadiness.Facts(await service.ReadLiveReadinessAsync(cancellationToken));
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch (Exception e) { chatFact = new("Text conversations", "Unavailable", e.Message); }
-        var readinessSection = sections[^1];
-        sections[^1] = readinessSection with { Facts = [chatFact, .. readinessSection.Facts] };
+        catch (Exception e) { liveFacts = [new("Text conversations", "Not confirmed", e.Message)]; }
+        sections.Add(new("readiness", "Readiness and capabilities",
+            "Live status from Circle AI. Each feature is checked separately. Downloaded files and supported features do not prove a model is loaded or ready.", liveFacts));
+        sections.Add(new("resources", "Resource plan and downloaded files",
+            "Circle AI selects suitable models automatically. These are its capability and file reports, not settings or proof of readiness. A blocked resource plan needs attention in Circle AI, not a model choice from you.",
+            [.. await Facts(LinkVerb.Abilities, cancellationToken), .. await Facts(LinkVerb.SetupPlan, cancellationToken),
+             .. await Facts(LinkVerb.SetupCensus, cancellationToken)]));
         sections.Add(new("permissions", "Permissions and setup",
             "Microphone access is needed to hear you; notifications show background listening. Turning either off can prevent listening or hide its notification. Android controls these permissions.",
             await Facts(LinkVerb.Permissions, cancellationToken)));

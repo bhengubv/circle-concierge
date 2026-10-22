@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+<PropertyGroup><TargetFramework>net10.0</TargetFramework><AssemblyName>Concierge.Tests</AssemblyName><IsTestProject>true</IsTestProject><Nullable>enable</Nullable><ImplicitUsings>enable</ImplicitUsings><EnableDefaultCompileItems>false</EnableDefaultCompileItems></PropertyGroup>
+<ItemGroup><Using Include="Xunit" /><PackageReference Include="bunit" Version="2.9.0" /><PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" /><PackageReference Include="xunit" Version="2.9.3" /><PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" /></ItemGroup>
+<ItemGroup><ProjectReference Include="../../Concierge.Ai/Concierge.Ai.csproj" /><ProjectReference Include="../../Concierge.Shared.Components/Concierge.Shared.Components.csproj" /></ItemGroup>
+<ItemGroup><Compile Include="../../Concierge.Tests/CircleAiLiveReadinessTests.cs" /><Compile Include="../../Concierge.Tests/CircleAiDeviceSettingsTests.cs" /><Compile Include="../../Concierge.Tests/CircleAiSharedServiceChatRuntimeTests.cs" /></ItemGroup>
+</Project>

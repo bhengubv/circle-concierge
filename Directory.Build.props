@@ -1,6 +1,6 @@
 <Project>
   <PropertyGroup>
-    <CircleAiPackageVersion Condition="'$(CircleAiPackageVersion)' == ''">3.8.1</CircleAiPackageVersion>
+    <CircleAiPackageVersion Condition="'$(CircleAiPackageVersion)' == ''">3.9.1</CircleAiPackageVersion>
   </PropertyGroup>
 
   <!--

@@ -347,6 +347,8 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     {
         get
         {
+            if (_activeRuntime is IChatRuntimePreparation && PreparingConversation(CircleAiCapabilityCatalog) is not null)
+                return _activeRuntime.StatusMessage;
             if (PreparingConversation(_desktopCapabilityCatalog) is not null)
                 return "Circle AI is getting ready on your Desktop.";
 
@@ -540,6 +542,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
             : !_streaming
               && (!string.IsNullOrWhiteSpace(_composerText) || _pendingAttachments.Count > 0)
               && ((_activeRuntime?.IsReady ?? false)
+                  || (_activeRuntime is IChatRuntimePreparation { CanWaitForPreparation: true })
                   || (_desktopAvailable && _desktopCanAnswer && _pendingAttachments.Count == 0));
 
     protected bool CanTransferToDesktop => !_streaming && _desktopAvailable && _desktopCanAnswer
@@ -2206,7 +2209,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
             var decision = selector?.Select(
                 _composerText.Trim(),
                 hasImage: false,
-                localCanAnswer: _activeRuntime?.IsReady == true,
+                localCanAnswer: _activeRuntime?.IsReady == true || _activeRuntime is IChatRuntimePreparation { CanWaitForPreparation: true },
                 local: CircleAiCapabilityCatalog,
                 desktopCanAnswer: _desktopAvailable && _desktopCanAnswer,
                 desktop: _desktopCapabilityCatalog,
@@ -2214,12 +2217,12 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
             if (decision?.Target == ChatExecutionTarget.ConnectedDesktop
                 || selector is null && _desktopAvailable && _desktopCanAnswer
-                    && _activeRuntime?.IsReady != true)
+                    && _activeRuntime?.IsReady != true && _activeRuntime is not IChatRuntimePreparation { CanWaitForPreparation: true })
             {
                 await SendToDesktopAsync();
                 return;
             }
-            if (_activeRuntime?.IsReady != true)
+            if (_activeRuntime?.IsReady != true && _activeRuntime is not IChatRuntimePreparation { CanWaitForPreparation: true })
             {
                 _composerHint = _activeRuntime?.StatusMessage ?? "Circle AI is not ready on this device.";
                 return;

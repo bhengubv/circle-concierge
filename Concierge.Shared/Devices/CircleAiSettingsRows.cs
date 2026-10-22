@@ -18,7 +18,9 @@ public static class CircleAiSettingsRows
             case "SetupReadiness" when row.Count >= 4:
                 return [new(row[1], row[0], row[2]), new("Overall setup readiness", Flag(row[3], "Ready", "Not ready"))];
             case "Abilities" when row.Count >= 5:
-                return [new(row[0], row[2], row[1])];
+                return [new(row[0], row[2] == "TooBig" ? "Blocked" : row[2], row[2] == "TooBig"
+                    ? row[1] + " Circle AI reports that its current resource plan does not fit. Model selection belongs to the service; there is no model choice to make here."
+                    : row[1])];
             case "Permissions" when row.Count >= 4:
                 return [new(row[0], Flag(row[2], "Allowed", "Not allowed"), row[1])];
             case "Footprint" when row.Count >= 3:

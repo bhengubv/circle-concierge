@@ -87,6 +87,7 @@
     private bool _setupRequested;
     private CircleAiSetupProgress? _setupProgress;
     private string _setupStatus = "Setup progress has not been checked.";
+    private string? _setupError;
     private readonly CancellationTokenSource _stop = new();
     protected override async Task OnInitializedAsync()
     {
@@ -99,6 +100,7 @@
     {
         if (_busy || _setupRequested || _setupProgress?.Ready == true || _setupProgress?.InProgress == true || _gateway is not ICircleAiServiceSetup setup) return;
         _busy = true;
+        _setupError = null;
         try
         {
             await setup.StartSetupAsync(_stop.Token);
@@ -106,7 +108,7 @@
             _setupStatus = "Circle AI accepted setup. Waiting for its progress report.";
         }
         catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
-        catch (Exception error) { _setupStatus = "Setup could not be confirmed: " + error.Message; }
+        catch (Exception error) { _setupStatus = _setupError = "Setup could not be confirmed: " + error.Message; }
         finally { _busy = false; }
     }
     private async Task MonitorSetup()
@@ -115,18 +117,24 @@
         {
             if (!_busy && _gateway is ICircleAiServiceSetup setup)
             {
+                _busy = true;
                 try
                 {
                     _setupProgress = await setup.ReadSetupProgressAsync(_stop.Token);
-                    _setupStatus = _setupProgress.Status;
+                    if (_setupError is null) _setupStatus = _setupProgress.Status;
                     if (_setupProgress.Ready || _setupProgress.Phase == "Done") _setupRequested = false;
+                    // Keep component readiness live alongside progress, including after text becomes ready.
+                    await ReadReports();
                 }
                 catch (OperationCanceledException) when (_stop.IsCancellationRequested) { return; }
                 catch (Exception error)
                 {
                     _setupProgress = null; // Never display a stale percentage as live progress.
-                    _setupStatus = "Progress unavailable: " + error.Message;
+                    _report = null; // A failed poll must not leave old Ready facts looking current.
+                    _status = "Current Circle AI readiness could not be checked: " + error.Message;
+                    if (_setupError is null) _setupStatus = "Progress unavailable: " + error.Message;
                 }
+                finally { _busy = false; }
                 await InvokeAsync(StateHasChanged);
             }
             try { await Task.Delay(TimeSpan.FromSeconds(5), _stop.Token); }

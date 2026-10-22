@@ -2,6 +2,7 @@ using Android.Content;
 using Android.Content.PM;
 using Android.OS;
 using CircleAI.Linking;
+using CircleAI.Assistant.Lifecycle;
 using Concierge.Shared.Devices;
 using Concierge.Shared.Caching;
 using System.Diagnostics;
@@ -70,7 +71,7 @@ public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICirc
             var capabilities = response.Rows
                 .Where(row => row.Count >= 3)
                 .Select(row => new CircleAiServiceCapability(row[0], row[1], row[2])).ToArray();
-            return Result("Authorized catalogue received. Model readiness is not reported by this link.",
+            return Result("Authorized catalogue received. Live readiness is checked separately.",
                 authorized: true, capabilities: capabilities);
         }
         catch (PackageManager.NameNotFoundException)
@@ -92,7 +93,7 @@ public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICirc
     internal async Task<LinkRowsReply> ExecuteVerbAsync(LinkVerbRequest request, CancellationToken cancellationToken)
     {
         var lifetime = CircleAiReadCachePolicy.LifetimeFor(request.Verb.ToString());
-        if (lifetime > TimeSpan.Zero && request.Query is null && request.Text is null && request.Subject is null)
+        if (lifetime > TimeSpan.Zero && request.Query is null && request.Text is null && request.Subject is null && request.Args is null)
         {
             var result = await _reads.GetAsync(request.Verb, lifetime,
                 () => ExecuteUncachedVerbAsync(request, CancellationToken.None), cancellationToken);
@@ -125,25 +126,19 @@ public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICirc
 
     public async Task<CircleAiServiceChatStatus> ReadChatStatusAsync(CancellationToken cancellationToken)
     {
-        var setup = await ReadSetupStatusAsync(cancellationToken);
-        if (setup.Ready || setup.Stage is "AuthorizationRequired" or "Unavailable") return setup;
-        var abilities = await ExecuteVerbAsync(new LinkVerbRequest(LinkVerb.Abilities), cancellationToken);
-        if (abilities.Ok && CircleAiServiceReadiness.TextAnsweringIsOn(abilities.Rows))
-            return new(true, "TextReady", "Circle AI can answer here. Voice setup is still incomplete.", setup.Version);
-        return setup;
-    }
-
-    internal async Task<CircleAiServiceChatStatus> ReadSetupStatusAsync(CancellationToken cancellationToken)
-    {
-        var response = await ExecuteVerbAsync(new LinkVerbRequest(LinkVerb.SetupReadiness), cancellationToken);
         var info = global::Android.App.Application.Context.PackageManager!.GetPackageInfo(Package, (PackageInfoFlags)0)!;
         var version = $"{info.VersionName} build {info.LongVersionCode}";
+        var response = await ExecuteVerbAsync(new LinkVerbRequest(LinkVerb.Status), cancellationToken);
         if (!response.Ok) return new(false, response.Error?.Contains("not linked", StringComparison.OrdinalIgnoreCase) == true
-            ? "AuthorizationRequired" : "Unavailable", response.Error ?? "Circle AI did not report readiness.", version);
-        var row = response.Rows.FirstOrDefault();
-        if (row is null || row.Count < 4 || row[3] is not ("0" or "1"))
-            throw new InvalidOperationException("Circle AI returned an invalid readiness report.");
-        return new(row[3] == "1", row[0], string.Join(" ", row.Skip(1).Take(2)), version);
+            ? "AuthorizationRequired" : "Unavailable", response.Error ?? "Circle AI did not report live readiness.", version);
+        return CircleAiLiveReadiness.Chat(CircleAiLiveReadiness.Read(response.Rows), version);
+    }
+
+    internal async Task<ReadinessSnapshot> ReadLiveReadinessAsync(CancellationToken cancellationToken)
+    {
+        var response = await ExecuteVerbAsync(new LinkVerbRequest(LinkVerb.Status), cancellationToken);
+        if (!response.Ok) throw new InvalidOperationException(response.Error ?? "Circle AI did not report live readiness.");
+        return CircleAiLiveReadiness.Read(response.Rows);
     }
 
     public async Task<CircleAiServiceChatReply> SendChatAsync(string sessionId, string message, bool agentic,

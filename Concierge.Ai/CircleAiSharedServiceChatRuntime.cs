@@ -9,20 +9,23 @@ namespace Concierge.Ai;
 
 /// <summary>Thin service consumer: no model probing, loading, selection, or downloads.</summary>
 public sealed class CircleAiSharedServiceChatRuntime(ICircleAiServiceChatLink link)
-    : IChatRuntime, IChatRuntimeCapabilitySource, IChatRuntimeStatusEvents, ILlmRuntimeService
+    : IChatRuntime, IChatRuntimeCapabilitySource, IChatRuntimeStatusEvents, ILlmRuntimeService, IChatRuntimePreparation
 {
     private readonly SemaphoreSlim _turn = new(1, 1);
     private DateTimeOffset _observed = DateTimeOffset.MinValue;
     private string _version = "Not checked";
     private ChatRuntimeCapabilityState _state = ChatRuntimeCapabilityState.Preparing;
     private bool _sending;
+    private string _stage = "Unknown";
+    internal TimeSpan PreparationPollInterval { get; init; } = TimeSpan.FromSeconds(3);
+    public bool CanWaitForPreparation { get; private set; }
     public string Id => "circleai";
     public string EngineLabel => "Circle AI Android service";
     public bool LeavesDevice => false;
     public bool IsReady { get; private set; }
     public string StatusMessage { get; private set; } = "Checking Circle AI on this device…";
     public event EventHandler? StatusChanged;
-    public ModelDownloadProgress? CurrentDownloadProgress => null;
+    public ModelDownloadProgress? CurrentDownloadProgress { get; private set; }
     public ChatRuntimeCapabilityCatalog CapabilityCatalog => new(1, Id, _version, _observed,
         [new("conversation", "Conversation", _state, StatusMessage),
          new("visual-input", "Pictures", ChatRuntimeCapabilityState.Unavailable, "The published chat link accepts text, not pictures.")], null);
@@ -35,6 +38,10 @@ public sealed class CircleAiSharedServiceChatRuntime(ICircleAiServiceChatLink li
         {
             var status = await link.ReadChatStatusAsync(cancellationToken);
             IsReady = status.Ready;
+            CanWaitForPreparation = status.CanWaitForPreparation;
+            _stage = status.Stage;
+            CurrentDownloadProgress = status.PreparationFraction is double fraction
+                ? new(fraction, status.Explanation) : null;
             _version = status.Version;
             _state = status.Ready ? ChatRuntimeCapabilityState.Available
                 : status.Stage == "NeedsSetup" || status.Stage == "AuthorizationRequired"
@@ -46,6 +53,8 @@ public sealed class CircleAiSharedServiceChatRuntime(ICircleAiServiceChatLink li
         catch (Exception)
         {
             IsReady = false;
+            CanWaitForPreparation = false;
+            CurrentDownloadProgress = null;
             _state = ChatRuntimeCapabilityState.Unavailable;
             StatusMessage = "Circle AI service could not respond on this device.";
         }
@@ -59,7 +68,20 @@ public sealed class CircleAiSharedServiceChatRuntime(ICircleAiServiceChatLink li
         await _turn.WaitAsync(cancellationToken);
         try
         {
-            if (!IsReady) throw new ChatRuntimeUnavailableException(StatusMessage);
+            // Read again at send time: the service may have restarted since the last UI poll.
+            // Keep preparation outside the inference call, whose timeout is for answering.
+            await RefreshAsync(cancellationToken);
+            while (!IsReady && _stage != "Installed" && CanWaitForPreparation)
+            {
+                StatusMessage = "Your question is waiting on this device. " + StatusMessage;
+                StatusChanged?.Invoke(this, EventArgs.Empty);
+                await Task.Delay(PreparationPollInterval, cancellationToken);
+                await RefreshAsync(cancellationToken);
+            }
+            // Installed means the service can load on demand; requiring an already-loaded
+            // brain here would deadlock services that load only when a question arrives.
+            if (!IsReady && !(_stage == "Installed" && CanWaitForPreparation))
+                throw new ChatRuntimeUnavailableException(StatusMessage);
             var conversation = ToolApprovalRunContext.Current?.ConversationId
                 ?? throw new InvalidOperationException("A durable conversation is required for Circle AI service.");
             var query = messages.LastOrDefault(m => m.Role == "user" || m.Role == "tool");
@@ -89,6 +111,8 @@ public sealed class CircleAiSharedServiceChatRuntime(ICircleAiServiceChatLink li
     private void RecordFailure(string message)
     {
         IsReady = false;
+        CanWaitForPreparation = false;
+        CurrentDownloadProgress = null;
         _state = ChatRuntimeCapabilityState.Unavailable;
         StatusMessage = message;
         _observed = DateTimeOffset.UtcNow;

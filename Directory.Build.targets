@@ -1,9 +1,9 @@
 <Project>
-  <!-- CircleAI 3.8.1 requires this patch floor. Apply it after project items so
+  <!-- CircleAI 3.9.1 requires this patch floor. Apply it after project items so
        older direct pins cannot downgrade the SDK's shared service contracts. -->
   <ItemGroup>
     <PackageReference Update="Microsoft.Extensions.DependencyInjection;Microsoft.Extensions.DependencyInjection.Abstractions;Microsoft.Extensions.Hosting.Abstractions;Microsoft.Extensions.Http;Microsoft.Extensions.Logging.Abstractions"
-                      Version="10.0.12" />
+                      Version="10.0.13" />
   </ItemGroup>
   <!--
     Source ProjectReference builds need explicit native assets. The merged

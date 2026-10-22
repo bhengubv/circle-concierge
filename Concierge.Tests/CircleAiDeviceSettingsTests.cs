@@ -101,22 +101,56 @@ public sealed class CircleAiDeviceSettingsTests : BunitContext
         panel.WaitForAssertion(() => Assert.Contains("connection was not approved", panel.Markup));
     }
 
+    [Fact]
+    public void Setup_error_survives_the_next_service_progress_poll()
+    {
+        var gateway = new SetupGateway { Fail = true, MarkProgressPolls = true };
+        Services.AddSingleton<ICircleAiSettingsGateway>(gateway);
+        var panel = Render<Concierge.Shared.Components.Components.CircleAiDeviceSettings>();
+        panel.FindAll("button").Single(b => b.TextContent == "Prepare Circle AI on this device").Click();
+        panel.WaitForAssertion(() => Assert.Contains("Setup could not be confirmed: Service refused", panel.Markup));
+        panel.WaitForAssertion(() =>
+        {
+            Assert.Contains("Progress poll 2", panel.Markup);
+            Assert.Contains("Setup could not be confirmed: Service refused", panel.Markup);
+        }, TimeSpan.FromSeconds(8));
+    }
+
     private sealed class SetupGateway : ICircleAiSettingsGateway, ICircleAiServiceSetup
     {
         public int Starts;
         public bool Fail;
         public bool InProgress;
+        public bool MarkProgressPolls;
+        public bool FailProgress;
+        public bool ReportReady;
+        private int _progressReads;
         public Task<CircleAiSettingsReport> ReadAsync(CancellationToken token) => Task.FromResult(
-            new CircleAiSettingsReport("Checked", [new("readiness", "Readiness", "Service report", [])], false, false));
+            new CircleAiSettingsReport("Checked", [new("readiness", "Readiness", "Service report",
+                ReportReady ? [new("Text conversations", "Ready")] : [])], false, false));
         public Task StartSetupAsync(CancellationToken token)
         {
             Starts++;
             return Fail ? Task.FromException(new InvalidOperationException("Service refused")) : Task.CompletedTask;
         }
         public Task<CircleAiSetupProgress> ReadSetupProgressAsync(CancellationToken token)
-            => Task.FromResult(new CircleAiSetupProgress(false, "Preparing", "The brain", 0.25, "Downloading", InProgress));
+        {
+            if (FailProgress) throw new InvalidOperationException("Service disconnected");
+            var read = Interlocked.Increment(ref _progressReads);
+            return Task.FromResult(new CircleAiSetupProgress(false, "Preparing", "The brain", 0.25,
+                MarkProgressPolls ? $"Progress poll {read}" : "Downloading", InProgress));
+        }
         public Task OpenCircleAiAsync() => throw new NotSupportedException();
         public Task OpenPermissionsAsync() => throw new NotSupportedException();
+    }
+
+    [Fact]
+    public void Failed_live_poll_removes_stale_ready_and_displays_the_error()
+    {
+        Services.AddSingleton<ICircleAiSettingsGateway>(new SetupGateway { ReportReady = true, FailProgress = true });
+        var panel = Render<Concierge.Shared.Components.Components.CircleAiDeviceSettings>();
+        panel.WaitForAssertion(() => Assert.Contains("Current Circle AI readiness could not be checked: Service disconnected", panel.Markup));
+        Assert.DoesNotContain("Conversation: Ready.", panel.Markup);
     }
 
     [Fact]
