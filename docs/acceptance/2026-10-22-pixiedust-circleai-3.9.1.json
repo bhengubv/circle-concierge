@@ -1,0 +1,28 @@
+{
+  "date": "2026-10-22",
+  "device": "PixieDust",
+  "serial": "adb-32231JEHN17663-xy66DC._adb-tls-connect._tcp",
+  "installedServiceVersionCode": 60,
+  "release": "3.9.1",
+  "apkSha256": "b6109069220bf8852d500d70d3da89f3e126cd30856af4d1fec6a6140afdee7b",
+  "installResult": "Success",
+  "dataCleared": false,
+  "conversationId": "51c1304a-d6c4-4ef5-a9b3-4a914947a3ef",
+  "serviceRequestId": "86e17710e331490db7c7266323720421",
+  "model": "Qwen3.5-2B-MNN",
+  "question": "My meeting starts at 10:00. Travel takes 20 minutes. What time should I leave to arrive on time? Reply briefly.",
+  "reply": "Leave at 9:40 AM.",
+  "accuracyPassed": true,
+  "firstObservedUiElapsedMs": 6787.3,
+  "serviceTurnTotalMs": 6163,
+  "chatIpcServiceMs": 6349.15,
+  "inferenceWorkerPid": 22137,
+  "servicePid": 22029,
+  "voiceAcceptance": "Not tested",
+  "longDurationAcceptance": "Not tested",
+  "ui": {
+    "url": "https://0.0.0.1/chat/51c1304a-d6c4-4ef5-a9b3-4a914947a3ef",
+    "text": "2 devices connected\nConcierge\nBY CIRCLE\n+\nNew conversation\nStart here\n◇\nProjects\nOrganize bigger goals\nRecent conversations\n4\nMy meeting starts at 10:00. Travel takes 20 minutes. What ti…\nnow\nMy meeting starts at 10:00. Travel takes 20 minutes. What ti…\n16 Oct\nWhat is two plus three? Reply with the number only.\n14 Oct\nShow all conversations\nFind an older conversation\nNeeds your OK\n0\nPersonalize Circle AI\nMake something\nAbout & updates\nAI engine\nCircle AI · app settings\nSettings\nMy meeting starts at 10:00. Travel takes 20 minutes. What ti…\nPowered by Circle AI\nYOU\n\nMy meeting starts at 10:00. Travel takes 20 minutes. What time should I leave to arrive on time? Reply briefly.\n\nASSISTANT\n\nLeave at 9:40 AM.\n\nAttach a file or a picture\nSpeak\nUse Desktop\nSend\nPlan only\nAsk first\nAct freely\n·\nPowered by Circle AI\n·",
+    "inputEnabled": true
+  }
+}

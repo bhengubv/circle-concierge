@@ -1,0 +1,4 @@
+10-22 22:53:05.183 22029 22130 I CircleAI.Supervisor: brain ready: Qwen3.5-2B-MNN in 13719 ms (free RAM at start 2.78 GB)
+10-22 22:56:08.171 22029 22431 I CircleAI.Asks: ask 86e17710e331490db7c7266323720421 accepted lane=Foreground spoken=0 chars=111
+10-22 22:56:14.310 22137 22491 I mnnbridge: gen: prompt=102 tok | tokenise=8 ms | prefill=4631 ms | decode=1191 ms | total=5830 ms | 9 chunks
+10-22 22:56:14.489 22029 22129 I CircleAI.Asks: CIRCLEAI-TURN id=86e17710e331490db7c7266323720421 model=Qwen3.5-2B-MNN queue=234 wait=0 enrich=45 prefill=4772ms/104tok(21.8 tok/s) decode=1058ms/9tok(7.6 tok/s) ttft=4874 total=6163 kv=reset finish=eos
