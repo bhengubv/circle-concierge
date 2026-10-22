@@ -1,0 +1,11 @@
+10-23 00:47:38.001 15412 15412 I CircleAI.Link: consent: GRANTED to 'com.companyname.concierge'
+10-23 00:48:25.855 15412 15412 I CircleAI.Link: consent: asking about 'com.companyname.concierge'
+10-23 00:48:25.855 15412 15412 I CircleAI.Link: consent: GRANTED to 'com.companyname.concierge'
+10-23 00:49:31.866 15412 15847 I CircleAI.Asks: ask 80bc287a3bde4a4ea7bcb412b8eba809 accepted lane=Foreground spoken=0 chars=111
+10-23 00:49:32.245 15412 15930 I CircleAI.Asks: ask 80bc287a3bde4a4ea7bcb412b8eba809 waits: the brain could not start (NotInstalled)
+10-23 00:50:02.275 15412 15920 I CircleAI.Asks: ask 80bc287a3bde4a4ea7bcb412b8eba809 waits: the brain could not start (NotInstalled)
+10-23 00:50:32.317 15412 15953 I CircleAI.Asks: ask 80bc287a3bde4a4ea7bcb412b8eba809 waits: the brain could not start (NotInstalled)
+10-23 00:51:02.377 15412 15675 I CircleAI.Asks: ask 80bc287a3bde4a4ea7bcb412b8eba809 waits: the brain could not start (NotInstalled)
+10-23 00:51:32.505 15412 15947 I CircleAI.Asks: ask 80bc287a3bde4a4ea7bcb412b8eba809 waits: the brain could not start (NotInstalled)
+10-23 00:52:02.533 15412 15948 I CircleAI.Asks: ask 80bc287a3bde4a4ea7bcb412b8eba809 waits: the brain could not start (NotInstalled)
+10-23 00:52:32.565 15412 16029 I CircleAI.Asks: ask 80bc287a3bde4a4ea7bcb412b8eba809 expired after 181 s waiting
