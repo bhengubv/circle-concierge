@@ -22,6 +22,7 @@ public partial class MainActivity
     private Java.Lang.Runnable? _primaryGesture;
     private Java.Lang.Runnable? _dismissGesture;
     private string _handStatus = "Checking hand gestures…";
+    private string _lastHandEvent = "No hand gesture received in this session.";
 
     private void OpenPane(WristPane pane) { _scroll?.ScrollTo(0, 0); _pane = pane; Render(); _ = RefreshWristAsync(); }
     private void BackToWrist()
@@ -106,6 +107,7 @@ public partial class MainActivity
                 break;
             case WristPane.Gestures:
                 Text(_handStatus, true);
+                Text(_lastHandEvent);
                 Text("Double pinch: talk on Home; scroll through the inbox. Wrist turn: go back. Approvals still require an explicit Yes or No.");
                 Text("Turn the crown to scroll. Swipe right to go back. Swipe up on Home to open the inbox.");
                 Row("Watch gesture settings", () => { try { StartActivity(new Android.Content.Intent("com.google.wear.input.action.GESTURE_INPUT_SETTINGS")); } catch (Android.Content.ActivityNotFoundException) { _handStatus = "Open Gestures in watch Settings"; Render(); } });
@@ -179,12 +181,16 @@ public partial class MainActivity
 
     private void HandPrimary()
     {
+        _lastHandEvent = $"Double pinch received · {DateTime.Now:HH:mm:ss}";
+        Android.Util.Log.Info("ConciergeGestures", $"Primary pane={_pane} thinking={_thinking}");
         if (_pane != WristPane.Home) _scroll?.SmoothScrollBy(0, Dp(110));
         else if (_visibleApproval is not null) Listen(); // Never approve a consequential action accidentally.
         else if (!_thinking) Listen();
     }
     private void HandDismiss()
     {
+        _lastHandEvent = $"Wrist turn received · {DateTime.Now:HH:mm:ss}";
+        Android.Util.Log.Info("ConciergeGestures", $"Dismiss pane={_pane}");
         if (_pane != WristPane.Home) BackToWrist();
         else if (_showDevices) { _showDevices = false; Render(); }
         else if (_visibleApproval is null) Finish(); // Does not cancel work or silently deny an approval.

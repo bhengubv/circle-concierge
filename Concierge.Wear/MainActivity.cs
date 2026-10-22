@@ -347,6 +347,11 @@ public partial class MainActivity : Activity, ISensorEventListener
     protected override void OnActivityResult(int requestCode, [GeneratedEnum] Result resultCode, Intent? data)
     {
         base.OnActivityResult(requestCode, resultCode, data);
+#if DEBUG
+        // Metadata only: diagnose native input contracts without logging conversation text.
+        var resultKeys = data?.Extras?.KeySet() is { } keys ? string.Join(",", keys) : "none";
+        Android.Util.Log.Info("Concierge.Wear.Input", $"request={requestCode} result={resultCode} keys={resultKeys}");
+#endif
         var approvalId = _spokenApprovalId;
         _spokenApprovalId = null;
 
@@ -356,8 +361,11 @@ public partial class MainActivity : Activity, ISensorEventListener
         }
 
         var heard = data.GetStringArrayListExtra(RecognizerIntent.ExtraResults);
+#if DEBUG
+        Android.Util.Log.Info("Concierge.Wear.Input", $"alternatives={heard?.Count ?? 0} firstLength={heard?.FirstOrDefault()?.Length ?? 0}");
+#endif
 
-        if (heard is { Count: > 0 } && heard[0] is { Length: > 0 } said)
+        if (heard?.FirstOrDefault(s => !string.IsNullOrWhiteSpace(s)) is { } said)
         {
             if (WatchInteraction.ApprovalReply(said, approvalId is not null) is { } allowed)
             {
@@ -371,6 +379,12 @@ public partial class MainActivity : Activity, ISensorEventListener
             Render();
 
             _ = SendAsync(said);
+        }
+        else
+        {
+            _lastHeard = "No words received. Tap to try again.";
+            Android.Util.Log.Warn("Concierge.Wear.Input", "Input returned OK without usable words; nothing sent.");
+            Render();
         }
     }
 

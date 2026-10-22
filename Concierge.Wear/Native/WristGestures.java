@@ -27,6 +27,7 @@ public final class WristGestures {
             bridge.listener = value -> {
                 try {
                     int action = (Integer) getAction.invoke(value);
+                    android.util.Log.i("ConciergeGestures", "Received action=" + action + " focused=" + activity.hasWindowFocus());
                     if (action == primaryAction) primary.run();
                     else if (action == dismissAction) dismiss.run();
                     type.getMethod("notifyGestureConsumed", String.class, int.class).invoke(bridge.manager, "concierge-wrist", action);
@@ -35,8 +36,10 @@ public final class WristGestures {
             Executor executor = command -> activity.runOnUiThread(command);
             type.getMethod("addGestureEventListener", int[].class, Window.class, Executor.class, Consumer.class)
                 .invoke(bridge.manager, supported, activity.getWindow(), executor, bridge.listener);
-            boolean enabled = (Boolean) type.getMethod("isActionEnabled", int.class).invoke(bridge.manager, primaryAction);
-            bridge.status = enabled ? "Double pinch · Wrist turn" : "Enable hand gestures in watch Settings";
+            boolean primaryEnabled = (Boolean) type.getMethod("isActionEnabled", int.class).invoke(bridge.manager, primaryAction);
+            boolean dismissEnabled = (Boolean) type.getMethod("isActionEnabled", int.class).invoke(bridge.manager, dismissAction);
+            bridge.status = "Double pinch: " + (primaryEnabled ? "on" : "off")
+                + " · Wrist turn: " + (dismissEnabled ? "on" : "off");
             android.util.Log.i("ConciergeGestures", bridge.status);
         } catch (Exception e) { android.util.Log.w("ConciergeGestures", "Public Wear gesture API unavailable", e); }
         return bridge;
