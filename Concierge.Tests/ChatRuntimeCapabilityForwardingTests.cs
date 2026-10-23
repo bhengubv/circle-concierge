@@ -17,6 +17,22 @@ namespace Concierge.Tests;
 public sealed class ChatRuntimeCapabilityForwardingTests
 {
     [Fact]
+    public void Safety_wrapper_preserves_preparation_admission_without_claiming_ready()
+    {
+        var inner = new PreparingRuntime();
+        var wrapped = Wrap(inner);
+        var preparation = Assert.IsAssignableFrom<IChatRuntimePreparation>(wrapped);
+        Assert.True(preparation.CanWaitForPreparation);
+        Assert.False(wrapped.IsReady);
+        inner.CanWaitForPreparation = false;
+        Assert.False(preparation.CanWaitForPreparation);
+    }
+
+    [Fact]
+    public void Safety_wrapper_does_not_invent_preparation_for_an_ordinary_runtime()
+        => Assert.False(Assert.IsAssignableFrom<IChatRuntimePreparation>(Wrap(new NullChatRuntime())).CanWaitForPreparation);
+
+    [Fact]
     public void A_wrapped_runtime_that_needs_a_download_still_says_so()
     {
         var decorated = Wrap(new NeedsDownloadRuntime());
@@ -96,6 +112,18 @@ public sealed class ChatRuntimeCapabilityForwardingTests
         public ValueTask<IReadOnlyList<SafetyAuditEntry>> ReadAsync(
             string? userId, int limit = 100, CancellationToken cancellationToken = default)
             => ValueTask.FromResult<IReadOnlyList<SafetyAuditEntry>>([]);
+    }
+
+    private sealed class PreparingRuntime : IChatRuntime, IChatRuntimePreparation
+    {
+        public bool CanWaitForPreparation { get; set; } = true;
+        public string Id => "preparing";
+        public string EngineLabel => "Circle AI";
+        public bool IsReady => false;
+        public string StatusMessage => "Preparing";
+        public async IAsyncEnumerable<string> StreamAsync(IReadOnlyList<ChatTurn> messages,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        { await Task.CompletedTask; yield return "answer"; }
     }
 
     private sealed class NeedsDownloadRuntime : IChatRuntime, IModelDownloadRequired

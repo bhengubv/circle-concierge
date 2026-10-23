@@ -92,6 +92,22 @@ public sealed class CircleAiSharedServiceChatRuntimeTests
         Assert.Null(link.Message);
     }
 
+    [Fact]
+    public async Task Queue_capable_service_accepts_question_without_claiming_text_ready()
+    {
+        var link = new FakeLink { Status = new(false, "Unknown", "starting", "60", AcceptsQueuedRequests: true) };
+        var runtime = new CircleAiSharedServiceChatRuntime(link);
+        await runtime.RefreshAsync(default);
+        Assert.False(runtime.IsReady);
+        Assert.True(runtime.CanWaitForPreparation);
+        using var scope = ToolApprovalRunContext.Enter(Guid.NewGuid(), Guid.NewGuid());
+        var answer = "";
+        await foreach (var delta in runtime.StreamAsync([new("user", "What is two plus three?")])) answer += delta;
+        Assert.Equal("5", answer);
+        Assert.Equal(1, link.Sends);
+        Assert.False(runtime.IsReady);
+    }
+
     private sealed class FakeLink : ICircleAiServiceChatLink
     {
         public CircleAiServiceChatStatus Status = new(true, "Ready", "Ready", "58");

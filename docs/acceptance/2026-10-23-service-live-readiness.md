@@ -1,5 +1,11 @@
 # Concierge: live Circle AI readiness
 
+**Later acceptance:** the protocol-2 service queue and missing safety-wrapper
+forwarding were connected and tested on both phones after this earlier record.
+See [request-queue acceptance](2026-10-23-service-queue-acceptance.md). Queue
+acceptance and loaded inference readiness are separate; the strict local wait
+described below now applies to the legacy service path, not a queue-capable host.
+
 ## Change
 
 Concierge consumes the published CircleAI 3.9.1 `Status` contract. Text readiness requires the live brain's `Ready` phase, not `SetupReadiness.canTalk`, an ability label, or downloaded files. Installed and loading are distinct. Speech, spoken replies, wake word, downloads and assistant role are reported separately; absent live reports remain **Not reported**.

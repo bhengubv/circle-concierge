@@ -17,6 +17,7 @@ public sealed class CircleAiSharedServiceChatRuntime(ICircleAiServiceChatLink li
     private ChatRuntimeCapabilityState _state = ChatRuntimeCapabilityState.Preparing;
     private bool _sending;
     private string _stage = "Unknown";
+    private bool _acceptsQueuedRequests;
     internal TimeSpan PreparationPollInterval { get; init; } = TimeSpan.FromSeconds(3);
     public bool CanWaitForPreparation { get; private set; }
     public string Id => "circleai";
@@ -38,7 +39,8 @@ public sealed class CircleAiSharedServiceChatRuntime(ICircleAiServiceChatLink li
         {
             var status = await link.ReadChatStatusAsync(cancellationToken);
             IsReady = status.Ready;
-            CanWaitForPreparation = status.CanWaitForPreparation;
+            _acceptsQueuedRequests = status.AcceptsQueuedRequests;
+            CanWaitForPreparation = status.CanWaitForPreparation || status.AcceptsQueuedRequests;
             _stage = status.Stage;
             CurrentDownloadProgress = status.PreparationFraction is double fraction
                 ? new(fraction, status.Explanation) : null;
@@ -53,6 +55,7 @@ public sealed class CircleAiSharedServiceChatRuntime(ICircleAiServiceChatLink li
         catch (Exception)
         {
             IsReady = false;
+            _acceptsQueuedRequests = false;
             CanWaitForPreparation = false;
             CurrentDownloadProgress = null;
             _state = ChatRuntimeCapabilityState.Unavailable;
@@ -71,7 +74,7 @@ public sealed class CircleAiSharedServiceChatRuntime(ICircleAiServiceChatLink li
             // Read again at send time: the service may have restarted since the last UI poll.
             // Keep preparation outside the inference call, whose timeout is for answering.
             await RefreshAsync(cancellationToken);
-            while (!IsReady && _stage != "Installed" && CanWaitForPreparation)
+            while (!_acceptsQueuedRequests && !IsReady && _stage != "Installed" && CanWaitForPreparation)
             {
                 StatusMessage = "Your question is waiting on this device. " + StatusMessage;
                 StatusChanged?.Invoke(this, EventArgs.Empty);
@@ -80,7 +83,7 @@ public sealed class CircleAiSharedServiceChatRuntime(ICircleAiServiceChatLink li
             }
             // Installed means the service can load on demand; requiring an already-loaded
             // brain here would deadlock services that load only when a question arrives.
-            if (!IsReady && !(_stage == "Installed" && CanWaitForPreparation))
+            if (!_acceptsQueuedRequests && !IsReady && !(_stage == "Installed" && CanWaitForPreparation))
                 throw new ChatRuntimeUnavailableException(StatusMessage);
             var conversation = ToolApprovalRunContext.Current?.ConversationId
                 ?? throw new InvalidOperationException("A durable conversation is required for Circle AI service.");
@@ -92,6 +95,13 @@ public sealed class CircleAiSharedServiceChatRuntime(ICircleAiServiceChatLink li
             var text = query.Role == "tool" ? "Concierge tool result:\n" + query.Content : query.Content;
             _sending = true;
             CircleAiServiceChatReply reply;
+            void Progress(string sentence)
+            {
+                StatusMessage = sentence;
+                StatusChanged?.Invoke(this, EventArgs.Empty);
+            }
+            var progressSource = link as ICircleAiServiceRequestProgress;
+            if (progressSource is not null) progressSource.RequestProgress += Progress;
             try { reply = await link.SendChatAsync(conversation.ToString("D"), text, agentic: false, cancellationToken); }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception error)
@@ -99,6 +109,7 @@ public sealed class CircleAiSharedServiceChatRuntime(ICircleAiServiceChatLink li
                 RecordFailure("Circle AI service could not answer on this device.");
                 throw new ChatRuntimeUnavailableException(StatusMessage, error);
             }
+            finally { if (progressSource is not null) progressSource.RequestProgress -= Progress; }
             if (!reply.Ok || string.IsNullOrWhiteSpace(reply.Text))
             {
                 RecordFailure(reply.Error ?? "Circle AI service returned no answer.");

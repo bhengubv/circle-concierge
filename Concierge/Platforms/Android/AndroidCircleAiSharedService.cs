@@ -6,6 +6,9 @@ using CircleAI.Assistant.Lifecycle;
 using Concierge.Shared.Devices;
 using Concierge.Shared.Caching;
 using System.Diagnostics;
+using System.Security.Cryptography;
+using System.Text;
+using Concierge.Shared.Tools;
 
 namespace Concierge.Platforms.Android;
 
@@ -15,8 +18,9 @@ namespace Concierge.Platforms.Android;
 /// One outstanding Binder transaction maximum; timing out a caller must not
 /// create another blocked native transaction on every subsequent click.
 /// </summary>
-public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICircleAiSharedServiceLink, ICircleAiServiceChatLink
+public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICircleAiSharedServiceLink, ICircleAiServiceChatLink, ICircleAiServiceRequestProgress
 {
+    public event Action<string>? RequestProgress;
     private const string Package = LinkIpc.HostPackage;
     private readonly object _gate = new();
     private Task<CircleAiSharedServiceSnapshot>? _probe;
@@ -131,7 +135,16 @@ public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICirc
         var response = await ExecuteVerbAsync(new LinkVerbRequest(LinkVerb.Status), cancellationToken);
         if (!response.Ok) return new(false, response.Error?.Contains("not linked", StringComparison.OrdinalIgnoreCase) == true
             ? "AuthorizationRequired" : "Unavailable", response.Error ?? "Circle AI did not report live readiness.", version);
-        return CircleAiLiveReadiness.Chat(CircleAiLiveReadiness.Read(response.Rows), version);
+        var status = CircleAiLiveReadiness.Chat(CircleAiLiveReadiness.Read(response.Rows), version);
+        var hello = await ExecuteVerbAsync(new LinkVerbRequest(LinkVerb.Hello), cancellationToken);
+        var accepts = CircleAiQueuedChat.IsSupported(hello);
+        return status with
+        {
+            AcceptsQueuedRequests = accepts,
+            Explanation = accepts && !status.Ready
+                ? status.Explanation + " You can ask now; Circle AI will keep your question and report its progress."
+                : status.Explanation
+        };
     }
 
     internal async Task<ReadinessSnapshot> ReadLiveReadinessAsync(CancellationToken cancellationToken)
@@ -146,6 +159,27 @@ public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICirc
     {
         try
         {
+        var hello = await ExecuteVerbAsync(new LinkVerbRequest(LinkVerb.Hello), cancellationToken);
+        if (CircleAiQueuedChat.IsSupported(hello))
+        {
+            var run = ToolApprovalRunContext.Current
+                ?? throw new InvalidOperationException("A durable run is required for Circle AI service.");
+            var requestId = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
+                $"{run.RunId:D}\n{sessionId}\n{agentic}\n{message}")));
+            async Task<LinkRowsReply> ObserveAskAsync(LinkVerbRequest request, CancellationToken token)
+            {
+                var result = await ExecuteVerbAsync(request, token);
+#if DEBUG
+                foreach (var row in result.Rows)
+                    if (LinkAskRows.ReadAsk(row) is { } ask)
+                        global::Android.Util.Log.Info("Concierge.CircleAI.Ask",
+                            $"verb={request.Verb} id={ask.Id} state={ask.StateName} model={ask.ModelId} duplicate={ask.Duplicate}");
+#endif
+                return result;
+            }
+            return await CircleAiQueuedChat.SendAsync(ObserveAskAsync, requestId, sessionId, message,
+                agentic, sentence => RequestProgress?.Invoke(sentence), cancellationToken);
+        }
         var fields = await RoundTripAsync(LinkIpc.TransactAsk,
             LinkTurnCodec.Encode(new LinkTurnRequest(sessionId, message, agentic)), TimeSpan.FromMinutes(2), cancellationToken);
         var reply = LinkTurnCodec.DecodeReply(fields);
