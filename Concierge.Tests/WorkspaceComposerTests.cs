@@ -651,7 +651,7 @@ public sealed class WorkspaceComposerTests : BunitContext
 
         cut.Find("textarea.comp-input").Input("Say hello.");
 
-        Assert.False(Send(cut).HasAttribute("disabled"));
+        cut.WaitForAssertion(() => Assert.False(Send(cut).HasAttribute("disabled")));
     }
 
     /// <summary>

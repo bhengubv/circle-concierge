@@ -30,7 +30,11 @@ uncommitted work, and dependency security warnings remain. Older baseline
 figures below do not describe this graph. Both phones now have recorded local queue → prepare → answer → Desktop
 sync traces, including the safety-wrapper preparation forwarding fix. Voice,
 wake, fresh-download/restart and endurance acceptance remain open. Windows
-service remains 3.8.1. See [request-queue acceptance](acceptance/2026-10-23-service-queue-acceptance.md),
+SCM registration remains 3.8.1; a later Desktop trace uses the standalone 3.9.1
+backend. Its first answer passes, but its contextual follow-up fails and both
+turns take over a minute. Persistent hosting and final redeployment remain open.
+See [Windows startup and live evidence](acceptance/2026-10-23-windows-3.9.1-startup.md),
+[request-queue acceptance](acceptance/2026-10-23-service-queue-acceptance.md),
 [the measured upgrade record](acceptance/2026-10-23-client-package-upgrade.md) and
 [watch input and gesture boundaries](acceptance/2026-10-23-stardust-input-and-gestures.md).
 No vision work item is closed by this upgrade alone.

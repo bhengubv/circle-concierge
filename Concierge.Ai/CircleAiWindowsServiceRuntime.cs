@@ -28,6 +28,10 @@ public sealed class CircleAiWindowsServiceRuntime : IChatRuntime, IChatRuntimeCa
     private readonly SemaphoreSlim _inference = new(1, 1);
     private string? _model;
     private string _version = "unverified";
+    private bool _loopback;
+    private Uri? _baseUrl;
+    private Uri Endpoint(string path) => new(_baseUrl ?? _http.BaseAddress
+        ?? throw new InvalidOperationException("Circle AI is not connected."), path);
     private ChatRuntimeCapabilityState _state = ChatRuntimeCapabilityState.Preparing;
     public string Id => "circleai";
     public string EngineLabel => _model is null ? "Circle AI service" : $"{_model} (Circle AI service)";
@@ -49,35 +53,54 @@ public sealed class CircleAiWindowsServiceRuntime : IChatRuntime, IChatRuntimeCa
     public string StatusMessage
     {
         get => _status;
-        private set { _status = value; StatusChanged?.Invoke(this, EventArgs.Empty); }
+        private set { if (_status == value) return; _status = value; StatusChanged?.Invoke(this, EventArgs.Empty); }
     }
     public ChatRuntimeCapabilityCatalog CapabilityCatalog => new(1, Id, _version, DateTimeOffset.UtcNow,
         [new("conversation", "Conversation", IsReady ? ChatRuntimeCapabilityState.Available : _state, StatusMessage)], null);
 
     public async Task InitializeAsync(CancellationToken cancellationToken)
     {
-        if (IsReady) return;
-        _state = ChatRuntimeCapabilityState.Preparing;
-        StatusMessage = "Connecting to Circle AI service…";
+        if (!IsReady)
+        {
+            _state = ChatRuntimeCapabilityState.Preparing;
+            StatusMessage = "Connecting to Circle AI service…";
+        }
         try
         {
             using var config = JsonDocument.Parse(await File.ReadAllTextAsync(_connectionPath, cancellationToken));
             var baseUrl = new Uri(config.RootElement.GetProperty("BaseUrl").GetString()!);
             if (!baseUrl.IsLoopback || baseUrl.Scheme != "http")
                 throw new InvalidOperationException("The installed service must use a local endpoint.");
-            if (_http.BaseAddress is null) _http.BaseAddress = baseUrl;
+            _baseUrl = baseUrl;
+            _loopback = config.RootElement.TryGetProperty("Token", out var token);
             _http.DefaultRequestHeaders.Remove("X-CircleAI-Api-Key");
-            _http.DefaultRequestHeaders.Add("X-CircleAI-Api-Key", config.RootElement.GetProperty("ApiKey").GetString());
+            _http.DefaultRequestHeaders.Remove("X-Butler-Token");
+            _http.DefaultRequestHeaders.Add(_loopback ? "X-Butler-Token" : "X-CircleAI-Api-Key",
+                _loopback ? token.GetString() : config.RootElement.GetProperty("ApiKey").GetString());
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromSeconds(15));
-            using var diagnosticResponse = await _http.GetAsync("/v1/diagnostics", timeout.Token);
+            if (_loopback)
+            {
+                using var report = await _http.GetFromJsonAsync<JsonDocument>(Endpoint("/v1/status"), timeout.Token);
+                var root = report!.RootElement;
+                var brain = root.GetProperty("brain");
+                _model = brain.TryGetProperty("modelId", out var model) ? model.GetString() : null;
+                IsReady = root.GetProperty("canAnswerNow").GetBoolean();
+                _state = IsReady ? ChatRuntimeCapabilityState.Available : ChatRuntimeCapabilityState.Preparing;
+                // The readiness schema does not carry a binary version. Do not
+                // present the client package's version as a server measurement.
+                _version = "loopback schema " + root.GetProperty("schema").GetInt32();
+                StatusMessage = brain.GetProperty("detail").GetString() ?? "Circle AI is preparing assistance.";
+                return;
+            }
+            using var diagnosticResponse = await _http.GetAsync(Endpoint("/v1/diagnostics"), timeout.Token);
             if (diagnosticResponse.IsSuccessStatusCode)
             {
                 using var diagnostics = await diagnosticResponse.Content.ReadFromJsonAsync<JsonDocument>(timeout.Token);
                 if (diagnostics?.RootElement.TryGetProperty("server_version", out var version) == true)
                     _version = version.GetString() ?? "unverified";
             }
-            using var models = await _http.GetFromJsonAsync<JsonDocument>("/v1/models", timeout.Token);
+            using var models = await _http.GetFromJsonAsync<JsonDocument>(Endpoint("/v1/models"), timeout.Token);
             _model = SingleLoadedStreamingModel(models);
             IsReady = _model is not null;
             _state = IsReady ? ChatRuntimeCapabilityState.Available : ChatRuntimeCapabilityState.Preparing;
@@ -116,7 +139,11 @@ public sealed class CircleAiWindowsServiceRuntime : IChatRuntime, IChatRuntimeCa
         LastPromptDiagnostics = MeasurePrompt(messages, _model);
         // Snapshot preferences once: changing Settings does not reroute an active answer.
         var options = _preferences?.Current ?? new CircleAiServiceOptions();
-        if (!options.StreamAnswers && options.AgenticWork)
+        if (_loopback)
+            StatusMessage = options.AgenticWork
+                ? "Circle AI is answering. Service agentic work is not connected yet."
+                : "Circle AI is answering.";
+        else if (!options.StreamAnswers && options.AgenticWork)
         {
             // Companion owns its session history. Never silently replace the existing
             // Concierge conversation or send its system instructions as a user message.
@@ -127,18 +154,27 @@ public sealed class CircleAiWindowsServiceRuntime : IChatRuntime, IChatRuntimeCa
         else StatusMessage = options.AgenticWork
             ? "Circle AI is streaming conversationally. Service 3.8.1 does not combine streaming with agentic work."
             : "Circle AI service is ready for conversation.";
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/v1/chat/completions")
+        using var request = new HttpRequestMessage(HttpMethod.Post, Endpoint(_loopback
+            ? options.StreamAnswers ? "/butler/stream" : "/butler/chat" : "/v1/chat/completions"))
         {
             // Concierge's action/approval responses should not depend on a
             // randomly sampled completion. The service still owns inference.
-            Content = JsonContent.Create(new { model = _model, stream = options.StreamAnswers, temperature = 0,
-                messages = messages.Select(message => new { role = message.Role, content = message.Content }) })
+            Content = _loopback
+                ? JsonContent.Create(new { options = new { temperature = 0 },
+                    messages = messages.Select(message => new { role = message.Role, content = message.Content }) })
+                : JsonContent.Create(new { model = _model, stream = options.StreamAnswers, temperature = 0,
+                    messages = messages.Select(message => new { role = message.Role, content = message.Content }) })
         };
         using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         response.EnsureSuccessStatusCode();
         if (!options.StreamAnswers)
         {
             using var answer = await response.Content.ReadFromJsonAsync<JsonDocument>(cancellationToken);
+            if (_loopback)
+            {
+                yield return answer!.RootElement.GetProperty("content").GetString()!;
+                yield break;
+            }
             if (answer?.RootElement.TryGetProperty("choices", out var completeChoices) != true)
                 throw new IOException("Circle AI service returned no completed answer.");
             foreach (var choice in completeChoices.EnumerateArray())
@@ -149,10 +185,25 @@ public sealed class CircleAiWindowsServiceRuntime : IChatRuntime, IChatRuntimeCa
         }
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         using var reader = new StreamReader(stream);
+        var doneEvent = false;
         while (await reader.ReadLineAsync(cancellationToken) is { } line)
         {
+            if (_loopback && line.StartsWith("event:", StringComparison.Ordinal))
+            {
+                doneEvent = line[6..].Trim() == "done";
+                continue;
+            }
             if (!line.StartsWith("data:", StringComparison.Ordinal)) continue;
             var payload = line[5..].Trim();
+            if (_loopback)
+            {
+                if (doneEvent) yield break;
+                using var piece = JsonDocument.Parse(payload);
+                if (piece.RootElement.ValueKind != JsonValueKind.String)
+                    throw new IOException("Circle AI returned an invalid stream event.");
+                yield return piece.RootElement.GetString()!;
+                continue;
+            }
             if (payload == "[DONE]") yield break;
             using var chunk = JsonDocument.Parse(payload);
             if (chunk.RootElement.TryGetProperty("error", out var error))
@@ -170,18 +221,19 @@ public sealed class CircleAiWindowsServiceRuntime : IChatRuntime, IChatRuntimeCa
     public async Task<CircleAiSettingsReport> ReadAsync(CancellationToken cancellationToken)
     {
         var readiness = new List<CircleAiSettingFact>();
-        if (_http.BaseAddress is null) readiness.Add(new("Connection", "Not connected", StatusMessage));
+        if (_baseUrl is null && _http.BaseAddress is null) readiness.Add(new("Connection", "Not connected", StatusMessage));
         else
         {
             try
             {
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 timeout.CancelAfter(TimeSpan.FromSeconds(12));
-                using var models = await _http.GetFromJsonAsync<JsonDocument>("/v1/models", timeout.Token);
-                var model = SingleLoadedStreamingModel(models);
+                using var models = await _http.GetFromJsonAsync<JsonDocument>(Endpoint(_loopback ? "/v1/status" : "/v1/models"), timeout.Token);
+                var model = _loopback ? models!.RootElement.GetProperty("brain").GetProperty("modelId").GetString()
+                    : SingleLoadedStreamingModel(models);
                 readiness.Add(new("Service connection", "Responding"));
                 readiness.Add(new("Service version", _version));
-                readiness.Add(new("Conversation model", model ?? "Not reported ready",
+                readiness.Add(new("Conversation model", model is not null && (!_loopback || models!.RootElement.GetProperty("canAnswerNow").GetBoolean()) ? model : "Not reported ready",
                     "Reported by the service; this check does not run a conversation or select a model."));
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
@@ -220,10 +272,9 @@ public sealed class CircleAiWindowsServiceLoader(CircleAiWindowsServiceRuntime r
                 while (!_stop.IsCancellationRequested)
                 {
                     await runtime.InitializeAsync(_stop.Token);
-                    if (runtime.IsReady) return;
                     // Resource pressure and a late service start can resolve without
                     // restarting the UI. Retry is sequential; it never starts downloads.
-                    await Task.Delay(TimeSpan.FromMinutes(1), _stop.Token);
+                    await Task.Delay(TimeSpan.FromSeconds(10), _stop.Token);
                 }
             }
             catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }

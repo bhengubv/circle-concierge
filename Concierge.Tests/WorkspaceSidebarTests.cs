@@ -136,9 +136,12 @@ public sealed class WorkspaceSidebarTests : BunitContext
 
         Header(cut, "Make something").Click();
 
-        var groups = cut.FindAll("section.ws-group");
-        Assert.DoesNotContain("is-open", groups[0].ClassName);  // Recent conversations folded
-        Assert.Contains("is-open", groups[3].ClassName);        // Make something open
+        cut.WaitForAssertion(() =>
+        {
+            var groups = cut.FindAll("section.ws-group");
+            Assert.DoesNotContain("is-open", groups[0].ClassName);  // Recent conversations folded
+            Assert.Contains("is-open", groups[3].ClassName);        // Make something open
+        });
     }
 
     /// <summary>
