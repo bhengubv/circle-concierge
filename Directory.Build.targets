@@ -38,4 +38,15 @@
     <Error Condition="'$(CircleAIBundleMnn)' == 'true' and !Exists('$(_ConciergeCircleAIRuntimesRoot)android-arm64\native\libmnnbridge.so')"
            Text="Circle AI native Android assets were not found at '$(_ConciergeCircleAIRuntimesRoot)'. Set CircleAiSourceRoot or restore CircleAI $(CircleAiPackageVersion)." />
   </Target>
+  <!-- The merged CircleAI SDK includes Android host/sample components. Clients
+       must use the separately installed host, never register a second AI host. -->
+  <Target Name="ConciergeVerifyCircleAiClientBoundary" AfterTargets="_ManifestMerger"
+          Condition="'$(TargetPlatformIdentifier)' == 'android' and ('$(MSBuildProjectName)' == 'Concierge' or '$(MSBuildProjectName)' == 'Concierge.Wear')">
+    <XmlPeek XmlInputPath="$(IntermediateOutputPath)android/AndroidManifest.xml"
+             Query="/manifest/application/*[starts-with(@*[local-name()='name'], 'ai.circle.') or starts-with(@*[local-name()='name'], 'com.bhengubv.itsample.')]/@*[local-name()='name']">
+      <Output TaskParameter="Result" ItemName="_ConciergeEmbeddedAiHosts" />
+    </XmlPeek>
+    <Error Condition="'@(_ConciergeEmbeddedAiHosts)' != ''"
+           Text="Concierge is a Circle AI client. Remove embedded SDK host/sample components from its manifest: @(_ConciergeEmbeddedAiHosts)" />
+  </Target>
 </Project>

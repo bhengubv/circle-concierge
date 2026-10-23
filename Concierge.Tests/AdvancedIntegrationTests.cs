@@ -1,4 +1,5 @@
-using Aether.Routing;
+extern alias ConciergeAetherNet;
+using ConciergeAetherNet::AetherNet.Routing;
 using CircleAI.Core;
 using Concierge.Ai;
 using Concierge.Mesh;

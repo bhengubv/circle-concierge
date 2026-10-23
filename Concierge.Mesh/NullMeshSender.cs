@@ -1,12 +1,13 @@
-using Aether.Models;
-using Aether.Protocol;
-using Aether.Routing;
+extern alias ConciergeAetherNet;
+using ConciergeAetherNet::AetherNet.Models;
+using ConciergeAetherNet::AetherNet.Protocol;
+using ConciergeAetherNet::AetherNet.Routing;
 
 namespace Concierge.Mesh;
 
 /// <summary>
 /// Loopback <see cref="IMeshSender"/>: knows the local UHID and never has connected peers.
-/// Lets <see cref="Aether.Dtn.DtnService"/> live inside a single-node Concierge host so
+/// Lets <see cref="AetherNet.Dtn.DtnService"/> live inside a single-node Concierge host so
 /// agent run logs can be created as real DTN bundles and queued for opportunistic delivery
 /// once a real transport (BLE, Wi-Fi Direct, internet relay) attaches.
 /// </summary>

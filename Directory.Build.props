@@ -1,6 +1,7 @@
 <Project>
   <PropertyGroup>
     <CircleAiPackageVersion Condition="'$(CircleAiPackageVersion)' == ''">3.9.1</CircleAiPackageVersion>
+    <AetherNetPackageVersion Condition="'$(AetherNetPackageVersion)' == ''">3.4.0</AetherNetPackageVersion>
   </PropertyGroup>
 
   <!--

@@ -1,7 +1,19 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
     <application android:allowBackup="true" android:icon="@mipmap/appicon" android:roundIcon="@mipmap/appicon_round" android:supportsRtl="true">
         <service android:name="com.companyname.concierge.AndroidModelDownloadForegroundService" android:exported="false" android:foregroundServiceType="dataSync" />
+        <!-- AetherNet's optional device-admin receiver references a resource not shipped
+             by 3.4.0. Concierge uses mesh transport, not Android device administration. -->
+        <receiver android:name="com.bhengubv.aethernet.AetherDeviceAdmin" tools:node="remove" />
+        <!-- Concierge binds to the separately installed Circle AI host. Never start a
+             second embedded host through SDK-generated components or its sample receiver. -->
+        <receiver android:name="com.bhengubv.itsample.BootReceiver" tools:node="remove" />
+        <receiver android:name="ai.circle.NotificationReaper" tools:node="remove" />
+        <service android:name="ai.circle.AlwaysOnAndroidService" tools:node="remove" />
+        <service android:name="ai.circle.CircleNeuronLinkService" tools:node="remove" />
+        <service android:name="ai.circle.CircleNeuronService" tools:node="remove" />
+        <service android:name="ai.circle.ModelFetchService" tools:node="remove" />
+        <activity android:name="ai.circle.LinkConsentActivity" tools:node="remove" />
     </application>
     <!-- Android 11+ hides the shared Circle AI service unless the client declares
          package visibility. This permits discovery, not authorization or readiness. -->

@@ -1,5 +1,6 @@
-using Aether.Dtn;
-using Aether.Routing;
+extern alias ConciergeAetherNet;
+using ConciergeAetherNet::AetherNet.Dtn;
+using ConciergeAetherNet::AetherNet.Routing;
 using Concierge.Shared;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;

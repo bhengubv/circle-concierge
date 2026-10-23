@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
 	<uses-sdk android:minSdkVersion="30" android:targetSdkVersion="34" />
 
 	<!-- A watch application, and a standalone one: it does not require a
@@ -35,5 +35,14 @@
                  android:usesCleartextTraffic="true" android:enableOnBackInvokedCallback="false">
 		<meta-data android:name="com.google.android.wearable.standalone" android:value="true" />
         <uses-library android:name="com.google.android.wearable" android:required="false" />
+        <!-- SDK host components belong to the standalone Circle AI service, not this client.
+             In particular its sample BootReceiver starts inference on package replacement. -->
+        <receiver android:name="com.bhengubv.itsample.BootReceiver" tools:node="remove" />
+        <receiver android:name="ai.circle.NotificationReaper" tools:node="remove" />
+        <service android:name="ai.circle.AlwaysOnAndroidService" tools:node="remove" />
+        <service android:name="ai.circle.CircleNeuronLinkService" tools:node="remove" />
+        <service android:name="ai.circle.CircleNeuronService" tools:node="remove" />
+        <service android:name="ai.circle.ModelFetchService" tools:node="remove" />
+        <activity android:name="ai.circle.LinkConsentActivity" tools:node="remove" />
 	</application>
 </manifest>

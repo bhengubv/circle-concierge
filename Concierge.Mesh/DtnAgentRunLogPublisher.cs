@@ -1,6 +1,7 @@
+extern alias ConciergeAetherNet;
 using System.Text.Json;
-using Aether.Dtn;
-using Aether.Models;
+using ConciergeAetherNet::AetherNet.Dtn;
+using ConciergeAetherNet::AetherNet.Models;
 using Concierge.Shared;
 
 namespace Concierge.Mesh;

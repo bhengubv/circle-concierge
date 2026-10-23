@@ -1,5 +1,6 @@
+extern alias ConciergeAetherNet;
 using System.Net;
-using Aether.Protocol;
+using ConciergeAetherNet::AetherNet.Protocol;
 using Concierge.Mesh;
 
 namespace Concierge.Tests;

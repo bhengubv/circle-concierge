@@ -20,7 +20,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseMaui>false</UseMaui>
-    <RuntimeIdentifiers>android-arm;android-arm64</RuntimeIdentifiers>
+    <RuntimeIdentifiers Condition="'$(ConciergeWearRuntimeIdentifier)' == ''">android-arm;android-arm64</RuntimeIdentifiers>
+    <RuntimeIdentifier Condition="'$(ConciergeWearRuntimeIdentifier)' != ''">$(ConciergeWearRuntimeIdentifier)</RuntimeIdentifier>
     <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
 
     <ApplicationId>com.companyname.concierge.wear</ApplicationId>
@@ -33,7 +34,10 @@
 
   <ItemGroup>
     <AndroidJavaSource Include="Native\WristGestures.java" />
-    <ProjectReference Include="..\Concierge.Shared\Concierge.Shared.csproj" />
+    <!-- Shared is portable IL. Do not ask its plain net10.0 target for a native
+         ARM32 CoreCLR runtime pack when building the watch's Android/Mono app. -->
+    <ProjectReference Include="..\Concierge.Shared\Concierge.Shared.csproj"
+                      GlobalPropertiesToRemove="RuntimeIdentifier;RuntimeIdentifiers" />
   </ItemGroup>
 
 </Project>

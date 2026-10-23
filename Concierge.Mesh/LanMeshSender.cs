@@ -1,10 +1,11 @@
+extern alias ConciergeAetherNet;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
-using Aether.Models;
-using Aether.Protocol;
-using Aether.Routing;
+using ConciergeAetherNet::AetherNet.Models;
+using ConciergeAetherNet::AetherNet.Protocol;
+using ConciergeAetherNet::AetherNet.Routing;
 
 namespace Concierge.Mesh;
 

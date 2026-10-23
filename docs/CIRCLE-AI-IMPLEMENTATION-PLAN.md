@@ -20,6 +20,17 @@
 
 ## Current baseline (revalidate at Stage 0)
 
+**23 October upgrade evidence takes precedence over older baseline figures:**
+CircleAI 3.9.1 / AetherNet 3.4.0 clients build on Windows, Android and ARM32 Wear.
+The current full test graph is blocked by the SDK's ASP.NET framework dependency
+reaching browser-wasm, and dependency security warnings have returned. Neither
+the older full-suite pass nor zero-vulnerability statement below describes this
+graph. Final phone APKs are installed on both phones; local readiness acceptance
+is pending service authorization. Windows service remains 3.8.1. See
+[the measured upgrade record](acceptance/2026-10-23-client-package-upgrade.md) and
+[watch input and gesture boundaries](acceptance/2026-10-23-stardust-input-and-gestures.md).
+No vision work item is closed by this upgrade alone.
+
 Known building blocks include conversation persistence, tool approvals, an isolated model host, Circle AI integration, Creator and other tools, a fixed-sequence `Workflow`, model download handling, and Away paths for Mobile/Wearable communication. Recent work also adds conversation events, a Desktop LAN host, Android connectivity support, and first-run/help material. These are starting points, not evidence that the vision is complete.
 
 Known gaps from the current plan/audit:

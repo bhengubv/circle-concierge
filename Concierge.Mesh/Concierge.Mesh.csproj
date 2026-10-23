@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
-    <Description>Concierge bridge for the aether-protocol mesh stack. Implements IMeshTransportService on top of Aether.Core.</Description>
+    <Description>Concierge bridge for AetherNet. Implements IMeshTransportService on top of AetherNet.</Description>
   </PropertyGroup>
 
   <ItemGroup>
@@ -12,7 +12,9 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Aether.Core" Version="1.0.1" />
+    <!-- CircleAI 3.9.1 still requires the modular AetherNet 3.0 assemblies.
+         Keep their runtime identities intact; bind this adapter to the unified 3.4 assembly explicitly. -->
+    <PackageReference Include="AetherNet" Version="$(AetherNetPackageVersion)" Aliases="ConciergeAetherNet" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.2" />
   </ItemGroup>
 

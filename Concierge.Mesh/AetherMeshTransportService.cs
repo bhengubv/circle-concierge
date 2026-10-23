@@ -1,7 +1,8 @@
+extern alias ConciergeAetherNet;
 using System.Security.Cryptography;
-using Aether.Dtn;
-using Aether.Identity;
-using Aether.Routing;
+using ConciergeAetherNet::AetherNet.Dtn;
+using ConciergeAetherNet::AetherNet.Identity;
+using ConciergeAetherNet::AetherNet.Routing;
 using Concierge.Shared;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -15,7 +16,7 @@ namespace Concierge.Mesh;
 /// </summary>
 /// <remarks>
 /// The persisted "identity" file holds the 32 random bytes that feed
-/// <see cref="AetherTag.FromPublicKey(byte[])"/>. A real deployment replaces this with a
+/// <see cref="AetherNetTag.FromPublicKey(byte[])"/>. A real deployment replaces this with a
 /// proper Ed25519 keypair under biometric-protected storage; for the Concierge demo a
 /// stable per-machine identity is enough to give peers a reliable address.
 /// </remarks>
@@ -26,7 +27,7 @@ public sealed class AetherMeshTransportService : IMeshTransportService
         "Concierge",
         "aether.identity.bin");
 
-    private readonly AetherTag _nodeTag;
+    private readonly AetherNetTag _nodeTag;
     private readonly IRouteStore _routeStore;
     private readonly IServiceProvider? _services;
     private readonly bool _identityIsPersisted;
@@ -49,7 +50,7 @@ public sealed class AetherMeshTransportService : IMeshTransportService
         _identityIsPersisted = File.Exists(identityPath);
     }
 
-    public AetherTag NodeTag => _nodeTag;
+    public AetherNetTag NodeTag => _nodeTag;
 
     public IRouteStore RouteStore => _routeStore;
 
@@ -63,7 +64,7 @@ public sealed class AetherMeshTransportService : IMeshTransportService
         // async I/O, switch GetSnapshot to async and propagate up to the UI render path.
         var routes = _routeStore.GetAllAsync().GetAwaiter().GetResult();
         var pending = ResolvePendingBundleCount();
-        var version = typeof(AetherTag).Assembly.GetName().Version?.ToString() ?? "unknown";
+        var version = typeof(AetherNetTag).Assembly.GetName().Version?.ToString() ?? "unknown";
         return new MeshTransportSnapshot(
             Engine: "aether-protocol",
             EngineVersion: version,
@@ -93,7 +94,7 @@ public sealed class AetherMeshTransportService : IMeshTransportService
         return dtn.GetActiveBundlesAsync().GetAwaiter().GetResult().Count;
     }
 
-    private static AetherTag LoadOrCreateIdentity(string path)
+    private static AetherNetTag LoadOrCreateIdentity(string path)
     {
         if (File.Exists(path))
         {
@@ -102,7 +103,7 @@ public sealed class AetherMeshTransportService : IMeshTransportService
                 var bytes = File.ReadAllBytes(path);
                 if (bytes.Length == 32)
                 {
-                    return AetherTag.FromPublicKey(bytes);
+                    return AetherNetTag.FromPublicKey(bytes);
                 }
             }
             catch
@@ -114,7 +115,7 @@ public sealed class AetherMeshTransportService : IMeshTransportService
         var key = new byte[32];
         RandomNumberGenerator.Fill(key);
         TryPersist(path, key);
-        return AetherTag.FromPublicKey(key);
+        return AetherNetTag.FromPublicKey(key);
     }
 
     private static void TryPersist(string path, byte[] key)
