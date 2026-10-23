@@ -301,21 +301,21 @@ public sealed class WorkspaceSidebarTests : BunitContext
     }
 
     [Fact]
-    public void Approvals_are_named_so_you_can_tell_them_apart()
+    public async Task Approvals_are_named_so_you_can_tell_them_apart()
     {
         Raise("Write notes.md", Concierge.Shared.ConciergeToolRisk.High);
         Raise("Run git status", Concierge.Shared.ConciergeToolRisk.Low);
 
         var cut = RenderWorkspace();
-        Header(cut, "Needs your OK").Click();
-
-        var titles = cut.FindAll("section.ws-group")[1]
-            .QuerySelectorAll(".ws-item-label")
-            .Select(e => e.TextContent.Trim())
-            .ToArray();
-
-        Assert.Contains("Write notes.md", titles);
-        Assert.Contains("Run git status", titles);
+        await cut.InvokeAsync(() => Header(cut, "Needs your OK").Click());
+        cut.WaitForAssertion(() =>
+        {
+            var titles = cut.FindAll("section.ws-group").Single(section =>
+                section.QuerySelector(".ws-head-name")?.TextContent.Trim() == "Needs your OK")
+                .QuerySelectorAll(".ws-item-label").Select(e => e.TextContent.Trim()).ToArray();
+            Assert.Contains("Write notes.md", titles);
+            Assert.Contains("Run git status", titles);
+        });
     }
 
     // ── Threads ───────────────────────────────────────────────────────────

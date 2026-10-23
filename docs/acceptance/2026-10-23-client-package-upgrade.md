@@ -5,6 +5,10 @@ wrapper were corrected, and both final phone clients answered locally and synced
 their answers to Desktop. See [the later acceptance](2026-10-23-service-queue-acceptance.md).
 The pending observations below describe the earlier APK at the stated time.
 
+The later [baseline recovery](2026-10-23-baseline-tests.md) also supersedes this
+record's full-suite blocker: the unused browser dependency was removed and the
+full working-tree test/coverage command now passes.
+
 ## Source and package boundary
 
 Concierge directly consumes CircleAI 3.9.1 and AetherNet 3.4.0. The old direct

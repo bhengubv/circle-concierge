@@ -1,0 +1,73 @@
+{
+  "recordedAt": "2026-10-23T14:02:36.3653034+09:00",
+  "baseCommit": "6c12be27ce6cc74ab71e99f5a2ef9862af91393a",
+  "includesPreexistingUncommittedWork": true,
+  "command": "pwsh -NoProfile -File scripts/Test-Concierge.ps1",
+  "total": 2627,
+  "passed": 2627,
+  "failed": 0,
+  "skipped": 0,
+  "coverage": {
+    "Branch": {
+      "Percent": 69.09,
+      "Covered": 7265.0,
+      "Total": 10515
+    },
+    "Method": {
+      "Percent": 86.18,
+      "Covered": 3088.0,
+      "Total": 3583
+    },
+    "Line": {
+      "Percent": 80.65,
+      "Covered": 20556.0,
+      "Total": 25487
+    }
+  },
+  "modules": [
+    {
+      "Name": "Concierge.Ai",
+      "BranchRate": "0.6442",
+      "LineRate": "0.7126"
+    },
+    {
+      "Name": "Concierge.Chat.Cloud",
+      "BranchRate": "0.7166",
+      "LineRate": "0.7906"
+    },
+    {
+      "Name": "Concierge.Diagrams.Design",
+      "BranchRate": "0.5832999999999999",
+      "LineRate": "0.7777"
+    },
+    {
+      "Name": "Concierge.Media.Cloud",
+      "BranchRate": "0.5555",
+      "LineRate": "0.7272"
+    },
+    {
+      "Name": "Concierge.Media",
+      "BranchRate": "0.3",
+      "LineRate": "0.9687"
+    },
+    {
+      "Name": "Concierge.Mesh",
+      "BranchRate": "0.6215999999999999",
+      "LineRate": "0.7142000000000001"
+    },
+    {
+      "Name": "Concierge.Shared",
+      "BranchRate": "0.7033",
+      "LineRate": "0.8256999999999999"
+    },
+    {
+      "Name": "Concierge.Web",
+      "BranchRate": "0.4022",
+      "LineRate": "0.4858"
+    }
+  ],
+  "report": "TestResults\\coverage-5146145c88aa4a398d48e48ae48e3757\\9797094a-bdea-4ebd-aa84-4eeb9b546fd2\\coverage.json",
+  "reportSha256": "1810726E540A34E2D491E8374A6545F20BADD56FD5215100384705C56E198F1A",
+  "testLog": "work/2026-10-23-canonical-tests-final.log",
+  "zeroReportGateExitCode": 1
+}

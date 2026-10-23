@@ -1,5 +1,14 @@
 # Concierge — what is done and what is left
 
+## Current vision queue and verification
+
+The active product-vision queue is in
+[the implementation plan](docs/CIRCLE-AI-IMPLEMENTATION-PLAN.md); the historical
+checkboxes below do not establish completion of that vision. Use
+`pwsh -NoProfile -File scripts/Test-Concierge.ps1` for the full functional and
+coverage gate; [testing instructions](docs/TESTING.md) explain its scope and
+the separate running-app/device evidence required before closing a vision item.
+
 ## Context
 
 The "one dark workspace" redesign this file used to hold is finished and on

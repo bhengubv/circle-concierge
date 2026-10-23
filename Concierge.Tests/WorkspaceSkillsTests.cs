@@ -102,9 +102,13 @@ public sealed class WorkspaceSkillsTests : BunitContext
         var cut = RenderWorkspace();
         OpenSkillsGroup(cut);
 
-        var group = cut.FindAll("section.ws-group")[2];
-        Assert.Contains("Add specialist help", group.TextContent);
-        Assert.Contains("Browse abilities", group.QuerySelector("button.ws-more")!.TextContent);
+        cut.WaitForAssertion(() =>
+        {
+            var group = cut.FindAll("section.ws-group").Single(section =>
+                section.QuerySelector(".ws-head-name")?.TextContent.Trim() == "Personalize Circle AI");
+            Assert.Contains("Add specialist help", group.TextContent);
+            Assert.Contains("Browse abilities", group.QuerySelector("button.ws-more")!.TextContent);
+        });
     }
 
     // ── The picker ────────────────────────────────────────────────────────

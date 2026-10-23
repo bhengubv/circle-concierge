@@ -1,5 +1,9 @@
 # Local Circle AI request queue — 23 October 2026
 
+**Later baseline update:** the browser-wasm test blocker recorded below was
+subsequently corrected. The full working-tree test and coverage command passes;
+see [baseline evidence](2026-10-23-baseline-tests.md).
+
 ## Defects corrected
 
 The 3.9.1 service supports protocol-2 AskSubmit/AskStatus records, but Concierge

@@ -22,10 +22,12 @@
 
 **23 October upgrade evidence takes precedence over older baseline figures:**
 CircleAI 3.9.1 / AetherNet 3.4.0 clients build on Windows, Android and ARM32 Wear.
-The current full test graph is blocked by the SDK's ASP.NET framework dependency
-reaching browser-wasm, and dependency security warnings have returned. Neither
-the older full-suite pass nor zero-vulnerability statement below describes this
-graph. Both phones now have recorded local queue → prepare → answer → Desktop
+The unused browser-to-server dependency has been removed; the full test command
+now passes 2,627 tests and the unchanged coverage floors through the collector.
+See [baseline evidence](acceptance/2026-10-23-baseline-tests.md) and
+[the reproducible command](TESTING.md). These results include pre-existing
+uncommitted work, and dependency security warnings remain. Older baseline
+figures below do not describe this graph. Both phones now have recorded local queue → prepare → answer → Desktop
 sync traces, including the safety-wrapper preparation forwarding fix. Voice,
 wake, fresh-download/restart and endurance acceptance remain open. Windows
 service remains 3.8.1. See [request-queue acceptance](acceptance/2026-10-23-service-queue-acceptance.md),

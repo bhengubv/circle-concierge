@@ -5,12 +5,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>Concierge.Web.Client</RootNamespace>
-    <Description>WebAssembly client bundle for the Concierge.Web host. Required so the host can opt pages into InteractiveAuto render mode (server prerender → WebAssembly take-over). Pages that depend on host-only services stay on InteractiveServer until they grow an HTTP surface.</Description>
-    <!-- WASM0001 fires because Shared.Components transitively pulls SQLite via Shared.
-         The WASM bundle never runs SQLite (chat is InteractiveServer-only) but the
-         WebAssembly SDK still scans for varargs DllImports. The pin is a known limitation,
-         not a runtime hazard for this host. -->
-    <NoWarn>$(NoWarn);WASM0001</NoWarn>
+    <Description>Browser-only WebAssembly bootstrap for Concierge.Web. The shared application pages run on InteractiveServer and are referenced by the server host. Future browser components must depend on browser-safe contracts.</Description>
   </PropertyGroup>
 
   <ItemGroup>
@@ -18,8 +13,8 @@
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.0" PrivateAssets="all" />
   </ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\Concierge.Shared.Components\Concierge.Shared.Components.csproj" />
-  </ItemGroup>
+  <!-- Do not reference the server-owned shared UI graph here: it includes
+       SQLite and the Circle AI service runtime. Concierge.Web references and
+       routes those pages directly. This bootstrap currently owns no pages. -->
 
 </Project>

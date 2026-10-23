@@ -1,5 +1,6 @@
 using CircleAI.Core;
 using CircleAI.Inference;
+using CircleAI.Core.Models;
 using Concierge.Ai;
 
 namespace Concierge.Tests;
@@ -27,7 +28,9 @@ public sealed class CircleAiModelSelectionTests
             var selected = selector.BestFit(probe, ChatCapability.Default | ChatCapability.Tools);
 
             Assert.True(assessment.Compatible < assessment.Assessed);
-            Assert.Equal("Qwen3-30B-A3B-MNN", selected.ModelId);
+            // Version-pinned catalogue expectation: the 3.9.1 embedded registry
+            // ranks this eligible entry first for this measured non-mmap probe.
+            Assert.Equal("Qwen3.5-4B-MNN", selected.ModelId);
             Assert.Equal(SelectionQuality.Good, selected.Quality);
             Assert.True(selected.RequiresDownload);
             Assert.Empty(Directory.EnumerateFiles(modelDirectory, "*", SearchOption.AllDirectories));
@@ -62,7 +65,7 @@ public sealed class CircleAiModelSelectionTests
                 probe, ChatCapability.Default | ChatCapability.Tools);
 
             Assert.NotEmpty(candidates);
-            Assert.Equal("Qwen3-0.6B-MNN", candidates[0].ModelId);
+            Assert.Equal("Qwen3.5-0.8B-MNN", candidates[0].ModelId);
             Assert.Equal(best.ModelId, candidates[^1].ModelId);
             Assert.True(candidates.Zip(candidates.Skip(1), (left, right) =>
                 left.EstimatedBytes <= right.EstimatedBytes).All(isAscending => isAscending));
@@ -77,7 +80,7 @@ public sealed class CircleAiModelSelectionTests
     }
 
     [Fact]
-    public void Assessment_reclaims_a_complete_inferior_model_that_a_similar_fitting_model_supersedes()
+    public void Assessment_preserves_installed_models_until_a_replacement_is_proven()
     {
         var modelDirectory = Path.Combine(Path.GetTempPath(), $"concierge-model-housekeeping-{Guid.NewGuid():N}");
         Directory.CreateDirectory(modelDirectory);
@@ -101,7 +104,9 @@ public sealed class CircleAiModelSelectionTests
             using var selector = new CircleAiModelSelectorContext(modelDirectory, mmapAllowed: false);
             selector.Assess(probe);
 
-            Assert.False(Directory.Exists(Path.Combine(modelDirectory, "Qwen3-0.6B-MNN")));
+            // 3.9.1 requires a successful-load stamp before reclaiming the old
+            // model. Merely downloading its replacement is not that proof.
+            Assert.True(Directory.Exists(Path.Combine(modelDirectory, "Qwen3-0.6B-MNN")));
             Assert.True(Directory.Exists(Path.Combine(modelDirectory, "Qwen3.5-0.8B-MNN")));
         }
         finally
@@ -109,5 +114,19 @@ public sealed class CircleAiModelSelectionTests
             DeviceProbe.PlatformMemoryProbe = previousMemoryProbe;
             Directory.Delete(modelDirectory, recursive: true);
         }
+    }
+
+    [Fact]
+    public void Published_housekeeping_reclaims_the_old_model_only_after_replacement_loaded()
+    {
+        using var registry = new ModelRegistryService((ModelScopeCatalogClient?)null, null);
+        using var catalog = new SqliteModelCatalog("Data Source=:memory:");
+        CatalogueSeed.SeedFromEmbedded(catalog, registry);
+        new DeviceModelAssessor(catalog, [ModelEngine.Mnn], false).Assess(CircleAiTestDefaults.HighMemoryDevice);
+        catalog.SetInstalled("Qwen3-0.6B-MNN", true);
+        catalog.SetInstalled("Qwen3.5-0.8B-MNN", true);
+        Assert.DoesNotContain(CatalogueHousekeeping.Plan(catalog), p => p.Id == "Qwen3-0.6B-MNN");
+        catalog.RecordLoad("Qwen3.5-0.8B-MNN");
+        Assert.Contains(CatalogueHousekeeping.Plan(catalog), p => p.Id == "Qwen3-0.6B-MNN");
     }
 }

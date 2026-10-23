@@ -150,10 +150,13 @@ public sealed class ModelAlreadyOnDeviceTests
 /// </remarks>
 public sealed class StartWithWhatIsHereTests
 {
+    // The 3.9.1 catalogue retires Qwen3-0.6B; a retired fixture is not a usable
+    // fallback. Keep this test about eligible installed models, not that old ID.
+    private const string InstalledFallback = "Qwen3.5-0.8B-MNN";
     [Fact]
     public async Task A_device_with_any_usable_model_comes_up_ready()
     {
-        var runtime = NewRuntime(present: modelId => modelId.Contains("0.6B", StringComparison.Ordinal));
+        var runtime = NewRuntime(present: modelId => modelId == InstalledFallback);
 
         await runtime.LoadAsync(CancellationToken.None);
 
@@ -166,25 +169,25 @@ public sealed class StartWithWhatIsHereTests
     {
         // Not the one selection wanted. Showing the bigger name over the smaller model is how
         // somebody ends up filing a bug about quality against a model they never ran.
-        var runtime = NewRuntime(present: modelId => modelId.Contains("0.6B", StringComparison.Ordinal));
+        var runtime = NewRuntime(present: modelId => modelId == InstalledFallback);
 
         await runtime.LoadAsync(CancellationToken.None);
 
-        Assert.Contains("0.6B", runtime.EngineLabel, StringComparison.Ordinal);
-        Assert.Contains("0.6B", runtime.StatusMessage, StringComparison.Ordinal);
+        Assert.Contains(InstalledFallback, runtime.EngineLabel, StringComparison.Ordinal);
+        Assert.Contains(InstalledFallback, runtime.StatusMessage, StringComparison.Ordinal);
         await runtime.DisposeAsync();
     }
 
     [Fact]
     public async Task The_better_model_is_still_offered()
     {
-        var runtime = NewRuntime(present: modelId => modelId.Contains("0.6B", StringComparison.Ordinal));
+        var runtime = NewRuntime(present: modelId => modelId == InstalledFallback);
 
         await runtime.LoadAsync(CancellationToken.None);
 
         var pending = ((IModelDownloadRequired)runtime).PendingDownload;
         Assert.NotNull(pending);
-        Assert.DoesNotContain("0.6B", pending!.ModelId, StringComparison.Ordinal);
+        Assert.NotEqual(InstalledFallback, pending!.ModelId);
         await runtime.DisposeAsync();
     }
 
@@ -203,7 +206,7 @@ public sealed class StartWithWhatIsHereTests
     [Fact]
     public async Task A_model_it_started_with_can_answer()
     {
-        var runtime = NewRuntime(present: modelId => modelId.Contains("0.6B", StringComparison.Ordinal));
+        var runtime = NewRuntime(present: modelId => modelId == InstalledFallback);
         await runtime.LoadAsync(CancellationToken.None);
 
         var chunks = new List<string>();

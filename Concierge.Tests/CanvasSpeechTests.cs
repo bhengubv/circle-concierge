@@ -37,7 +37,7 @@ public sealed class CanvasSpeechTests : BunitContext
         }
     }
 
-    private IRenderedComponent<Concierge.Shared.Components.Workspace.Desktop.Workspace> Open()
+    private async Task<IRenderedComponent<Concierge.Shared.Components.Workspace.Desktop.Workspace>> OpenAsync()
     {
         var dbPath = Path.Combine(Path.GetTempPath(), $"canvas-{Guid.NewGuid():N}.db");
         Services.AddLogging();
@@ -65,25 +65,27 @@ public sealed class CanvasSpeechTests : BunitContext
         }
 
         var cut = Render<Concierge.Shared.Components.Workspace.Desktop.Workspace>();
-        cut.WaitForState(() => cut.FindAll("section.ws-group").Count > 0);
+        cut.WaitForState(() => cut.FindAll(".ws[aria-busy='false']").Count > 0, TimeSpan.FromSeconds(5));
 
-        cut.FindAll("button.ws-head")
+        await cut.InvokeAsync(() => cut.FindAll("button.ws-head")
             .First(head => head.QuerySelector(".ws-head-name")!.TextContent.Trim() == "Make something")
-            .Click();
+            .Click());
 
         cut.WaitForState(() => cut.FindAll("button.ws-room-btn").Count > 0);
-        cut.FindAll("button.ws-room-btn").First(room => room.TextContent.Contains("Creator")).Click();
+        await cut.InvokeAsync(() => cut.FindAll("button.ws-room-btn").First(room => room.TextContent.Contains("Creator")).Click());
         cut.WaitForState(() => cut.FindAll(".dz").Count > 0);
 
         return cut;
     }
 
-    private static void Making(
+    private static async Task MakingAsync(
         IRenderedComponent<Concierge.Shared.Components.Workspace.Desktop.Workspace> cut, string medium)
     {
-        cut.FindAll("button.dz-look")
+        // Find and dispatch on the renderer together: a pending render can
+        // otherwise replace the event handler between Find and Click.
+        await cut.InvokeAsync(() => cut.FindAll("button.dz-look")
             .First(button => button.TextContent.Trim().EndsWith(medium, StringComparison.Ordinal))
-            .Click();
+            .Click());
 
         cut.WaitForAssertion(
             () => Assert.Contains(
@@ -95,11 +97,11 @@ public sealed class CanvasSpeechTests : BunitContext
             TimeSpan.FromSeconds(5));
     }
 
-    private static void Say(
+    private static async Task SayAsync(
         IRenderedComponent<Concierge.Shared.Components.Workspace.Desktop.Workspace> cut, string words)
     {
-        cut.Find("textarea.comp-input").Input(words);
-        cut.Find("button.icon-btn-send").Click();
+        await cut.InvokeAsync(() => cut.Find("textarea.comp-input").Input(words));
+        await cut.InvokeAsync(() => cut.Find("button.icon-btn-send").Click());
     }
 
     /// <summary>
@@ -117,15 +119,15 @@ public sealed class CanvasSpeechTests : BunitContext
     [InlineData("Sound", "add a track")]
     [InlineData("Phone", "add a screen")]
     [InlineData("Board", "add a panel")]
-    public void A_sentence_is_applied_in_every_medium(string medium, string words)
+    public async Task A_sentence_is_applied_in_every_medium(string medium, string words)
     {
-        var cut = Open();
+        var cut = await OpenAsync();
 
-        Making(cut, medium);
+        await MakingAsync(cut, medium);
 
         var before = cut.FindAll(".dz-moment").Count;
 
-        Say(cut, words);
+        await SayAsync(cut, words);
 
         cut.WaitForAssertion(
             () => Assert.True(
@@ -139,12 +141,12 @@ public sealed class CanvasSpeechTests : BunitContext
     /// after something worked read as something that did not.
     /// </summary>
     [Fact]
-    public void And_the_words_leave_the_box_when_they_were_understood()
+    public async Task And_the_words_leave_the_box_when_they_were_understood()
     {
-        var cut = Open();
+        var cut = await OpenAsync();
 
-        Making(cut, "Space");
-        Say(cut, "add a box");
+        await MakingAsync(cut, "Space");
+        await SayAsync(cut, "add a box");
 
         cut.WaitForAssertion(
             () => Assert.True(

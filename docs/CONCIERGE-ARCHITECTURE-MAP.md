@@ -2,6 +2,41 @@
 
 **Observed:** 1 October 2026. This records current code ownership and data flow to support Stage 0 of the implementation plan. It is a map of what exists, not a claim that the product vision is complete. Builds and unit tests do not establish the behavior of a running head.
 
+## Current service boundary checkpoint — 23 October 2026
+
+This checkpoint supersedes the older composition and runtime observations below.
+Those entries retain their original dates and evidence limits.
+
+The previously blocked full test graph now builds. The current working-tree
+baseline passes 2,627 tests using the collector and original coverage floors;
+see [the measured baseline](acceptance/2026-10-23-baseline-tests.md). This closes
+the compile/test blocker, not the remaining ownership and running-product gates.
+
+| Head | Current execution owner | Boundary and measured state |
+| --- | --- | --- |
+| Windows MAUI | Standalone Circle AI Windows service, selected by `AddConciergeAiWindowsService` | HTTP adapter in Concierge; installed backend still 3.8.1. The active Windows path does not use the older model worker. |
+| Android MAUI | Standalone Circle AI Android service, build 60 / 3.9.1 | Binder protocol-2 queued asks. Concierge owns conversation/run identity and derives a request key; Circle AI owns queue/preparation/model execution. Both phones answered locally and their results appeared on Desktop under the original conversation IDs. |
+| WearOS | Desktop through `AwayClient` in the current proof | No compatible standalone ARM32 service APK was available in the inspected 3.9.1 release. Typed keyboard delivery and OS-injected gesture callbacks were measured; physical hand recognition remains unverified. |
+| Web server | Existing in-process Circle AI adapter | Shared pages use InteractiveServer. The empty browser bootstrap has no shared application-library reference, preventing the server/SQLite/inference graph from entering browser-wasm. This is a dependency correction, not Web product acceptance. |
+| Other MAUI heads | Existing isolated child-process adapter | Not exercised in this checkpoint. |
+
+All MAUI chat runtimes are wrapped by the safety decorator. It must forward
+`IChatRuntimePreparation` as well as readiness, status and capabilities; otherwise
+the real Workspace rejects questions that the service queue can accept. The
+missing forwarding was reproduced and fixed in the 23 October phone acceptance.
+Queue acceptance does not relabel an unknown/loading inference state Ready.
+
+For local Mobile work the observed flow was composer → durable Concierge run →
+one service AskSubmit → preparation/status polling → final answer → event sync →
+Desktop reading the same conversation. This does not prove crash-resume,
+cross-device exactly-once behavior under every failure, or engine-owned selection
+between connected devices. Voice/wake readiness remains unreported by these
+service instances; installed files do not substitute for live reports.
+
+Evidence: [client upgrade](acceptance/2026-10-23-client-package-upgrade.md),
+[phone request queue](acceptance/2026-10-23-service-queue-acceptance.md), and
+[watch input/gesture boundaries](acceptance/2026-10-23-stardust-input-and-gestures.md).
+
 ## Composition and execution
 
 | Path | Current owner and source of truth | Boundary and user entry | Verified limit |

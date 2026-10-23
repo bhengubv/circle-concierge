@@ -142,20 +142,10 @@ public static class MauiProgram
 			.AddConciergeImageTools()
 			.AddConciergeMusicCatalogue()
 			.AddMauiDeviceCapabilities()
-			// AddConciergeAi() registers ILlmRuntimeService and the in-process
-			// chat runtime; AddConciergeAiIsolated() then replaces the chat
-			// runtime with one that talks to a child process.
-			//
-			// The generator is what faults — an access violation inside
-			// mnn_llm_generate_stream_text, which is unmanaged and therefore
-			// uncatchable — so that is what has been moved out. Answering now
-			// costs a process boundary and a JSON line per token; a fault costs
-			// the sentence rather than the application.
-			// Model choice is deterministic and resource-driven inside CircleAI's
-			// DeviceAwareModelSelector. The client automatically fetches and loads
-			// that choice; it never asks a chat model or the person to pick one.
-			// The selected bundle can be many gigabytes. Let the person see the size and
-			// start it from the download offer; app startup must not begin a transfer.
+			// Establish the base AI registrations, then replace the chat runtime
+			// and its loader with the platform boundary below. Windows and Android
+			// consume standalone Circle AI services, which own model preparation.
+			// Other MAUI heads retain the isolated child-process adapter.
 			.AddConciergeAi(new CircleAiChatOptions
 			{
 				AllowAutomaticDownload = false,
