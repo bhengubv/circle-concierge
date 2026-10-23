@@ -50,3 +50,32 @@ and `work/stardust-touch-send-result.xml`.
 
 Public contracts: [Wear gesture API](https://developer.android.com/reference/com/google/wear/input/GestureInputManager)
 and [OS gesture injection and foreground constraints](https://developer.android.com/training/wearables/compose/one-handed-gestures).
+
+## 14:14 JST follow-up — live event label
+
+StarDust returned on its existing connection. The running app read Desktop
+history (31 unread conversations), an empty delivery queue, and both gesture
+actions enabled. Its gesture service reported off-body=false and Concierge as
+a foreground subscriber. This is connectivity evidence, not a new AI-answer test.
+
+Reproduced a diagnostic defect before changing the installed app: an injected
+DoublePinch produced native and managed callback logs, but the visible Gestures
+label still said no event had arrived. The handler changed a string without
+updating its existing TextView. The fix updates that view directly, preserving
+the gesture's scroll action.
+
+ARM32 Debug build passed with 0 errors and 29 warnings. Installed in place with
+`adb install --no-incremental -r`; no data was cleared. APK SHA-256:
+`F04187CA535DC988D69B4BDBCAB5D76126B812FB99330FEDE7EC55918D70325A`.
+After deployment, an injected DoublePinch immediately displayed
+“Double pinch received · 14:14:27”. Injected WristTurn returned Gestures to the
+Menu. The initial Menu assertion looked for its title, which was above the
+retained scroll position; checking the actual Menu buttons passed instead.
+
+Evidence: `work/2026-10-23-watch-gesture-label-before.xml`,
+`work/2026-10-23-watch-gesture-label-after.xml`,
+`work/2026-10-23-watch-wristturn-after.xml`,
+`work/2026-10-23-watch-live-label-events.log`, and
+`work/2026-10-23-watch-live-gesture-label-build.log`.
+Physical gesture recognition and a newly completed watch → Circle AI → watch
+answer remain unverified. The Windows service is still 3.8.1.

@@ -23,6 +23,7 @@ public partial class MainActivity
     private Java.Lang.Runnable? _dismissGesture;
     private string _handStatus = "Checking hand gestures…";
     private string _lastHandEvent = "No hand gesture received in this session.";
+    private TextView? _handEventLabel;
 
     private void OpenPane(WristPane pane) { _scroll?.ScrollTo(0, 0); _pane = pane; Render(); _ = RefreshWristAsync(); }
     private void BackToWrist()
@@ -33,6 +34,7 @@ public partial class MainActivity
 
     private View BuildWristPane()
     {
+        _handEventLabel = null;
         var column = new LinearLayout(this) { Orientation = Orientation.Vertical };
         column.SetPadding(Dp(32), Dp(32), Dp(32), Dp(52));
         column.AddView(Label(_pane switch { WristPane.Thread => "Conversation", WristPane.Menu => "Your Concierge", _ => _pane.ToString() }, 21f, Ink));
@@ -107,7 +109,8 @@ public partial class MainActivity
                 break;
             case WristPane.Gestures:
                 Text(_handStatus, true);
-                Text(_lastHandEvent);
+                _handEventLabel = Label(_lastHandEvent, 13f, Ink);
+                column.AddView(_handEventLabel, Spaced(8));
                 Text("Double pinch: talk on Home; scroll through the inbox. Wrist turn: go back. Approvals still require an explicit Yes or No.");
                 Text("Turn the crown to scroll. Swipe right to go back. Swipe up on Home to open the inbox.");
                 Row("Watch gesture settings", () => { try { StartActivity(new Android.Content.Intent("com.google.wear.input.action.GESTURE_INPUT_SETTINGS")); } catch (Android.Content.ActivityNotFoundException) { _handStatus = "Open Gestures in watch Settings"; Render(); } });
@@ -182,6 +185,10 @@ public partial class MainActivity
     private void HandPrimary()
     {
         _lastHandEvent = $"Double pinch received · {DateTime.Now:HH:mm:ss}";
+        // Updating the existing view keeps the event visible without rebuilding
+        // the scroll container and undoing the gesture's scroll action.
+        if (_pane == WristPane.Gestures && _handEventLabel is not null)
+            _handEventLabel.Text = _lastHandEvent;
         Android.Util.Log.Info("ConciergeGestures", $"Primary pane={_pane} thinking={_thinking}");
         if (_pane != WristPane.Home) _scroll?.SmoothScrollBy(0, Dp(110));
         else if (_visibleApproval is not null) Listen(); // Never approve a consequential action accidentally.
