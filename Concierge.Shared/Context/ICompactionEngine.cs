@@ -98,18 +98,12 @@ public sealed class BasicCompactionEngine : ICompactionEngine
             return Unchanged(turns);
         }
 
-        var leadingSystem = turns.Count > 0 && string.Equals(turns[0].Role, "system", StringComparison.OrdinalIgnoreCase)
-            ? turns[0]
-            : null;
-
-        var firstDroppable = leadingSystem is null ? 0 : 1;
-        var lastDroppable = turns.Count - RetainedRecentTurns;
-        if (lastDroppable - firstDroppable < MinimumTurnsToCompact / 2)
-        {
-            return Unchanged(turns);
-        }
-
-        var dropped = turns.Skip(firstDroppable).Take(lastDroppable - firstDroppable).ToList();
+        var systems = turns.Where(t => t.Role.Equals("system", StringComparison.OrdinalIgnoreCase)
+            && !t.Content.StartsWith(SummaryPrefix, StringComparison.Ordinal)).ToArray();
+        var history = turns.Where(t => !systems.Contains(t)).ToArray();
+        var lastDroppable = history.Length - RetainedRecentTurns;
+        if (lastDroppable < MinimumTurnsToCompact / 2) return Unchanged(turns);
+        var dropped = history.Take(lastDroppable).ToList();
         var summary = await SummariseAsync(dropped, cancellationToken).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(summary))
         {
@@ -117,14 +111,10 @@ public sealed class BasicCompactionEngine : ICompactionEngine
             return Unchanged(turns);
         }
 
-        var compacted = new List<ChatTurn>(RetainedRecentTurns + 2);
-        if (leadingSystem is not null)
-        {
-            compacted.Add(leadingSystem);
-        }
-
+        var compacted = new List<ChatTurn>(RetainedRecentTurns + systems.Length + 1);
+        compacted.AddRange(systems);
         compacted.Add(new ChatTurn("system", SummaryPrefix + summary.Trim()));
-        compacted.AddRange(turns.Skip(lastDroppable));
+        compacted.AddRange(history.Skip(lastDroppable));
 
         var before = _meter.Measure(turns, budgetTokens).Tokens;
         var after = _meter.Measure(compacted, budgetTokens).Tokens;

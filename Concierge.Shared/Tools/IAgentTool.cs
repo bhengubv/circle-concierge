@@ -65,4 +65,6 @@ public interface IAgentToolRegistry
     /// reading JSON Schema fully.
     /// </summary>
     string BuildSystemPromptAddendum();
+    /// <summary>Compact discovery surface; full argument schemas remain available through describe_tools.</summary>
+    string BuildDiscoveryPromptAddendum() => BuildSystemPromptAddendum();
 }

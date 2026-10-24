@@ -107,9 +107,10 @@ public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICirc
 #endif
             return result;
         }
-        InvalidateReads();
+        var invalidates = CircleAiReadCachePolicy.InvalidatesReads(request.Verb.ToString());
+        if (invalidates) InvalidateReads();
         try { return await ExecuteUncachedVerbAsync(request, cancellationToken); }
-        finally { InvalidateReads(); }
+        finally { if (invalidates) InvalidateReads(); }
     }
 
     private async Task<LinkRowsReply> ExecuteUncachedVerbAsync(LinkVerbRequest request, CancellationToken cancellationToken)

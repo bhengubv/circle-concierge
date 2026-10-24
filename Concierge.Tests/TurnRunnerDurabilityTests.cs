@@ -12,6 +12,26 @@ namespace Concierge.Tests;
 
 public sealed class TurnRunnerDurabilityTests : IAsyncLifetime
 {
+    [Fact]
+    public async Task Compaction_sees_the_complete_prompt_and_response_headroom()
+    {
+        var conversation = await _store.StartAsync("local");
+        var runtime = new CountingRuntime("Answer");
+        var probe = new PromptProbe();
+        await Runner(runtime, compactor: probe).RunAsync(new TurnRequest(conversation.Id, "My question", runtime,
+            Settings: new TurnSettings(SystemPrompt: "WORKSPACE_CONTEXT")));
+        Assert.Contains(probe.Turns, t => t.Role == "system" && t.Content.Contains("WORKSPACE_CONTEXT") && t.Content.Contains("You are the assistant inside Concierge"));
+        Assert.Contains(probe.Turns, t => t.Role == "user" && t.Content == "My question");
+        Assert.Equal(4096 - 512, probe.Budget);
+    }
+    private sealed class PromptProbe : ICompactionEngine
+    {
+        public IReadOnlyList<ChatTurn> Turns = []; public int Budget;
+        public Task<CompactionResult> CompactIfNeededAsync(IReadOnlyList<ChatTurn> turns, int budgetTokens, CancellationToken cancellationToken = default)
+        { Turns = turns; Budget = budgetTokens; return Task.FromResult(new CompactionResult(turns, false, 0)); }
+        public Task<CompactionResult> CompactNowAsync(IReadOnlyList<ChatTurn> turns, int budgetTokens, CancellationToken cancellationToken = default)
+            => CompactIfNeededAsync(turns, budgetTokens, cancellationToken);
+    }
     private readonly string _databasePath = Path.Combine(Path.GetTempPath(), $"turn-run-{Guid.NewGuid():N}.db");
     private ServiceProvider _provider = null!;
     private IConversationStore _store = null!;
@@ -347,14 +367,15 @@ public sealed class TurnRunnerDurabilityTests : IAsyncLifetime
         IConversationStore? store = null,
         ConversationRunGate? runGate = null,
         IAgentToolRegistry? registry = null,
-        BackgroundRuns? runs = null)
+        BackgroundRuns? runs = null,
+        ICompactionEngine? compactor = null)
     {
         registry ??= new AgentToolRegistry([]);
         return new TurnRunner(
             store ?? _store,
             registry,
             new ToolCallScheduler(registry),
-            new BasicCompactionEngine(new HeuristicTokenMeter(), runtime),
+            compactor ?? new BasicCompactionEngine(new HeuristicTokenMeter(), runtime),
             new HeadTailToolResultPruner(),
             new RepeatToolReminder(),
             new EmptySkills(),

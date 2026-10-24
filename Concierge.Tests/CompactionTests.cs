@@ -15,6 +15,16 @@ namespace Concierge.Tests;
 /// </remarks>
 public sealed class CompactionTests
 {
+    [Fact]
+    public async Task Multiple_system_layers_survive_without_becoming_summary_content()
+    {
+        var turns = new List<ChatTurn> { new("system", "Product identity"), new("system", "Conversation policy") };
+        turns.AddRange(Conversation(60));
+        var result = await EngineWith("A summary").CompactNowAsync(turns, 500);
+        Assert.True(result.WasCompacted);
+        Assert.Equal("Product identity", result.Turns[0].Content);
+        Assert.Equal("Conversation policy", result.Turns[1].Content);
+    }
     private readonly ITokenMeter _meter = new HeuristicTokenMeter();
 
     // ── Leaving things alone ───────────────────────────────────────────

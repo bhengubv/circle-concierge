@@ -2,6 +2,12 @@ namespace Concierge.Shared.Chat;
 
 public interface IConversationStore
 {
+    async Task<ConversationHistory> ReadHistoryAsync(Guid conversationId, CancellationToken cancellationToken = default)
+    {
+        var events = await ReadEventsAsync(conversationId, cancellationToken).ConfigureAwait(false);
+        var conversation = await GetAsync(conversationId, cancellationToken).ConfigureAwait(false);
+        return ConversationHistoryProjection.Derive(conversation?.SystemPrompt, events);
+    }
     async Task<IReadOnlyList<ConversationEvent>> ReadRecentEventsAsync(Guid conversationId, int count = 100, CancellationToken cancellationToken = default)
         => (await ReadEventsAsync(conversationId, cancellationToken).ConfigureAwait(false)).TakeLast(Math.Clamp(count, 1, 100)).ToArray();
 

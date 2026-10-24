@@ -252,7 +252,7 @@ public sealed class WorkspaceSidebarTests : BunitContext
 
         // Re-found after the click: the earlier reference is to the element as
         // it was before the group unfolded.
-        Assert.Contains("You're all caught up", cut.FindAll("section.ws-group")[1].TextContent);
+        cut.WaitForAssertion(() => Assert.Contains("You're all caught up", cut.FindAll("section.ws-group")[1].TextContent));
     }
 
     [Fact]

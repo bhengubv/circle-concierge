@@ -22,6 +22,30 @@ namespace Concierge.Tests;
 /// </remarks>
 public sealed class ConversationEventLogTests : IAsyncLifetime
 {
+    [Fact]
+    public async Task Compaction_reloads_the_summary_and_retained_question_before_the_next_answer()
+    {
+        var conversation = await _store.StartAsync("local");
+        await _store.AppendAsync(conversation.Id, "user", "Old details");
+        await _store.AppendAsync(conversation.Id, "user", "Keep this question");
+        var snapshot = new ConversationCompactionSnapshot(1,
+            [new("system", "Summary of earlier conversation: Keep the decision"), new("user", "Keep this question")], 100, 1);
+        await _store.AppendEventAsync(conversation.Id, ConversationEventType.CompactionReplace,
+            System.Text.Json.JsonSerializer.Serialize(snapshot));
+        await _store.AppendAsync(conversation.Id, "assistant", "The next answer");
+        var reopened = new ConversationStore(_provider.GetRequiredService<IDbContextFactory<ConciergeChatDbContext>>());
+        var turns = await reopened.DeriveMessagesAsync(conversation.Id);
+        Assert.Equal(new[] { "Summary of earlier conversation: Keep the decision", "Keep this question", "The next answer" }, turns.Select(t => t.Content));
+    }
+
+    [Fact]
+    public async Task Legacy_compaction_marker_cannot_erase_the_only_copy_of_the_conversation()
+    {
+        var conversation = await _store.StartAsync("local");
+        await _store.AppendAsync(conversation.Id, "user", "Still here");
+        await _store.AppendEventAsync(conversation.Id, ConversationEventType.CompactionReplace, "Summarised earlier conversation");
+        Assert.Equal("Still here", Assert.Single(await _store.DeriveMessagesAsync(conversation.Id)).Content);
+    }
     private readonly string _databasePath =
         Path.Combine(Path.GetTempPath(), $"concierge-eventlog-{Guid.NewGuid():N}.db");
 

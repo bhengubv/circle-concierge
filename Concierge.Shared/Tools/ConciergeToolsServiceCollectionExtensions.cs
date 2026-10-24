@@ -20,6 +20,8 @@ public static class ConciergeToolsServiceCollectionExtensions
     public static IServiceCollection AddConciergeTools(this IServiceCollection services)
     {
         services.TryAddSingleton<IAgentToolRegistry, AgentToolRegistry>();
+        services.AddSingleton<IAgentTool>(provider => new DescribeToolsTool(
+            () => provider.GetRequiredService<IAgentToolRegistry>().Tools));
         // Fail closed by default: with no host-supplied approver, write and run refuse.
         // A host wires its own surface (MAUI dialog, web prompt) over this registration.
         services.TryAddSingleton<IToolApprovalService>(_ => UnavailableToolApprovalService.Instance);

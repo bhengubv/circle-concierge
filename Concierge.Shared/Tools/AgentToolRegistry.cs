@@ -68,4 +68,19 @@ public sealed class AgentToolRegistry : IAgentToolRegistry
 
         return sb.ToString();
     }
+
+    public string BuildDiscoveryPromptAddendum()
+    {
+        var snapshot = Tools;
+        if (!snapshot.Any(t => t.Name == "describe_tools")) return BuildSystemPromptAddendum();
+        var sb = new StringBuilder("Answer directly when no tool is needed. Before using a tool, request its description and schema:\n```tool-call\n{\"name\":\"describe_tools\",\"arguments\":{\"names\":[\"tool_name\"]}}\n```\nUse the same tool-call format to call it. Wait for tool-result; never invent success.\n");
+        // Names keep the complete live catalogue discoverable; descriptions and schemas
+        // arrive on demand. Repeating them on every ordinary question dominates prefill.
+        foreach (var readOnly in new[] { true, false })
+        {
+            sb.Append(readOnly ? "[read-only]: " : "[requires approval]: ");
+            sb.AppendLine(string.Join(", ", snapshot.Where(t => t.IsReadOnly == readOnly).Select(t => t.Name)));
+        }
+        return sb.ToString();
+    }
 }

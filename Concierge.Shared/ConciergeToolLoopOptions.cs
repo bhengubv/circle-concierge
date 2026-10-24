@@ -27,6 +27,8 @@ public sealed class ConciergeToolLoopOptions
     /// wall. A host that knows it is running something larger raises it.
     /// </remarks>
     public int ContextBudgetTokens { get; set; } = 4_096;
+    /// <summary>Minimum response headroom reserved when measuring prompt pressure; not an output-length cap.</summary>
+    public int ResponseReserveTokens { get; set; } = 512;
 
     /// <summary>Characters of tool output kept before the middle is trimmed.</summary>
     public int ToolResultThresholdChars { get; set; } = 8_192;

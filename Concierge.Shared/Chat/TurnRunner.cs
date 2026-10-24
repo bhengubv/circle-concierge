@@ -143,13 +143,7 @@ public sealed class TurnRunner(
     private readonly RuntimeResolver _resolver = resolver ?? new RuntimeResolver();
     private readonly ConversationRunGate _runGate = runGate ?? new ConversationRunGate();
     private const string ConciergeIdentityPrompt = """
-        You are the assistant inside Concierge, powered by Circle AI. Help people turn questions, ideas, and goals into useful work. Answer the person directly in clear, everyday language.
-
-        Ground capability claims in the tools, connected services, and current work context available on this turn. Explain the difference between a suggestion or plan and an action that has actually completed. Never say a task was executed, a file was created, or a service was contacted unless the available tool or service confirms it.
-
-        Concierge owns the person's conversations, Workspaces, Projects, durable work history, permissions, and progress view. Circle AI supplies intelligence and chooses suitable capabilities and device resources. When an integrated Butler execution run is actually available, Butler performs the dispatched operational work and Concierge reports its confirmed progress and results. Do not imply Butler is connected or that a run has started unless the app confirms it.
-
-        Do not ask the person to choose a model or runtime. Follow the action-control mode and approval results supplied by the app. If asked what Concierge can help with, name a few practical things supported by the current tools and work surfaces, then offer one useful next step. Ask only the follow-up needed to proceed.
+        You are the assistant inside Concierge, powered by Circle AI. Answer clearly and directly. Ground capabilities in available tools and connected services. Never say a task was executed without confirmation. Butler performs the dispatched operational work when connected. Do not imply Butler is connected without confirmation. Follow the app's action mode and approvals. Circle AI chooses models and resources; never ask the user to choose them. Concierge manages conversations, Workspaces, Projects and progress. Ask only necessary follow-up questions.
         """;
 
     /// <summary>
@@ -540,26 +534,8 @@ public sealed class TurnRunner(
         // Derived from the log rather than read off message rows: the log is what is true,
         // and it is the only place a tool result is distinguishable from something a person
         // typed.
-        var turns = (await store.DeriveMessagesAsync(request.ConversationId, cancellationToken)
-            .ConfigureAwait(false)).ToList();
-
-        // Compact before spending a request, not after one is refused for length. On the
-        // smallest on-device model this is the difference between a conversation that keeps
-        // going and one that stops after a handful of turns.
-        var compacted = await compaction
-            .CompactIfNeededAsync(turns, options.ContextBudgetTokens, cancellationToken)
-            .ConfigureAwait(false);
-
-        if (compacted.WasCompacted)
-        {
-            turns = compacted.Turns.ToList();
-
-            await store.AppendEventAsync(
-                request.ConversationId, ConversationEventType.CompactionReplace,
-                $"Summarised the earlier part of this conversation, reclaiming about {compacted.TokensReclaimed} tokens.",
-                cancellationToken: cancellationToken).ConfigureAwait(false);
-        }
-
+        var history = await store.ReadHistoryAsync(request.ConversationId, cancellationToken).ConfigureAwait(false);
+        var turns = history.Turns.ToList();
         var systemParts = new List<string> { ConciergeIdentityPrompt };
 
         // Specialist guidance layers onto Concierge's stable product identity, followed by
@@ -584,7 +560,7 @@ public sealed class TurnRunner(
 
         if (settings.IncludeToolCatalog && tools.Tools.Count > 0)
         {
-            systemParts.Add(tools.BuildSystemPromptAddendum());
+            systemParts.Add(settings.ExecuteTools ? tools.BuildDiscoveryPromptAddendum() : tools.BuildSystemPromptAddendum());
         }
 
         if (systemParts.Count > 0)
@@ -622,6 +598,20 @@ public sealed class TurnRunner(
             {
                 turns[lastUser] = turns[lastUser] with { Images = images.ToArray() };
             }
+        }
+
+        // Measure the complete request, including identity, skills, tools and captured-media notices.
+        var promptBudget = Math.Max(1, options.ContextBudgetTokens - Math.Clamp(options.ResponseReserveTokens, 0, Math.Max(0, options.ContextBudgetTokens - 1)));
+        var compacted = await compaction.CompactIfNeededAsync(turns, promptBudget, cancellationToken).ConfigureAwait(false);
+        if (compacted.WasCompacted)
+        {
+            turns = compacted.Turns.ToList();
+            // The injected first system turn is ephemeral. Keep the exact durable history and cursor;
+            // later events beyond that cursor are still included when the snapshot is replayed.
+            var durable = turns.Skip(1).Select(t => t with { Images = null }).ToArray();
+            await store.AppendEventAsync(request.ConversationId, ConversationEventType.CompactionReplace,
+                JsonSerializer.Serialize(new ConversationCompactionSnapshot(1, durable, compacted.TokensReclaimed, history.ThroughSeq)),
+                cancellationToken: cancellationToken).ConfigureAwait(false);
         }
 
         var buffer = new StringBuilder();

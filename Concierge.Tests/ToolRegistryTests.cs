@@ -26,7 +26,7 @@ public sealed class ToolRegistryTests
 
         var registry = provider.GetRequiredService<IAgentToolRegistry>();
 
-        Assert.Equal(11, registry.Tools.Count);
+        Assert.Equal(12, registry.Tools.Count);
         Assert.Contains(registry.Tools, t => t.Name == "read_file" && t.IsReadOnly);
         Assert.Contains(registry.Tools, t => t.Name == "write_file" && !t.IsReadOnly);
         Assert.Contains(registry.Tools, t => t.Name == "run_command" && !t.IsReadOnly);

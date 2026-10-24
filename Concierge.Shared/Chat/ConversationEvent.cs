@@ -2,6 +2,9 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Concierge.Shared.Chat;
 
+/// <summary>The exact compacted, model-visible history, without transient tool instructions or image bytes.</summary>
+public sealed record ConversationCompactionSnapshot(int SchemaVersion, IReadOnlyList<ChatTurn> Turns, int TokensReclaimed, int ThroughSeq);
+
 /// <summary>
 /// What kind of thing happened. The set is closed on purpose: a new kind of model-visible
 /// input means a new member here, which is what keeps "what the model saw" and "what is in
@@ -44,6 +47,8 @@ public enum ConversationEventType
 
     /// <summary>A transport or peer status changed. Log-only; never conversation content.</summary>
     ConnectionStatus = 11,
+    /// <summary>A durable system instruction added through the message API.</summary>
+    SystemMessage = 12,
 }
 
 /// <summary>Structured pointer to an output retained in the conversation timeline.</summary>

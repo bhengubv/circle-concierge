@@ -111,32 +111,20 @@ public sealed class ConversationStore : IConversationStore
 
     public async Task<ChatMessageRow> AppendAsync(Guid conversationId, string role, string content, string? producedBy = null, CancellationToken cancellationToken = default)
     {
-        await _schemaReady.Value.ConfigureAwait(false);
-        await using var db = await _factory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
-        var conversation = await db.Conversations
-            .FirstOrDefaultAsync(c => c.Id == conversationId, cancellationToken)
-            .ConfigureAwait(false)
-            ?? throw new InvalidOperationException($"Conversation {conversationId} not found.");
-
-        var message = new ChatMessageRow
+        var type = role.ToLowerInvariant() switch
         {
-            ConversationId = conversationId,
-            Role = role,
-            Content = content,
-            ProducedBy = producedBy,
+            "user" => ConversationEventType.UserMessage,
+            "assistant" => ConversationEventType.AssistantMessage,
+            "tool" => ConversationEventType.ToolResult,
+            "system" => ConversationEventType.SystemMessage,
+            _ => throw new ArgumentException("Use user, assistant, tool or system role.", nameof(role))
         };
-        db.Messages.Add(message);
-        conversation.UpdatedAt = DateTimeOffset.UtcNow;
-
-        // Auto-name the conversation from the first user turn so the sidebar is readable.
-        if (conversation.Title == "New conversation" && role == "user")
-        {
-            var trimmed = content.Replace('\n', ' ').Trim();
-            conversation.Title = trimmed.Length <= 60 ? trimmed : trimmed[..60] + "…";
-        }
-
-        await db.SaveChangesAsync(cancellationToken).ConfigureAwait(false);
-        return message;
+        var entry = await AppendEventAsync(conversationId, type, content, producedBy, cancellationToken).ConfigureAwait(false);
+        if (!ProjectsToMessage(type, producedBy))
+            return new ChatMessageRow { Id = entry.Id, ConversationId = conversationId, Role = role, Content = content,
+                ProducedBy = producedBy, CreatedAt = entry.CreatedAt };
+        await using var db = await _factory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        return await db.Messages.AsNoTracking().SingleAsync(m => m.Id == entry.Id, cancellationToken).ConfigureAwait(false);
     }
 
     // The append lock. SQLite serialises writers, but the read-then-write that assigns a
@@ -199,6 +187,7 @@ public sealed class ConversationStore : IConversationStore
             {
                 db.Messages.Add(new ChatMessageRow
                 {
+                    Id = entry.Id,
                     ConversationId = conversationId,
                     Role = RoleFor(type),
                     Content = entry.Data,
@@ -325,6 +314,7 @@ public sealed class ConversationStore : IConversationStore
                 {
                     db.Messages.Add(new ChatMessageRow
                     {
+                        Id = copy.Id,
                         ConversationId = conversationId,
                         Role = RoleFor(copy.Type),
                         Content = copy.Data,
@@ -353,32 +343,7 @@ public sealed class ConversationStore : IConversationStore
         }
 
         var events = await ReadEventsAsync(conversationId, cancellationToken).ConfigureAwait(false);
-        var turns = new List<ChatTurn>();
-
-        if (!string.IsNullOrWhiteSpace(conversation.SystemPrompt))
-        {
-            turns.Add(new ChatTurn("system", conversation.SystemPrompt));
-        }
-
-        // A compaction event shadows everything before the sequence it names, so a replayed
-        // log produces the same shortened history the live conversation had.
-        var shadowedBefore = events
-            .Where(e => e.Type == ConversationEventType.CompactionReplace)
-            .Select(e => e.Seq)
-            .DefaultIfEmpty(-1)
-            .Max();
-
-        foreach (var entry in events)
-        {
-            if (entry.Seq < shadowedBefore || !ProjectsToMessage(entry.Type, entry.ProducedBy))
-            {
-                continue;
-            }
-
-            turns.Add(new ChatTurn(RoleFor(entry.Type), entry.Data));
-        }
-
-        return turns;
+        return ConversationHistoryProjection.Derive(conversation.SystemPrompt, events).Turns;
     }
 
     /// <inheritdoc />
@@ -404,6 +369,7 @@ public sealed class ConversationStore : IConversationStore
         {
             db.Messages.Add(new ChatMessageRow
             {
+                Id = entry.Id,
                 ConversationId = conversationId,
                 Role = RoleFor(entry.Type),
                 Content = entry.Data,
@@ -429,6 +395,7 @@ public sealed class ConversationStore : IConversationStore
         ConversationEventType.UserMessage => true,
         ConversationEventType.AssistantMessage => true,
         ConversationEventType.ToolResult => true,
+        ConversationEventType.SystemMessage => true,
         _ => false,
     };
     }
