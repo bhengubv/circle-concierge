@@ -358,6 +358,23 @@ a:hover { text-decoration: underline; }
 }
 .msg-body { color: var(--ink); font-size: var(--t-md); overflow-wrap: anywhere; }
 .msg-body p + p { margin-top: var(--s3); }
+.msg-audio {
+    align-self: flex-start;
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    margin-top: .45rem;
+    padding: .3rem .55rem;
+    border: 1px solid var(--rule);
+    border-radius: 999px;
+    background: var(--raised);
+    color: var(--ink-soft);
+    font: inherit;
+    font-size: var(--t-xs);
+    cursor: pointer;
+}
+.msg-audio:hover { color: var(--ink); border-color: var(--accent); }
+.msg-audio:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ============================================================
    TOOL ACTIVITY

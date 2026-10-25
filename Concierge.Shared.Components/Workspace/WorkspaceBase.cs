@@ -1393,6 +1393,91 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         }
     }
 
+    /// <summary>Capture a still photo from the handheld camera into this turn or canvas.</summary>
+    protected async Task CapturePhotoAsync()
+    {
+        try
+        {
+            var base64 = await JS.InvokeAsync<string?>("conciergeCamera.open");
+            if (string.IsNullOrWhiteSpace(base64))
+            {
+                _composerHint = "No picture taken.";
+                return;
+            }
+
+            byte[] bytes;
+            try
+            {
+                bytes = Convert.FromBase64String(base64);
+            }
+            catch (FormatException)
+            {
+                _composerHint = "The camera returned an invalid picture. Try again.";
+                return;
+            }
+
+            if (bytes.Length > MaxPictureBytes)
+            {
+                _composerHint = $"Picture is over {MaxPictureBytes / (1024 * 1024)} MB.";
+                return;
+            }
+
+            var name = $"camera-{DateTime.UtcNow:yyyyMMdd-HHmmss}.jpg";
+            if (_designOpen)
+            {
+                AddPictureToDesign(name, bytes);
+                _composerHint = "Picture added to the design.";
+            }
+            else
+            {
+                _pendingAttachments.Add(new TextAttachment(name, bytes));
+                _composerHint = "Picture ready. It goes with your next message.";
+            }
+        }
+        catch (JSException)
+        {
+            _composerHint = "I couldn't open the camera. You can attach a picture instead.";
+        }
+    }
+
+    private void AddPictureToDesign(string fileName, byte[] bytes)
+    {
+        if (_design is null) return;
+
+        var source = $"data:image/jpeg;base64,{Convert.ToBase64String(bytes)}";
+        if (_design.Current.Medium == Concierge.Shared.Design.DesignMedium.Scene)
+        {
+            _design.Record(
+                _design.Current.Add(Concierge.Shared.Design.DesignNode.New(
+                    Concierge.Shared.Design.DesignNodeKind.Solid,
+                    null,
+                    ("shape", "plan"),
+                    ("text", "The plan"),
+                    ("src", source),
+                    ("width", "400"),
+                    ("depth", "400"))),
+                "Laid the plan down");
+            return;
+        }
+
+        if (_design.Pointed is { Kind: Concierge.Shared.Design.DesignNodeKind.Image } chosen)
+        {
+            _design.Record(
+                _design.Current.Set(chosen.Id, "src", source).Set(chosen.Id, "text", fileName),
+                "Changed the picture");
+        }
+        else
+        {
+            _design.Record(
+                _design.Current.Add(Concierge.Shared.Design.DesignNode.New(
+                    Concierge.Shared.Design.DesignNodeKind.Image,
+                    null,
+                    ("src", source),
+                    ("text", fileName))),
+                "Added a picture");
+        }
+    }
+
     /// <summary>
     /// Puts chosen pictures onto the canvas.
     ///
@@ -1696,22 +1781,28 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
         try
         {
-            var http = VoiceClient(Nav.BaseUri);
-            using var response = await http.PostAsJsonAsync("api/voice/speak", new { text });
-            if (!response.IsSuccessStatusCode)
+            var voices = Services.GetService(typeof(IEnumerable<Concierge.Shared.Media.IVoiceRuntime>))
+                as IEnumerable<Concierge.Shared.Media.IVoiceRuntime> ?? [];
+            var voice = Concierge.Shared.Media.VoiceChoice.Mouth(voices.Where(candidate => candidate.IsReady));
+            if (voice is null)
             {
+                _composerHint = "Spoken replies are unavailable. Set up an on-device voice or configure a voice provider.";
                 return;
             }
-            var bytes = await response.Content.ReadAsByteArrayAsync();
-            if (bytes.Length == 0)
+
+            var speech = await voice.SynthesizeAsync(text);
+            if (speech.Audio.Length == 0)
             {
+                _composerHint = "The voice service returned no audio.";
                 return;
             }
-            await JS.InvokeVoidAsync("conciergeVoice.play", Convert.ToBase64String(bytes), "audio/mpeg");
+
+            await JS.InvokeVoidAsync("conciergeVoice.play", Convert.ToBase64String(speech.Audio), speech.MimeType);
+            _composerHint = $"Reading aloud with {voice.EngineLabel}.";
         }
-        catch (JSException)
+        catch (Exception)
         {
-            // Audio element missing or autoplay blocked — non-fatal.
+            _composerHint = "I couldn't play that reply aloud. You can still read it here.";
         }
     }
 

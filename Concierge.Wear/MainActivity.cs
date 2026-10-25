@@ -6,6 +6,7 @@ using Android.Hardware;
 using Android.OS;
 using Android.Runtime;
 using Android.Speech;
+using Android.Speech.Tts;
 using Android.Views;
 using Android.Widget;
 using Concierge.Away;
@@ -16,7 +17,7 @@ namespace Concierge.Wear;
 /// <summary>Voice-first wrist client with a durable inbox, shared history and native input.</summary>
 [Activity(Label = "Concierge", MainLauncher = true, Theme = "@style/ConciergeWear",
     ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation | ConfigChanges.ScreenLayout)]
-public partial class MainActivity : Activity, ISensorEventListener
+public partial class MainActivity : Activity, ISensorEventListener, TextToSpeech.IOnInitListener
 {
     private static Color Token(int id) => new(Android.App.Application.Context.GetColor(id));
     private static readonly Color Ground = Token(Resource.Color.cm_color_canvas);
@@ -67,6 +68,10 @@ public partial class MainActivity : Activity, ISensorEventListener
     private bool _showDevices;
     private bool _resumed;
     private bool _thinking;
+    private bool _replyNotice;
+    private string _lastAssistantReply = string.Empty;
+    private TextToSpeech? _speech;
+    private bool _speechReady;
     private int _sendGeneration;
     private int _replyShownGeneration;
     private CancellationTokenSource? _replyMonitorStop;
@@ -95,6 +100,8 @@ public partial class MainActivity : Activity, ISensorEventListener
         SetContentView(_root);
 
         Render();
+        // Explicit replay is used so spoken answers never interrupt a meeting.
+        _speech = new TextToSpeech(this, this);
 
         // Nothing blocks on this. The microphone works before the desk has been found —
         // finding it is what the first sentence does anyway — and a face that sat blank for
@@ -134,10 +141,13 @@ public partial class MainActivity : Activity, ISensorEventListener
             WatchScreen.Change => BuildChange(view.Changed!),
             _ => BuildSpeak(),
         });
-        var inbox = Label("Inbox", 11f, Accent);
-        inbox.ContentDescription = "Open conversations, queue and status";
-        inbox.Click += (_, _) => OpenPane(WristPane.Menu);
-        _root.AddView(inbox, new FrameLayout.LayoutParams(Dp(92), Dp(32), GravityFlags.Bottom | GravityFlags.CenterHorizontal) { BottomMargin = Dp(12) });
+        if (view.Screen != WatchScreen.Speak)
+        {
+            var inbox = Label("Inbox", 11f, Accent);
+            inbox.ContentDescription = "Open conversations, queue and status";
+            inbox.Click += (_, _) => OpenPane(WristPane.Menu);
+            _root.AddView(inbox, new FrameLayout.LayoutParams(Dp(92), Dp(32), GravityFlags.Bottom | GravityFlags.CenterHorizontal) { BottomMargin = Dp(12) });
+        }
     }
 
     // ── A decision, and nothing else ──────────────────────────────────────
@@ -249,6 +259,7 @@ public partial class MainActivity : Activity, ISensorEventListener
                     && Interlocked.CompareExchange(ref _replyShownGeneration, generation, 0) == 0)
                 {
                     _lastHeard = say;
+                    _lastAssistantReply = say;
                     SignalAnswerArrived();
                 }
                 _waiting = update.Waiting;
@@ -318,6 +329,7 @@ public partial class MainActivity : Activity, ISensorEventListener
                             if (generation != Volatile.Read(ref _sendGeneration)) return;
                             if (Interlocked.CompareExchange(ref _replyShownGeneration, generation, 0) != 0) return;
                             _lastHeard = reply;
+                            _lastAssistantReply = reply;
                             _thinking = false;
                             SignalAnswerArrived();
                             Render();
@@ -337,7 +349,34 @@ public partial class MainActivity : Activity, ISensorEventListener
 
     /// <summary>Use the watch's discreet system haptic, respecting its sound and touch settings.</summary>
     private void SignalAnswerArrived()
-        => _root?.PerformHapticFeedback(FeedbackConstants.Confirm);
+    {
+        _replyNotice = true;
+        _root?.PerformHapticFeedback(FeedbackConstants.Confirm);
+    }
+
+    private void SpeakLatestReply()
+    {
+        if (string.IsNullOrWhiteSpace(_lastAssistantReply)) return;
+        if (!_speechReady || _speech is null)
+        {
+            _lastHeard = "Watch speech is not ready. Check its text-to-speech settings.";
+            Render();
+            return;
+        }
+
+        _speech.Speak(_lastAssistantReply, QueueMode.Flush, null, $"concierge-{Guid.NewGuid():N}");
+    }
+
+    public void OnInit(OperationResult status)
+    {
+        _speechReady = status == OperationResult.Success;
+        if (_speechReady && _speech is not null)
+        {
+            var language = _speech.SetLanguage(Java.Util.Locale.Default);
+            _speechReady = language != LanguageAvailableResult.MissingData
+                && language != LanguageAvailableResult.NotSupported;
+        }
+    }
 
     /// <summary>Deliver anything held, then read what is true now.</summary>
     private Task RefreshWaitingAsync()
@@ -444,27 +483,39 @@ public partial class MainActivity : Activity, ISensorEventListener
 
     private View BuildSpeak()
     {
-        var column = Column();
-
-        // A held sentence is said out loud. A face that looked the same whether something
-        // went or is sitting on the wrist unsent would be this product's signature defect on
-        // the one screen with room for a single line.
+        // A held sentence is said out loud. The full-screen audiogram owns the canvas;
+        // app identity and device/inbox notification are drawn inside its blue field.
         var held = _desk.Waiting;
 
         var said = !string.IsNullOrWhiteSpace(_lastHeard) ? _lastHeard
             : held > 0 ? $"Tap to talk · {held} queued"
             : "Tap to talk";
-        var ring = new AudiogramView(this, _thinking ? "Thinking…" : said, _thinking);
+        var connected = _devices.Count(d => d.Connected);
+        var statusText = _thinking ? "Working on your request…"
+            : connected == 0 ? "Connecting to Desktop…"
+            : $"{connected} devices connected";
+        var unread = _inbox.Snapshot.Conversations.Count(_inbox.IsUnread);
+        var notification = _replyNotice ? "New reply · Inbox"
+            : unread > 0 ? $"Inbox · {unread} new"
+            : "Open Inbox";
+        var ring = new AudiogramView(this, _thinking ? "Thinking…" : said, _thinking,
+            "Concierge", statusText, notification, !string.IsNullOrWhiteSpace(_lastAssistantReply));
         ring.Click += (_, _) => Listen();
         ring.LongClick += (_, _) => OpenPane(WristPane.Menu);
-        var ringParams = new LinearLayout.LayoutParams(Dp(166), Dp(166)) { TopMargin = Dp(4), Gravity = GravityFlags.CenterHorizontal };
-        column.AddView(ring, ringParams);
+        ring.InboxClick += (_, _) => { _replyNotice = false; OpenPane(WristPane.Menu); };
+        ring.ReplayClick += (_, _) => SpeakLatestReply();
 
-        return column;
+        // The view measures itself against the complete screen bounds. Its circular
+        // geometry uses the shorter edge, so round and landscape faces stay unclipped.
+        ring.LayoutParameters = new FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MatchParent,
+            ViewGroup.LayoutParams.MatchParent);
+        return ring;
     }
 
     private void Listen()
     {
+        _replyNotice = false;
         _spokenApprovalId = _visibleApproval?.Id;
         // Wear OS carries a recogniser, but a stripped image may not. Say so
         // rather than appear to listen and never answer.
@@ -521,6 +572,7 @@ public partial class MainActivity : Activity, ISensorEventListener
             // Shown first, then sent. A wrist held up mid-sentence should confirm it was
             // understood before anything slower happens — and what happens next takes a
             // network, which on a train takes a while or never.
+            _replyNotice = false;
             _lastHeard = said;
             Render();
 
@@ -749,6 +801,10 @@ public partial class MainActivity : Activity, ISensorEventListener
         _replyMonitorStop?.Dispose();
         _presenceStop?.Cancel();
         StopHandGestures();
+        _speech?.Stop();
+        _speech?.Shutdown();
+        _speech?.Dispose();
+        _speech = null;
         base.OnDestroy();
     }
 

@@ -412,6 +412,11 @@
                                     @if (message.Role == "assistant")
                                     {
                                         <AssistantContent Content="@message.Content" />
+                                        <button class="msg-audio" type="button" title="Read this reply aloud"
+                                                @onclick="@(() => SpeakAsync(message.Content))">
+                                            <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><use href="_content/Concierge.Shared.Components/lib/circlemetro/circle-icons.svg#cm-icon-play"/></svg>
+                                            <span>Read aloud</span>
+                                        </button>
                                     }
                                     else
                                     {
@@ -542,6 +547,13 @@
                                    disabled="@(!WorkspaceReady)"
                                    accept=".txt,.md,.markdown,.json,.cs,.razor,.xml,.yaml,.yml,.toml,.csv,.log,.png,.jpg,.jpeg,.gif,.webp" />
                     </label>
+
+                    <button class="icon-btn" type="button"
+                            title="@(_designOpen ? "Take a picture for this design" : "Take a picture to show Concierge")"
+                            aria-label="@(_designOpen ? "Take a picture for this design" : "Take a picture to show Concierge")"
+                            disabled="@(!WorkspaceReady)" @onclick="CapturePhotoAsync">
+                        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><use href="_content/Concierge.Shared.Components/lib/circlemetro/circle-icons.svg#cm-icon-camera"/></svg>
+                    </button>
 
                     <button class="icon-btn @(_recording ? "is-on" : null)" type="button"
                             title="@(_recording ? "Stop recording" : "Speak")"
