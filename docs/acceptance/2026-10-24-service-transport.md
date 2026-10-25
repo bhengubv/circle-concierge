@@ -41,6 +41,16 @@ correct answer using Qwen3.5-4B-MNN, served by Circle AI:
 - There is no Circle AI service timing payload in the Desktop bridge result, so the
   39.120 s cannot be split into queue, prefill, and decode time from this evidence.
 
+A second fresh Desktop run through the existing `/api/away/say` bridge returned the
+same correct answer (`888ddf64-827f-4da5-a554-2c2c153eafce`):
+
+- Durable run: 2026-10-25T14:01:44.872+09:00 to 14:02:31.356+09:00: **46.484 s**.
+- Bridge call including client overhead: **46.971 s**.
+- Prompt diagnostic: 468 estimated tokens, including 444 system tokens.
+- The second run used the same Qwen3.5-4B-MNN Circle AI service. Its repeated slow
+  result makes the Desktop latency unlikely to be only a one-off cold run, but the
+  service did not expose prefill/decode timings to the bridge.
+
 The two Android 1 s-poll runs took 5.834 s and 5.480 s; the 250 ms-poll run took
 5.629 s. This small sample does **not** demonstrate faster inference. The shorter
 poll can reduce the wait to observe a completed answer, at the cost of more status
