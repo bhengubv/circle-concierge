@@ -245,9 +245,12 @@ public partial class MainActivity : Activity, ISensorEventListener
             RunOnUiThread(() =>
             {
                 _thinking = false;
-                if (Volatile.Read(ref _replyShownGeneration) != generation
-                    && update.Say is { Length: > 0 } say)
+                if (update.Say is { Length: > 0 } say
+                    && Interlocked.CompareExchange(ref _replyShownGeneration, generation, 0) == 0)
+                {
                     _lastHeard = say;
+                    SignalAnswerArrived();
+                }
                 _waiting = update.Waiting;
                 _changed = update.Changed;
                 Render();
@@ -313,9 +316,10 @@ public partial class MainActivity : Activity, ISensorEventListener
                         RunOnUiThread(() =>
                         {
                             if (generation != Volatile.Read(ref _sendGeneration)) return;
+                            if (Interlocked.CompareExchange(ref _replyShownGeneration, generation, 0) != 0) return;
                             _lastHeard = reply;
                             _thinking = false;
-                            Interlocked.Exchange(ref _replyShownGeneration, generation);
+                            SignalAnswerArrived();
                             Render();
                         });
                         return;
@@ -330,6 +334,10 @@ public partial class MainActivity : Activity, ISensorEventListener
             Android.Util.Log.Warn("Concierge.Wear.Reply", $"Reply monitor failed: {e.GetType().Name}");
         }
     }
+
+    /// <summary>Use the watch's discreet system haptic, respecting its sound and touch settings.</summary>
+    private void SignalAnswerArrived()
+        => _root?.PerformHapticFeedback(FeedbackConstants.Confirm);
 
     /// <summary>Deliver anything held, then read what is true now.</summary>
     private Task RefreshWaitingAsync()

@@ -12,7 +12,10 @@ public sealed class AudiogramView : View
     private readonly string _message;
     private readonly bool _thinking;
     private ValueAnimator? _animation;
+    private ValueAnimator? _messageScroll;
     private float _phase;
+    private float _messageOffset;
+    private float _messageScrollDistance;
     private readonly Color _blue, _cyan, _ink, _surface;
     private readonly Typeface _markFace = Typeface.DefaultBold!;
     private readonly Typeface _bodyFace = Typeface.Default!;
@@ -41,6 +44,7 @@ public sealed class AudiogramView : View
         _animation.RepeatCount = ValueAnimator.Infinite;
         _animation.Update += (_, e) => { _phase = e.Animation!.AnimatedFraction * MathF.Tau; Invalidate(); };
         _animation.Start();
+        StartMessageScroll();
     }
 
     protected override void OnDetachedFromWindow()
@@ -48,6 +52,9 @@ public sealed class AudiogramView : View
         _animation?.Cancel();
         _animation?.Dispose();
         _animation = null;
+        _messageScroll?.Cancel();
+        _messageScroll?.Dispose();
+        _messageScroll = null;
         _glow?.Dispose();
         _glow = null;
         base.OnDetachedFromWindow();
@@ -72,8 +79,34 @@ public sealed class AudiogramView : View
             else line = next;
         }
         if (line.Length > 0) lines.Add(line);
-        _lines = lines.Take(3).ToArray();
-        if (lines.Count > 3) _lines[2] += "…";
+        _lines = lines.ToArray();
+        _messageScrollDistance = Math.Max(0, _lines.Length - 3) * r * .16f;
+        StartMessageScroll();
+    }
+
+    private void StartMessageScroll()
+    {
+        _messageScroll?.Cancel();
+        _messageScroll?.Dispose();
+        _messageScroll = null;
+        _messageOffset = 0;
+        if (_messageScrollDistance <= 0
+            || Android.Provider.Settings.Global.GetFloat(Context!.ContentResolver, "animator_duration_scale", 1f) == 0)
+            return;
+
+        // Keep three lines readable at a time. The gentle automatic crawl lets the whole
+        // answer be read on a meeting table without a tap, swipe, or wrist gesture.
+        _messageScroll = ValueAnimator.OfFloat(0f, _messageScrollDistance)!;
+        _messageScroll.SetDuration(Math.Max(5000, _lines.Length * 1800L));
+        _messageScroll.StartDelay = 1800;
+        _messageScroll.RepeatCount = ValueAnimator.Infinite;
+        _messageScroll.RepeatMode = ValueAnimatorRepeatMode.Reverse;
+        _messageScroll.Update += (_, e) =>
+        {
+            _messageOffset = (float)e.Animation!.AnimatedValue!;
+            Invalidate();
+        };
+        _messageScroll.Start();
     }
 
     protected override void OnDraw(Canvas canvas)
@@ -111,7 +144,10 @@ public sealed class AudiogramView : View
         canvas.DrawText("B!", x, y - r * .03f, _paint);
         _paint.TextSize = r * .12f;
         _paint.SetTypeface(_bodyFace);
+        canvas.Save();
+        canvas.ClipRect(x - r * .64f, y + r * .12f, x + r * .64f, y + r * .67f);
         for (var i = 0; i < _lines.Length; i++)
-            canvas.DrawText(_lines[i], x, y + r * (.22f + i * .16f), _paint);
+            canvas.DrawText(_lines[i], x, y + r * (.22f + i * .16f) - _messageOffset, _paint);
+        canvas.Restore();
     }
 }

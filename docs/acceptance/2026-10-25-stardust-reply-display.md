@@ -32,3 +32,20 @@ description.
   the paired user and assistant events. Thus the end-to-end text reply path is verified.
 
 This does not verify spoken audio playback; this fix makes the text answer visible on the watch.
+
+## Follow-up: long replies and arrival feedback
+
+The audiogram now keeps three lines visible and automatically scrolls longer answers inside
+the ring. It pauses briefly before moving, and respects Android's system reduced-motion
+setting. A reply also triggers the watch's standard `Confirm` haptic once; Concierge does not
+override the user's global haptic setting.
+
+On 25 October, a real StarDust request produced a 5-item answer. Desktop recorded the user
+message at 15:13:49.158 JST and the assistant reply at 15:15:24.805 JST. The watch's vibrator
+history recorded Concierge's `Confirm` haptic at 15:15:24.829 JST: two `THUD` primitives,
+219 ms total. Consecutive watch screenshots six seconds apart showed different portions of
+the long answer in the audiogram, confirming automatic motion without touching the watch.
+
+Evidence: `work/stardust-scroll-haptic-reply.png`,
+`work/stardust-scroll-haptic-a.png`, `work/stardust-scroll-haptic-b.png`, and
+`work/stardust-vibrator-manager.txt`.
