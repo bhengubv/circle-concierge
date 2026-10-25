@@ -103,6 +103,23 @@ public sealed class WristInboxTests
     }
 
     [Fact]
+    public void Reply_after_matches_the_current_prompt_not_an_old_archived_answer()
+    {
+        var sentAt = DateTimeOffset.UtcNow;
+        var events = new[]
+        {
+            TimedEntry(0, ConversationEventType.UserMessage, "Hi", sentAt.AddMinutes(-1)),
+            TimedEntry(1, ConversationEventType.AssistantMessage, "Old greeting", sentAt.AddMinutes(-1)),
+            TimedEntry(2, ConversationEventType.UserMessage, "Hi", sentAt),
+            TimedEntry(3, ConversationEventType.AssistantMessage, "Fresh greeting", sentAt.AddSeconds(3)),
+        };
+
+        Assert.Equal("Fresh greeting", WristTimeline.ReplyAfter(events, "Hi", -1, sentAt));
+        Assert.Null(WristTimeline.ReplyAfter(events.Take(2), "Hi", -1, sentAt));
+        Assert.Null(WristTimeline.ReplyAfter(events, "Hi", 2, sentAt));
+    }
+
+    [Fact]
     public void History_survives_watch_process_restart_and_is_bounded()
     {
         var path = Path.Combine(Path.GetTempPath(), "wrist-test-" + Guid.NewGuid(), "inbox.json");
@@ -142,4 +159,7 @@ public sealed class WristInboxTests
 
     private static ConversationEvent Entry(int seq, ConversationEventType type, string data)
         => new() { Seq = seq, Type = type, Data = data };
+
+    private static ConversationEvent TimedEntry(int seq, ConversationEventType type, string data, DateTimeOffset at)
+        => new() { Seq = seq, Type = type, Data = data, CreatedAt = at };
 }

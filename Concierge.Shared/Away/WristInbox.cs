@@ -9,6 +9,22 @@ public sealed record WristMessage(int Seq, string Who, string Text, DateTimeOffs
 /// <summary>Read-only watch projection. A missing receipt is not proof a run is active.</summary>
 public static class WristTimeline
 {
+    /// <summary>Find the assistant answer for this spoken turn in the synced conversation log.</summary>
+    public static string? ReplyAfter(IEnumerable<ConversationEvent> events, string prompt, int afterSeq,
+        DateTimeOffset? sentAt = null)
+    {
+        ArgumentNullException.ThrowIfNull(events);
+        var ordered = events.OrderBy(e => e.Seq).ToArray();
+        var user = ordered.LastOrDefault(e => e.Seq > afterSeq
+            && e.Type == ConversationEventType.UserMessage
+            && (sentAt is null || e.CreatedAt >= sentAt.Value.AddSeconds(-2))
+            && string.Equals(e.Data, prompt, StringComparison.Ordinal));
+        if (user is null) return null;
+        return ordered.FirstOrDefault(e => e.Seq > user.Seq
+            && e.Type == ConversationEventType.AssistantMessage
+            && !string.IsNullOrWhiteSpace(e.Data))?.Data;
+    }
+
     public static string Status(IReadOnlyList<ConversationEvent> events, bool running)
     {
         if (running) return "Working";

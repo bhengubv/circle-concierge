@@ -8,6 +8,7 @@ using Android.Runtime;
 using Android.Speech;
 using Android.Views;
 using Android.Widget;
+using Concierge.Away;
 using Concierge.Shared;
 
 namespace Concierge.Wear;
@@ -66,6 +67,9 @@ public partial class MainActivity : Activity, ISensorEventListener
     private bool _showDevices;
     private bool _resumed;
     private bool _thinking;
+    private int _sendGeneration;
+    private int _replyShownGeneration;
+    private CancellationTokenSource? _replyMonitorStop;
     private ApprovalRequest? _visibleApproval;
     private string? _spokenApprovalId;
     private float _touchX, _touchY;
@@ -185,12 +189,146 @@ public partial class MainActivity : Activity, ISensorEventListener
         => DrawAsync(_hands.AnsweredAsync(id, allowed));
 
     /// <summary>Send what was said, and put the answer on the face.</summary>
-    private Task SendAsync(string said)
+    private async Task SendAsync(string said)
     {
+        var generation = Interlocked.Increment(ref _sendGeneration);
+        _replyMonitorStop?.Cancel();
+        _replyMonitorStop?.Dispose();
+        _replyMonitorStop = new CancellationTokenSource();
+        var monitorStop = _replyMonitorStop;
+        Interlocked.Exchange(ref _replyShownGeneration, 0);
         _thinking = true;
         Render();
-        return DrawAsync(_hands.SaidAsync(said,
-            new Concierge.Away.Situation(DateTimeOffset.Now, Motion: Moving(), AmbientLux: Light())));
+
+        Guid? conversationId = _hands.ConversationId ?? _thread;
+        var defaultTitle = $"From the {_desk.DeviceLabel}";
+        var afterSeq = -1;
+        try
+        {
+            if (conversationId is null)
+            {
+                var conversations = await _desk.ReadConversationsAsync(monitorStop.Token).ConfigureAwait(false);
+                conversationId = conversations?.FirstOrDefault(c => string.Equals(c.Title, defaultTitle,
+                    StringComparison.OrdinalIgnoreCase))?.Id;
+                if (conversationId is { } defaultId) _hands.ConversationId = defaultId;
+            }
+
+            if (conversationId is { } id)
+            {
+                if (_inbox.Snapshot.Threads.TryGetValue(id, out var saved) && saved.Count > 0)
+                    afterSeq = saved.Max(message => message.Seq);
+                else if (await _desk.ReadRecentConversationAsync(id, monitorStop.Token).ConfigureAwait(false) is { } prior)
+                    afterSeq = prior.Count == 0 ? -1 : prior.Max(entry => entry.Seq);
+            }
+        }
+        catch (Exception e)
+        {
+            Android.Util.Log.Warn("Concierge.Wear.Reply", $"Conversation sync failed: {e.GetType().Name}");
+            monitorStop.Cancel();
+            monitorStop.Dispose();
+            if (ReferenceEquals(_replyMonitorStop, monitorStop)) _replyMonitorStop = null;
+            _thinking = false;
+            _lastHeard = "Could not check the conversation. Try again.";
+            Render();
+            return;
+        }
+
+        var sentAt = DateTimeOffset.UtcNow;
+        var monitor = MonitorReplyAsync(said, defaultTitle, conversationId, afterSeq, sentAt,
+            generation, monitorStop.Token);
+        try
+        {
+            var update = await _hands.SaidAsync(said,
+                new Concierge.Away.Situation(DateTimeOffset.Now, Motion: Moving(), AmbientLux: Light()))
+                .ConfigureAwait(false);
+            if (generation != Volatile.Read(ref _sendGeneration)) return;
+            RunOnUiThread(() =>
+            {
+                _thinking = false;
+                if (Volatile.Read(ref _replyShownGeneration) != generation
+                    && update.Say is { Length: > 0 } say)
+                    _lastHeard = say;
+                _waiting = update.Waiting;
+                _changed = update.Changed;
+                Render();
+                _ = RefreshWristAsync();
+            });
+        }
+        catch (System.OperationCanceledException) when (monitorStop.IsCancellationRequested) { }
+        catch (Exception e)
+        {
+            Android.Util.Log.Warn("Concierge.Wear.Reply", $"Send failed: {e.GetType().Name}");
+            if (generation == Volatile.Read(ref _sendGeneration))
+                RunOnUiThread(() =>
+                {
+                    _thinking = false;
+                    if (Volatile.Read(ref _replyShownGeneration) != generation)
+                        _lastHeard = "Desktop could not be reached. Check Inbox.";
+                    Render();
+                });
+        }
+        finally
+        {
+            monitorStop.Cancel();
+            try { await monitor.ConfigureAwait(false); } catch (System.OperationCanceledException) { }
+            if (ReferenceEquals(_replyMonitorStop, monitorStop))
+            {
+                _replyMonitorStop.Dispose();
+                _replyMonitorStop = null;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Show the durable answer as soon as Desktop records it. The HTTP send can remain open
+    /// while the model finishes bookkeeping; the person on the watch should not have to wait
+    /// for that request to close before seeing the reply.
+    /// </summary>
+    private async Task MonitorReplyAsync(string prompt, string defaultTitle, Guid? conversationId,
+        int afterSeq, DateTimeOffset sentAt, int generation, CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested
+                && generation == Volatile.Read(ref _sendGeneration))
+            {
+                if (!_resumed)
+                {
+                    await Task.Delay(800, cancellationToken).ConfigureAwait(false);
+                    continue;
+                }
+
+                if (conversationId is null)
+                {
+                    var conversations = await _desk.ReadConversationsAsync(cancellationToken).ConfigureAwait(false);
+                    conversationId = conversations?.FirstOrDefault(c => string.Equals(c.Title, defaultTitle,
+                        StringComparison.OrdinalIgnoreCase))?.Id;
+                }
+                if (conversationId is { } id)
+                {
+                    var events = await _desk.ReadRecentConversationAsync(id, cancellationToken).ConfigureAwait(false);
+                    var reply = events is null ? null : WristTimeline.ReplyAfter(events, prompt, afterSeq, sentAt);
+                    if (!string.IsNullOrWhiteSpace(reply))
+                    {
+                        RunOnUiThread(() =>
+                        {
+                            if (generation != Volatile.Read(ref _sendGeneration)) return;
+                            _lastHeard = reply;
+                            _thinking = false;
+                            Interlocked.Exchange(ref _replyShownGeneration, generation);
+                            Render();
+                        });
+                        return;
+                    }
+                }
+                await Task.Delay(1200, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (System.OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        catch (Exception e)
+        {
+            Android.Util.Log.Warn("Concierge.Wear.Reply", $"Reply monitor failed: {e.GetType().Name}");
+        }
     }
 
     /// <summary>Deliver anything held, then read what is true now.</summary>
@@ -599,6 +737,8 @@ public partial class MainActivity : Activity, ISensorEventListener
 
     protected override void OnDestroy()
     {
+        _replyMonitorStop?.Cancel();
+        _replyMonitorStop?.Dispose();
         _presenceStop?.Cancel();
         StopHandGestures();
         base.OnDestroy();
