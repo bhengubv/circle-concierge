@@ -1,11 +1,14 @@
 using CircleAI.Assistant.Requests;
 using CircleAI.Linking;
+using System.Diagnostics;
 
 namespace Concierge.Shared.Devices;
 
 /// <summary>Follows one service-owned ask; observation never resubmits it.</summary>
 public static class CircleAiQueuedChat
 {
+    internal const int StatusWaitMilliseconds = 250;
+
     public static bool IsSupported(LinkRowsReply hello)
     {
         if (!hello.Ok) return false;
@@ -22,6 +25,7 @@ public static class CircleAiQueuedChat
         string? askId = null;
         try
         {
+            var observation = Stopwatch.StartNew();
             var response = await execute(new(LinkVerb.AskSubmit, Args: new Dictionary<string, string>
             {
                 [LinkAskRows.ArgRequestId] = requestId,
@@ -52,12 +56,16 @@ public static class CircleAiQueuedChat
 
                 // Always request the whole answer, so no fragment can be lost or doubled.
                 // There is no preparation deadline and no second AskSubmit on a poll.
-                await Task.Delay(TimeSpan.FromMilliseconds(250), cancellationToken);
+                // Long polling already waits at the service. Only throttle fast replies;
+                // do not add another quarter second after a blocking observation.
+                var pause = PollDelay(observation.Elapsed);
+                if (pause > TimeSpan.Zero) await Task.Delay(pause, cancellationToken);
+                observation.Restart();
                 response = await execute(new(LinkVerb.AskStatus, Query: askId, Args: new Dictionary<string, string>
                 {
                     [LinkAskRows.ArgSince] = "0",
                     [LinkAskRows.ArgAfterSeq] = ask.Seq.ToString(System.Globalization.CultureInfo.InvariantCulture),
-                    [LinkAskRows.ArgWaitMs] = "1000"
+                    [LinkAskRows.ArgWaitMs] = StatusWaitMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture)
                 }), cancellationToken);
             }
         }
@@ -73,4 +81,8 @@ public static class CircleAiQueuedChat
             throw;
         }
     }
+
+    internal static TimeSpan PollDelay(TimeSpan elapsed)
+        => elapsed < TimeSpan.FromMilliseconds(StatusWaitMilliseconds)
+            ? TimeSpan.FromMilliseconds(StatusWaitMilliseconds) - elapsed : TimeSpan.Zero;
 }

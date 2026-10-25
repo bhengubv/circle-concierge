@@ -18,7 +18,7 @@ namespace Concierge.Platforms.Android;
 /// One outstanding Binder transaction maximum; timing out a caller must not
 /// create another blocked native transaction on every subsequent click.
 /// </summary>
-public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICircleAiSharedServiceLink, ICircleAiServiceChatLink, ICircleAiServiceRequestProgress
+public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICircleAiSharedServiceLink, ICircleAiServiceChatLink, ICircleAiServiceRequestProgress, IDisposable
 {
     public event Action<string>? RequestProgress;
     private const string Package = LinkIpc.HostPackage;
@@ -93,6 +93,9 @@ public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICirc
     }
 
     private Task<IReadOnlyDictionary<string, string>>? _transaction;
+    // Accessed only by the single owned transaction task. Reuse the binding, not answers.
+    private Connection? _connection;
+    private int _disposed;
     private readonly SemaphoreSlim _requests = new(1, 1);
     internal async Task<LinkRowsReply> ExecuteVerbAsync(LinkVerbRequest request, CancellationToken cancellationToken)
     {
@@ -174,7 +177,7 @@ public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICirc
                 foreach (var row in result.Rows)
                     if (LinkAskRows.ReadAsk(row) is { } ask)
                         global::Android.Util.Log.Info("Concierge.CircleAI.Ask",
-                            $"verb={request.Verb} id={ask.Id} state={ask.StateName} model={ask.ModelId} duplicate={ask.Duplicate}");
+                            $"verb={request.Verb} id={ask.Id} state={ask.StateName} model={ask.ModelId} duplicate={ask.Duplicate} timing={System.Text.Json.JsonSerializer.Serialize(ask.Timing)}");
 #endif
                 return result;
             }
@@ -194,11 +197,13 @@ public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICirc
         IReadOnlyDictionary<string, string> fields, TimeSpan timeout, CancellationToken cancellationToken)
     {
         var roundTrip = Stopwatch.StartNew();
+        ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
         cancellationToken.ThrowIfCancellationRequested();
         if (!await _requests.WaitAsync(timeout, cancellationToken))
             throw new TimeoutException("Circle AI is still handling another request.");
         try
         {
+            ObjectDisposedException.ThrowIf(Volatile.Read(ref _disposed) != 0, this);
             // Settings progress and readiness polls share this connection. Queue
             // them rather than misreporting a healthy busy service as unavailable.
             if (_transaction is { IsCompleted: false })
@@ -218,17 +223,26 @@ public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICirc
         finally { _requests.Release(); }
     }
 
-    private static async Task<IReadOnlyDictionary<string, string>> SendCoreAsync(int code, IReadOnlyDictionary<string, string> fieldsToSend)
+    private async Task<IReadOnlyDictionary<string, string>> SendCoreAsync(int code, IReadOnlyDictionary<string, string> fieldsToSend)
     {
+        try
+        {
         var context = global::Android.App.Application.Context;
+            var bind = Stopwatch.StartNew();
+            var reused = _connection?.Binder is { IsBinderAlive: true };
+            if (!reused)
+            {
+            _connection?.Dispose();
+            _connection = null;
             using var intent = new Intent(LinkIpc.BindAction);
             intent.SetPackage(Package);
             var service = context.PackageManager.ResolveService(intent, (PackageInfoFlags)0)?.ServiceInfo;
             if (service is null || !service.Exported)
                 throw new InvalidOperationException("Installed, but no exported Circle AI link was found.");
-            using var connection = new Connection(context);
-            var bind = Stopwatch.StartNew();
-            var binder = await connection.BindAsync(intent).ConfigureAwait(false);
+            _connection = new Connection(context, InvalidateReads);
+            await _connection.BindAsync(intent).ConfigureAwait(false);
+            }
+            var binder = _connection?.Binder;
             var bindMs = bind.Elapsed.TotalMilliseconds;
             if (binder is null)
                 throw new InvalidOperationException("Installed, but the shared service did not connect.");
@@ -248,7 +262,7 @@ public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICirc
                 throw new InvalidOperationException("The installed service does not support catalogue discovery.");
             reply.ReadException();
 #if DEBUG
-            global::Android.Util.Log.Info("Concierge.CircleAI.Transport", $"kind={(code == LinkIpc.TransactAsk ? "chat" : "metadata")} bindMs={bindMs:F2} serviceMs={serviceTime.Elapsed.TotalMilliseconds:F2}");
+            global::Android.Util.Log.Info("Concierge.CircleAI.Transport", $"kind={(code == LinkIpc.TransactAsk ? "chat" : "metadata")} reused={reused} bindMs={bindMs:F2} serviceMs={serviceTime.Elapsed.TotalMilliseconds:F2}");
 #endif
             var count = reply.ReadInt();
             if (count is < 0 or > 2048)
@@ -262,10 +276,49 @@ public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICirc
                     throw new InvalidOperationException("The service returned an invalid catalogue response.");
             }
             return fields;
+        }
+        catch
+        {
+            _connection?.Dispose();
+            _connection = null;
+            InvalidateReads();
+            throw; // Never retry a potentially accepted write or question here.
+        }
+        finally
+        {
+            if (Volatile.Read(ref _disposed) != 0)
+            {
+                _connection?.Dispose();
+                _connection = null;
+            }
+        }
     }
 
-    private sealed class Connection(Context context) : Java.Lang.Object, IServiceConnection
+    public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        // The transaction owns its Binder until native execution finishes, even if
+        // its caller has stopped waiting. Dispose only after that owned task.
+        _ = ReleaseConnectionAsync();
+    }
+
+    private async Task ReleaseConnectionAsync()
+    {
+        await _requests.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (_transaction is not null)
+                try { await _transaction.ConfigureAwait(false); } catch { }
+            _connection?.Dispose();
+            _connection = null;
+        }
+        finally { _requests.Release(); }
+    }
+
+    private sealed class Connection(Context context, Action disconnected) : Java.Lang.Object, IServiceConnection
+    {
+        private IBinder? _binder;
+        public IBinder? Binder => Volatile.Read(ref _binder);
         private readonly TaskCompletionSource<IBinder?> _bound = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private bool _registered;
         public async Task<IBinder?> BindAsync(Intent intent)
@@ -275,10 +328,13 @@ public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICirc
                 ? await _bound.Task.WaitAsync(TimeSpan.FromSeconds(10)).ConfigureAwait(false)
                 : null;
         }
-        public void OnServiceConnected(ComponentName? name, IBinder? service) => _bound.TrySetResult(service);
-        public void OnServiceDisconnected(ComponentName? name) => _bound.TrySetResult(null);
-        public void OnNullBinding(ComponentName? name) => _bound.TrySetResult(null);
-        public void OnBindingDied(ComponentName? name) => _bound.TrySetResult(null);
+        public void OnServiceConnected(ComponentName? name, IBinder? service)
+        { Volatile.Write(ref _binder, service); _bound.TrySetResult(service); }
+        private void Disconnected()
+        { Volatile.Write(ref _binder, null); _bound.TrySetResult(null); disconnected(); }
+        public void OnServiceDisconnected(ComponentName? name) => Disconnected();
+        public void OnNullBinding(ComponentName? name) => Disconnected();
+        public void OnBindingDied(ComponentName? name) => Disconnected();
         protected override void Dispose(bool disposing)
         {
             if (disposing && _registered)

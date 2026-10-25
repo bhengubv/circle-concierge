@@ -6,6 +6,19 @@ namespace Concierge.Tests;
 
 public sealed class CircleAiQueuedChatTests
 {
+    [Theory]
+    [InlineData(0, 250)]
+    [InlineData(50, 200)]
+    [InlineData(250, 0)]
+    [InlineData(1000, 0)]
+    public void Long_poll_wait_counts_towards_the_poll_rate_limit(int elapsed, int delay)
+        => Assert.Equal(TimeSpan.FromMilliseconds(delay),
+            CircleAiQueuedChat.PollDelay(TimeSpan.FromMilliseconds(elapsed)));
+
+    [Fact]
+    public void Service_long_poll_is_bounded_to_quarter_second_for_faster_progress_observation()
+        => Assert.Equal(250, CircleAiQueuedChat.StatusWaitMilliseconds);
+
     private static LinkRowsReply Reply(AskState state, string text = "", string id = "ask-one")
     {
         var now = DateTimeOffset.UtcNow;
@@ -45,7 +58,7 @@ public sealed class CircleAiQueuedChatTests
         Assert.Equal("Exact question", submitted.Args[LinkAskRows.ArgMessage]);
         Assert.Equal("0", submitted.Args[LinkAskRows.ArgAgentic]);
         Assert.All(calls.Where(c => c.Verb == LinkVerb.AskStatus), c =>
-        { Assert.Equal("ask-one", c.Query); Assert.Null(c.Subject); Assert.Equal("0", c.Args![LinkAskRows.ArgSince]); });
+        { Assert.Equal("ask-one", c.Query); Assert.Null(c.Subject); Assert.Equal("0", c.Args![LinkAskRows.ArgSince]); Assert.Equal("250", c.Args[LinkAskRows.ArgWaitMs]); });
         Assert.Equal(4, progress.Count);
     }
 
