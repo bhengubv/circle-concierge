@@ -8,7 +8,7 @@ established that they are an exhaustive inventory of Gemini's features.
 
 Run `dotnet test tests/Concierge.FeatureAcceptance/Concierge.FeatureAcceptance.csproj`.
 The focused harness avoids the full test project's Web/WASM dependency graph.
-Latest observed result: **37 passed, zero failed, zero skipped**.
+Latest observed result: **40 passed, zero failed, zero skipped**.
 It covers notebook persistence/context isolation, schedule execution/receipts,
 approval isolation, stop, recurrence, corrupt-state preservation, UI rendering,
 library preview, recorded file outcomes, schedule tools, malformed tool calls,
@@ -61,8 +61,11 @@ select a model; Circle AI retains that responsibility.
 
 - [ ] Global Desktop summon: verify typing lands in composer after restoration;
   document elevated-window limitations.
-- [ ] Unified Library: text-event preview and source navigation exist; rich-media
-  preview and full output coverage remain incomplete.
+- [ ] Unified Library: text-event preview and source navigation exist. Small,
+  inline PNG/JPEG/WebP/GIF, audio and video data URIs can now preview when their
+  declared type matches. Other output storage and full output coverage remain
+  incomplete; rich-media previews have automated UI coverage but no device
+  smoke test yet.
 - [ ] Notebooks: text sources persist and link to conversations, but the live
   PixieDust answer ignored the source. Fix and pass this before claiming grounded
   notebook answers. Richer source ingestion and cross-device sync remain incomplete.
@@ -81,8 +84,9 @@ select a model; Circle AI retains that responsibility.
 ## Boundaries
 
 The Android build after the icon/context changes passed with zero errors and 101
-warnings and was installed on PixieDust. The focused test harness passed 38
-checks. A Windows build in the normal output folder hit a file lock from the
+warnings and was installed on PixieDust. The focused harness now passes 40
+checks: 40 passed, zero failed, zero skipped, including guarded media previews.
+A Windows build in the normal output folder hit a file lock from the
 running Desktop app. I then compiled the Windows app into an isolated output
 folder against the already-built dependency assemblies: it passed with zero
 errors and 40 warnings. The running Desktop was not replaced, so native shortcut

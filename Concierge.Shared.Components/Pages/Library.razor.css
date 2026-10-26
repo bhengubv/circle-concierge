@@ -1,3 +1,5 @@
 .library-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; }
 .library-preview { max-height: 26rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.library-media-preview { display: block; max-width: min(100%, 48rem); max-height: 32rem; margin: 1rem 0; border-radius: var(--radius-card, 1rem); object-fit: contain; }
+audio.library-media-preview { width: min(100%, 40rem); }
 .row { flex-wrap: wrap; }

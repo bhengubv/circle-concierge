@@ -191,6 +191,50 @@ public sealed class FeatureGapTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Library_renders_only_matching_bounded_raster_media_as_inline_previews()
+    {
+        var conversation = await Conversations.StartAsync("local", "Media output");
+        const string pixel = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/pWQAAAAASUVORK5CYII=";
+        var source = await Conversations.AppendEventAsync(conversation.Id, ConversationEventType.AssistantMessage, pixel);
+        await Conversations.AppendEventAsync(conversation.Id, ConversationEventType.ArtifactCreated,
+            JsonSerializer.Serialize(new ConversationArtifactRecord(Guid.NewGuid(), "Pixel", "image/png", source.Id)));
+        using var context = new BunitContext();
+        context.Services.AddSingleton(Conversations);
+        context.Services.AddSingleton(_services.GetRequiredService<IProjectStore>());
+        var cut = context.Render<Library>();
+
+        cut.WaitForAssertion(() => Assert.Contains("Pixel", cut.Markup));
+        cut.FindAll("button").Single(button => button.TextContent == "Preview output").Click();
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Equal(pixel, cut.Find("img.library-media-preview").GetAttribute("src"));
+            Assert.Empty(cut.FindAll("pre.library-preview"));
+        });
+    }
+
+    [Fact]
+    public async Task Library_keeps_unapproved_media_types_as_text_instead_of_embedding_them()
+    {
+        var conversation = await Conversations.StartAsync("local", "Untrusted output");
+        const string payload = "data:image/svg+xml;base64,PHN2ZyBvbmxvYWQ9YWxlcnQoMSkvPg==";
+        var source = await Conversations.AppendEventAsync(conversation.Id, ConversationEventType.AssistantMessage, payload);
+        await Conversations.AppendEventAsync(conversation.Id, ConversationEventType.ArtifactCreated,
+            JsonSerializer.Serialize(new ConversationArtifactRecord(Guid.NewGuid(), "Untrusted", "image/svg+xml", source.Id)));
+        using var context = new BunitContext();
+        context.Services.AddSingleton(Conversations);
+        context.Services.AddSingleton(_services.GetRequiredService<IProjectStore>());
+        var cut = context.Render<Library>();
+
+        cut.WaitForAssertion(() => Assert.Contains("Untrusted", cut.Markup));
+        cut.FindAll("button").Single(button => button.TextContent == "Preview output").Click();
+        cut.WaitForAssertion(() =>
+        {
+            Assert.Empty(cut.FindAll("img.library-media-preview"));
+            Assert.Contains(payload, cut.Find("pre.library-preview").TextContent);
+        });
+    }
+
+    [Fact]
     public void File_activity_never_reports_failed_or_unfinished_writes_as_successful()
     {
         var run = Guid.NewGuid();

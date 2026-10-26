@@ -53,13 +53,31 @@
             </div>
             @if (VisibleItems.Count() > _limit) { <button class="btn" @onclick="() => _limit += 100">Show more</button> }
         }
-        @if (_preview is not null)
+        @if (_preview is not null || _previewData is not null)
         {
             <section class="room-card" aria-label="Output preview">
                 <h2>@_previewName</h2>
-                <pre class="library-preview">@_preview</pre>
-                <a class="btn" href="@("data:text/plain;charset=utf-8," + Uri.EscapeDataString(_preview))" download="concierge-output.txt">Save this text</a>
-                <button class="btn" @onclick="() => _preview = null">Close preview</button>
+                @if (_previewData is not null && _previewKind == "image")
+                {
+                    <img class="library-media-preview" src="@_previewData" alt="@_previewName" />
+                    <a class="btn" href="@_previewData" download="@_previewName">Save image</a>
+                }
+                else if (_previewData is not null && _previewKind == "audio")
+                {
+                    <audio class="library-media-preview" controls preload="metadata" src="@_previewData">Audio preview is not supported by this browser.</audio>
+                    <a class="btn" href="@_previewData" download="@_previewName">Save audio</a>
+                }
+                else if (_previewData is not null && _previewKind == "video")
+                {
+                    <video class="library-media-preview" controls preload="metadata" src="@_previewData">Video preview is not supported by this browser.</video>
+                    <a class="btn" href="@_previewData" download="@_previewName">Save video</a>
+                }
+                else
+                {
+                    <pre class="library-preview">@_preview</pre>
+                    <a class="btn" href="@("data:text/plain;charset=utf-8," + Uri.EscapeDataString(_preview ?? string.Empty))" download="concierge-output.txt">Save this text</a>
+                }
+                <button class="btn" @onclick="ClosePreview">Close preview</button>
             </section>
         }
     </div>
@@ -79,7 +97,7 @@
     private string _filter = "all";
     private bool _loading = true;
     private int _limit = 100;
-    private string? _error, _preview, _previewName;
+    private string? _error, _preview, _previewName, _previewData, _previewKind;
 
     private IEnumerable<LibraryItem> VisibleItems => _items
         .Where(item => _filter == "all" || item.Category == _filter)
@@ -110,7 +128,7 @@
                         var artifact = JsonSerializer.Deserialize<ConversationArtifactRecord>(entry.Data);
                         if (artifact is null) continue;
                         _items.Add(new LibraryItem(artifact.Name, "Creation", titles.GetValueOrDefault(entry.ConversationId, "Conversation"),
-                            entry.CreatedAt, $"/chat/{entry.ConversationId}", "creation", entry.ConversationId, artifact.SourceEventId));
+                            entry.CreatedAt, $"/chat/{entry.ConversationId}", "creation", entry.ConversationId, artifact.SourceEventId, artifact.MediaType));
                     }
                     catch (JsonException) { _error = "Some saved output records could not be read. Their source conversations are still listed."; }
                 }
@@ -141,12 +159,48 @@
             var source = events.SingleOrDefault(e => e.Id == item.SourceEventId);
             if (source is null) { _error = "The source output is not available on this device. Open its conversation to check sync."; return; }
             _previewName = item.Name;
-            _preview = source.Data.Length > 64_000 ? source.Data[..64_000] + "\n[Preview shortened; open the source conversation for the rest.]" : source.Data;
+            _previewData = TryGetInlineMedia(source.Data, item.MediaType, out var kind) ? source.Data : null;
+            _previewKind = _previewData is null ? null : kind;
+            _preview = _previewData is null
+                ? source.Data.Length > 64_000 ? source.Data[..64_000] + "\n[Preview shortened; open the source conversation for the rest.]" : source.Data
+                : null;
             _error = null;
         }
         catch (Exception ex) { _error = $"Could not load this output: {ex.Message}"; }
     }
 
+    private void ClosePreview()
+    {
+        _preview = _previewData = _previewKind = _previewName = null;
+    }
+
+    private static bool TryGetInlineMedia(string payload, string? declaredMediaType, out string kind)
+    {
+        kind = string.Empty;
+        if (payload.Length > 5_000_000 || !payload.StartsWith("data:", StringComparison.OrdinalIgnoreCase)) return false;
+        var separator = payload.IndexOf(',');
+        if (separator < 0) return false;
+        var header = payload[..separator];
+        var mediaType = header[5..].Split(';', 2)[0];
+        if (!header.EndsWith(";base64", StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(mediaType, declaredMediaType, StringComparison.OrdinalIgnoreCase)) return false;
+
+        kind = mediaType.ToLowerInvariant() switch
+        {
+            "image/png" or "image/jpeg" or "image/webp" or "image/gif" => "image",
+            "audio/mpeg" or "audio/mp4" or "audio/ogg" or "audio/wav" or "audio/webm" => "audio",
+            "video/mp4" or "video/webm" or "video/ogg" => "video",
+            _ => string.Empty
+        };
+        if (kind.Length == 0) return false;
+        try
+        {
+            _ = Convert.FromBase64String(payload[(separator + 1)..]);
+            return true;
+        }
+        catch (FormatException) { return false; }
+    }
+
     private sealed record LibraryItem(string Name, string Kind, string Context,
-        DateTimeOffset When, string Href, string Category, Guid? ConversationId = null, Guid? SourceEventId = null);
+        DateTimeOffset When, string Href, string Category, Guid? ConversationId = null, Guid? SourceEventId = null, string? MediaType = null);
 }
