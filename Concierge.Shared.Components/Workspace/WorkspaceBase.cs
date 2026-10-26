@@ -1313,17 +1313,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
     protected Task<IChatRuntime?> ChooseActiveRuntimeAsync()
     {
-        // CircleAI — the philosophical default. We don't gate on IsReady
-        //    here because CircleAI loads asynchronously in the background;
-        //    showing it as the picked engine (with its own "loading…" status)
-        //    is more honest than silently demoting to a cloud provider.
-        var circleai = _orderedRuntimes.FirstOrDefault(r => string.Equals(r.Id, DefaultProviderId, StringComparison.OrdinalIgnoreCase));
-        if (circleai is not null) return Task.FromResult<IChatRuntime?>(circleai);
-
-        // If CircleAI is not registered, let Circle AI's available runtime
-        // capabilities determine the best ready option without user-facing choice.
-        return Task.FromResult<IChatRuntime?>(_orderedRuntimes.FirstOrDefault(r => r.IsReady)
-            ?? _orderedRuntimes.FirstOrDefault());
+        return Task.FromResult(ConciergeRuntimePreference.Choose(_orderedRuntimes));
     }
 
     protected async Task RefreshSidebarAsync()

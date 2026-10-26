@@ -2,6 +2,14 @@ namespace Concierge.Shared.Chat;
 
 public interface IConversationStore
 {
+    async Task<IReadOnlyList<ConversationEvent>> ReadArtifactEventsAsync(string ownerId, CancellationToken cancellationToken = default)
+    {
+        var result = new List<ConversationEvent>();
+        foreach (var conversation in await ListAsync(ownerId, cancellationToken).ConfigureAwait(false))
+            result.AddRange((await ReadEventsAsync(conversation.Id, cancellationToken).ConfigureAwait(false))
+                .Where(e => e.Type == ConversationEventType.ArtifactCreated));
+        return result;
+    }
     async Task<ConversationHistory> ReadHistoryAsync(Guid conversationId, CancellationToken cancellationToken = default)
     {
         var events = await ReadEventsAsync(conversationId, cancellationToken).ConfigureAwait(false);

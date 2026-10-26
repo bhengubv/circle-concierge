@@ -76,6 +76,10 @@ public static class MauiProgram
 #endif
 
 		var builder = MauiApp.CreateBuilder();
+#if WINDOWS
+        builder.Services.AddSingleton<Concierge.Platforms.Windows.DesktopSummon>();
+        builder.Services.AddSingleton<IDesktopSummon>(sp => sp.GetRequiredService<Concierge.Platforms.Windows.DesktopSummon>());
+#endif
 
 #if WINDOWS && DEBUG
 		// Development-only unauthenticated LAN bridge for proving phone-to-desktop

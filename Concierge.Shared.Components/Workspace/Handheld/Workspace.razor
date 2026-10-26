@@ -69,7 +69,7 @@
     <aside class="ws-side @(_drawerOpen ? "is-open" : null)">
         <a class="ws-brand" href="/">
             <span class="ws-brand-dot" aria-hidden="true"></span>
-            <span class="ws-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="_content/Concierge.Shared.Components/lib/circlemetro/circle-icons.svg#cm-icon-circle" /></svg></span>
+            <span class="ws-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#cm-icon-circle" /></svg></span>
             <span class="ws-brand-lockup"><strong>Concierge</strong><small>by Circle</small></span>
         </a>
 
@@ -84,6 +84,7 @@
                 <span class="ws-item-label">Projects</span>
                 <span class="ws-start-hint">Organize bigger goals</span>
             </a>
+            <WorkDestinations />
             @*
                 Long lists are folded, not scrolled. Threads and Approvals open
                 because they are what is happening; Skills is a catalogue of
@@ -93,7 +94,7 @@
             *@
             <section class="ws-group ws-group-threads @(IsGroupOpen("threads") ? "is-open" : null)">
                 <button class="ws-head" type="button" aria-expanded="@(IsGroupOpen("threads") ? "true" : "false")" @onclick='@(() => ToggleGroup("threads"))'>
-                    <svg class="ws-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="_content/Concierge.Shared.Components/lib/circlemetro/circle-icons.svg#cm-icon-message" /></svg>
+                    <svg class="ws-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#cm-icon-message" /></svg>
                     <svg class="ws-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
                     <span class="ws-head-name">Recent conversations</span>
                     <span class="ws-head-count">@_conversations.Count</span>
@@ -134,7 +135,7 @@
                             </button>
                         }
                         <a class="ws-more ws-history-link" href="history">
-                            <svg viewBox="0 0 24 24" aria-hidden="true"><use href="_content/Concierge.Shared.Components/lib/circlemetro/circle-icons.svg#cm-icon-search" /></svg>
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#cm-icon-search" /></svg>
                             Find an older conversation
                         </a>
                     </div>
@@ -143,7 +144,7 @@
 
             <section class="ws-group ws-group-approvals @(IsGroupOpen("approvals") ? "is-open" : null)">
                 <button class="ws-head" type="button" aria-expanded="@(IsGroupOpen("approvals") ? "true" : "false")" @onclick='@(() => ToggleGroup("approvals"))'>
-                    <svg class="ws-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="_content/Concierge.Shared.Components/lib/circlemetro/circle-icons.svg#cm-icon-shield" /></svg>
+                    <svg class="ws-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#cm-icon-shield" /></svg>
                     <svg class="ws-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
                     <span class="ws-head-name">Needs your OK</span>
                     <span class="ws-head-count">@_pendingApprovals.Count</span>
@@ -183,7 +184,7 @@
             *@
             <section class="ws-group ws-group-skills @(IsGroupOpen("skills") ? "is-open" : null)">
                 <button class="ws-head" type="button" aria-expanded="@(IsGroupOpen("skills") ? "true" : "false")" @onclick='@(() => ToggleGroup("skills"))'>
-                    <svg class="ws-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="_content/Concierge.Shared.Components/lib/circlemetro/circle-icons.svg#cm-icon-star" /></svg>
+                    <svg class="ws-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#cm-icon-star" /></svg>
                     <svg class="ws-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
                     <span class="ws-head-name">Personalize Circle AI</span>
                     @if (_activeSkillIds.Count > 0)
@@ -220,7 +221,7 @@
 
             <section class="ws-group ws-group-create @(IsGroupOpen("create") ? "is-open" : null)">
                 <button class="ws-head" type="button" aria-expanded="@(IsGroupOpen("create") ? "true" : "false")" @onclick='@(() => ToggleGroup("create"))'>
-                    <svg class="ws-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="_content/Concierge.Shared.Components/lib/circlemetro/circle-icons.svg#cm-icon-edit" /></svg>
+                    <svg class="ws-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#cm-icon-edit" /></svg>
                     <svg class="ws-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
                     <span class="ws-head-name">Make something</span>
                 </button>
@@ -240,7 +241,7 @@
 
             <section class="ws-group ws-group-about @(IsGroupOpen("about") ? "is-open" : null)">
                 <button class="ws-head" type="button" aria-expanded="@(IsGroupOpen("about") ? "true" : "false")" @onclick='@(() => ToggleGroup("about"))'>
-                    <svg class="ws-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="_content/Concierge.Shared.Components/lib/circlemetro/circle-icons.svg#cm-icon-info" /></svg>
+                    <svg class="ws-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#cm-icon-info" /></svg>
                     <svg class="ws-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
                     <span class="ws-head-name">About &amp; updates</span>
                 </button>
@@ -264,7 +265,7 @@
         *@
         <button class="ws-runtime" type="button" title="Open AI engine and app settings" aria-label="Open AI engine and app settings"
                 @onclick="OpenSettings">
-            <span class="ws-ai-emblem" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="_content/Concierge.Shared.Components/lib/circlemetro/circle-icons.svg#cm-icon-circle" /></svg><i class="@(runtime.RegistryAvailable ? "is-ready" : null)"></i></span>
+            <span class="ws-ai-emblem" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#cm-icon-circle" /></svg><i class="@(runtime.RegistryAvailable ? "is-ready" : null)"></i></span>
             <span class="ws-ai-copy"><span class="ws-ai-title">AI engine</span><span class="ws-runtime-name">Circle AI · app settings</span></span>
             @* Was the literal text "on device", under whichever engine was
                selected — including the three that are a cloud provider. The
@@ -288,7 +289,7 @@
                     aria-label="Open the menu"
                     aria-expanded="@(_drawerOpen ? "true" : "false")"
                     @onclick="OpenDrawer">
-                <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><use href="_content/Concierge.Shared.Components/lib/circlemetro/circle-icons.svg#cm-icon-menu"/></svg>
+                <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><use href="#cm-icon-menu"/></svg>
             </button>
             @*
                 Same fix the desktop header got, and missed here: with the canvas
@@ -414,7 +415,7 @@
                                         <AssistantContent Content="@message.Content" />
                                         <button class="msg-audio" type="button" title="Read this reply aloud"
                                                 @onclick="@(() => SpeakAsync(message.Content))">
-                                            <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><use href="_content/Concierge.Shared.Components/lib/circlemetro/circle-icons.svg#cm-icon-play"/></svg>
+                                            <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><use href="#cm-icon-play"/></svg>
                                             <span>Read aloud</span>
                                         </button>
                                     }
@@ -541,7 +542,7 @@
                     *@
                     <label class="icon-btn"
                            title="@(_designOpen ? "Put a picture on the page" : "Attach a file or a picture")">
-                        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><use href="_content/Concierge.Shared.Components/lib/circlemetro/circle-icons.svg#cm-icon-file"/></svg>
+                        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><use href="#cm-icon-file"/></svg>
                         <span class="sr">@(_designOpen ? "Put a picture on the page" : "Attach a file or a picture")</span>
                         <InputFile OnChange="OnAttachmentSelected" class="file-over"
                                    disabled="@(!WorkspaceReady)"
@@ -552,7 +553,7 @@
                             title="@(_designOpen ? "Take a picture for this design" : "Take a picture to show Concierge")"
                             aria-label="@(_designOpen ? "Take a picture for this design" : "Take a picture to show Concierge")"
                             disabled="@(!WorkspaceReady)" @onclick="CapturePhotoAsync">
-                        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><use href="_content/Concierge.Shared.Components/lib/circlemetro/circle-icons.svg#cm-icon-camera"/></svg>
+                        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><use href="#cm-icon-camera"/></svg>
                     </button>
 
                     <button class="icon-btn @(_recording ? "is-on" : null)" type="button"
@@ -565,7 +566,7 @@
                         }
                         else
                         {
-                            <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><use href="_content/Concierge.Shared.Components/lib/circlemetro/circle-icons.svg#cm-icon-mic"/></svg>
+                            <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><use href="#cm-icon-mic"/></svg>
                         }
                         <span class="sr">@(_recording ? "Stop recording" : "Speak")</span>
                     </button>
@@ -590,7 +591,7 @@
                     <button class="icon-btn icon-btn-send" type="button"
                             aria-disabled="@(!WorkspaceReady || !CanSend ? "true" : "false")" disabled="@(!WorkspaceReady || !CanSend)"
                             title="Send" @onclick="SendAsync">
-                        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><use href="_content/Concierge.Shared.Components/lib/circlemetro/circle-icons.svg#cm-icon-send"/></svg>
+                        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><use href="#cm-icon-send"/></svg>
                         <span class="sr">Send</span>
                     </button>
                 </div>

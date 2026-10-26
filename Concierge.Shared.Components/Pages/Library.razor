@@ -1,0 +1,152 @@
+@page "/library"
+@using System.Text.Json
+@using Concierge.Shared.Planning
+@inject IConversationStore Conversations
+@inject IProjectStore Projects
+
+<div class="room">
+    <div class="room-top">
+        <a class="room-back" href="/">Workspace</a>
+        <h1>Library</h1>
+    </div>
+    <p class="room-lede">Your conversations and the work they produced, together.</p>
+
+    <div class="room-body">
+        <button class="btn" disabled="@_loading" @onclick="ReloadAsync">Refresh library</button>
+        @if (_error is not null) { <p class="room-note" role="alert">@_error</p> }
+        <input class="comp-input skills-find" type="search" placeholder="Search your library"
+               aria-label="Search your library" @bind="_query" @bind:event="oninput" />
+        <div class="seg" role="group" aria-label="Library content">
+            @foreach (var filter in Filters)
+            {
+                <button class="seg-opt @(_filter == filter.Key ? "is-on" : null)" type="button"
+                        aria-pressed="@(_filter == filter.Key ? "true" : "false")"
+                        @onclick="() => _filter = filter.Key">@filter.Label</button>
+            }
+        </div>
+
+        @if (_loading)
+        {
+            <p class="room-note" role="status">Gathering your work…</p>
+        }
+        else if (!VisibleItems.Any())
+        {
+            <p class="room-note">@(_query.Length == 0 ? "Your library is ready for its first conversation or project." : "Nothing matches that search.")</p>
+        }
+        else
+        {
+            <div class="rows" aria-label="Library items">
+                @foreach (var item in VisibleItems.Take(_limit))
+                {
+                    <div class="row">
+                        <span class="row-name">
+                            @item.Name
+                            <span class="row-sub">@item.Kind · @item.Context · @item.When.ToLocalTime().ToString("d MMM yyyy")</span>
+                        </span>
+                        <span class="library-actions">
+                            <a href="@item.Href">Open source</a>
+                            @if (item.SourceEventId is not null) { <button class="btn" @onclick="() => PreviewAsync(item)">Preview output</button> }
+                            @if (item.Category == "conversation") { <a href="@($"/files/{item.ConversationId}")">Files and activity</a> }
+                        </span>
+                    </div>
+                }
+            </div>
+            @if (VisibleItems.Count() > _limit) { <button class="btn" @onclick="() => _limit += 100">Show more</button> }
+        }
+        @if (_preview is not null)
+        {
+            <section class="room-card" aria-label="Output preview">
+                <h2>@_previewName</h2>
+                <pre class="library-preview">@_preview</pre>
+                <a class="btn" href="@("data:text/plain;charset=utf-8," + Uri.EscapeDataString(_preview))" download="concierge-output.txt">Save this text</a>
+                <button class="btn" @onclick="() => _preview = null">Close preview</button>
+            </section>
+        }
+    </div>
+</div>
+
+@code {
+    private const string OwnerId = "local";
+    private static readonly (string Key, string Label)[] Filters =
+    [
+        ("all", "Everything"),
+        ("conversation", "Conversations"),
+        ("creation", "Files & creations"),
+    ];
+
+    private readonly List<LibraryItem> _items = [];
+    private string _query = string.Empty;
+    private string _filter = "all";
+    private bool _loading = true;
+    private int _limit = 100;
+    private string? _error, _preview, _previewName;
+
+    private IEnumerable<LibraryItem> VisibleItems => _items
+        .Where(item => _filter == "all" || item.Category == _filter)
+        .Where(item => string.IsNullOrWhiteSpace(_query)
+            || item.Name.Contains(_query, StringComparison.OrdinalIgnoreCase)
+            || item.Context.Contains(_query, StringComparison.OrdinalIgnoreCase))
+        .OrderByDescending(item => item.When);
+
+    protected override Task OnInitializedAsync() => ReloadAsync();
+    private async Task ReloadAsync()
+    {
+        _loading = true; _error = null; _items.Clear();
+        try
+        {
+            var conversations = await Conversations.ListAsync(OwnerId);
+            var projects = await Projects.ListAsync(includeArchived: true);
+            var titles = conversations.ToDictionary(c => c.Id, c => c.Title);
+            foreach (var conversation in conversations)
+            {
+                _items.Add(new LibraryItem(conversation.Title, "Conversation", "Recent work",
+                    conversation.UpdatedAt, $"/chat/{conversation.Id}", "conversation", conversation.Id));
+            }
+            var events = await Conversations.ReadArtifactEventsAsync(OwnerId);
+            foreach (var entry in events)
+                {
+                    try
+                    {
+                        var artifact = JsonSerializer.Deserialize<ConversationArtifactRecord>(entry.Data);
+                        if (artifact is null) continue;
+                        _items.Add(new LibraryItem(artifact.Name, "Creation", titles.GetValueOrDefault(entry.ConversationId, "Conversation"),
+                            entry.CreatedAt, $"/chat/{entry.ConversationId}", "creation", entry.ConversationId, artifact.SourceEventId));
+                    }
+                    catch (JsonException) { _error = "Some saved output records could not be read. Their source conversations are still listed."; }
+                }
+
+            foreach (var project in projects)
+            foreach (var artifact in project.Artifacts)
+            {
+                var context = artifact.ConversationId is { } conversationId
+                    ? conversations.FirstOrDefault(item => item.Id == conversationId)?.Title ?? project.Name
+                    : project.Name;
+                _items.Add(new LibraryItem(artifact.Name, "Project file", context,
+                    artifact.CreatedAt,
+                    artifact.ConversationId is { } id ? $"/chat/{id}" : $"/projects?project={project.Id}", "creation", artifact.ConversationId));
+            }
+        }
+        catch (Exception ex) { _error = $"Could not load the complete library: {ex.Message}"; }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task PreviewAsync(LibraryItem item)
+    {
+        try
+        {
+            var events = await Conversations.ReadEventsAsync(item.ConversationId!.Value);
+            var source = events.SingleOrDefault(e => e.Id == item.SourceEventId);
+            if (source is null) { _error = "The source output is not available on this device. Open its conversation to check sync."; return; }
+            _previewName = item.Name;
+            _preview = source.Data.Length > 64_000 ? source.Data[..64_000] + "\n[Preview shortened; open the source conversation for the rest.]" : source.Data;
+            _error = null;
+        }
+        catch (Exception ex) { _error = $"Could not load this output: {ex.Message}"; }
+    }
+
+    private sealed record LibraryItem(string Name, string Kind, string Context,
+        DateTimeOffset When, string Href, string Category, Guid? ConversationId = null, Guid? SourceEventId = null);
+}

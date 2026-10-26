@@ -10,6 +10,8 @@
 
   <ItemGroup>
     <SupportedPlatform Include="browser" />
+    <!-- Inline the shipped sprite: Android WebView can refuse external SVG use references. -->
+    <EmbeddedResource Include="wwwroot/lib/circlemetro/circle-icons.svg" LogicalName="Concierge.CircleIcons.svg" />
   </ItemGroup>
 
   <ItemGroup>

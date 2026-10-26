@@ -1,0 +1,137 @@
+@page "/notebooks"
+@using System.Text
+@using Concierge.Shared.Planning
+@inject IKnowledgeNotebookStore Store
+@inject IConversationStore Conversations
+@inject NavigationManager Navigation
+
+<div class="room">
+    <div class="room-top"><a class="room-back" href="/">Workspace</a><h1>Notebooks</h1></div>
+    <p class="room-lede">Keep sources and instructions together, then talk about them.</p>
+    <div class="room-body">
+        @if (_error is not null) { <p role="alert" class="room-note">@_error</p> }
+        <div class="notebook-actions">
+            <button class="btn" @onclick="New">New notebook</button>
+            <button class="btn" @onclick="Reload">Reload saved notebooks</button>
+        </div>
+        <nav class="rows" aria-label="Saved notebooks">
+            @foreach (var notebook in _notebooks)
+            {
+                <button class="row" @onclick="() => Select(notebook)"><span class="row-name">@notebook.Name<span class="row-sub">@notebook.Sources.Count sources · @notebook.ConversationIds.Count conversations</span></span></button>
+            }
+        </nav>
+        @if (_selected is not null)
+        {
+            <section class="room-sec notebook-editor" aria-label="Notebook editor">
+                <label for="notebook-name">Name</label>
+                <input id="notebook-name" class="comp-input" maxlength="200" @bind="_name" />
+                <label for="notebook-instructions">How should Concierge help with this notebook?</label>
+                <textarea id="notebook-instructions" class="comp-input" rows="3" maxlength="8000" @bind="_instructions"></textarea>
+                <h2>Sources</h2>
+                <p class="room-note">Paste reference text or import a text, Markdown, CSV or JSON file. Answers can cite these source names.</p>
+                @foreach (var source in _sources)
+                {
+                    <details class="room-card" @key="source.Id">
+                        <summary>@source.Name · @source.Text.Length characters</summary>
+                        <pre class="notebook-source">@source.Text</pre>
+                        <button class="btn" @onclick="() => RemoveSource(source.Id)">Remove source</button>
+                    </details>
+                }
+                <label for="notebook-source-name">Source name</label>
+                <input id="notebook-source-name" class="comp-input" @bind="_sourceName" />
+                <label for="notebook-source-text">Reference text</label>
+                <textarea id="notebook-source-text" class="comp-input" rows="5" maxlength="48000" @bind="_sourceText"></textarea>
+                <div class="notebook-actions">
+                    <button class="btn" @onclick="AddSource">Add source</button>
+                    <label>Import text file <InputFile OnChange="ImportSourceAsync" accept=".txt,.md,.csv,.json" /></label>
+                </div>
+                <div class="notebook-actions">
+                    <button class="btn btn-primary" @onclick="Save">Save notebook</button>
+                    <button class="btn" disabled="@_starting" @onclick="StartConversationAsync">Save and start conversation</button>
+                    @if (_confirmDelete)
+                    {
+                        <button class="btn" @onclick="Delete">Confirm delete notebook</button>
+                        <button class="btn" @onclick="() => _confirmDelete = false">Keep notebook</button>
+                    }
+                    else { <button class="btn" @onclick="() => _confirmDelete = true">Delete notebook</button> }
+                </div>
+                @if (_status is not null) { <p role="status" class="room-note">@_status</p> }
+                @foreach (var id in _selected.ConversationIds)
+                {
+                    <a href="@($"/chat/{id}")">Continue notebook conversation</a>
+                }
+            </section>
+        }
+    </div>
+</div>
+
+@code {
+    private IReadOnlyList<KnowledgeNotebook> _notebooks = [];
+    private KnowledgeNotebook? _selected;
+    private List<NotebookSource> _sources = [];
+    private string _name = "", _instructions = "", _sourceName = "", _sourceText = "";
+    private string? _error, _status;
+    private bool _confirmDelete, _starting;
+    protected override void OnInitialized() => Reload();
+    private void Reload()
+    {
+        try { _notebooks = Store.All(); _error = null; }
+        catch (Exception ex) { _error = $"Could not load notebooks: {ex.Message}"; }
+    }
+    private void New() => Select(new KnowledgeNotebook(Guid.NewGuid(), "", "", [], [], DateTimeOffset.UtcNow));
+    private void Select(KnowledgeNotebook notebook)
+    {
+        _selected = notebook; _name = notebook.Name; _instructions = notebook.Instructions;
+        _sources = notebook.Sources.ToList(); _error = _status = null; _confirmDelete = false;
+    }
+    private void AddSource()
+    {
+        if (string.IsNullOrWhiteSpace(_sourceName) || string.IsNullOrWhiteSpace(_sourceText))
+        { _error = "Give the source a name and some reference text."; return; }
+        if (_sources.Count >= 20 || _sourceText.Length > FileKnowledgeNotebookStore.MaximumSourceCharacters
+            || _sources.Sum(s => s.Text.Length) + _sourceText.Length > FileKnowledgeNotebookStore.MaximumNotebookCharacters)
+        { _error = "This source exceeds the notebook limit: 20 sources, 48,000 characters per source, 96,000 total."; return; }
+        _sources.Add(new NotebookSource(Guid.NewGuid(), _sourceName.Trim(), _sourceText));
+        _sourceName = _sourceText = ""; _error = null; _status = "Source added. Save the notebook to keep it.";
+    }
+    private void RemoveSource(Guid id) { _sources.RemoveAll(s => s.Id == id); _status = "Source removed. Save the notebook to keep the change."; }
+    private async Task ImportSourceAsync(InputFileChangeEventArgs args)
+    {
+        try
+        {
+            using var reader = new StreamReader(args.File.OpenReadStream(192_000), new UTF8Encoding(false, true));
+            _sourceText = await reader.ReadToEndAsync(); _sourceName = args.File.Name; AddSource();
+        }
+        catch (Exception ex) { _error = $"Could not import this text file: {ex.Message}"; }
+    }
+    private bool SaveNotebook()
+    {
+        if (_selected is null) return false;
+        try
+        {
+            _selected = Store.Save(_selected with { Name = _name, Instructions = _instructions, Sources = _sources.ToArray() });
+            Reload(); _status = "Notebook saved. Changes apply when you next ask a question in its conversations."; return true;
+        }
+        catch (Exception ex) { _error = ex.Message; return false; }
+    }
+    private void Save() => SaveNotebook();
+    private async Task StartConversationAsync()
+    {
+        if (_starting || !SaveNotebook()) return;
+        _starting = true;
+        try
+        {
+            var conversation = await Conversations.StartAsync("local", _name);
+            _selected = Store.LinkConversation(_selected!.Id, conversation.Id);
+            Navigation.NavigateTo($"/chat/{conversation.Id}");
+        }
+        catch (Exception ex) { _error = $"Could not start the conversation: {ex.Message}"; }
+        finally { _starting = false; }
+    }
+    private void Delete()
+    {
+        if (_selected is null) return;
+        try { Store.Delete(_selected.Id); _selected = null; Reload(); }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+}

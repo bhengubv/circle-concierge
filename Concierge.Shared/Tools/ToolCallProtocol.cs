@@ -33,33 +33,41 @@ public static class ToolCallProtocol
     /// crashing the parser.
     /// </summary>
     private static readonly Regex CallBlockRegex = new(
-        @"```tool-call\s*\n(?<body>[\s\S]*?)\n```",
+        @"```tool-call\b\s*(?<body>[\s\S]*?)```",
         RegexOptions.Compiled | RegexOptions.NonBacktracking,
         TimeSpan.FromSeconds(2));
 
     /// <summary>One parsed call lifted from assistant text.</summary>
     public sealed record ToolCallInvocation(int Start, int Length, string Name, JsonNode? Arguments);
+    public sealed record ToolCallInspection(IReadOnlyList<ToolCallInvocation> Calls, string? Problem);
 
     /// <summary>
     /// Extracts every <c>tool-call</c> block in <paramref name="text"/>. Malformed JSON
     /// payloads are skipped silently so a noisy reply doesn't break the loop — the
     /// downstream invoker would have rejected them anyway.
     /// </summary>
-    public static IReadOnlyList<ToolCallInvocation> Extract(string text)
+    public static IReadOnlyList<ToolCallInvocation> Extract(string text) => Inspect(text).Calls;
+
+    /// <summary>Also reports rejected or unfinished requests so a turn cannot silently pretend they ran.</summary>
+    public static ToolCallInspection Inspect(string text)
     {
         if (string.IsNullOrEmpty(text))
         {
-            return Array.Empty<ToolCallInvocation>();
+            return new([], null);
         }
 
         var calls = new List<ToolCallInvocation>();
+        var rejected = 0;
+        var matched = 0;
         try
         {
             foreach (Match match in CallBlockRegex.Matches(text))
             {
+                matched++;
                 var body = match.Groups["body"].Value.Trim();
                 if (body.Length == 0)
                 {
+                    rejected++;
                     continue;
                 }
 
@@ -70,17 +78,15 @@ public static class ToolCallProtocol
                 }
                 catch (JsonException)
                 {
+                    rejected++;
                     continue;
                 }
 
-                if (node is null)
+                if (node is not JsonObject obj || obj["name"] is not JsonValue nameValue
+                    || !nameValue.TryGetValue<string>(out var name) || string.IsNullOrWhiteSpace(name)
+                    || obj["arguments"] is not (null or JsonObject))
                 {
-                    continue;
-                }
-
-                var name = node["name"]?.GetValue<string>();
-                if (string.IsNullOrWhiteSpace(name))
-                {
+                    rejected++;
                     continue;
                 }
 
@@ -90,11 +96,11 @@ public static class ToolCallProtocol
         }
         catch (RegexMatchTimeoutException)
         {
-            // Pathological input — fail closed (no calls extracted) so the chat continues
-            // without the tool-loop. The user can always retry with a smaller request.
+            return new([], "The tool request could not be parsed within the time limit.");
         }
-
-        return calls;
+        var openings = text.Split("```tool-call", StringSplitOptions.None).Length - 1;
+        return new(calls, rejected > 0 || openings > matched
+            ? "Circle AI returned an incomplete or invalid tool request. No tools from this response were run." : null);
     }
 
     /// <summary>

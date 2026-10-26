@@ -29,6 +29,9 @@ public partial class App : Application
 #endif
 
 		var window = new Window(new MainPage()) { Title = "Concierge" };
+#if WINDOWS
+        _services.GetRequiredService<Concierge.Platforms.Windows.DesktopSummon>().Attach(window);
+#endif
 
 		// The bottom navigation is pinned to the bottom of the window by
 		// height:100dvh. A window taller than the screen therefore hides it

@@ -115,7 +115,8 @@ public static class ConciergeToolsServiceCollectionExtensions
             provider.GetRequiredService<ConciergeToolLoopOptions>(),
             provider.GetRequiredService<Chat.BackgroundRuns>(),
             provider.GetRequiredService<Chat.CapturedImages>(),
-            runGate: provider.GetRequiredService<Chat.ConversationRunGate>()));
+            runGate: provider.GetRequiredService<Chat.ConversationRunGate>(),
+            notebooks: provider.GetService<IKnowledgeNotebookStore>()));
 
         services.TryAddSingleton<IJobRuntime, InMemoryJobRuntime>();
         services.TryAddSingleton<IRetryPolicy>(_ => new BoundedRetryPolicy());
@@ -192,6 +193,13 @@ public static class ConciergeToolsServiceCollectionExtensions
 
         services.TryAddSingleton<Settings.IScheduledTaskStore>(_ =>
             new Settings.FileScheduledTaskStore(Path.Combine(dataRoot, "schedule.json")));
+        services.TryAddSingleton<Settings.ScheduledWorkService>();
+        services.AddHostedService<Settings.ScheduledWorkService>(sp => sp.GetRequiredService<Settings.ScheduledWorkService>());
+        services.AddSingleton<IAgentTool, ScheduleReadTool>();
+        services.AddSingleton<IAgentTool, ScheduleCreateTool>();
+        services.AddSingleton<IAgentTool, SchedulePauseTool>();
+        services.TryAddSingleton<IKnowledgeNotebookStore>(_ =>
+            new FileKnowledgeNotebookStore(Path.Combine(dataRoot, "notebooks.json")));
         services.TryAddSingleton<IFeedbackChannel>(_ =>
             new FileFeedbackChannel(Path.Combine(dataRoot, "feedback.jsonl")));
         services.TryAddSingleton<Attachments.IAttachmentStore>(_ =>

@@ -1,0 +1,118 @@
+@page "/scheduled"
+@implements IDisposable
+@inject IScheduledTaskStore Store
+@inject ScheduledWorkService Worker
+@inject BackgroundRuns Runs
+
+<div class="room">
+    <div class="room-top"><a class="room-back" href="/">Workspace</a><h1>Scheduled</h1></div>
+    <p class="room-lede">Ask Concierge to do something later, once or repeatedly.</p>
+    <div class="room-body">
+        <p class="room-note" role="status">@Worker.Status</p>
+        @if (_error is not null) { <p class="room-note" role="alert">@_error</p> }
+        <section class="room-sec schedule-editor" aria-label="Schedule editor">
+            <label for="schedule-description">What should Concierge do?</label>
+            <textarea id="schedule-description" class="comp-input" rows="3" maxlength="16000" @bind="_description"></textarea>
+            <label for="schedule-due">When (@TimeZoneInfo.Local.DisplayName)</label>
+            <input id="schedule-due" class="comp-input" type="datetime-local" @bind="_due" />
+            <label for="schedule-repeat">Repeat</label>
+            <select id="schedule-repeat" class="comp-input" @bind="_repeat">
+                <option value="0">Once</option><option value="1">Every hour</option><option value="24">Every 24 hours</option><option value="168">Every 7 days</option>
+            </select>
+            <label for="schedule-permission">Control over actions</label>
+            <select id="schedule-permission" class="comp-input" @bind="_permission">
+                @foreach (var mode in Enum.GetValues<ToolPermissionMode>()) { <option value="@mode">@mode.Label()</option> }
+            </select>
+            <p class="room-note">@_permission.Explain()</p>
+            <div class="schedule-actions">
+                <button class="btn btn-primary" @onclick="Save">@(_editing is null ? "Schedule" : "Save changes")</button>
+                @if (_editing is not null) { <button class="btn" @onclick="ClearEditor">Cancel edit</button> }
+            </div>
+        </section>
+        <h2>Your scheduled work</h2>
+        @if (_tasks.Count == 0) { <p class="room-note">Nothing scheduled yet.</p> }
+        @foreach (var task in _tasks.OrderBy(t => t.DueAt))
+        {
+            <article class="room-card" @key="task.Id">
+                <h3>@task.Description</h3>
+                <p>@(task.Enabled ? task.State : "Paused") · @task.PermissionMode.Label()</p>
+                @if (task.DueAt != DateTimeOffset.MaxValue) { <p>Due @task.DueAt.ToLocalTime().ToString("g")</p> }
+                @if (task.LastRanAt is { } last) { <p>Last attempt @last.ToLocalTime().ToString("g")</p> }
+                @if (task.Error is not null) { <p role="alert">@task.Error</p> }
+                @if (task.Result is not null) { <details><summary>Last result</summary><AssistantContent Content="@task.Result" /></details> }
+                <div class="schedule-actions">
+                    @if (task.ConversationId is { } conversationId) { <a class="btn" href="@($"/chat/{conversationId}")">Open progress and result</a> }
+                    @if (task.State == "Running")
+                    {
+                        <button class="btn" @onclick="() => Stop(task)">Stop and pause</button>
+                    }
+                    else
+                    {
+                        <button class="btn" @onclick="() => Edit(task)">Edit</button>
+                        <button class="btn" @onclick="() => Change(() => Store.SetEnabled(task.Id, !task.Enabled))">@(task.Enabled ? "Pause" : "Resume")</button>
+                        <button class="btn" @onclick="() => Change(() => Store.Retry(task.Id, DateTimeOffset.UtcNow))">Run now</button>
+                        @if (_deleting == task.Id)
+                        {
+                            <button class="btn" @onclick="() => Change(() => Store.Cancel(task.Id))">Confirm delete</button>
+                            <button class="btn" @onclick="() => _deleting = null">Keep</button>
+                        }
+                        else { <button class="btn" @onclick="() => _deleting = task.Id">Delete</button> }
+                    }
+                </div>
+            </article>
+        }
+    </div>
+</div>
+
+@code {
+    private IReadOnlyList<ScheduledTask> _tasks = [];
+    private Guid? _editing, _deleting;
+    private string _description = "";
+    private DateTime _due = DateTime.Now.AddHours(1);
+    private int _repeat;
+    private ToolPermissionMode _permission = ToolPermissionMode.AskFirst;
+    private string? _error;
+    private readonly CancellationTokenSource _lifetime = new();
+    protected override void OnInitialized() { Reload(); _ = RefreshLoopAsync(); }
+    private async Task RefreshLoopAsync()
+    {
+        using var timer = new PeriodicTimer(TimeSpan.FromSeconds(2));
+        try { while (await timer.WaitForNextTickAsync(_lifetime.Token)) await InvokeAsync(() => { Reload(); StateHasChanged(); }); }
+        catch (OperationCanceledException) { }
+    }
+    private void Reload()
+    {
+        try { _tasks = Store.All(); }
+        catch (Exception ex) { _error = $"Could not read your schedule: {ex.Message}"; }
+    }
+    private void Change(Action change)
+    {
+        try { change(); _error = null; _deleting = null; Reload(); }
+        catch (Exception ex) { _error = ex.Message; }
+    }
+    private void Save() => Change(() =>
+    {
+        var due = new DateTimeOffset(_due);
+        TimeSpan? repeat = _repeat == 0 ? null : TimeSpan.FromHours(_repeat);
+        if (_editing is { } id) Store.Update(id, _description, due, repeat, _permission);
+        else
+        {
+            if (due <= DateTimeOffset.Now) throw new ArgumentException("Choose a future time. Use Run now on a saved task to start immediately.");
+            Store.Schedule(_description, due, repeat, _permission);
+        }
+        ClearEditor();
+    });
+    private void Edit(ScheduledTask task)
+    {
+        _editing = task.Id; _description = task.Description; _permission = task.PermissionMode;
+        _due = task.DueAt == DateTimeOffset.MaxValue ? DateTime.Now.AddHours(1) : task.DueAt.LocalDateTime;
+        _repeat = (int)(task.Repeat?.TotalHours ?? 0);
+    }
+    private void Stop(ScheduledTask task) => Change(() =>
+    {
+        Worker.Stop(task.Id);
+        if (task.ConversationId is { } id) Runs.Stop(id);
+    });
+    private void ClearEditor() { _editing = null; _description = ""; _due = DateTime.Now.AddHours(1); _repeat = 0; _permission = ToolPermissionMode.AskFirst; }
+    public void Dispose() { _lifetime.Cancel(); _lifetime.Dispose(); }
+}

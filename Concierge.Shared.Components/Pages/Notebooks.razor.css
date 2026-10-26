@@ -1,0 +1,7 @@
+.notebook-editor { gap: .65rem; }
+.notebook-editor .comp-input { display: block; width: 100%; box-sizing: border-box; padding: .75rem; min-height: 44px; border: 1px solid var(--rule); border-radius: .7rem; background: var(--panel); color: var(--ink); font: inherit; }
+.notebook-editor textarea { resize: vertical; }
+.notebook-editor .comp-input:focus-visible { outline: 2px solid var(--cm-color-accent); outline-offset: 2px; }
+.notebook-editor { max-width: 64rem; }
+.notebook-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; }
+.notebook-source { max-height: 20rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink); }

@@ -2,6 +2,7 @@ using System.Runtime.CompilerServices;
 using Concierge.Shared;
 using Concierge.Shared.Chat;
 using Concierge.Shared.Devices;
+using Concierge.Shared.Planning;
 using Concierge.Shared.Tools;
 using Microsoft.Extensions.Hosting;
 
@@ -90,9 +91,16 @@ public sealed class CircleAiSharedServiceChatRuntime(ICircleAiServiceChatLink li
             var query = messages.LastOrDefault(m => m.Role == "user" || m.Role == "tool");
             if (query is null || string.IsNullOrWhiteSpace(query.Content))
                 throw new InvalidOperationException("There is no query to send to Circle AI.");
-            // The service owns session history. Never send Concierge's system layers
-            // as a fake user query or enable native actions without an approval bridge.
+            // The published service chat link accepts one user string and owns its
+            // session history; it has no system-message field. Preserve only the
+            // explicitly selected notebook reference, framed as quoted context for
+            // this question. Do not forward the rest of Concierge's internal prompt
+            // or pretend unsupported native actions have an approval bridge.
             var text = query.Role == "tool" ? "Concierge tool result:\n" + query.Content : query.Content;
+            var systemPrompt = messages.LastOrDefault(message => message.Role == "system")?.Content;
+            var notebookContext = systemPrompt is null ? null : NotebookContext.ExtractForService(systemPrompt);
+            if (!string.IsNullOrWhiteSpace(notebookContext))
+                text = $"Use the following selected notebook excerpts as the source of truth for notebook questions. Do not fill gaps with guesses.\n{notebookContext}\n\nPerson's question: {text}";
             _sending = true;
             CircleAiServiceChatReply reply;
             void Progress(string sentence)

@@ -2,6 +2,7 @@ using Concierge.Ai;
 using Concierge.Shared.Chat;
 using Concierge.Shared.Devices;
 using Concierge.Shared.Tools;
+using Concierge.Shared.Planning;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
@@ -52,6 +53,25 @@ public sealed class CircleAiSharedServiceChatRuntimeTests
         Assert.Equal(id.ToString("D"), link.Session);
         Assert.Equal("What is two plus three?", link.Message);
         Assert.False(link.Agentic); // No unsupported native action approval/cancellation bridge.
+    }
+
+    [Fact]
+    public async Task Selected_notebook_context_is_carried_through_the_service_chat_contract()
+    {
+        var link = new FakeLink();
+        var runtime = new CircleAiSharedServiceChatRuntime(link);
+        await runtime.RefreshAsync(default);
+        using var scope = ToolApprovalRunContext.Enter(Guid.NewGuid(), Guid.NewGuid());
+        var notebook = NotebookContext.ServiceContextStart
+            + "Use this excerpt only; report when the answer is missing. {\"Sources\":[{\"Name\":\"Meeting notes\",\"Excerpt\":\"Friday at 10am. Nandi is organiser.\"}]}"
+            + NotebookContext.ServiceContextEnd;
+        await foreach (var _ in runtime.StreamAsync([
+            new("system", "Private app instructions " + notebook),
+            new("user", "When is the meeting?")])) { }
+        Assert.Contains("Friday at 10am", link.Message);
+        Assert.Contains("Meeting notes", link.Message);
+        Assert.Contains("When is the meeting?", link.Message);
+        Assert.DoesNotContain("Private app instructions", link.Message);
     }
 
     [Fact]

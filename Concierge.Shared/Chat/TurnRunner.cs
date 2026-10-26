@@ -138,7 +138,8 @@ public sealed class TurnRunner(
     BackgroundRuns runs,
     CapturedImages captured,
     RuntimeResolver? resolver = null,
-    ConversationRunGate? runGate = null)
+    ConversationRunGate? runGate = null,
+    IKnowledgeNotebookStore? notebooks = null)
 {
     private readonly RuntimeResolver _resolver = resolver ?? new RuntimeResolver();
     private readonly ConversationRunGate _runGate = runGate ?? new ConversationRunGate();
@@ -221,6 +222,7 @@ public sealed class TurnRunner(
         string? last = null;
         string? stopped = null;
         var runStatus = "completed";
+        var toolFormatCorrections = 0;
 
         using var runCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var runToken = runCancellation.Token;
@@ -296,7 +298,24 @@ public sealed class TurnRunner(
                     break;
                 }
 
-                var calls = ToolCallProtocol.Extract(streamed);
+                var inspected = ToolCallProtocol.Inspect(streamed);
+                if (inspected.Problem is { } problem)
+                {
+                    await store.AppendEventAsync(request.ConversationId, ConversationEventType.ToolResult,
+                        problem, cancellationToken: runToken).ConfigureAwait(false);
+                    progress?.Report(new TurnStep(TurnStage.Recorded));
+                    if (++toolFormatCorrections > 1 || iteration == options.MaxToolIterations)
+                    {
+                        stopped = problem + " The correction attempt also failed. Review the request before trying again.";
+                        break;
+                    }
+                    await store.AppendEventAsync(request.ConversationId, ConversationEventType.ToolResult,
+                        "Correct the tool request using a complete JSON object with a string name and object arguments inside a tool-call fence. "
+                        + "Nothing from that response ran. Concierge executes valid calls and supplies their results; do not ask the person to supply tool results.",
+                        cancellationToken: runToken).ConfigureAwait(false);
+                    continue;
+                }
+                var calls = inspected.Calls;
 
                 if (calls.Count == 0)
                 {
@@ -537,6 +556,8 @@ public sealed class TurnRunner(
         var history = await store.ReadHistoryAsync(request.ConversationId, cancellationToken).ConfigureAwait(false);
         var turns = history.Turns.ToList();
         var systemParts = new List<string> { ConciergeIdentityPrompt };
+        if (notebooks is not null && NotebookContext.ForConversation(notebooks, request.ConversationId, request.Text) is { Length: > 0 } notebookContext)
+            systemParts.Add(notebookContext);
 
         // Specialist guidance layers onto Concierge's stable product identity, followed by
         // anything specific to this conversation and the tools exposed on this turn.

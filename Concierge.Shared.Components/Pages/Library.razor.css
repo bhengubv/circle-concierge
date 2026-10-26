@@ -1,0 +1,3 @@
+.library-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; }
+.library-preview { max-height: 26rem; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.row { flex-wrap: wrap; }

@@ -1,0 +1,22 @@
+@using Concierge.Shared.Devices
+@inject IServiceProvider Services
+@if (_summon is not null)
+{
+    <section class="appearance-panel" aria-label="Quick summon">
+        <div class="appearance-heading">Quick summon</div>
+        <label><input type="checkbox" checked="@_summon.Enabled" @onchange="ToggleAsync" /> Enable keyboard shortcut</label>
+        <label for="summon-shortcut">Bring Concierge forward</label>
+        <select id="summon-shortcut" class="comp-input" value="@_summon.Shortcut" @onchange="ChangeShortcutAsync">
+            <option>Ctrl + Alt + C</option>
+            <option>Ctrl + Alt + Space</option>
+            <option>Ctrl + Shift + Space</option>
+        </select>
+        <p class="room-note" role="status">@_summon.Status</p>
+    </section>
+}
+@code {
+    private IDesktopSummon? _summon;
+    protected override void OnInitialized() => _summon = Services.GetService(typeof(IDesktopSummon)) as IDesktopSummon;
+    private Task ToggleAsync(ChangeEventArgs args) => _summon!.SetEnabledAsync(args.Value is true);
+    private Task ChangeShortcutAsync(ChangeEventArgs args) => _summon!.SetShortcutAsync(args.Value?.ToString() ?? "Ctrl + Alt + C");
+}

@@ -1,0 +1,37 @@
+@page "/files/{ConversationId:guid}"
+@inject IConversationStore Store
+
+<div class="room">
+    <div class="room-top"><a class="room-back" href="@($"/chat/{ConversationId}")">Conversation</a><h1>Files and activity</h1></div>
+    <p class="room-lede">Recorded file reads, writes and edits, with their results. File changes inside shell commands or external services are not reported here unless they publish file activity.</p>
+    <div class="room-body">
+        <button class="btn" @onclick="ReloadAsync">Refresh</button>
+        @if (_error is not null) { <p role="alert">@_error</p> }
+        @if (_loading) { <p role="status">Loading file activity…</p> }
+        else if (_rows.Count == 0) { <p class="room-note">No file-tool activity has been recorded in this conversation.</p> }
+        @foreach (var run in _rows.GroupBy(row => row.RunId))
+        {
+            <section class="room-sec">
+                <h2>Task from @run.First().At.ToLocalTime().ToString("g")</h2>
+                @foreach (var row in run)
+                {
+                    <div class="row"><span class="row-name">@row.Path<span class="row-sub">@row.Operation · @row.At.ToLocalTime().ToString("T")</span></span><span class="row-val">@row.Outcome</span></div>
+                }
+            </section>
+        }
+    </div>
+</div>
+@code {
+    [Parameter] public Guid ConversationId { get; set; }
+    private IReadOnlyList<FileActivity> _rows = [];
+    private bool _loading;
+    private string? _error;
+    protected override Task OnParametersSetAsync() => ReloadAsync();
+    private async Task ReloadAsync()
+    {
+        _loading = true;
+        try { _rows = FileActivityProjection.From(await Store.ReadEventsAsync(ConversationId)); _error = null; }
+        catch (Exception ex) { _error = $"Could not read file activity: {ex.Message}"; }
+        finally { _loading = false; }
+    }
+}

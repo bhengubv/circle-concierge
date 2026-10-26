@@ -9,6 +9,16 @@ namespace Concierge.Shared.Chat;
 /// </summary>
 public sealed class ConversationStore : IConversationStore
 {
+    public async Task<IReadOnlyList<ConversationEvent>> ReadArtifactEventsAsync(string ownerId, CancellationToken cancellationToken = default)
+    {
+        await _schemaReady.Value.ConfigureAwait(false);
+        await using var db = await _factory.CreateDbContextAsync(cancellationToken).ConfigureAwait(false);
+        return await (from entry in db.Events.AsNoTracking()
+            join conversation in db.Conversations on entry.ConversationId equals conversation.Id
+            where conversation.OwnerId == ownerId && entry.Type == ConversationEventType.ArtifactCreated
+            orderby entry.CreatedAt descending
+            select entry).ToListAsync(cancellationToken).ConfigureAwait(false);
+    }
     public async Task<IReadOnlyList<ConversationEvent>> ReadRecentEventsAsync(Guid conversationId, int count = 100, CancellationToken cancellationToken = default)
     {
         await _schemaReady.Value.ConfigureAwait(false);

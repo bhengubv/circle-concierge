@@ -1,0 +1,6 @@
+.work-destinations { display: grid; gap: .25rem; margin: .35rem 0 .65rem; }
+.work-destinations a { display: grid; gap: .15rem; padding: .55rem .75rem; border-radius: .75rem; color: var(--ink); text-decoration: none; min-height: 44px; }
+.work-destinations strong { font-size: .9rem; font-weight: 650; }
+.work-destinations span { font-size: .75rem; line-height: 1.35; opacity: .75; }
+.work-destinations a:hover { background: color-mix(in srgb, currentColor 8%, transparent); }
+.work-destinations a:focus-visible { outline: 2px solid currentColor; outline-offset: -2px; }

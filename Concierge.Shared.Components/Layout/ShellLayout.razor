@@ -2,6 +2,8 @@
 @implements IDisposable
 @inject NavigationManager Nav
 @inject IConciergeStateService State
+@inject IServiceProvider Services
+@inject IJSRuntime JS
 
 @*
     The shell is a frame and nothing else.
@@ -19,6 +21,7 @@
     actually stopped.
 *@
 
+<CircleIconSprite />
 @Body
 
 <div id="blazor-error-ui" data-nosnippet>
@@ -28,10 +31,40 @@
 </div>
 
 @code {
-    // The shell watches nothing itself any more; the workspace reads the
-    // services it needs. IDisposable is kept because the host registers the
-    // layout as disposable and removing it is a separate change.
+    private Concierge.Shared.Devices.IDesktopSummon? _summon;
+    private bool _focusAfterRender;
+    protected override void OnInitialized()
+    {
+        _summon = Services.GetService(typeof(Concierge.Shared.Devices.IDesktopSummon)) as Concierge.Shared.Devices.IDesktopSummon;
+        if (_summon is not null) _summon.Summoned += Summon;
+    }
+    private async void Summon()
+    {
+        try
+        {
+            await InvokeAsync(() =>
+            {
+                _focusAfterRender = true;
+                var path = Nav.ToBaseRelativePath(Nav.Uri);
+                if (path.Length > 0 && !path.StartsWith("chat", StringComparison.OrdinalIgnoreCase)) Nav.NavigateTo("/chat");
+                StateHasChanged();
+            });
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (JSException) { /* Native activation still succeeds if the web view is not ready. */ }
+    }
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_focusAfterRender) return;
+        _focusAfterRender = false;
+        try { await JS.InvokeVoidAsync("conciergeThread.focusComposer"); }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (JSException) { /* A later summon can retry after the web view becomes ready. */ }
+    }
     public void Dispose()
     {
+        if (_summon is not null) _summon.Summoned -= Summon;
     }
 }

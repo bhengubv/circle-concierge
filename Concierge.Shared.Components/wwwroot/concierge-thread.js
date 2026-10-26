@@ -26,6 +26,17 @@ window.conciergeThread = (function () {
     }
 
     return {
+        focusComposer() {
+            const focus = () => {
+                const field = document.querySelector('.ws .comp-box textarea:not([disabled])');
+                if (!field || document.querySelector('[aria-modal="true"]')) return false;
+                field.focus(); return document.activeElement === field;
+            };
+            if (focus()) return;
+            const observer = new MutationObserver(() => { if (focus()) observer.disconnect(); });
+            observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['disabled'] });
+            setTimeout(() => observer.disconnect(), 5000);
+        },
         // Opening a conversation puts you at the end of it, without animation: this is
         // where you were, not somewhere you are being taken.
         toEnd(selector) {

@@ -1,0 +1,16 @@
+@* Trusted, shipped design-system artwork, never user-provided markup. Keep symbol
+   references in this document so they work in Android's intercepted WebView origin. *@
+<div aria-hidden="true" style="position:absolute;width:0;height:0;overflow:hidden;pointer-events:none">
+    @((MarkupString)Sprite)
+</div>
+
+@code {
+    private static readonly string Sprite = ReadSprite();
+    private static string ReadSprite()
+    {
+        using var stream = typeof(CircleIconSprite).Assembly.GetManifestResourceStream("Concierge.CircleIcons.svg")
+            ?? throw new InvalidOperationException("The Circle icon sprite is missing from this build.");
+        using var reader = new System.IO.StreamReader(stream);
+        return reader.ReadToEnd();
+    }
+}

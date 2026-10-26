@@ -1,0 +1,7 @@
+.schedule-editor { gap: .65rem; }
+.schedule-editor { max-width: 64rem; }
+.schedule-editor .comp-input { display: block; width: 100%; box-sizing: border-box; padding: .75rem; min-height: 44px; border: 1px solid var(--rule); border-radius: .7rem; background: var(--panel); color: var(--ink); font: inherit; }
+.schedule-editor textarea { resize: vertical; }
+.schedule-editor .comp-input:focus-visible { outline: 2px solid var(--cm-color-accent); outline-offset: 2px; }
+.schedule-actions { display: flex; gap: .65rem; flex-wrap: wrap; align-items: center; }
+.room-card h3 { white-space: pre-wrap; overflow-wrap: anywhere; }

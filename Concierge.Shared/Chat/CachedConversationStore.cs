@@ -6,6 +6,8 @@ namespace Concierge.Shared.Chat;
 /// <summary>Short-lived presentation snapshots. Durable events and model history stay on the underlying store.</summary>
 public sealed class CachedConversationStore(IConversationStore inner, TimeProvider? clock = null) : IConversationStore
 {
+    public Task<IReadOnlyList<ConversationEvent>> ReadArtifactEventsAsync(string ownerId, CancellationToken cancellationToken = default)
+        => inner.ReadArtifactEventsAsync(ownerId, cancellationToken);
     private readonly AsyncSnapshotCache<Guid, Conversation?> _threads = new(16, 524_288,
         c => c is null ? 0 : Size(c), c => c is not null, clock);
     private readonly AsyncSnapshotCache<string, IReadOnlyList<Conversation>> _lists = new(8, 65_536,

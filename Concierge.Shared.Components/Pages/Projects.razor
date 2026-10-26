@@ -754,6 +754,8 @@
 @code {
     [SupplyParameterFromQuery(Name = "conversation")]
     public Guid? ConversationId { get; set; }
+    [SupplyParameterFromQuery(Name = "project")]
+    public Guid? SelectedProjectId { get; set; }
 
     private sealed record ProjectConversationActivity(Guid ConversationId, string Title, string State,
         string StateKey, string Detail, DateTimeOffset? At);
@@ -830,6 +832,8 @@
         _loading = true;
         _projects = (await ProjectStore.ListAsync()).ToList();
         _startups = (await ProjectStore.ListStartupsAsync()).ToList();
+        if (SelectedProjectId is { } selectedId && _projects.Any(p => p.Id == selectedId))
+            await SelectAsync(selectedId);
         if (_selected is not null)
             _selected = _projects.FirstOrDefault(project => project.Id == _selected.Id);
         if (_selectedStartup is not null)
