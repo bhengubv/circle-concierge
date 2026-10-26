@@ -32,8 +32,10 @@ select a model; Circle AI retains that responsibility.
   Evidence: [scheduled result](2026-10-26-scheduled-result.png).
 - Desktop shortcut: Ctrl+Alt+C restored Concierge from a minimized window while
   File Explorer was active and navigated to chat. It did not restore from the
-  elevated Services window. Composer focus is not yet proven; a subsequent
-  render-order correction still needs native verification.
+  elevated Services window. Retested live after rebuilding: from Explorer, the
+  shortcut restored Concierge, focused the composer, and accepted the typed
+  probe text. The probe was cleared without sending. Elevation-boundary behavior
+  remains a Windows limitation.
 - PixieDust: updated successfully with `adb install -r`, preserving data.
   Existing conversation and reply remained visible. The new Notebooks screen
   opened through the sidebar. Created and saved a phone-local notebook named
@@ -59,8 +61,9 @@ select a model; Circle AI retains that responsibility.
 
 ## Remaining work, individually tracked
 
-- [ ] Global Desktop summon: verify typing lands in composer after restoration;
-  document elevated-window limitations.
+- [x] Global Desktop summon: live test from Explorer restored the minimized app,
+  focused the composer, and accepted typed text. Elevated-window limitation is
+  documented above.
 - [ ] Unified Library: text-event preview and source navigation exist. Small,
   inline PNG/JPEG/WebP/GIF, audio and video data URIs can now preview when their
   declared type matches. Other output storage and full output coverage remain
@@ -86,13 +89,13 @@ select a model; Circle AI retains that responsibility.
 
 ## Boundaries
 
-The Android build after the icon/context changes passed with zero errors and 101
-warnings and was installed on PixieDust. The focused harness now passes 40
-checks: 40 passed, zero failed, zero skipped, including guarded media previews.
-A Windows build in the normal output folder hit a file lock from the
-running Desktop app. I then compiled the Windows app into an isolated output
-folder against the already-built dependency assemblies: it passed with zero
-errors and 40 warnings. The running Desktop was not replaced, so native shortcut
-focus remains unverified. Existing dependency vulnerability warnings are not
-resolved by this work. The full repository test suite has not passed here. No
-Circle AI service source was changed.
+The Android build after the Library and activity changes passed with zero errors
+and 110 warnings and was installed on PixieDust and AngelDust. It includes Android
+16 16 KB page-size warnings for bundled native libraries. The focused harness now
+passes 40 checks: 40 passed, zero failed, zero skipped, including guarded media
+previews.
+A Windows build passed with zero errors and 40 warnings. The rebuilt Desktop was
+launched with WebView2 remote debugging enabled for the live shortcut/composer
+check above. Existing dependency vulnerability warnings are not resolved by this
+work. The full repository test suite has not passed here. No Circle AI service
+source was changed.
