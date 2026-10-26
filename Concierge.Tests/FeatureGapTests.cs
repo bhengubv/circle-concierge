@@ -235,7 +235,7 @@ public sealed class FeatureGapTests : IAsyncLifetime
     }
 
     [Fact]
-    public void File_activity_never_reports_failed_or_unfinished_writes_as_successful()
+    public void File_activity_records_command_results_without_claiming_file_side_effects()
     {
         var run = Guid.NewGuid();
         var events = new[]
@@ -246,10 +246,16 @@ public sealed class FeatureGapTests : IAsyncLifetime
             new ConversationEvent { Seq = 3, Type = ConversationEventType.ToolCall, Data = "read_file {\"path\":\"notes.txt\"}" },
             new ConversationEvent { Seq = 4, Type = ConversationEventType.ToolResult, Data = ToolCallProtocol.FormatResult("read_file", new AgentToolResult(true, "notes", null)) },
             new ConversationEvent { Seq = 5, Type = ConversationEventType.ToolCall, Data = "write_file {\"path\":\"next.txt\"}" },
+            new ConversationEvent { Seq = 6, Type = ConversationEventType.ToolCall, Data = "run_command {\"command\":\"dotnet test\"}" },
+            new ConversationEvent { Seq = 7, Type = ConversationEventType.ToolResult, Data = ToolCallProtocol.FormatResult("run_command", new AgentToolResult(true, "Tests passed", null)) },
+            new ConversationEvent { Seq = 8, Type = ConversationEventType.ToolCall, Data = "run_command {\"command\":\"git push\"}" },
+            new ConversationEvent { Seq = 9, Type = ConversationEventType.ToolResult, Data = ToolCallProtocol.FormatResult("run_command", new AgentToolResult(false, "", "Approval denied")) },
         };
         var rows = FileActivityProjection.From(events);
-        Assert.Equal(new[] { "Failed or refused", "Succeeded", "No result recorded" }, rows.Select(r => r.Outcome));
+        Assert.Equal(new[] { "Failed or refused", "Succeeded", "No result recorded", "Succeeded", "Failed or refused" }, rows.Select(r => r.Outcome));
         Assert.All(rows, row => Assert.Equal(run, row.RunId));
+        Assert.Equal(new[] { "next.txt", "dotnet test", "git push" }, rows.Skip(2).Select(row => row.Path));
+        Assert.Equal(new[] { "Command", "Command" }, rows.Skip(3).Select(row => row.Operation));
     }
 
     [Fact]

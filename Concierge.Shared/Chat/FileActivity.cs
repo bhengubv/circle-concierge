@@ -4,7 +4,7 @@ namespace Concierge.Shared.Chat;
 
 public sealed record FileActivity(Guid EventId, Guid? RunId, string Path, string Operation, string Outcome, DateTimeOffset At);
 
-/// <summary>Projects recorded file calls and their actual results; never guesses at shell side effects.</summary>
+/// <summary>Projects recorded file calls and command results; never guesses at shell side effects.</summary>
 public static class FileActivityProjection
 {
     private static readonly Dictionary<string, string> Operations = new(StringComparer.Ordinal)
@@ -32,12 +32,17 @@ public static class FileActivityProjection
                     var separator = entry.Data.IndexOf(' ');
                     if (separator < 1) continue;
                     var name = entry.Data[..separator];
-                    if (!Operations.TryGetValue(name, out var operation)) continue;
+                    var isCommand = string.Equals(name, "run_command", StringComparison.Ordinal);
+                    if (!isCommand && !Operations.TryGetValue(name, out _)) continue;
+                    var operation = isCommand ? "Command" : Operations[name];
                     using var args = JsonDocument.Parse(entry.Data[(separator + 1)..]);
-                    if (!args.RootElement.TryGetProperty("path", out var path) || path.ValueKind != JsonValueKind.String) continue;
+                    var property = isCommand ? "command" : "path";
+                    if (!args.RootElement.TryGetProperty(property, out var target) || target.ValueKind != JsonValueKind.String) continue;
+                    var targetText = target.GetString();
+                    if (string.IsNullOrWhiteSpace(targetText)) continue;
                     if (!pending.TryGetValue(name, out var queue)) pending[name] = queue = new();
                     queue.Enqueue(rows.Count);
-                    rows.Add(new FileActivity(entry.Id, runId, path.GetString()!, operation, "No result recorded", entry.CreatedAt));
+                    rows.Add(new FileActivity(entry.Id, runId, targetText, operation, "No result recorded", entry.CreatedAt));
                 }
                 else if (entry.Type == ConversationEventType.ToolResult && entry.Data.StartsWith("```tool-result", StringComparison.Ordinal))
                 {

@@ -73,7 +73,10 @@ select a model; Circle AI retains that responsibility.
   work; app-closed execution and completion notifications remain incomplete.
 - [ ] Connected-app actions: friendly connection setup and live action acceptance.
 - [ ] File provenance: recorded file tools work; shell and external-service
-  changes are not captured and must not be presented as complete provenance.
+  file side effects are not attributable to individual paths. The activity page
+  now records each `run_command` request and its outcome, but still does not claim
+  complete provenance; external-service changes remain unreported unless the
+  service publishes file activity.
 - [ ] Browser operation: visible progress, takeover and live acceptance.
 - [ ] Phone continuous voice: interruption and reliable conversation continuity.
 - [ ] Live camera video assistance.
