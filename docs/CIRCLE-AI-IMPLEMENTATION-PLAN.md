@@ -20,6 +20,18 @@
 
 ## Current baseline (revalidate at Stage 0)
 
+**27 October Windows service checkpoint:** Concierge Desktop now consumes the
+released Circle AI 3.9.2 standalone host from a per-user logon task. The task
+survived two deliberate child-process failures by starting a single new host,
+publishing a fresh protected loopback connection, and letting Desktop recover
+without manual reconnect. Two live Desktop conversation journeys completed;
+the post-recovery question answered `13` for `12 + 1`. Twenty focused Windows
+service tests and the Desktop build pass. This is not full engine acceptance:
+one contextual arithmetic answer was wrong (`8` instead of `7`), cold answer
+latency reached 147.718 seconds, service agentic work is not exposed through
+the current loopback chat contract, old 3.9.1 files remain, and sign-in/reboot
+startup is unverified. See [measured 3.9.2 handoff](acceptance/2026-10-27-windows-3.9.2-handoff.md).
+
 **23 October upgrade evidence takes precedence over older baseline figures:**
 CircleAI 3.9.1 / AetherNet 3.4.0 clients build on Windows, Android and ARM32 Wear.
 The unused browser-to-server dependency has been removed; the full test command
