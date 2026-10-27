@@ -6,6 +6,8 @@
 
 **Current architecture map:** [CONCIERGE-ARCHITECTURE-MAP.md](CONCIERGE-ARCHITECTURE-MAP.md). It records observed owners, persistence, boundaries, verified limits, and the specific runtime evidence still needed. Stage 0 remains open until that evidence is collected.
 
+**Current competitor-gap queue:** [CONCIERGE-PARITY-PLAN.md](CONCIERGE-PARITY-PLAN.md) turns the [28 October evidence review](acceptance/2026-10-28-product-parity-review.md) into ordered live acceptance work. It supplements this vision-wide plan; neither document marks a feature complete from code alone.
+
 ## Rules that apply to every stage
 
 - Keep ordinary conversation lightweight. Do not force Chat into a project workflow.

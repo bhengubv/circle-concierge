@@ -1,5 +1,7 @@
 # Concierge product parity review — 28 October 2026
 
+**Delivery queue:** [Concierge parity plan](../CONCIERGE-PARITY-PLAN.md).
+
 ## Verdict and scope
 
 Concierge does **not yet match** Codex, Claude Code, or Gemini as an end-to-end
