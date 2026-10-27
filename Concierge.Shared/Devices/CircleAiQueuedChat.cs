@@ -20,9 +20,13 @@ public static class CircleAiQueuedChat
     public static async Task<CircleAiServiceChatReply> SendAsync(
         Func<LinkVerbRequest, CancellationToken, Task<LinkRowsReply>> execute,
         string requestId, string sessionId, string message, bool agentic,
-        Action<string>? progress, CancellationToken cancellationToken)
+        Action<string>? progress, CancellationToken cancellationToken, Action<string>? answerChunk = null,
+        bool background = false)
     {
         string? askId = null;
+        var answerOffset = 0;
+        var answerLength = 0;
+        var answer = new System.Text.StringBuilder();
         try
         {
             var observation = Stopwatch.StartNew();
@@ -32,7 +36,7 @@ public static class CircleAiQueuedChat
                 [LinkAskRows.ArgSession] = sessionId,
                 [LinkAskRows.ArgMessage] = message,
                 [LinkAskRows.ArgQuestion] = message,
-                [LinkAskRows.ArgLane] = "Foreground",
+                [LinkAskRows.ArgLane] = background ? "Background" : "Foreground",
                 [LinkAskRows.ArgAgentic] = agentic ? "1" : "0",
                 [LinkAskRows.ArgSideEffectFree] = agentic ? "0" : "1"
             }), cancellationToken);
@@ -47,10 +51,19 @@ public static class CircleAiQueuedChat
                     return new(false, null, "Circle AI returned a different request record.");
                 askId = ask.Id;
                 progress?.Invoke(string.IsNullOrWhiteSpace(ask.Sentence) ? ask.StateName : ask.Sentence);
+                answerLength = Math.Max(answerLength, ask.TextLength);
+                if (ask.TextOffset == answerOffset && !string.IsNullOrEmpty(ask.Text))
+                {
+                    answer.Append(ask.Text);
+                    answerOffset += ask.Text.Length;
+                    answerChunk?.Invoke(ask.Text);
+                }
                 if (ask.State == AskState.Succeeded)
-                    return string.IsNullOrWhiteSpace(ask.Text)
+                    return answerOffset < answerLength
+                        ? await ContinueFinalTextAsync(execute, askId, answer.ToString(), answerOffset, answerLength, answerChunk, cancellationToken)
+                        : answer.Length == 0
                         ? new(false, null, "Circle AI completed the request without an answer.")
-                        : new(true, ask.Text, null);
+                        : new(true, answer.ToString(), null);
                 if (ask.IsFinal) return new(false, null,
                     string.IsNullOrWhiteSpace(ask.Sentence) ? $"Circle AI request {ask.StateName}." : ask.Sentence);
 
@@ -63,7 +76,7 @@ public static class CircleAiQueuedChat
                 observation.Restart();
                 response = await execute(new(LinkVerb.AskStatus, Query: askId, Args: new Dictionary<string, string>
                 {
-                    [LinkAskRows.ArgSince] = "0",
+                    [LinkAskRows.ArgSince] = answerOffset.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     [LinkAskRows.ArgAfterSeq] = ask.Seq.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     [LinkAskRows.ArgWaitMs] = StatusWaitMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture)
                 }), cancellationToken);
@@ -80,6 +93,38 @@ public static class CircleAiQueuedChat
             }
             throw;
         }
+    }
+
+    private static async Task<CircleAiServiceChatReply> ContinueFinalTextAsync(
+        Func<LinkVerbRequest, CancellationToken, Task<LinkRowsReply>> execute, string askId,
+        string existing, int offset, int total, Action<string>? answerChunk, CancellationToken cancellationToken)
+    {
+        var answer = new System.Text.StringBuilder(existing);
+        while (offset < total)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var response = await execute(new(LinkVerb.AskStatus, Query: askId, Args: new Dictionary<string, string>
+            {
+                [LinkAskRows.ArgSince] = offset.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                [LinkAskRows.ArgAfterSeq] = "0",
+                [LinkAskRows.ArgWaitMs] = StatusWaitMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            }), cancellationToken);
+            if (!response.Ok) return new(false, null, response.Error ?? "Circle AI’s completed answer could not be read.");
+            var ask = response.Rows.Select(LinkAskRows.ReadAsk).FirstOrDefault(item => item is not null);
+            if (ask is null || ask.IsFinal && ask.State != AskState.Succeeded)
+                return new(false, null, "Circle AI’s answer could not be fully recovered.");
+            if (ask.TextOffset == offset && !string.IsNullOrEmpty(ask.Text))
+            {
+                answer.Append(ask.Text);
+                offset += ask.Text.Length;
+                answerChunk?.Invoke(ask.Text);
+            }
+            else return new(false, null, "Circle AI could not return the remaining answer text.");
+            total = Math.Max(total, ask.TextLength);
+        }
+        return answer.Length == 0
+            ? new(false, null, "Circle AI completed the request without an answer.")
+            : new(true, answer.ToString(), null);
     }
 
     internal static TimeSpan PollDelay(TimeSpan elapsed)

@@ -144,7 +144,13 @@ public sealed class TurnRunner(
     private readonly RuntimeResolver _resolver = resolver ?? new RuntimeResolver();
     private readonly ConversationRunGate _runGate = runGate ?? new ConversationRunGate();
     private const string ConciergeIdentityPrompt = """
-        You are the assistant inside Concierge, powered by Circle AI. Answer clearly and directly. Ground capabilities in available tools and connected services. Never say a task was executed without confirmation. Butler performs the dispatched operational work when connected. Do not imply Butler is connected without confirmation. Follow the app's action mode and approvals. Circle AI chooses models and resources; never ask the user to choose them. Concierge manages conversations, Workspaces, Projects and progress. Ask only necessary follow-up questions.
+        You are the assistant inside Concierge, powered by Circle AI. Answer the person's actual request directly and use the full conversation to understand what they mean. If a phrase has materially different meanings in context, ask one concise clarifying question instead of choosing an unlikely interpretation. Do not begin with generic limitations when you can provide useful help.
+
+        Be accurate and grounded. Never invent facts, user history, capabilities, tool names, tool calls, results, or actions. Only describe a tool as used when it was actually invoked and its result is present in this session. If a requested action is not available here, say so plainly and offer the closest useful work you can do now. When challenged, reconsider the answer; acknowledge and correct mistakes directly. Do not introduce unrelated advice or personal details.
+
+        Be clear about the kind of work requested: software, a digital design, a plan, or a physical object. Do not conflate being unable to perform physical actions with being unable to design, write, reason, or help create software. Give a useful first step when possible, and ask only questions that materially change the outcome.
+
+        Format answers for easy reading. Use Markdown headings, short paragraphs, lists, emphasis, tables, and code blocks when they improve the answer. Keep simple answers simple; do not add decorative structure or repeat the request. Concierge manages conversations, Workspaces, Projects and progress. Butler performs dispatched operational work only when connected and confirmed. Follow the app's action mode and approvals. Circle AI chooses models and resources; never ask the user to choose them.
         """;
 
     /// <summary>
@@ -227,7 +233,8 @@ public sealed class TurnRunner(
         using var runCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var runToken = runCancellation.Token;
         runs.Started(request.ConversationId, runCancellation);
-        using var approvalRunContext = ToolApprovalRunContext.Enter(request.ConversationId, runId);
+        using var approvalRunContext = ToolApprovalRunContext.Enter(request.ConversationId, runId, settings.PermissionMode,
+            background: request.ProjectId.HasValue || request.ProjectWorkspaceId.HasValue || request.StartupJourneyId.HasValue);
         using var projectToolRunContext = ProjectToolRunContext.Enter(
             new ProjectToolRun(request.ProjectId, request.ProjectWorkspaceId, request.ConversationId, runId,
                 request.StartupJourneyId, settings.PermissionMode));
@@ -564,7 +571,11 @@ public sealed class TurnRunner(
         if (settings.SkillIds is { Count: > 0 } active
             && skills.ComposeSystemPrompt(active) is { Length: > 0 } skillPrompt)
         {
-            systemParts.Add(skillPrompt);
+            // The Circle AI service link has no system-prompt field. Mark the exact
+            // user-selected skill block so that the service runtime can carry only
+            // these instructions over its text request, without forwarding Concierge's
+            // private tool catalog or approval protocol as if the service could execute it.
+            systemParts.Add(SelectedSkillPrompt.Wrap(skillPrompt));
         }
 
         if (!string.IsNullOrWhiteSpace(settings.SystemPrompt))

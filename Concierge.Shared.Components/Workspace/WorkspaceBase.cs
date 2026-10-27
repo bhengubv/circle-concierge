@@ -468,6 +468,8 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     public void Dispose()
     {
         _gone = true;
+        _recording = false;
+        _ = CancelVoiceCaptureAsync();
         _conversationSyncStop.Cancel();
         _conversationSyncStop.Dispose();
         Nav.LocationChanged -= OnLocationChanged;
@@ -494,6 +496,19 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         {
             _streamCts?.Dispose();
             _streamCts = null;
+        }
+    }
+
+    private async Task CancelVoiceCaptureAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("conciergeVoice.cancel");
+        }
+        catch (Exception failure) when (failure is JSException or InvalidOperationException
+                                        or TaskCanceledException or ObjectDisposedException)
+        {
+            // The phone may be navigating or a prerendered circuit may not have a DOM.
         }
     }
 
@@ -1724,6 +1739,15 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         {
             if (!_recording)
             {
+                var microphonePermission = Services.GetService(typeof(IMicrophonePermissionGate))
+                    as IMicrophonePermissionGate;
+                if (microphonePermission is not null
+                    && !await microphonePermission.EnsureGrantedAsync())
+                {
+                    _composerHint = "Microphone access is off. Allow it in Android app settings to use voice.";
+                    return;
+                }
+
                 await JS.InvokeVoidAsync("conciergeVoice.start");
                 _recording = true;
                 _composerHint = "Recording… tap the mic again to stop.";

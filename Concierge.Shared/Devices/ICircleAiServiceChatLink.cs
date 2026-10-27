@@ -13,6 +13,13 @@ public interface ICircleAiServiceChatLink
         CancellationToken cancellationToken);
 }
 
+/// <summary>Optional streaming path for services that expose AskStatus text offsets.</summary>
+public interface ICircleAiServiceStreamingChatLink
+{
+    Task<CircleAiServiceChatReply> SendChatStreamingAsync(string sessionId, string message, bool agentic,
+        Action<string> answerChunk, CancellationToken cancellationToken);
+}
+
 public interface ICircleAiServiceRequestProgress
 {
     event Action<string>? RequestProgress;

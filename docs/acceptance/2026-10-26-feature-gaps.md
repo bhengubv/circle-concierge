@@ -14,6 +14,13 @@ approval isolation, stop, recurrence, corrupt-state preservation, UI rendering,
 library preview, recorded file outcomes, schedule tools, malformed tool calls,
 and the shipped icon symbols required by the phone composer/navigation.
 
+Phone recording cleanup has a separate JavaScript contract suite. Run
+`node --test tests/concierge-voice.test.mjs`. Latest observed result:
+**5 passed, zero failed**. It covers microphone release after stop, cancellation
+on navigation, a microphone permission result arriving after cancellation,
+retrying from a new screen after that prompt settles, and recorder failure.
+These mocked tests do not replace a live handset interruption test.
+
 The runtime-selection regression was observed failing before correction:
 the scheduler selected the last registered, unconfigured provider. It now uses
 the same Circle AI connection preference as interactive chat. This does not
@@ -43,9 +50,9 @@ select a model; Circle AI retains that responsibility.
   meeting is Friday at 10am and Nandi is the organiser; started a conversation
   from that notebook. The first source question received a fabricated answer
   (“next week”; “Juniper Networks leadership team”) and is a **failed grounding
-  acceptance**. Do not count mobile notebook answering as working. A second
-  attempt was interrupted by Android's microphone permission dialog; it was
-  left on screen for the user and not acted on.
+  acceptance**. Do not count mobile notebook answering as working. A later
+  microphone tap surfaced Android's permission dialog; the user granted it during
+  the live microphone follow-up below.
 - PixieDust revealed invisible external SVG icons for menu, microphone, camera
   and send. The source now embeds the existing design-system sprite in the
   document. The updated APK was installed with `adb install -r`, and a new
@@ -58,6 +65,18 @@ select a model; Circle AI retains that responsibility.
   answers still have not passed live acceptance**. The service's clock shortcut
   is outside Concierge's source-code scope and should be reviewed by the Circle
   AI team if it continues to intercept source questions.
+- The recording-cleanup APK built with zero errors and installed with `adb
+  install -r` on PixieDust and AngelDust, preserving app data. PixieDust launched
+  and restored its saved conversation. Tapping the microphone surfaced Android's
+  “Allow Concierge to record audio?” prompt; the user granted it. The live screen
+  showed Android's green microphone indicator while recording. Stopping returned
+  Concierge to idle. A second recording was interrupted by navigating to
+  Notebooks: the green indicator disappeared, and AudioFlinger showed the
+  Concierge record track idle. This verifies live capture start/stop and
+  navigation cleanup on PixieDust. **Transcription is still unverified:** the
+  phone's Concierge model folder has chat models but no local voice model, so the
+  local Whisper path is unavailable. The test did not establish a usable
+  transcript or conversation continuity.
 
 ## Remaining work, individually tracked
 
@@ -81,7 +100,13 @@ select a model; Circle AI retains that responsibility.
   complete provenance; external-service changes remain unreported unless the
   service publishes file activity.
 - [ ] Browser operation: visible progress, takeover and live acceptance.
-- [ ] Phone continuous voice: interruption and reliable conversation continuity.
+- [ ] Phone continuous voice: screen teardown now cancels capture, stops the
+  microphone tracks, discards a late permission grant, and releases resources
+  after recorder errors. Five JavaScript contract tests pass. On PixieDust, the
+  user granted Android microphone access; live capture started, and navigating
+  away stopped the microphone (privacy indicator disappeared; AudioFlinger track
+  idle). Transcription and reliable conversation continuity remain unverified
+  because no on-device voice model is installed.
 - [ ] Live camera video assistance.
 - [ ] Screen-sharing assistance.
 - [ ] Watch wake phrase / hands-free start.
@@ -89,11 +114,15 @@ select a model; Circle AI retains that responsibility.
 
 ## Boundaries
 
-The Android build after the Library and activity changes passed with zero errors
-and 110 warnings and was installed on PixieDust and AngelDust. It includes Android
-16 16 KB page-size warnings for bundled native libraries. The focused harness now
-passes 40 checks: 40 passed, zero failed, zero skipped, including guarded media
-previews.
+The latest Android build, after adding Android's microphone permission path,
+passed with zero errors and 104 warnings and was installed on PixieDust and
+AngelDust. Warnings include
+dependency vulnerability notices and Android 16 16 KB page-size warnings for
+bundled native libraries. The focused .NET harness passes 40 checks, and the
+separate phone-recording JavaScript suite passes 5 checks. The live PixieDust
+capture and navigation-interruption checks also passed. Neither transcript
+delivery nor end-to-end voice-to-conversation acceptance passed; the device has
+no local voice model, and those remain open.
 A Windows build passed with zero errors and 40 warnings. The rebuilt Desktop was
 launched with WebView2 remote debugging enabled for the live shortcut/composer
 check above. Existing dependency vulnerability warnings are not resolved by this

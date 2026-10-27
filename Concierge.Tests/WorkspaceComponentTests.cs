@@ -16,12 +16,7 @@ namespace Concierge.Tests;
 /// </summary>
 public sealed class AssistantContentTests : BunitContext
 {
-    /// <summary>
-    /// The reply used to be rendered as one &lt;p&gt; containing the whole
-    /// answer, so a multi-paragraph reply arrived as a single run-on block with
-    /// its blank lines collapsed. This is the assertion that would have caught
-    /// it without opening the app.
-    /// </summary>
+    /// <summary>Multi-paragraph Markdown stays split into readable paragraphs.</summary>
     [Fact]
     public void A_multi_paragraph_reply_renders_as_separate_paragraphs()
     {
@@ -29,7 +24,7 @@ public sealed class AssistantContentTests : BunitContext
 
         var cut = Render<AssistantContent>(ps => ps.Add(p => p.Content, reply));
 
-        var paragraphs = cut.FindAll("p.prose");
+        var paragraphs = cut.FindAll(".assistant-markdown p");
         Assert.Equal(3, paragraphs.Count);
         Assert.Equal("First paragraph, which stands alone.", paragraphs[0].TextContent);
         Assert.Equal("Third.", paragraphs[2].TextContent);
@@ -40,7 +35,7 @@ public sealed class AssistantContentTests : BunitContext
     {
         var cut = Render<AssistantContent>(ps => ps.Add(p => p.Content, "Just the one line."));
 
-        var paragraph = cut.Find("p.prose");
+        var paragraph = cut.Find(".assistant-markdown p");
         Assert.Equal("Just the one line.", paragraph.TextContent);
     }
 
@@ -53,7 +48,7 @@ public sealed class AssistantContentTests : BunitContext
     {
         var cut = Render<AssistantContent>(ps => ps.Add(p => p.Content, string.Empty));
 
-        Assert.Empty(cut.FindAll("p.prose"));
+        Assert.Empty(cut.FindAll(".assistant-markdown p"));
     }
 
     /// <summary>
@@ -65,7 +60,7 @@ public sealed class AssistantContentTests : BunitContext
     {
         var cut = Render<AssistantContent>(ps => ps.Add(p => p.Content, "One.\r\n\r\nTwo."));
 
-        Assert.Equal(2, cut.FindAll("p.prose").Count);
+        Assert.Equal(2, cut.FindAll(".assistant-markdown p").Count);
     }
 
     /// <summary>
@@ -78,6 +73,31 @@ public sealed class AssistantContentTests : BunitContext
         var cut = Render<AssistantContent>(ps => ps.Add(p => p.Content, "<script>alert(1)</script>"));
 
         Assert.Empty(cut.FindAll("script"));
-        Assert.Contains("<script>alert(1)</script>", cut.Find("p.prose").TextContent);
+        Assert.Contains("<script>alert(1)</script>", cut.Find(".assistant-markdown p").TextContent);
+    }
+
+    [Fact]
+    public void Common_answer_formatting_renders_as_rich_text()
+    {
+        const string reply = "## First steps\n\nUse **bold** and `code`.\n\n- One\n- Two\n\n```csharp\nConsole.WriteLine(\"hi\");\n```";
+
+        var cut = Render<AssistantContent>(ps => ps.Add(p => p.Content, reply));
+
+        Assert.Equal("First steps", cut.Find("h2").TextContent);
+        Assert.Equal("bold", cut.Find("strong").TextContent);
+        Assert.Equal("code", cut.Find("code").TextContent);
+        Assert.Equal(2, cut.FindAll("ul li").Count);
+        Assert.Contains("Console.WriteLine", cut.Find("pre code").TextContent);
+    }
+
+    [Fact]
+    public void Unsafe_html_and_link_schemes_do_not_become_active_content()
+    {
+        var cut = Render<AssistantContent>(ps => ps.Add(p => p.Content,
+            "<script>alert(1)</script>\n\n[run](javascript:alert(1))"));
+
+        Assert.Empty(cut.FindAll("script"));
+        Assert.Contains("<script>alert(1)</script>", cut.Find(".assistant-markdown").TextContent);
+        Assert.DoesNotContain("javascript:", cut.Markup, StringComparison.OrdinalIgnoreCase);
     }
 }

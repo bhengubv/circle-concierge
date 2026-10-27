@@ -858,6 +858,27 @@ a:hover { text-decoration: underline; }
    thread, so this only owns the rhythm between paragraphs. */
 .prose { color: var(--ink); font-size: var(--t-md); line-height: 1.6; overflow-wrap: anywhere; }
 .prose + .prose { margin-top: var(--s3); }
+.assistant-markdown { color: var(--ink); font-size: var(--t-md); line-height: 1.6; overflow-wrap: anywhere; }
+.assistant-markdown > :first-child { margin-top: 0; }
+.assistant-markdown > :last-child { margin-bottom: 0; }
+.assistant-markdown p { margin: 0 0 var(--s3); }
+.assistant-markdown h1, .assistant-markdown h2, .assistant-markdown h3,
+.assistant-markdown h4, .assistant-markdown h5, .assistant-markdown h6 {
+    margin: var(--s4) 0 var(--s2); color: var(--ink); font: inherit; font-weight: 700; line-height: 1.3;
+}
+.assistant-markdown h1 { font-size: 1.35em; }
+.assistant-markdown h2 { font-size: 1.2em; }
+.assistant-markdown h3, .assistant-markdown h4, .assistant-markdown h5, .assistant-markdown h6 { font-size: 1.05em; }
+.assistant-markdown ul, .assistant-markdown ol { margin: 0 0 var(--s3); padding-inline-start: 1.5rem; }
+.assistant-markdown li + li { margin-top: .25rem; }
+.assistant-markdown blockquote { margin: 0 0 var(--s3); padding: .15rem 0 .15rem .9rem; border-inline-start: 3px solid var(--accent); color: var(--ink-soft); }
+.assistant-markdown code { padding: .08em .3em; border-radius: .35em; background: var(--raised); font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: .9em; }
+.assistant-markdown pre { max-width: 100%; margin: 0 0 var(--s3); padding: var(--s3); overflow: auto; border: 1px solid var(--rule); border-radius: var(--radius); background: var(--raised); }
+.assistant-markdown pre code { padding: 0; background: transparent; font-size: .88em; }
+.assistant-markdown a { color: var(--accent); text-decoration: underline; text-underline-offset: .15em; }
+.assistant-markdown table { display: block; max-width: 100%; margin: 0 0 var(--s3); overflow-x: auto; border-collapse: collapse; }
+.assistant-markdown th, .assistant-markdown td { padding: .4rem .6rem; border: 1px solid var(--rule); text-align: start; vertical-align: top; }
+.assistant-markdown th { background: var(--raised); font-weight: 700; }
 
 /* ── Diagrams ─────────────────────────────────────────────────────────── */
 .diagram { display: flex; flex-direction: column; gap: var(--s2); }
@@ -2119,6 +2140,9 @@ html[data-cm-host="windows-desktop"] .comp-sep { color:var(--cm-color-outline); 
 .project-resources label { margin:0; }
 .project-resources button { justify-self:start; }
 .projects-error { margin:0 0 16px; padding:11px 14px; border:1px solid color-mix(in srgb, #c74747 45%, var(--rule)); border-radius:12px; background:color-mix(in srgb, #c74747 10%, var(--surface)); color:var(--ink); }
+.wake-phrase-entry { display:grid; grid-template-columns:minmax(0, 1fr); align-items:stretch; gap:8px; }
+.wake-phrase-entry .comp-input { width:100%; min-width:0; box-sizing:border-box; }
+.wake-phrase-actions { display:flex; flex-wrap:wrap; gap:8px; }
 @media (max-width:760px) {
     .projects-page { width:min(100% - 28px, 650px); padding-top:18px; }
     .project-starter-grid { grid-template-columns:1fr; }
@@ -2126,4 +2150,5 @@ html[data-cm-host="windows-desktop"] .comp-sep { color:var(--cm-color-outline); 
     .projects-list { position:static; }
     .project-add-workflow, .project-add-step, .project-add-decision, .project-add-artifact { grid-template-columns:1fr; }
     .project-artifacts li { grid-template-columns:1fr; gap:4px; }
+    .wake-phrase-actions .ai-settings-action { flex:1 1 130px; }
 }

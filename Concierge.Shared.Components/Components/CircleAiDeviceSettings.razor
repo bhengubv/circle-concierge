@@ -15,7 +15,7 @@
         @if (_connection is not null)
         {
             <div class="row"><span class="row-name" role="status">@(_connected == true ? "Connected to Circle AI service" : _connected == false ? "Circle AI connection needs approval" : "Circle AI connection has not been verified")
-                <span class="row-sub">Connection approval and readiness to answer are separate. Circle AI handles approval.</span></span>
+                <span class="row-sub">Connect requests Chat, Memory, Skills, Voice, Setup, and Background access so Concierge can use the consumer features Circle AI exposes. Circle AI handles approval.</span></span>
                 <button type="button" class="ai-settings-action" disabled="@_busy" @onclick="ConnectService">@(_connecting ? "Connecting…" : _connected == true ? "Reconnect Circle AI" : "Connect Circle AI")</button></div>
         }
         @if (_report is not null)
@@ -53,6 +53,11 @@
                                     <span>@fraction.ToString("P0") of planned downloads</span>
                                 }
                             </div>
+                            @if (_setupProgress?.InProgress == true)
+                            {
+                                <div class="row"><span class="row-sub">Circle AI is preparing resources. Cancelling stops this setup run and keeps downloaded bytes for later.</span>
+                                    <button type="button" class="ai-settings-action" disabled="@_busy" @onclick="CancelSetup">Stop setup</button></div>
+                            }
                         }
                         @if (section.ManageInCircleAi && _report.CanOpenCircleAi)
                         {
@@ -64,8 +69,44 @@
                         }
                         @if (section.Id == "voice" && _gateway is ICircleAiVoiceSettingsLink)
                         {
-                            <div class="row"><span class="row-sub">To read voice settings, allow Concierge's voice connection in Circle AI. This does not grant microphone permission or turn listening on.</span></div>
-                            <div class="row"><button type="button" class="ai-settings-action" disabled="@_busy" @onclick="ConnectVoice">Connect voice settings</button></div>
+                            <div class="row"><span class="row-sub">Manage the service’s wake phrase and resident listener. Android permission prompts still belong to Android; Circle AI reports whether those permissions are granted.</span></div>
+                            <div class="row"><button type="button" class="ai-settings-action" disabled="@_busy" @onclick="ToggleListening">@(_residentRunning ? "Stop listening" : "Start listening")</button></div>
+                            <div class="row wake-phrase-entry">
+                                <input class="comp-input" type="text" placeholder="Add a wake phrase" aria-label="New wake phrase" @bind="_wakePhrase" />
+                                <div class="wake-phrase-actions">
+                                    <button type="button" class="ai-settings-action" disabled="@(_busy || string.IsNullOrWhiteSpace(_wakePhrase))" @onclick="CheckWakePhrase">Check phrase</button>
+                                    <button type="button" class="ai-settings-action" disabled="@(_busy || !_wakePhraseCanAdd)" @onclick="AddWakePhrase">Add phrase</button>
+                                </div>
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(_wakeCheck)) { <div class="row"><span class="row-sub" role="status">@_wakeCheck</span></div> }
+                            @foreach (var phrase in _wakePhrases)
+                            {
+                                <div class="row"><span class="row-name">@phrase.Text
+                                    <span class="row-sub">@(phrase.Chosen ? "Chosen wake phrase" : phrase.BuiltIn ? "Built in" : "Added by you") · @phrase.Quality</span>
+                                    @if (!string.IsNullOrWhiteSpace(phrase.Advice)) { <span class="row-sub">@phrase.Advice</span> }
+                                </span>
+                                    @if (!phrase.Chosen) { <button type="button" class="ai-settings-action" disabled="@_busy" @onclick="() => ChooseWakePhrase(phrase.Text)">Use</button> }
+                                    @if (!phrase.BuiltIn) { <button type="button" class="ai-settings-action" disabled="@_busy" @onclick="() => RemoveWakePhrase(phrase.Text)">Remove</button> }
+                                </div>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(_voiceError)) { <div class="row"><span class="row-sub" role="status">@_voiceError</span></div> }
+                        }
+                        @if (section.Id == "activity" && _controls is not null)
+                        {
+                            <div class="row"><span class="row-sub">Accepted asks belong to Circle AI. Review or stop them here if you leave their conversation. Listing them never submits the work again.</span>
+                                <button type="button" class="ai-settings-action" disabled="@_busy" @onclick="LoadAsks">Refresh requests</button></div>
+                            @foreach (var ask in _serviceAsks)
+                            {
+                                <div class="row"><span class="row-name">@ask.State
+                                    <span class="row-sub">@ask.Sentence</span>
+                                    @if (!string.IsNullOrWhiteSpace(ask.ModelId)) { <span class="row-sub">@ask.ModelId</span> }
+                                    @if (!string.IsNullOrWhiteSpace(ask.Answer)) { <span class="row-sub">@ask.Answer</span> }
+                                </span>
+                                    <button type="button" class="ai-settings-action" disabled="@_busy" @onclick="() => ReviewAsk(ask.Id)">Review</button>
+                                    @if (!ask.IsFinal) { <button type="button" class="ai-settings-action" disabled="@_busy" @onclick="() => StopAsk(ask.Id)">Stop request</button> }
+                                </div>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(_asksError)) { <div class="row"><span class="row-sub" role="status">@_asksError</span></div> }
                         }
                     </div>
                 }
@@ -85,6 +126,16 @@
     private bool _connecting;
     private bool? _connected;
     private bool _setupRequested;
+    private ICircleAiServiceControls? _controls;
+    private IReadOnlyList<CircleAiWakePhrase> _wakePhrases = [];
+    private string _wakePhrase = string.Empty;
+    private string? _wakeCheck;
+    private string? _voiceError;
+    private bool _wakePhraseCanAdd;
+    private bool _residentRunning;
+    private IReadOnlyList<CircleAiServiceAsk> _serviceAsks = [];
+    private string? _asksError;
+    private string _wakeLanguage => System.Globalization.CultureInfo.CurrentUICulture.Name;
     private CircleAiSetupProgress? _setupProgress;
     private string _setupStatus = "Setup progress has not been checked.";
     private string? _setupError;
@@ -92,9 +143,25 @@
     protected override async Task OnInitializedAsync()
     {
         _gateway = Services.GetService(typeof(ICircleAiSettingsGateway)) as ICircleAiSettingsGateway;
+        _controls = Services.GetService(typeof(ICircleAiServiceControls)) as ICircleAiServiceControls;
         _connection = Services.GetService(typeof(ICircleAiSharedService)) as ICircleAiSharedServiceLink;
         if (_gateway is not null) await Refresh();
         if (_gateway is ICircleAiServiceSetup) _ = MonitorSetup();
+    }
+    private async Task CancelSetup()
+    {
+        if (_busy || _gateway is not ICircleAiServiceSetup setup) return;
+        _busy = true;
+        try
+        {
+            await setup.CancelSetupAsync(_stop.Token);
+            _setupRequested = false;
+            _setupStatus = "Circle AI was asked to stop setup. Downloaded bytes are retained.";
+            _setupProgress = await setup.ReadSetupProgressAsync(_stop.Token);
+        }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
+        catch (Exception error) { _setupStatus = "Could not confirm setup cancellation: " + error.Message; }
+        finally { _busy = false; }
     }
     private async Task StartSetup()
     {
@@ -141,7 +208,12 @@
             catch (OperationCanceledException) when (_stop.IsCancellationRequested) { return; }
         }
     }
-    private void Toggle(string id) => _open = _open == id ? null : id;
+    private async Task Toggle(string id)
+    {
+        _open = _open == id ? null : id;
+        if (_open == "voice") await RefreshWakePhrases();
+        if (_open == "activity") await LoadAsks();
+    }
     private async Task Refresh()
     {
         if (_busy || _gateway is null) return;
@@ -167,6 +239,9 @@
         var readiness = readinessFacts?.FirstOrDefault(f => f.Name == "Text conversations")?.Value
             ?? readinessFacts?.FirstOrDefault(f => f.Name == "Conversation readiness")?.Value;
         _status = $"Checked at {DateTimeOffset.Now:T}. " + (readiness is null ? _report.Status : $"Conversation: {readiness}. " + _report.Status);
+        var listener = _report.Sections.FirstOrDefault(s => s.Id == "voice")?.Facts?.FirstOrDefault(f => f.Name.Contains("state", StringComparison.OrdinalIgnoreCase) || f.Name.Contains("listener", StringComparison.OrdinalIgnoreCase))?.Value;
+        _residentRunning = IsListening(listener);
+        if (_open == "voice") await RefreshWakePhrases();
     }
     private Task OpenCircleAi() => Open(() => _gateway!.OpenCircleAiAsync());
     private Task OpenPermissions() => Open(() => _gateway!.OpenPermissionsAsync());
@@ -209,6 +284,114 @@
         }
         catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
         catch (Exception) { _status = "Could not open Circle AI's voice connection approval."; }
+        finally { _busy = false; }
+    }
+    private async Task ToggleListening()
+    {
+        if (_busy || _controls is null) return;
+        _busy = true; _voiceError = null;
+        try
+        {
+            var row = await _controls.SetResidentListeningAsync(!_residentRunning, _stop.Token);
+            _residentRunning = IsListening(row.Count > 0 ? row[0] : null);
+            _voiceError = row.Count > 1 ? row[1] : (_residentRunning ? "Circle AI listener is running." : "Circle AI listener is stopped.");
+            await ReadReports();
+        }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
+        catch (Exception error) { _voiceError = "Circle AI could not change listener state: " + error.Message; }
+        finally { _busy = false; }
+    }
+    private async Task RefreshWakePhrases()
+    {
+        if (_controls is null) return;
+        try
+        {
+            _wakePhrases = await _controls.ReadWakePhrasesAsync(_wakeLanguage, _stop.Token);
+            _voiceError = null;
+        }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
+        catch (Exception error) { _voiceError = "Wake phrase settings unavailable: " + error.Message; }
+    }
+    private async Task CheckWakePhrase()
+    {
+        if (_controls is null || string.IsNullOrWhiteSpace(_wakePhrase) || _busy) return;
+        _busy = true; _wakePhraseCanAdd = false;
+        try
+        {
+            var check = await _controls.CheckWakePhraseAsync(_wakePhrase.Trim(), _wakeLanguage, _stop.Token);
+            _wakePhraseCanAdd = check.Added;
+            _wakeCheck = $"{check.Quality}: {check.Advice}";
+        }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
+        catch (Exception error) { _wakeCheck = "Could not check phrase: " + error.Message; }
+        finally { _busy = false; }
+    }
+    private async Task AddWakePhrase()
+    {
+        if (_controls is null || !_wakePhraseCanAdd || _busy) return;
+        await ChangeWakePhrase(() => _controls.AddWakePhraseAsync(_wakePhrase.Trim(), _wakeLanguage, _stop.Token), "Added");
+        _wakePhrase = string.Empty; _wakePhraseCanAdd = false; _wakeCheck = null;
+    }
+    private Task ChooseWakePhrase(string phrase) => ChangeWakePhrase(() => _controls!.ChooseWakePhraseAsync(phrase, _wakeLanguage, _stop.Token), "Selected");
+    private Task RemoveWakePhrase(string phrase) => ChangeWakePhrase(() => _controls!.RemoveWakePhraseAsync(phrase, _wakeLanguage, _stop.Token), "Removed");
+    private static bool IsListening(string? state)
+        => !string.IsNullOrWhiteSpace(state)
+            && !state.Contains("stop", StringComparison.OrdinalIgnoreCase)
+            && !state.Contains("off", StringComparison.OrdinalIgnoreCase)
+            && (state.Contains("listen", StringComparison.OrdinalIgnoreCase)
+                || state.Contains("running", StringComparison.OrdinalIgnoreCase)
+                || state.Contains("active", StringComparison.OrdinalIgnoreCase));
+    private async Task ChangeWakePhrase(Func<Task> change, string done)
+    {
+        if (_busy) return;
+        _busy = true; _voiceError = null;
+        try { await change(); await RefreshWakePhrases(); _voiceError = done + " wake phrase."; }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
+        catch (Exception error) { _voiceError = "Wake phrase change failed: " + error.Message; }
+        finally { _busy = false; }
+    }
+    private async Task LoadAsks()
+    {
+        if (_controls is null || _busy) return;
+        _busy = true; _asksError = null;
+        try
+        {
+            var listed = await _controls.ReadRecentAsksAsync(openOnly: false, _stop.Token);
+            var detailed = new List<CircleAiServiceAsk>();
+            foreach (var ask in listed.Take(8))
+                detailed.Add(await _controls.ReadAskAsync(ask.Id, _stop.Token) ?? ask);
+            _serviceAsks = detailed;
+        }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
+        catch (Exception error) { _asksError = "Circle AI request history is unavailable: " + error.Message; }
+        finally { _busy = false; }
+    }
+    private async Task ReviewAsk(string id)
+    {
+        if (_controls is null || _busy) return;
+        _busy = true; _asksError = null;
+        try
+        {
+            var detail = await _controls.ReadAskAsync(id, _stop.Token);
+            if (detail is null) _asksError = "Circle AI no longer has that request.";
+            else _serviceAsks = _serviceAsks.Select(ask => ask.Id == id ? detail : ask).ToArray();
+        }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
+        catch (Exception error) { _asksError = "Request status could not be read: " + error.Message; }
+        finally { _busy = false; }
+    }
+    private async Task StopAsk(string id)
+    {
+        if (_controls is null || _busy) return;
+        _busy = true; _asksError = null;
+        try
+        {
+            await _controls.CancelAskAsync(id, _stop.Token);
+            var detail = await _controls.ReadAskAsync(id, _stop.Token);
+            if (detail is not null) _serviceAsks = _serviceAsks.Select(ask => ask.Id == id ? detail : ask).ToArray();
+        }
+        catch (OperationCanceledException) when (_stop.IsCancellationRequested) { }
+        catch (Exception error) { _asksError = "Circle AI could not confirm stopping that request: " + error.Message; }
         finally { _busy = false; }
     }
     private async Task Open(Func<Task> action)

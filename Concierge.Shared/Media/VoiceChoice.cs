@@ -32,7 +32,8 @@ public static class VoiceChoice
 
         return voices
             .Where(can)
-            .OrderByDescending(voice => voice.Id.Contains(Local, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(voice => voice.Id.Contains("circleai-service", StringComparison.OrdinalIgnoreCase))
+            .ThenByDescending(voice => voice.Id.Contains(Local, StringComparison.OrdinalIgnoreCase))
             .FirstOrDefault();
     }
 }

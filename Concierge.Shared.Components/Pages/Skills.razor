@@ -1,6 +1,7 @@
 @inject ISkillCatalogService SkillCatalog
 @inject Concierge.Shared.Skills.UserSkillFolders Folders
 @inject IJSRuntime JS
+@inject IServiceProvider Services
 @implements IAsyncDisposable
 
 @*
@@ -157,6 +158,44 @@
 
         <p class="room-note">A skill is a folder with a SKILL.md in it.</p>
     </RoomSection>
+
+    @if (_circleAiSkills is not null)
+    {
+        <RoomSection Title="Circle AI skill library" Count="@_circleAiSkills.Count">
+            <p class="room-note">Live search of Circle AI’s service-owned skills database. This link returns names and IDs, not instructions, so these results are for discovery. Skills switched on above include their instructions with the request.</p>
+            @if (_circleAiNeedsAccess)
+            {
+                <p class="room-note">Allow Concierge to search Circle AI’s skill library and read relevant long-term memories. Circle AI will ask you to approve these two access scopes.</p>
+                <button class="btn btn-primary" type="button" disabled="@_circleAiConnecting" @onclick="ConnectCircleAiKnowledge">
+                    @(_circleAiConnecting ? "Waiting for Circle AI…" : "Connect Circle AI skills and memory")
+                </button>
+            }
+            @if (!string.IsNullOrWhiteSpace(_circleAiSkillStatus))
+            {
+                <p class="room-note">@_circleAiSkillStatus</p>
+            }
+            @if (_circleAiSkills.Count == 0 && string.IsNullOrWhiteSpace(_circleAiSkillStatus))
+            {
+                <p class="room-note">No service skills match this search.</p>
+            }
+            @if (_circleAiSkills.Count > 0)
+            {
+                <div class="rows skills-list">
+                    @foreach (var skill in _circleAiSkills.Take(8))
+                    {
+                        <div class="row skill-row">
+                            <span class="row-name">@skill.Name<span class="row-sub">@skill.Id</span></span>
+                            <span class="row-val">Circle AI</span>
+                        </div>
+                    }
+                </div>
+                @if (_circleAiSkills.Count > 8)
+                {
+                    <p class="room-note">Showing 8 of @_circleAiSkills.Count matches. Refine your search to narrow the list.</p>
+                }
+            }
+        </RoomSection>
+    }
 </div>
 
 @code {
@@ -176,6 +215,12 @@
     [Parameter] public EventCallback OnCatalogueChanged { get; set; }
 
     private string _filter = string.Empty;
+    private IReadOnlyList<Concierge.Shared.Devices.CircleAiServiceSkill>? _circleAiSkills;
+    private string? _circleAiSkillStatus;
+    private bool _circleAiNeedsAccess;
+    private bool _circleAiConnecting;
+    private Concierge.Shared.Devices.ICircleAiServiceKnowledgeLink? _circleAiKnowledge;
+    private CancellationTokenSource? _circleAiSearchCancellation;
 
     // ── Your own skills ───────────────────────────────────────────────────
 
@@ -183,7 +228,14 @@
     private string _newFolder = string.Empty;
     private string? _folderMessage;
 
-    protected override void OnInitialized() => _folders = Folders.All();
+    protected override async Task OnInitializedAsync()
+    {
+        _folders = Folders.All();
+        _circleAiKnowledge = Services.GetService(typeof(Concierge.Shared.Devices.ICircleAiServiceKnowledgeLink))
+            as Concierge.Shared.Devices.ICircleAiServiceKnowledgeLink;
+        if (_circleAiKnowledge is not null)
+            await SearchCircleAiSkillsAsync(null);
+    }
 
     private void AddFolder()
     {
@@ -224,8 +276,65 @@
 
     // Narrow while typing. Waiting for blur on a list of sixty-nine is waiting
     // for the wrong event.
-    private void OnFilterChanged(ChangeEventArgs e)
-        => _filter = e.Value?.ToString() ?? string.Empty;
+    private async Task OnFilterChanged(ChangeEventArgs e)
+    {
+        _filter = e.Value?.ToString() ?? string.Empty;
+        if (_circleAiKnowledge is not null)
+            await SearchCircleAiSkillsAsync(string.IsNullOrWhiteSpace(_filter) ? null : _filter);
+    }
+
+    private async Task SearchCircleAiSkillsAsync(string? query)
+    {
+        _circleAiSearchCancellation?.Cancel();
+        _circleAiSearchCancellation?.Dispose();
+        var cancellation = _circleAiSearchCancellation = new CancellationTokenSource();
+        _circleAiSkillStatus = "Searching Circle AI’s live catalogue…";
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(query))
+                await Task.Delay(250, cancellation.Token);
+            var skills = await _circleAiKnowledge!.SearchSkillsAsync(query, cancellation.Token);
+            if (cancellation.IsCancellationRequested) return;
+            _circleAiSkills = skills;
+            _circleAiSkillStatus = null;
+            _circleAiNeedsAccess = false;
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+        catch (Exception error)
+        {
+            _circleAiSkills = [];
+            _circleAiSkillStatus = "Circle AI’s skills are unavailable: " + error.Message;
+            _circleAiNeedsAccess = error.Message.Contains("not linked", StringComparison.OrdinalIgnoreCase)
+                || error.Message.Contains("not authorized", StringComparison.OrdinalIgnoreCase)
+                || error.Message.Contains("approve in Circle AI", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    private async Task ConnectCircleAiKnowledge()
+    {
+        if (_circleAiKnowledge is null || _circleAiConnecting) return;
+        _circleAiConnecting = true;
+        _circleAiSkillStatus = "Requesting access to Skills and Memory from Circle AI…";
+        try
+        {
+            var approved = await _circleAiKnowledge.RequestAccessAsync(CancellationToken.None);
+            if (!approved)
+            {
+                _circleAiSkillStatus = "Circle AI did not approve access. Skills and memory remain unavailable to Concierge.";
+                return;
+            }
+            _circleAiNeedsAccess = false;
+            await SearchCircleAiSkillsAsync(string.IsNullOrWhiteSpace(_filter) ? null : _filter);
+        }
+        catch (Exception error)
+        {
+            _circleAiSkillStatus = "Circle AI access could not be requested: " + error.Message;
+        }
+        finally
+        {
+            _circleAiConnecting = false;
+        }
+    }
 
     private Task Close() => OnClose.InvokeAsync();
 }

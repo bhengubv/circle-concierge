@@ -20,7 +20,12 @@ public sealed class TurnRunnerDurabilityTests : IAsyncLifetime
         var probe = new PromptProbe();
         await Runner(runtime, compactor: probe).RunAsync(new TurnRequest(conversation.Id, "My question", runtime,
             Settings: new TurnSettings(SystemPrompt: "WORKSPACE_CONTEXT")));
-        Assert.Contains(probe.Turns, t => t.Role == "system" && t.Content.Contains("WORKSPACE_CONTEXT") && t.Content.Contains("You are the assistant inside Concierge"));
+        var systemPrompt = Assert.Single(probe.Turns.Where(t => t.Role == "system")).Content;
+        Assert.Contains("WORKSPACE_CONTEXT", systemPrompt);
+        Assert.Contains("You are the assistant inside Concierge", systemPrompt);
+        Assert.Contains("ask one concise clarifying question", systemPrompt);
+        Assert.Contains("Never invent facts, user history, capabilities, tool names, tool calls, results, or actions", systemPrompt);
+        Assert.Contains("Use Markdown headings, short paragraphs, lists", systemPrompt);
         Assert.Contains(probe.Turns, t => t.Role == "user" && t.Content == "My question");
         Assert.Equal(4096 - 512, probe.Budget);
     }

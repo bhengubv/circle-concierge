@@ -1,7 +1,8 @@
 namespace Concierge.Shared.Tools;
 
 /// <summary>Conversation and run identity attached to approvals requested by the active turn.</summary>
-public sealed record ToolApprovalRun(Guid ConversationId, Guid RunId);
+public sealed record ToolApprovalRun(Guid ConversationId, Guid RunId,
+    ToolPermissionMode PermissionMode = ToolPermissionMode.AskFirst, bool Background = false);
 
 /// <summary>Flows the active turn identity to approval tools without changing every tool API.</summary>
 public static class ToolApprovalRunContext
@@ -12,10 +13,11 @@ public static class ToolApprovalRunContext
     public static ToolApprovalRun? Current => CurrentRun.Value;
 
     /// <summary>Attaches an identity for the current async execution flow.</summary>
-    public static IDisposable Enter(Guid conversationId, Guid runId)
+    public static IDisposable Enter(Guid conversationId, Guid runId,
+        ToolPermissionMode permissionMode = ToolPermissionMode.AskFirst, bool background = false)
     {
         var previous = CurrentRun.Value;
-        CurrentRun.Value = new ToolApprovalRun(conversationId, runId);
+        CurrentRun.Value = new ToolApprovalRun(conversationId, runId, permissionMode, background);
         return new Scope(() => CurrentRun.Value = previous);
     }
 

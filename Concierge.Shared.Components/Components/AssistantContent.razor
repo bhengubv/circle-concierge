@@ -1,28 +1,8 @@
 @using Concierge.Shared.Diagrams
 
-@*
-    What the assistant said.
-
-    The code-behind splits the reply into segments — prose, and any fenced
-    mermaid blocks — and leaves an empty list when there is no diagram in it,
-    which is the common case. So the no-segments branch is the one that runs for
-    almost every reply, and it has to be the one that reads well.
-
-    Prose is split on blank lines into paragraphs. The previous version put the
-    entire reply in a single <p>, so a four-paragraph answer arrived as one
-    block of text with the line breaks collapsed.
-
-    Nothing here interprets markdown. The model's output is rendered as text,
-    not as HTML, and that is deliberate: @ in Razor escapes it, so a reply
-    containing markup cannot inject anything into the page.
-*@
-
 @if (_segments.Count == 0)
 {
-    @foreach (var paragraph in Paragraphs(Content))
-    {
-        <p class="prose">@paragraph</p>
-    }
+    <div class="assistant-markdown">@((MarkupString)RenderMarkdown(Content))</div>
 }
 else
 {
@@ -34,35 +14,7 @@ else
         }
         else
         {
-            @foreach (var paragraph in Paragraphs(segment.Text))
-            {
-                <p class="prose">@paragraph</p>
-            }
-        }
-    }
-}
-
-@code {
-    /// <summary>
-    /// Blank-line-separated paragraphs. A single trailing or leading blank line
-    /// does not create an empty paragraph, and a reply that is one line long
-    /// comes back as one paragraph rather than none.
-    /// </summary>
-    private static IEnumerable<string> Paragraphs(string text)
-    {
-        if (string.IsNullOrWhiteSpace(text))
-        {
-            yield break;
-        }
-
-        var normalised = text.Replace("\r\n", "\n").Replace('\r', '\n');
-        foreach (var block in normalised.Split("\n\n", StringSplitOptions.RemoveEmptyEntries))
-        {
-            var trimmed = block.Trim();
-            if (trimmed.Length > 0)
-            {
-                yield return trimmed;
-            }
+            <div class="assistant-markdown">@((MarkupString)RenderMarkdown(segment.Text))</div>
         }
     }
 }

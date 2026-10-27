@@ -56,11 +56,10 @@ public sealed class CircleAiVoiceRuntime : IVoiceRuntime, IAsyncDisposable
     public CircleAiVoiceRuntime(LocalVoiceOptions? options = null)
     {
         _options = options ?? new LocalVoiceOptions();
-        Files = LocalVoiceFiles.Look(_options.ModelsDirectory);
     }
 
     /// <summary>What was found on disk, and where it was looked for.</summary>
-    public LocalVoiceFiles Files { get; }
+    public LocalVoiceFiles Files => LocalVoiceFiles.Look(_options.ModelsDirectory);
 
     public string Id => "circleai-voice";
 
@@ -93,7 +92,7 @@ public sealed class CircleAiVoiceRuntime : IVoiceRuntime, IAsyncDisposable
                     "the Whisper.net native runtime could not load on this device");
             }
 
-            if (Encoder is null)
+            if (!Encoder.Here)
             {
                 blocking.Add("the encoder (ffmpeg) is not on this machine, so a recording "
                     + "cannot be turned into samples");
@@ -124,7 +123,7 @@ public sealed class CircleAiVoiceRuntime : IVoiceRuntime, IAsyncDisposable
     /// capability, and the check now asks the question that actually decides it.
     /// </summary>
     public bool SupportsTranscription
-        => Files.Listener is not null && Encoder is not null && WhisperIsHere.Value;
+        => Files.Listener is not null && Encoder.Here && WhisperIsHere.Value;
 
     /// <summary>
     /// Whether the native whisper library can be loaded at all, asked once.
@@ -155,17 +154,9 @@ public sealed class CircleAiVoiceRuntime : IVoiceRuntime, IAsyncDisposable
     private static bool NotCancelled(CancellationToken cancellationToken)
         => !cancellationToken.IsCancellationRequested;
 
-    private string? Encoder
-    {
-        get
-        {
-            var path = string.IsNullOrWhiteSpace(_options.FfmpegPath)
-                ? FfmpegMediaExport.Find()
-                : _options.FfmpegPath;
-
-            return File.Exists(path) ? path : null;
-        }
-    }
+    private IEncoderRunner Encoder => string.IsNullOrWhiteSpace(_options.FfmpegPath)
+        ? Encoders.Runner
+        : new ProcessEncoder(_options.FfmpegPath);
 
     public async Task<Written> TranscribeAsync(
         Stream audio, string fileName, CancellationToken cancellationToken = default)
@@ -189,7 +180,7 @@ public sealed class CircleAiVoiceRuntime : IVoiceRuntime, IAsyncDisposable
                 string.Empty,
                 null,
                 null,
-                Encoder is null
+                !Encoder.Here
                     ? "There is no encoder on this device, so the recording could not be converted."
                     : "That recording could not be converted into something the model can read.");
         }
@@ -278,7 +269,7 @@ public sealed class CircleAiVoiceRuntime : IVoiceRuntime, IAsyncDisposable
     {
         var encoder = Encoder;
 
-        if (encoder is null)
+        if (!encoder.Here)
         {
             return [];
         }
@@ -297,18 +288,16 @@ public sealed class CircleAiVoiceRuntime : IVoiceRuntime, IAsyncDisposable
                 await audio.CopyToAsync(writing, cancellationToken).ConfigureAwait(false);
             }
 
-            var process = await ManagedChildProcessRunner.RunCapturedAsync(
-                encoder,
+            var process = await encoder.RunAsync(
                 [
                     "-hide_banner", "-loglevel", "error", "-y",
                     "-i", source,
                     "-ac", "1", "-ar", "16000", "-f", "s16le",
                     samples,
                 ],
-                folder,
                 cancellationToken).ConfigureAwait(false);
 
-            return process.ExitCode == 0 && File.Exists(samples)
+            return process.Ok && File.Exists(samples)
                 ? await File.ReadAllBytesAsync(samples, cancellationToken).ConfigureAwait(false)
                 : [];
         }

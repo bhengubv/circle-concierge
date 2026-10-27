@@ -7,6 +7,7 @@ public interface ICircleAiServiceSetup
 {
     Task StartSetupAsync(CancellationToken cancellationToken);
     Task<CircleAiSetupProgress> ReadSetupProgressAsync(CancellationToken cancellationToken);
+    Task CancelSetupAsync(CancellationToken cancellationToken);
 }
 
 public sealed record CircleAiSetupProgress(bool Ready, string Status, string? Resource,

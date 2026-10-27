@@ -19,11 +19,14 @@ public static class CircleAiLiveReadiness
     {
         var brain = snapshot.Brain;
         var fetch = snapshot.Components.FirstOrDefault(c => c.Component == ReadinessComponents.Fetch);
-        var waiting = brain.Phase is BrainPhase.Installed or BrainPhase.Loading
-            || brain.Phase == BrainPhase.NoModel && fetch?.Phase is BrainPhase.Loading or BrainPhase.Paused;
-        var explanation = brain.Phase switch
+        var ready = snapshot.CanAnswerNow || brain.Phase == BrainPhase.Ready;
+        var waiting = !ready && (snapshot.CanAnswerSoon
+            || brain.Phase is BrainPhase.Installed or BrainPhase.Loading
+            || brain.Phase == BrainPhase.NoModel && fetch?.Phase is BrainPhase.Loading or BrainPhase.Paused);
+        var explanation = ready ? "Text conversations are ready on this device. Other features have separate readiness below."
+            : snapshot.CanAnswerSoon ? "Circle AI is preparing to answer. You can ask now and it will keep the request while it gets ready."
+            : brain.Phase switch
         {
-            BrainPhase.Ready => "Text conversations are ready on this device. Other features have separate readiness below.",
             BrainPhase.Installed => "The text model is downloaded. Circle AI will load it when you send a question.",
             BrainPhase.Loading => "Circle AI is loading the text model. Your question waits here until it can answer.",
             BrainPhase.NoModel => "The text model is not ready yet. Your draft is kept while Circle AI prepares its resources.",
@@ -31,11 +34,11 @@ public static class CircleAiLiveReadiness
             BrainPhase.Failed => "Circle AI could not prepare the text model.",
             _ => "Circle AI has not confirmed text readiness. Your draft is kept."
         };
-        if (!string.IsNullOrWhiteSpace(brain.Detail) && brain.Phase != BrainPhase.Ready)
+        if (!string.IsNullOrWhiteSpace(brain.Detail) && !ready)
             explanation += " " + brain.Detail;
         if (fetch is not null && fetch.Phase != BrainPhase.Unknown && !string.IsNullOrWhiteSpace(fetch.Detail))
             explanation += " Downloads: " + fetch.Detail;
-        return new(brain.Phase == BrainPhase.Ready, brain.Phase.ToString(), explanation, version,
+        return new(ready, brain.Phase.ToString(), explanation, version,
             waiting, Fraction(fetch?.Progress));
     }
 
@@ -56,7 +59,9 @@ public static class CircleAiLiveReadiness
                 ReadinessComponents.Fetch => "Resource downloads",
                 _ => "Android assistant role"
             };
-            var value = component is null ? "Not reported" : component.Phase switch
+            var value = id == ReadinessComponents.Brain && snapshot.CanAnswerNow ? "Ready"
+                : id == ReadinessComponents.Brain && snapshot.CanAnswerSoon ? "Preparing"
+                : component is null ? "Not reported" : component.Phase switch
             {
                 BrainPhase.Ready => "Ready",
                 BrainPhase.Installed => id == ReadinessComponents.Assistant ? "Not selected" : "Downloaded; not loaded",
@@ -74,8 +79,55 @@ public static class CircleAiLiveReadiness
             (ReadinessComponents.Brain or ReadinessComponents.Voice or ReadinessComponents.Ears
              or ReadinessComponents.Wake or ReadinessComponents.Fetch or ReadinessComponents.Assistant)))
             facts.Add(new(c.Component, c.Phase.ToString(), c.Detail));
+        var reportedSettings = snapshot.Settings.Select(setting => setting.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var setting in snapshot.Settings)
+            facts.Add(new(SettingName(setting.Key), setting.Value, SettingExplanation(setting.Key)));
+        // Keep the two consumer-facing turn controls visible even when an older
+        // service omits them. Hiding an absent setting looks like a supported,
+        // enabled default when it may simply be unavailable on this build.
+        foreach (var key in new[] { ReadinessSettings.TurnStreaming, ReadinessSettings.TurnAgentic })
+            if (!reportedSettings.Contains(key))
+                facts.Add(new(SettingName(key), "Not reported",
+                    "This service build did not report the setting. Concierge cannot change it through the published link."));
+        foreach (var failure in snapshot.RecentFailures.Take(5))
+            facts.Add(new($"Recent failure · {failure.Kind}", failure.Detail,
+                $"{failure.Phase} · {failure.Certainty} · {failure.At:g}"
+                + (string.IsNullOrWhiteSpace(failure.ModelId) ? "" : $" · {failure.ModelId}")));
         return facts;
     }
+
+    private static string SettingName(string key) => key switch
+    {
+        ReadinessSettings.TurnStreaming => "Stream answers",
+        ReadinessSettings.TurnAgentic => "Agentic work",
+        ReadinessSettings.TurnImages => "Image input",
+        ReadinessSettings.AudioMaxBytes => "Maximum audio size",
+        ReadinessSettings.AudioFormat => "Audio format",
+        ReadinessSettings.ModelId => "Selected model",
+        ReadinessSettings.MaxTokensSpoken => "Spoken answer limit",
+        ReadinessSettings.MaxTokensTyped => "Typed answer limit",
+        ReadinessSettings.MaxPromptChars => "Question size limit",
+        ReadinessSettings.PerCallerQueued => "Requests allowed per app",
+        ReadinessSettings.RetentionHours => "Request history retention",
+        ReadinessSettings.TtsLanguages => "Speech languages",
+        ReadinessSettings.AsrLanguages => "Recognition languages",
+        ReadinessSettings.WakePhrase => "Wake phrase",
+        ReadinessSettings.Listening => "Background listening",
+        ReadinessSettings.CallerScopes => "Concierge access scopes",
+        ReadinessSettings.LinkProtocol => "Link protocol",
+        ReadinessSettings.LinkDescriptor => "Link interface",
+        _ => key
+    };
+
+    private static string SettingExplanation(string key) => key switch
+    {
+        ReadinessSettings.TurnStreaming => "Reported by Circle AI. Concierge displays answer chunks as the service produces them.",
+        ReadinessSettings.TurnAgentic => "Reported service default. Concierge still sends agentic work only when the person selects Act freely.",
+        ReadinessSettings.TurnImages => "Reported by Circle AI; the published Concierge chat request currently accepts text only.",
+        ReadinessSettings.ModelId => "Selected by Circle AI's resource selector; Concierge does not choose models.",
+        ReadinessSettings.Listening => "Reported by Circle AI. The listener can also be started or stopped in Voice settings.",
+        _ => "Reported by Circle AI. This service link exposes the value as read-only."
+    };
 
     public static double? Fraction(double? value) => value is double n && double.IsFinite(n) && n is >= 0 and <= 1 ? n : null;
 }

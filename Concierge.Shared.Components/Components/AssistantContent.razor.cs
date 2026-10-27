@@ -6,15 +6,63 @@ using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using Concierge.Shared.Diagrams;
+using Markdig;
+using Markdig.Syntax;
+using Markdig.Syntax.Inlines;
 
 namespace Concierge.Shared.Components.Components;
 
 public partial class AssistantContent
 {
+    private static readonly MarkdownPipeline MarkdownPipeline = new MarkdownPipelineBuilder()
+        .UseAdvancedExtensions()
+        .DisableHtml()
+        .Build();
 
     [Parameter, EditorRequired] public string Content { get; set; } = string.Empty;
 
     private readonly List<Segment> _segments = new();
+
+    /// <summary>
+    /// Render assistant-authored Markdown as HTML with raw HTML disabled. Only
+    /// ordinary web links are kept clickable; active-content URI schemes are
+    /// removed before rendering.
+    /// </summary>
+    private static string RenderMarkdown(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return string.Empty;
+        }
+
+        var document = Markdown.Parse(text, MarkdownPipeline);
+        foreach (var link in document.Descendants<LinkInline>())
+        {
+            if (!IsSafeLink(link.Url))
+            {
+                link.Url = null;
+            }
+        }
+
+        return Markdown.ToHtml(document, MarkdownPipeline);
+    }
+
+    private static bool IsSafeLink(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.StartsWith('#'))
+        {
+            return true;
+        }
+
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri))
+        {
+            return !value.StartsWith("//", StringComparison.Ordinal)
+                && !value.StartsWith('\\')
+                && !value.StartsWith("\\\\", StringComparison.Ordinal);
+        }
+
+        return uri.Scheme is "http" or "https" or "mailto" or "tel";
+    }
 
     protected override void OnParametersSet()
     {

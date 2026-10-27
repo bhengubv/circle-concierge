@@ -140,6 +140,7 @@ public sealed class CircleAiDeviceSettingsTests : BunitContext
             return Task.FromResult(new CircleAiSetupProgress(false, "Preparing", "The brain", 0.25,
                 MarkProgressPolls ? $"Progress poll {read}" : "Downloading", InProgress));
         }
+        public Task CancelSetupAsync(CancellationToken token) => Task.CompletedTask;
         public Task OpenCircleAiAsync() => throw new NotSupportedException();
         public Task OpenPermissionsAsync() => throw new NotSupportedException();
     }

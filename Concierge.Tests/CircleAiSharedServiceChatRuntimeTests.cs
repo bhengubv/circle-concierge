@@ -56,6 +56,19 @@ public sealed class CircleAiSharedServiceChatRuntimeTests
     }
 
     [Fact]
+    public async Task Act_freely_is_the_only_mode_that_enables_service_agentic_work()
+    {
+        var link = new FakeLink();
+        var runtime = new CircleAiSharedServiceChatRuntime(link);
+        await runtime.RefreshAsync(default);
+        using var scope = ToolApprovalRunContext.Enter(Guid.NewGuid(), Guid.NewGuid(), ToolPermissionMode.ActFreely);
+
+        await foreach (var _ in runtime.StreamAsync([new("user", "Do the requested work")])) { }
+
+        Assert.True(link.Agentic);
+    }
+
+    [Fact]
     public async Task Selected_notebook_context_is_carried_through_the_service_chat_contract()
     {
         var link = new FakeLink();
@@ -72,6 +85,82 @@ public sealed class CircleAiSharedServiceChatRuntimeTests
         Assert.Contains("Meeting notes", link.Message);
         Assert.Contains("When is the meeting?", link.Message);
         Assert.DoesNotContain("Private app instructions", link.Message);
+    }
+
+    [Fact]
+    public async Task User_selected_skill_instructions_are_carried_without_private_tool_prompt()
+    {
+        var link = new FakeLink();
+        var runtime = new CircleAiSharedServiceChatRuntime(link);
+        await runtime.RefreshAsync(default);
+        using var scope = ToolApprovalRunContext.Enter(Guid.NewGuid(), Guid.NewGuid());
+        var system = "Private app instructions\n"
+            + Concierge.Shared.Skills.SelectedSkillPrompt.Wrap("## Active skill: Clear writing\nUse short sentences and define jargon.")
+            + "\nPrivate tool catalog: do not forward";
+        await foreach (var _ in runtime.StreamAsync([
+            new("system", system),
+            new("user", "Explain the result.")])) { }
+        Assert.Contains("Use short sentences and define jargon.", link.Message);
+        Assert.Contains("Explain the result.", link.Message);
+        Assert.DoesNotContain("Private app instructions", link.Message);
+        Assert.DoesNotContain("Private tool catalog", link.Message);
+    }
+
+    [Fact]
+    public async Task Circle_Ai_memory_recall_is_added_as_context_before_the_question()
+    {
+        var link = new FakeLink();
+        var knowledge = new FakeKnowledgeLink
+        {
+            Recall = new(true, ["The user prefers concise answers.", "The project is called Circle OS."])
+        };
+        var runtime = new CircleAiSharedServiceChatRuntime(link, knowledge);
+        await runtime.RefreshAsync(default);
+        using var scope = ToolApprovalRunContext.Enter(Guid.NewGuid(), Guid.NewGuid());
+
+        await foreach (var _ in runtime.StreamAsync([new("user", "How should I explain this project?")])) { }
+
+        Assert.Equal(5, knowledge.RecallLimit);
+        Assert.Contains("How should I explain this project?", knowledge.Situation);
+        Assert.Contains("The user prefers concise answers.", link.Message);
+        Assert.Contains("The project is called Circle OS.", link.Message);
+        Assert.Contains("How should I explain this project?", link.Message);
+        Assert.Contains("Treat them as prior context", link.Message);
+    }
+
+    [Fact]
+    public async Task Prior_conversation_turns_are_sent_with_the_follow_up_question()
+    {
+        var link = new FakeLink();
+        var runtime = new CircleAiSharedServiceChatRuntime(link);
+        await runtime.RefreshAsync(default);
+        using var scope = ToolApprovalRunContext.Enter(Guid.NewGuid(), Guid.NewGuid());
+
+        await foreach (var _ in runtime.StreamAsync([
+            new("user", "The meeting starts at ten."),
+            new("assistant", "Understood."),
+            new("user", "What time does it start?")])) { }
+
+        Assert.Contains("Person: The meeting starts at ten.", link.Message);
+        Assert.Contains("Circle AI: Understood.", link.Message);
+        Assert.Contains("What time does it start?", link.Message);
+    }
+
+    [Fact]
+    public async Task Explicit_remember_request_uses_service_memory_without_running_a_chat_turn()
+    {
+        var link = new FakeLink();
+        var knowledge = new FakeKnowledgeLink();
+        var runtime = new CircleAiSharedServiceChatRuntime(link, knowledge);
+        await runtime.RefreshAsync(default);
+        using var scope = ToolApprovalRunContext.Enter(Guid.NewGuid(), Guid.NewGuid());
+        var answer = "";
+
+        await foreach (var delta in runtime.StreamAsync([new("user", "Please remember that my preferred format is bullet points.")])) answer += delta;
+
+        Assert.Equal("my preferred format is bullet points.", knowledge.RememberedFact);
+        Assert.Equal(0, link.Sends);
+        Assert.Contains("remember", answer, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -138,6 +227,21 @@ public sealed class CircleAiSharedServiceChatRuntimeTests
         public Task<CircleAiServiceChatStatus> ReadChatStatusAsync(CancellationToken token) => Task.FromResult(Status);
         public Task<CircleAiServiceChatReply> SendChatAsync(string sessionId, string message, bool agentic, CancellationToken token)
         { Sends++; Session = sessionId; Message = message; Agentic = agentic; return Task.FromResult(Reply); }
+    }
+
+    private sealed class FakeKnowledgeLink : ICircleAiServiceKnowledgeLink
+    {
+        public CircleAiKnowledgeRead Recall = new(true, []);
+        public int RecallLimit;
+        public string Situation = "";
+        public string? RememberedFact;
+        public Task<bool> RequestAccessAsync(CancellationToken cancellationToken) => Task.FromResult(true);
+        public Task<IReadOnlyList<CircleAiServiceSkill>> SearchSkillsAsync(string? query, CancellationToken cancellationToken)
+            => Task.FromResult<IReadOnlyList<CircleAiServiceSkill>>([]);
+        public Task<CircleAiKnowledgeRead> RecallAsync(string situation, int limit, CancellationToken cancellationToken)
+        { RecallLimit = limit; Situation = situation; return Task.FromResult(Recall); }
+        public Task<bool> RememberAsync(string fact, string? subject, CancellationToken cancellationToken)
+        { RememberedFact = fact; return Task.FromResult(true); }
     }
 
     [Fact]

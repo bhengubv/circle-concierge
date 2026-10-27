@@ -94,6 +94,17 @@ public static class MauiProgram
 			});
 
 		builder.Services.AddMauiBlazorWebView();
+#if ANDROID
+		builder.Services.AddSingleton<Concierge.Shared.Components.Workspace.IMicrophonePermissionGate,
+			AndroidMicrophonePermissionGate>();
+		Microsoft.AspNetCore.Components.WebView.Maui.BlazorWebViewHandler.BlazorWebViewMapper
+			.AppendToMapping("ConciergeMicrophoneCapture", (handler, _) =>
+			{
+				var webView = handler.PlatformView;
+				if (webView.WebChromeClient is not ConciergeMicrophoneWebChromeClient)
+					webView.SetWebChromeClient(new ConciergeMicrophoneWebChromeClient(webView.WebChromeClient));
+			});
+#endif
 		// MudBlazor — registers IDialogService, ISnackbar, IScrollManager, etc.
 		// Needed by the flight-deck Dashboard's snackbar feedback + dialogs.
 		builder.Services.AddMudServices();
@@ -257,6 +268,12 @@ public static class MauiProgram
 		builder.Services.AddSingleton<Concierge.Platforms.Android.AndroidCircleAiSharedService>();
 		builder.Services.AddSingleton<ICircleAiSharedService>(sp => sp.GetRequiredService<Concierge.Platforms.Android.AndroidCircleAiSharedService>());
 		builder.Services.AddSingleton<ICircleAiServiceChatLink>(sp => sp.GetRequiredService<Concierge.Platforms.Android.AndroidCircleAiSharedService>());
+		builder.Services.AddSingleton<ICircleAiServiceKnowledgeLink>(sp => sp.GetRequiredService<Concierge.Platforms.Android.AndroidCircleAiSharedService>());
+		builder.Services.AddSingleton<ICircleAiServiceControls>(sp => sp.GetRequiredService<Concierge.Platforms.Android.AndroidCircleAiSharedService>());
+		builder.Services.AddSingleton<ICircleAiServiceAudioLink>(sp => sp.GetRequiredService<Concierge.Platforms.Android.AndroidCircleAiSharedService>());
+		builder.Services.AddSingleton<Concierge.Platforms.Android.CircleAiServiceVoiceRuntime>();
+		builder.Services.AddSingleton<IVoiceRuntime>(sp => sp.GetRequiredService<Concierge.Platforms.Android.CircleAiServiceVoiceRuntime>());
+		builder.Services.AddHostedService<Concierge.Platforms.Android.AndroidCircleAiServiceVoiceProbe>();
 		builder.Services.AddSingleton<ICircleAiSettingsGateway, Concierge.Platforms.Android.AndroidCircleAiSettingsGateway>();
         // The shared service owns preparation; do not schedule Concierge's legacy model jobs.
 #endif

@@ -1,0 +1,92 @@
+@using Concierge.Shared.Chat
+@using Concierge.Shared.Media
+@inject ILocalVoiceModelSetup VoiceSetup
+
+<section class="sheet-group" aria-labelledby="local-voice-title">
+    <div class="row">
+        <span class="row-name" id="local-voice-title">
+            Offline voice on this device
+            <span class="row-sub">Speech is processed here, without Desktop. Setup downloads the listening and speaking models once (about 110 MB).</span>
+        </span>
+    </div>
+    <div class="row">
+        <span class="row-name" role="status" aria-live="polite">@_message</span>
+    </div>
+    @if (_progress is not null)
+    {
+        <div class="row" aria-live="polite">
+            <span class="row-name">
+                <progress max="1" value="@_progress.Ratio" aria-label="Offline voice download progress"></progress>
+                <span class="row-sub">@_progress.Description</span>
+            </span>
+        </div>
+    }
+    <div class="row">
+        <button class="ai-settings-action" type="button" disabled="@_busy" @onclick="PrepareAsync">
+            @(_status?.ListenerInstalled == true && _status.SpeakerInstalled == true ? "Check offline voice" : "Set up offline voice")
+        </button>
+        @if (_busy)
+        {
+            <button class="ai-settings-action" type="button" @onclick="Cancel">Stop download</button>
+        }
+    </div>
+</section>
+
+@code {
+    private LocalVoiceSetupStatus? _status;
+    private ModelDownloadProgress? _progress;
+    private CancellationTokenSource? _download;
+    private string _message = "Checking this device…";
+    private bool _busy;
+
+    protected override void OnInitialized() => RefreshStatus();
+
+    private void RefreshStatus()
+    {
+        _status = VoiceSetup.GetStatus();
+        _message = _status.Message;
+    }
+
+    private async Task PrepareAsync()
+    {
+        if (_busy)
+        {
+            return;
+        }
+
+        _busy = true;
+        _progress = null;
+        _download = new CancellationTokenSource();
+        _message = "Preparing offline voice for this device…";
+
+        var progress = new Progress<ModelDownloadProgress>(report =>
+        {
+            _progress = report;
+            _ = InvokeAsync(StateHasChanged);
+        });
+
+        try
+        {
+            _status = await VoiceSetup.PrepareAsync(progress, _download.Token);
+            _message = _status.Message;
+        }
+        catch (OperationCanceledException)
+        {
+            RefreshStatus();
+            _message += " Download stopped; completed files were kept.";
+        }
+        catch (Exception failure)
+        {
+            _message = $"Offline voice setup failed: {failure.Message}";
+        }
+        finally
+        {
+            _busy = false;
+            _download?.Dispose();
+            _download = null;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void Cancel() => _download?.Cancel();
+}

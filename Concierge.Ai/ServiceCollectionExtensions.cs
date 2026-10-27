@@ -53,6 +53,7 @@ public static class ConciergeAiServiceCollectionExtensions
         services.AddSingleton<CircleAiVoiceRuntime>();
         services.AddSingleton<Concierge.Shared.Media.IVoiceRuntime>(
             sp => sp.GetRequiredService<CircleAiVoiceRuntime>());
+        services.AddSingleton<Concierge.Shared.Media.ILocalVoiceModelSetup, LocalVoiceModelSetup>();
 
         return services;
     }
