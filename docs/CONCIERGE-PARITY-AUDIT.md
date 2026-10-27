@@ -1,5 +1,9 @@
 # Concierge — Family Mode Parity Audit
 
+> Historical snapshot from 5 June 2026. For current product evidence and
+> corrected competitor capabilities, see the
+> [28 October 2026 review](acceptance/2026-10-28-product-parity-review.md).
+
 **Date:** 2026-06-05
 **Author:** Concierge dev (Claude)
 **Audience:** Founder. Honest snapshot of where we are vs. the AI tools we're *not* trying to be.
