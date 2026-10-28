@@ -9,6 +9,9 @@ namespace Concierge.Shared.Skills;
 /// </summary>
 public interface ISkillRuntime
 {
+    /// <summary>Forget indexed skill locations after the person changes skill folders.</summary>
+    void Refresh() { }
+
     /// <summary>Resolve a skill id from any registered source to its loaded
     /// body + estimated cost. Returns null when the id is unknown.</summary>
     SkillActivation? Activate(string skillId);
@@ -49,6 +52,10 @@ public sealed class SkillRuntime : ISkillRuntime
     private readonly ISkillCatalogService _catalog;
     private readonly IEnumerable<ISkillSource> _sources;
     private readonly ILogger<SkillRuntime>? _log;
+    private readonly object _indexGate = new();
+    private Dictionary<string, (SkillDescriptor Descriptor, ISkillSource Source)>? _index;
+    private DateTimeOffset _indexedAt;
+    private static readonly TimeSpan IndexLifetime = TimeSpan.FromMinutes(1);
 
     public SkillRuntime(
         ISkillCatalogService catalog,
@@ -63,30 +70,14 @@ public sealed class SkillRuntime : ISkillRuntime
     public SkillActivation? Activate(string skillId)
     {
         if (string.IsNullOrWhiteSpace(skillId)) return null;
-        // The catalog stores SkillDescriptors keyed by id when it composes
-        // FileSystemSkillSource etc; for backwards compat we also walk every
-        // source ourselves and pick the first match.
-        SkillDescriptor? descriptor = null;
-        ISkillSource? owningSource = null;
-        foreach (var src in _sources)
-        {
-            foreach (var d in src.Discover())
-            {
-                if (string.Equals(d.Id, skillId, StringComparison.OrdinalIgnoreCase))
-                {
-                    descriptor = d;
-                    owningSource = src;
-                    break;
-                }
-            }
-            if (descriptor is not null) break;
-        }
-        if (descriptor is null || owningSource is null)
+        var location = Find(skillId);
+        if (location is null)
         {
             _log?.LogDebug("skill not found: {Id}", skillId);
             return null;
         }
 
+        var (descriptor, owningSource) = location.Value;
         var body = owningSource.LoadBody(descriptor);
         if (string.IsNullOrWhiteSpace(body))
         {
@@ -98,6 +89,28 @@ public sealed class SkillRuntime : ISkillRuntime
         var tokens = body.Length / 4;   // rough — 4 chars/token is fine for budgeting
 
         return new SkillActivation(descriptor, body, addendum, tokens);
+    }
+
+    public void Refresh()
+    {
+        lock (_indexGate) _index = null;
+    }
+
+    private (SkillDescriptor Descriptor, ISkillSource Source)? Find(string skillId)
+    {
+        lock (_indexGate)
+        {
+            if (_index is null || DateTimeOffset.UtcNow - _indexedAt >= IndexLifetime)
+            {
+                var found = new Dictionary<string, (SkillDescriptor, ISkillSource)>(StringComparer.OrdinalIgnoreCase);
+                foreach (var source in _sources)
+                    foreach (var descriptor in source.Discover())
+                        found.TryAdd(descriptor.Id, (descriptor, source));
+                _index = found;
+                _indexedAt = DateTimeOffset.UtcNow;
+            }
+            return _index.TryGetValue(skillId, out var location) ? location : null;
+        }
     }
 
     public string ComposeSystemPrompt(IEnumerable<string> skillIds, int budgetTokens = DefaultBudgetTokens)

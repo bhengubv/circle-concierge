@@ -16,6 +16,16 @@ if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) { throw "Service execu
 if (-not (Test-Path -LiteralPath $models -PathType Container)) { throw "Model directory missing: $models" }
 if (-not (Test-Path -LiteralPath $connection -PathType Leaf)) { throw "Existing protected connection file missing: $connection" }
 
+function Write-HostState([string]$state, [string]$detail) {
+    # Task Scheduler does not retain the host's stdout. Keep a small local
+    # diagnostic without credentials, questions, answers, or model paths.
+    [IO.Directory]::CreateDirectory($data) | Out-Null
+    $statusPath = Join-Path $data 'host-state.json'
+    $safeDetail = $detail -replace '(?i)X-Butler-Token:\s*\S+', 'X-Butler-Token: [redacted]'
+    $status = @{ at = [DateTimeOffset]::UtcNow.ToString('O'); state = $state; detail = $safeDetail }
+    [IO.File]::WriteAllText($statusPath, ($status | ConvertTo-Json -Compress), [Text.UTF8Encoding]::new($false))
+}
+
 # Task Scheduler did not restart a manually started task after its child died in
 # the live crash test. Keep recovery in this host, with a bounded delay so a
 # failing executable cannot spin or fill memory with parallel copies.
@@ -27,7 +37,27 @@ $existing = @(Get-CimInstance Win32_Process | Where-Object {
     $_.Name -in @('CircleAI.Inference.Server.exe', 'CircleAIService-Windows-3.9.2-win-x64.exe')
 })
 if ($existing.Count) {
-    throw "Circle AI is already running (PID $($existing.ProcessId -join ', ')). Close the existing host before starting this one."
+    if ($existing.Count -ne 1 -or -not [string]::Equals($existing[0].ExecutablePath, $binary,
+            [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Another Circle AI host is already running (PID $($existing.ProcessId -join ', '))."
+    }
+    # Task Scheduler can stop its PowerShell action without terminating the
+    # released service child. Reattach only when the protected connection
+    # proves that the live child owns the endpoint; never start a second model
+    # process against the same weights.
+    $saved = Get-Content -LiteralPath $connection -Raw | ConvertFrom-Json
+    if (-not $saved.BaseUrl -or -not $saved.Token) {
+        throw 'The existing Circle AI child has no protected connection to verify.'
+    }
+    $health = Invoke-RestMethod -Uri "$($saved.BaseUrl)/v1/health" -Headers @{'X-Butler-Token' = $saved.Token} -TimeoutSec 15
+    if ([string]$health.pid -ne [string]$existing[0].ProcessId) {
+        throw 'The protected connection does not belong to the existing Circle AI child.'
+    }
+    Write-HostState 'ready' "Adopted existing service child PID $($existing[0].ProcessId)."
+    while (Get-Process -Id $existing[0].ProcessId -ErrorAction SilentlyContinue) {
+        Start-Sleep -Seconds 3
+    }
+    continue
 }
 
 [IO.Directory]::CreateDirectory($data) | Out-Null
@@ -85,6 +115,7 @@ try {
     }
     $token = $null
     $consecutiveFailures = 0
+    Write-HostState 'ready' "Connected service child PID $($child.Id)."
     Write-Host "Circle AI connected at $baseUrl (PID $($child.Id)). Keep this host running."
 
     # Continue draining output so the child cannot block on a full pipe. Its
@@ -96,6 +127,7 @@ catch {
     if ($_.Exception -is [System.Management.Automation.PipelineStoppedException]) { throw }
     $consecutiveFailures++
     $delay = [int][Math]::Min(60, [Math]::Pow(2, [Math]::Min($consecutiveFailures, 6)))
+    Write-HostState 'retrying' "$($_.Exception.GetType().Name): $($_.Exception.Message)"
     Write-Warning "Circle AI host stopped ($($_.Exception.GetType().Name)); retrying in $delay seconds."
 }
 finally {

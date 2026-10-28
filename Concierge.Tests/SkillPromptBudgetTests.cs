@@ -21,6 +21,34 @@ namespace Concierge.Tests;
 /// </summary>
 public sealed class SkillPromptBudgetTests
 {
+    private sealed class CountingSource : ISkillSource
+    {
+        public string Name => "counting";
+        public int DiscoverCount { get; private set; }
+        public IReadOnlyList<SkillDescriptor> Discover()
+        {
+            DiscoverCount++;
+            return [new SkillDescriptor("one", "One", "testing", "First skill", "counting://one", "local", [], null, []),
+                new SkillDescriptor("two", "Two", "testing", "Second skill", "counting://two", "local", [], null, [])];
+        }
+        public string? LoadBody(SkillDescriptor descriptor) => descriptor.Name;
+    }
+
+    [Fact]
+    public void Selected_skills_reuse_the_index_until_refreshed()
+    {
+        var source = new CountingSource();
+        var runtime = new SkillRuntime(new StubCatalog(), [source]);
+
+        Assert.NotNull(runtime.Activate("one"));
+        Assert.NotNull(runtime.Activate("two"));
+        Assert.Equal(1, source.DiscoverCount);
+
+        runtime.Refresh();
+        Assert.NotNull(runtime.Activate("one"));
+        Assert.Equal(2, source.DiscoverCount);
+    }
+
     private sealed class FakeSource(params (string Id, string Name, string Body)[] skills) : ISkillSource
     {
         public string Name => "fake";

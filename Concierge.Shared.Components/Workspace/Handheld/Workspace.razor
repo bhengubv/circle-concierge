@@ -73,7 +73,10 @@
             <span class="ws-brand-lockup"><strong>Concierge</strong><small>by Circle</small></span>
         </a>
 
-        <div class="ws-scroll">
+        @* Recreate the scroll viewport on each drawer open. Keeping its old
+           scrollTop can leave New conversation hidden under the fixed brand
+           after somebody browses Skills near the bottom of the drawer. *@
+        <div class="ws-scroll" @key="_drawerOpen">
             <button class="ws-item ws-start-conversation" type="button" @onclick="StartNewAsync">
                 <span class="ws-new-thread-mark" aria-hidden="true">+</span>
                 <span class="ws-item-label">New conversation</span>
@@ -119,12 +122,12 @@
                                     used to stop it, so there was never anything
                                     to show.
                                 *@
-                                @if (Runs.IsRunning(conv.Id))
+                                @if (IsConversationRunning(conv.Id))
                                 {
                                     <span class="dot dot-waiting" aria-hidden="true"></span>
                                 }
                                 <span class="ws-item-label">@conv.Title</span>
-                                <span class="ws-item-meta">@(Runs.IsRunning(conv.Id) ? "working" : Ago(conv.UpdatedAt))</span>
+                                <span class="ws-item-meta">@(IsConversationRunning(conv.Id) ? "working" : Ago(conv.UpdatedAt))</span>
                             </a>
                         }
                         @if (!_allThreads && _conversations.Count > 3)
@@ -423,6 +426,11 @@
                                     {
                                         <p>@message.Content</p>
                                     }
+                                    <button class="msg-audio" type="button" title="Copy this message"
+                                            @onclick="@(() => CopyMessageAsync(message.Id, message.Content))">
+                                        <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><use href="#cm-icon-copy"/></svg>
+                                        <span aria-live="polite">@CopyMessageLabel(message.Id)</span>
+                                    </button>
                                 </div>
                             </article>
                         }
@@ -496,7 +504,11 @@
                     a live view of the run, not something that was said, and
                     the moment to stop it is the moment you are reading it.
                 *@
-                @if (_runRecoveryStatus is not null)
+                @if (IsActiveConversationRunning && _activeRuntime is IChatRuntimeStatusEvents)
+                {
+                    <div class="run-recovery" role="status">Working on this device · @_activeRuntime.StatusMessage</div>
+                }
+                else if (_runRecoveryStatus is not null)
                 {
                     <div class="run-recovery" role="status">@_runRecoveryStatus</div>
                 }

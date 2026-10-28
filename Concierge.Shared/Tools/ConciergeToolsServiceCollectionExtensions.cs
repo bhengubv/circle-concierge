@@ -116,7 +116,8 @@ public static class ConciergeToolsServiceCollectionExtensions
             provider.GetRequiredService<Chat.BackgroundRuns>(),
             provider.GetRequiredService<Chat.CapturedImages>(),
             runGate: provider.GetRequiredService<Chat.ConversationRunGate>(),
-            notebooks: provider.GetService<IKnowledgeNotebookStore>()));
+            notebooks: provider.GetService<IKnowledgeNotebookStore>(),
+            harness: provider.GetService<IAgentHarnessService>()));
 
         services.TryAddSingleton<IJobRuntime, InMemoryJobRuntime>();
         services.TryAddSingleton<IRetryPolicy>(_ => new BoundedRetryPolicy());

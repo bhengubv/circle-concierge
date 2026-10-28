@@ -18,6 +18,7 @@
 @using System.Text.Json.Nodes
 @using Concierge.Shared.Chat
 @using Concierge.Shared.Tools
+@using Concierge.Shared.Components.Workspace
 
 @*
     The workspace.
@@ -49,6 +50,21 @@
         (Name: "What's new", Href: "release"),
         (Name: "Plans and pricing", Href: "pricing")
     };
+    var scopedWorkflows = _turnProject is null
+        ? Array.Empty<Concierge.Shared.Planning.ProjectWorkflow>()
+        : _turnProjectWorkspace is null
+            ? _turnProject.Workflows
+            : _turnProject.Workflows.Where(workflow => _turnProjectWorkspace.WorkflowIds.Contains(workflow.Id)).ToArray();
+    var workflowCount = scopedWorkflows.Count;
+    var completedWorkflowCount = scopedWorkflows.Count(workflow => workflow.Status == Concierge.Shared.Planning.ProjectWorkStatus.Completed);
+    var scopedArtifactCount = _turnProject is null
+        ? 0
+        : _turnProjectWorkspace is null
+            ? _turnProject.Artifacts.Count
+            : _turnProject.Artifacts.Count(artifact => _turnProjectWorkspace.ArtifactIds.Contains(artifact.Id));
+    var openConversationApprovals = _approvalHistory.Count(approval => approval.Decision is null
+        && _pendingApprovals.Any(pending => pending.Id == approval.ApprovalId));
+    var hasConversationWork = _active?.Messages.Any(message => message.Role == "user") == true;
 }
 
 <div class="ws" aria-busy="@(!WorkspaceReady ? "true" : "false")">
@@ -113,12 +129,12 @@
                                     used to stop it, so there was never anything
                                     to show.
                                 *@
-                                @if (Runs.IsRunning(conv.Id))
+                                @if (IsConversationRunning(conv.Id))
                                 {
                                     <span class="dot dot-waiting" aria-hidden="true"></span>
                                 }
                                 <span class="ws-item-label">@conv.Title</span>
-                                <span class="ws-item-meta">@(Runs.IsRunning(conv.Id) ? "working" : Ago(conv.UpdatedAt))</span>
+                                <span class="ws-item-meta">@(IsConversationRunning(conv.Id) ? "working" : Ago(conv.UpdatedAt))</span>
                             </a>
                         }
                         @if (!_allThreads && _conversations.Count > 3)
@@ -319,6 +335,64 @@
             </span>
         </header>
 
+        @if (_turnProject is { } currentProject)
+        {
+            <section class="ws-goal-overview" aria-label="Project goal and progress">
+                <div class="ws-goal-heading">
+                    <div class="ws-goal-name-block">
+                        <span class="ws-goal-kicker">@(_turnProjectWorkspace is null ? "PROJECT GOAL" : "WORKSPACE GOAL")</span>
+                        <strong>@(_turnProjectWorkspace?.Name ?? currentProject.Name)</strong>
+                    </div>
+                    <span class="ws-goal-status" data-state="@(_turnProjectWorkspace is null ? ProjectStatusKey(currentProject.Status) : ProjectWorkStatusKey(_turnProjectWorkspace.Status))">
+                        @(_turnProjectWorkspace is null ? ProjectStatusLabel(currentProject.Status) : ProjectWorkStatusLabel(_turnProjectWorkspace.Status))
+                    </span>
+                    <a class="ws-goal-open" href="@ProjectOverviewHref()">Open project overview <span aria-hidden="true">↗</span></a>
+                </div>
+                <p class="ws-goal-outcome">@(_turnProjectWorkspace?.DesiredOutcome ?? currentProject.DesiredOutcome)</p>
+                <div class="ws-goal-facts" aria-label="Work summary">
+                    @if (workflowCount > 0)
+                    {
+                        <span><strong>@completedWorkflowCount/@workflowCount</strong> workflows complete</span>
+                    }
+                    else
+                    {
+                        <span>No workflows added yet</span>
+                    }
+                    <span><strong>@scopedArtifactCount</strong> tracked reference@(scopedArtifactCount == 1 ? "" : "s")</span>
+                    <span class="ws-goal-live" role="status" aria-live="polite">
+                        <strong>@ConversationStatusText(openConversationApprovals)</strong>
+                    </span>
+                </div>
+            </section>
+        }
+        else if (_turnStartup is { } currentStartup)
+        {
+            <section class="ws-goal-overview ws-goal-startup" aria-label="Start-Up goal and progress">
+                <div class="ws-goal-heading">
+                    <div class="ws-goal-name-block">
+                        <span class="ws-goal-kicker">START-UP GOAL · @(currentStartup.Type == Concierge.Shared.Planning.BusinessJourneyType.NewBusiness ? "NEW BUSINESS" : "EXISTING BUSINESS")</span>
+                        <strong>@currentStartup.Name</strong>
+                    </div>
+                    <span class="ws-goal-status" data-state="@ProjectStatusKey(currentStartup.Status)">@ProjectStatusLabel(currentStartup.Status)</span>
+                    <a class="ws-goal-open" href="/projects">Open Start-Up overview <span aria-hidden="true">↗</span></a>
+                </div>
+                <p class="ws-goal-outcome">@currentStartup.Goal</p>
+                <div class="ws-goal-facts">
+                    <span><strong>@currentStartup.ProjectIds.Count</strong> connected project@(currentStartup.ProjectIds.Count == 1 ? "" : "s")</span>
+                    <span class="ws-goal-live" role="status" aria-live="polite">
+                        <strong>@ConversationStatusText(0)</strong>
+                    </span>
+                </div>
+            </section>
+        }
+        else if (hasConversationWork)
+        {
+            <div class="ws-track-goal">
+                <span>Want to keep this goal, its conversations, and deliverables together?</span>
+                <a href="@($"/projects?conversation={_active!.Id}")">Track it as a Project <span aria-hidden="true">↗</span></a>
+            </div>
+        }
+
         @*
             Design takes the middle of the workspace rather than opening a tab or
             a page. That is the difference between a fourth posture and a fourth
@@ -349,29 +423,31 @@
                     {
                         if (message.Role == "tool")
                         {
-                            var headline = message.Content.Split('\n')[0];
-                            var rest = message.Content.Length > headline.Length
-                                ? message.Content[(headline.Length + 1)..].Trim()
-                                : string.Empty;
+                            var receipt = ToolResultPresentation.From(message.Content);
                             var open = _openTools.Contains(message.Id);
 
-                            <div class="chips">
+                            <div class="chips" data-tool-success="@(receipt.Succeeded?.ToString().ToLowerInvariant() ?? "unknown")">
                                 <button class="chip" type="button" aria-expanded="@(open ? "true" : "false")"
                                         @onclick="@(() => ToggleTool(message.Id))">
                                     <svg class="chip-bolt" viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M13 2L4.5 13.5H11l-1 8.5 8.5-11.5H12z"/></svg>
-                                    <span class="chip-what">@headline</span>
-                                    @if (rest.Length > 0)
+                                    <span class="chip-what">@receipt.Headline</span>
+                                    @if (receipt.Details.Length > 0)
                                     {
                                         <svg class="chip-more" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
                                     }
                                 </button>
-                                @if (open && rest.Length > 0)
+                                @if (open && receipt.Details.Length > 0)
                                 {
-                                    <pre class="chip-out">@rest</pre>
+                                    <pre class="chip-out">@receipt.Details</pre>
                                 }
                             </div>
                         }
-                        else
+                        @* A tool-request turn is an instruction to Concierge, not the
+                           finished reply. The receipt below shows what actually ran;
+                           the next assistant turn carries the answer. *@
+                        else if (message.Role != "assistant"
+                            || !message.Content.Contains("```tool-call", StringComparison.Ordinal)
+                            || ToolCallProtocol.Extract(message.Content).Count == 0)
                         {
                             <article class="msg">
                                 <span class="msg-who">@FormatRole(message.Role)</span>
@@ -389,6 +465,11 @@
                                     {
                                         <p>@message.Content</p>
                                     }
+                                    <button class="msg-audio" type="button" title="Copy this message"
+                                            @onclick="@(() => CopyMessageAsync(message.Id, message.Content))">
+                                        <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><use href="#cm-icon-copy"/></svg>
+                                        <span aria-live="polite">@CopyMessageLabel(message.Id)</span>
+                                    </button>
                                 </div>
                             </article>
                         }
@@ -462,7 +543,11 @@
                     a live view of the run, not something that was said, and
                     the moment to stop it is the moment you are reading it.
                 *@
-                @if (_runRecoveryStatus is not null)
+                @if (IsActiveConversationRunning && _activeRuntime is IChatRuntimeStatusEvents)
+                {
+                    <div class="run-recovery" role="status">Working on this device · @(_streamingBuffer.Length == 0 ? "Waiting for first response" : "Receiving answer") · @RunElapsed · @_activeRuntime.StatusMessage</div>
+                }
+                else if (_runRecoveryStatus is not null)
                 {
                     <div class="run-recovery" role="status">@_runRecoveryStatus</div>
                 }
@@ -693,3 +778,65 @@
                 OnClose="ToggleSkillPicker" />
     }
 </div>
+
+@code {
+    private string ProjectOverviewHref()
+    {
+        if (_turnProject is null)
+            return "/projects";
+
+        var query = $"project={_turnProject.Id}";
+        if (_active is not null)
+            query += $"&conversation={_active.Id}";
+        if (_turnProjectWorkspace is not null)
+            query += $"&workspace={_turnProjectWorkspace.Id}";
+        return $"/projects?{query}";
+    }
+
+    private static string ProjectStatusLabel(Concierge.Shared.Planning.ProjectStatus status) => status switch
+    {
+        Concierge.Shared.Planning.ProjectStatus.Planning => "Planning",
+        Concierge.Shared.Planning.ProjectStatus.Active => "In progress",
+        Concierge.Shared.Planning.ProjectStatus.Blocked => "Blocked",
+        Concierge.Shared.Planning.ProjectStatus.AwaitingPerson => "Needs you",
+        Concierge.Shared.Planning.ProjectStatus.Review => "Ready to review",
+        Concierge.Shared.Planning.ProjectStatus.Completed => "Complete",
+        Concierge.Shared.Planning.ProjectStatus.Archived => "Archived",
+        _ => "In progress"
+    };
+
+    private static string ProjectStatusKey(Concierge.Shared.Planning.ProjectStatus status)
+        => status.ToString().ToLowerInvariant();
+
+    private static string ProjectWorkStatusLabel(Concierge.Shared.Planning.ProjectWorkStatus status) => status switch
+    {
+        Concierge.Shared.Planning.ProjectWorkStatus.Planned => "Planned",
+        Concierge.Shared.Planning.ProjectWorkStatus.Active => "In progress",
+        Concierge.Shared.Planning.ProjectWorkStatus.Blocked => "Blocked",
+        Concierge.Shared.Planning.ProjectWorkStatus.AwaitingPerson => "Needs you",
+        Concierge.Shared.Planning.ProjectWorkStatus.Review => "Ready to review",
+        Concierge.Shared.Planning.ProjectWorkStatus.Completed => "Complete",
+        Concierge.Shared.Planning.ProjectWorkStatus.Skipped => "Skipped",
+        _ => "Planned"
+    };
+
+    private static string ProjectWorkStatusKey(Concierge.Shared.Planning.ProjectWorkStatus status)
+        => status.ToString().ToLowerInvariant();
+
+    private string ConversationStatusText(int openApprovals)
+    {
+        if (openApprovals > 0)
+            return "Needs your OK";
+        if (IsActiveConversationRunning)
+            return "Concierge is working in this conversation";
+        if (_runRecoveryStatus is not null)
+            return string.Equals(_latestRunReceipt?.Status, "failed", StringComparison.OrdinalIgnoreCase)
+                ? "Last run failed · review the conversation"
+                : string.Equals(_latestRunReceipt?.Status, "cancelled", StringComparison.OrdinalIgnoreCase)
+                    ? "Last run was stopped · review the conversation"
+                    : "Run did not complete · review the conversation";
+        if (string.Equals(_latestRunReceipt?.Status, "completed", StringComparison.OrdinalIgnoreCase))
+            return "Last run completed · result is in this conversation";
+        return "Conversation ready to continue";
+    }
+}

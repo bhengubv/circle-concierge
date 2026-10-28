@@ -1,0 +1,6 @@
+order,amount,status
+A,12,delivered
+B,25,refunded
+C,18,delivered
+D,30,pending
+E,20,delivered

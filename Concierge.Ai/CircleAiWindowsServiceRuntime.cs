@@ -26,6 +26,18 @@ public sealed class CircleAiWindowsServiceRuntime : IChatRuntime, IChatRuntimeCa
             "Concierge", "CircleAIService", "connection.json");
     }
     private readonly SemaphoreSlim _inference = new(1, 1);
+    internal TimeSpan ResponseIdleTimeout { get; set; } = TimeSpan.FromMinutes(5);
+    private async Task<T> WaitForServiceAsync<T>(Func<CancellationToken, Task<T>> operation, CancellationToken requested)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(requested);
+        timeout.CancelAfter(ResponseIdleTimeout);
+        try { return await operation(timeout.Token).ConfigureAwait(false); }
+        catch (OperationCanceledException) when (!requested.IsCancellationRequested)
+        {
+            StatusMessage = "Circle AI has not sent an answer for five minutes. The service may still be working; check activity before retrying.";
+            throw new TimeoutException(StatusMessage);
+        }
+    }
     private string? _model;
     private string _version = "unverified";
     private sealed record ServiceConnection(Uri BaseUrl, string Header, string Credential, bool Loopback);
@@ -227,11 +239,13 @@ public sealed class CircleAiWindowsServiceRuntime : IChatRuntime, IChatRuntimeCa
                 : JsonContent.Create(new { model = _model, stream = options.StreamAnswers, temperature = 0,
                     messages = messages.Select(message => new { role = message.Role, content = message.Content }) })
         };
-        using var response = await SendAsync(request, connection, cancellationToken, HttpCompletionOption.ResponseHeadersRead);
+        using var response = await WaitForServiceAsync(token => SendAsync(request, connection, token,
+            HttpCompletionOption.ResponseHeadersRead), cancellationToken);
         response.EnsureSuccessStatusCode();
         if (!options.StreamAnswers)
         {
-            using var answer = await response.Content.ReadFromJsonAsync<JsonDocument>(cancellationToken);
+            using var answer = await WaitForServiceAsync(token => response.Content.ReadFromJsonAsync<JsonDocument>(token),
+                cancellationToken);
             if (loopback)
             {
                 yield return answer!.RootElement.GetProperty("content").GetString()!;
@@ -245,11 +259,13 @@ public sealed class CircleAiWindowsServiceRuntime : IChatRuntime, IChatRuntimeCa
                     yield return content.GetString()!;
             yield break;
         }
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        await using var stream = await WaitForServiceAsync(token => response.Content.ReadAsStreamAsync(token), cancellationToken);
         using var reader = new StreamReader(stream);
         var doneEvent = false;
-        while (await reader.ReadLineAsync(cancellationToken) is { } line)
+        while (true)
         {
+            var line = await WaitForServiceAsync(token => reader.ReadLineAsync(token).AsTask(), cancellationToken);
+            if (line is null) break;
             if (loopback && line.StartsWith("event:", StringComparison.Ordinal))
             {
                 doneEvent = line[6..].Trim() == "done";

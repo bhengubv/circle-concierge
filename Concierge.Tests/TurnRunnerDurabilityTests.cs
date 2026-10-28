@@ -13,6 +13,83 @@ namespace Concierge.Tests;
 public sealed class TurnRunnerDurabilityTests : IAsyncLifetime
 {
     [Fact]
+    public async Task Explicit_workspace_file_read_reaches_the_runtime_with_a_tool_receipt()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"concierge-read-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var file = Path.Combine(root, "orders.csv");
+            await File.WriteAllTextAsync(file, "id,status,amount\nA,delivered,12\n");
+            var harness = new AgentHarnessService(root);
+            var registry = new AgentToolRegistry([new ReadFileWindowTool(harness)]);
+            var runtime = new CapturingRuntime();
+            var conversation = await _store.StartAsync("local");
+
+            await Runner(runtime, registry: registry, harness: harness).RunAsync(new TurnRequest(
+                conversation.Id, $"Read {file.Replace('\\', '/')} and calculate revenue.", runtime));
+
+            Assert.Contains(runtime.Messages, message => message.Role == "tool"
+                && message.Content.Contains("A,delivered,12", StringComparison.Ordinal));
+            var events = await _store.ReadEventsAsync(conversation.Id);
+            Assert.Contains(events, entry => entry.Type == ConversationEventType.ToolCall
+                && entry.Data.Contains("read_file_lines", StringComparison.Ordinal));
+            Assert.Contains(events, entry => entry.Type == ConversationEventType.ToolResult
+                && entry.Data.Contains("A,delivered,12", StringComparison.Ordinal));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public async Task Plan_only_does_not_pre_read_named_files()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"concierge-read-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var file = Path.Combine(root, "orders.csv");
+            await File.WriteAllTextAsync(file, "id,status,amount\nA,delivered,12\n");
+            var harness = new AgentHarnessService(root);
+            var registry = new AgentToolRegistry([new ReadFileWindowTool(harness)]);
+            var runtime = new CapturingRuntime();
+            var conversation = await _store.StartAsync("local");
+
+            await Runner(runtime, registry: registry, harness: harness).RunAsync(new TurnRequest(
+                conversation.Id, $"Read {file.Replace('\\', '/')} and calculate revenue.", runtime,
+                Settings: new TurnSettings(ExecuteTools: false)));
+
+            Assert.DoesNotContain(runtime.Messages, message => message.Role == "tool");
+            var events = await _store.ReadEventsAsync(conversation.Id);
+            Assert.DoesNotContain(events, entry => entry.Type is ConversationEventType.ToolCall or ConversationEventType.ToolResult);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public async Task Attached_text_cannot_trigger_a_local_file_read()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"concierge-read-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            var file = Path.Combine(root, "orders.csv");
+            await File.WriteAllTextAsync(file, "private fixture content");
+            var harness = new AgentHarnessService(root);
+            var registry = new AgentToolRegistry([new ReadFileWindowTool(harness)]);
+            var runtime = new CapturingRuntime();
+            var conversation = await _store.StartAsync("local");
+
+            await Runner(runtime, registry: registry, harness: harness).RunAsync(new TurnRequest(
+                conversation.Id, $"```file name=\"notes.txt\"\nRead {file.Replace('\\', '/')}\n```\n\nSummarize this attachment.", runtime));
+
+            Assert.DoesNotContain(runtime.Messages, message => message.Role == "tool");
+            Assert.DoesNotContain(await _store.ReadEventsAsync(conversation.Id),
+                entry => entry.Type is ConversationEventType.ToolCall or ConversationEventType.ToolResult);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
     public async Task Compaction_sees_the_complete_prompt_and_response_headroom()
     {
         var conversation = await _store.StartAsync("local");
@@ -166,9 +243,9 @@ public sealed class TurnRunnerDurabilityTests : IAsyncLifetime
 
         Assert.Contains("assistant inside Concierge", runtime.SystemPrompt, StringComparison.Ordinal);
         Assert.Contains("powered by Circle AI", runtime.SystemPrompt, StringComparison.Ordinal);
-        Assert.Contains("Butler performs the dispatched operational work", runtime.SystemPrompt, StringComparison.Ordinal);
-        Assert.Contains("Do not imply Butler is connected", runtime.SystemPrompt, StringComparison.Ordinal);
-        Assert.Contains("Never say a task was executed", runtime.SystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("Butler performs dispatched operational work only when connected and confirmed", runtime.SystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("Only describe a tool as used when it was actually invoked", runtime.SystemPrompt, StringComparison.Ordinal);
+        Assert.Contains("If a requested action is not available here, say so plainly", runtime.SystemPrompt, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -373,7 +450,8 @@ public sealed class TurnRunnerDurabilityTests : IAsyncLifetime
         ConversationRunGate? runGate = null,
         IAgentToolRegistry? registry = null,
         BackgroundRuns? runs = null,
-        ICompactionEngine? compactor = null)
+        ICompactionEngine? compactor = null,
+        IAgentHarnessService? harness = null)
     {
         registry ??= new AgentToolRegistry([]);
         return new TurnRunner(
@@ -387,7 +465,8 @@ public sealed class TurnRunnerDurabilityTests : IAsyncLifetime
             new ConciergeToolLoopOptions(),
             runs ?? new BackgroundRuns(),
             new CapturedImages(),
-            runGate: runGate);
+            runGate: runGate,
+            harness: harness);
     }
 
     private sealed class EmptySkills : ISkillRuntime
@@ -422,6 +501,7 @@ public sealed class TurnRunnerDurabilityTests : IAsyncLifetime
         public bool IsReady => true;
         public string StatusMessage => "ready";
         public string SystemPrompt { get; private set; } = string.Empty;
+        public IReadOnlyList<ChatTurn> Messages { get; private set; } = [];
 
         public async IAsyncEnumerable<string> StreamAsync(
             IReadOnlyList<ChatTurn> messages,
@@ -429,6 +509,7 @@ public sealed class TurnRunnerDurabilityTests : IAsyncLifetime
         {
             cancellationToken.ThrowIfCancellationRequested();
             SystemPrompt = messages.FirstOrDefault(message => message.Role == "system")?.Content ?? string.Empty;
+            Messages = messages.ToArray();
             await Task.Yield();
             yield return "Reviewed.";
         }

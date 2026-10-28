@@ -75,6 +75,16 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     [Inject] protected Concierge.Shared.Tools.IToolApprovalService Approval { get; set; } = default!;
     [Inject] protected Concierge.Shared.Chat.BackgroundRuns Runs { get; set; } = default!;
 
+    // Optional while older component hosts and focused bUnit fixtures are migrated.
+    // BackgroundRuns owns execution; Fluxor holds only the renderer's snapshot.
+    private Fluxor.IDispatcher? RunDispatcher
+        => Services.GetService(typeof(Fluxor.IDispatcher)) as Fluxor.IDispatcher;
+    private Fluxor.IState<Concierge.Shared.Components.State.RunningConversationsState>? RunState
+        => Services.GetService(typeof(Fluxor.IState<Concierge.Shared.Components.State.RunningConversationsState>))
+            as Fluxor.IState<Concierge.Shared.Components.State.RunningConversationsState>;
+    protected bool IsConversationRunning(Guid conversationId)
+        => RunState?.Value.ConversationIds.Contains(conversationId) ?? Runs.IsRunning(conversationId);
+
     /// <summary>One turn, shared with every head that is not a screen.</summary>
     [Inject] protected Concierge.Shared.Chat.TurnRunner Turn { get; set; } = default!;
 
@@ -105,6 +115,10 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     }
     protected bool _streaming;
     protected string _streamingBuffer = string.Empty;
+    protected DateTimeOffset? _runStartedAt;
+    protected string RunElapsed => _runStartedAt is { } started
+        ? $"{(int)(DateTimeOffset.UtcNow - started).TotalMinutes:00}:{(DateTimeOffset.UtcNow - started).Seconds:00} elapsed"
+        : string.Empty;
     protected CancellationTokenSource? _streamCts;
     protected int _toolLoopIteration;
 
@@ -120,11 +134,12 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
     /// <summary>Recovery information for the most recent run in this conversation.</summary>
     protected string? _runRecoveryStatus;
+    protected TurnRunReceipt? _latestRunReceipt;
 
     /// <summary>Approval requests and decisions restored from the conversation event log.</summary>
     protected IReadOnlyList<ConversationApprovalEvent> _approvalHistory = [];
 
-    protected bool IsActiveConversationRunning => _active is not null && Runs.IsRunning(_active.Id);
+    protected bool IsActiveConversationRunning => _active is not null && IsConversationRunning(_active.Id);
 
     /// <summary>
     /// Whether the plan is still describing what is happening. Holds the rules
@@ -183,11 +198,13 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     protected string? _projectContextLabel;
     protected string? _projectContextUnavailable;
     protected string _workContextKind = "Project";
+    protected Concierge.Shared.Planning.ConciergeProject? _turnProject;
+    protected Concierge.Shared.Planning.ProjectWorkspace? _turnProjectWorkspace;
     private string? _projectContextSystemPrompt;
     private Guid? _turnProjectId;
     private Guid? _turnProjectWorkspaceId;
     private Guid? _turnStartupId;
-    private Concierge.Shared.Planning.StartupJourney? _turnStartup;
+    protected Concierge.Shared.Planning.StartupJourney? _turnStartup;
     protected bool _includeToolCatalog = true;
     /// <summary>
     /// How much it may do without being asked.
@@ -535,6 +552,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     protected string? _desktopSearchMessage;
     protected string _desktopLinkDraft = string.Empty;
     private DateTimeOffset _nextDesktopCapabilityRefresh = DateTimeOffset.MinValue;
+    private DateTimeOffset _nextNotebookSync = DateTimeOffset.MinValue;
     private DateTimeOffset _nextDesktopDiscovery = DateTimeOffset.MinValue;
     private DateTimeOffset _nextLocalSidebarRefresh = DateTimeOffset.MinValue;
     private DateTimeOffset _nextDesktopOutboxRetry = DateTimeOffset.MinValue;
@@ -764,6 +782,8 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         _projectContextLabel = null;
         _projectContextUnavailable = null;
         _projectContextSystemPrompt = null;
+        _turnProject = null;
+        _turnProjectWorkspace = null;
         _turnProjectId = null;
         _turnProjectWorkspaceId = null;
         _turnStartupId = null;
@@ -819,6 +839,8 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
         _turnProjectId = project.Id;
         _turnProjectWorkspaceId = workspace?.Id;
+        _turnProject = project;
+        _turnProjectWorkspace = workspace;
         _projectContextLabel = workspace is null ? project.Name : $"{project.Name} · {workspace.Name}";
         var contextLines = new List<string>
         {
@@ -1029,10 +1051,18 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
                 // morning than it used to be, not a broken one.
             }
         }
+        else if (_followAfterRender && !_gone)
+        {
+            _followAfterRender = false;
+            try { await JS.InvokeVoidAsync("conciergeThread.toEnd", ".ws-thread"); }
+            catch (Exception failure) when (failure is JSException or InvalidOperationException
+                                            or TaskCanceledException or ObjectDisposedException) { }
+        }
     }
 
     /// <summary>Whether this conversation has been put at its end yet.</summary>
     private bool _openedAtTheEnd;
+    private bool _followAfterRender;
 
     // Cold reads run off the rendering thread. Keep input from racing session/thread restoration.
     protected bool WorkspaceReady { get; private set; }
@@ -1062,6 +1092,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
             // A different conversation is a different place to be returned to.
             _openedAtTheEnd = false;
+            _followAfterRender = false;
 
             // A half-typed question survives the app closing. Only restored
             // into an empty composer: whatever is being typed now wins over
@@ -1085,6 +1116,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
             _planSteps = [];
             _planDone = 0;
             _runRecoveryStatus = null;
+            _latestRunReceipt = null;
             _approvalHistory = [];
             if (string.IsNullOrEmpty(_composerText))
                 _composerText = _session.InitialDraftText ?? string.Empty;
@@ -1173,6 +1205,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
             .OrderBy(entry => entry.Sequence)
             .Select(entry => entry.Approval)
             .ToList();
+        _latestRunReceipt = latestReceipt;
 
         var latestOpen = starts.OrderByDescending(entry => entry.Value).FirstOrDefault();
         if (latestOpen.Key == Guid.Empty)
@@ -1779,6 +1812,26 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         {
             _composerHint = $"Mic error: {ex.Message}";
             _recording = false;
+        }
+    }
+
+    protected Guid? _copiedMessageId;
+    protected string? _copyMessageStatus;
+
+    protected string CopyMessageLabel(Guid id)
+        => _copiedMessageId == id ? _copyMessageStatus ?? "Copy" : "Copy";
+
+    protected async Task CopyMessageAsync(Guid id, string text)
+    {
+        _copiedMessageId = id;
+        try
+        {
+            var copied = await JS.InvokeAsync<bool>("conciergeThread.copyText", text);
+            _copyMessageStatus = copied ? "Copied" : "Copy unavailable";
+        }
+        catch (JSException)
+        {
+            _copyMessageStatus = "Copy unavailable";
         }
     }
 
@@ -2413,6 +2466,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
                 _active = await Store.GetAsync(_active.Id);
                 await RememberSessionAsync();
                 _streaming = true;
+                _runStartedAt = DateTimeOffset.UtcNow;
                 _streamingBuffer = string.Empty;
                 StateHasChanged();
                 var runStatus = "completed";
@@ -2566,6 +2620,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         turnRequest = turnRequest with { RunId = turnRunId };
 
         _streaming = true;
+        _runStartedAt = DateTimeOffset.UtcNow;
         _streamingBuffer = string.Empty;
         _toolLoopIteration = 0;
         // The previous source is cancelled AND disposed before it is replaced.
@@ -2698,6 +2753,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         await RememberSessionAsync();
         _composerText = string.Empty;
         _streaming = true;
+        _runStartedAt = DateTimeOffset.UtcNow;
         _composerHint = "Sending to Circle AI on your Desktop…";
         await Store.AppendEventAsync(_active.Id, ConversationEventType.UserMessage, input);
         _active = await Store.GetAsync(_active.Id);
@@ -2777,6 +2833,8 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     private async Task SyncConversationsAsync(CancellationToken cancellationToken)
     {
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(3));
+        Guid? observedConversation = null;
+        int? observedSequence = null;
         try
         {
             while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
@@ -2803,6 +2861,23 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
                 if (!_windowsDesktopUsesCircleAi && _desktopAvailable && DesktopClient is not null)
                 {
                     var now = DateTimeOffset.UtcNow;
+                    if (now >= _nextNotebookSync
+                        && Services.GetService(typeof(Concierge.Shared.Planning.IKnowledgeNotebookStore))
+                            is Concierge.Shared.Planning.IKnowledgeNotebookStore notebooks)
+                    {
+                        _nextNotebookSync = now.AddSeconds(15);
+                        try
+                        {
+                            var synced = await Concierge.Shared.Planning.NotebookExchange.SyncAsync(
+                                notebooks, DesktopClient, cancellationToken).ConfigureAwait(false);
+                            if (!synced)
+                                await InvokeAsync(() => _composerHint = "Notebook sources remain on this device until Desktop sync succeeds.");
+                        }
+                        catch (InvalidOperationException failure)
+                        {
+                            await InvokeAsync(() => _composerHint = $"Notebook sync needs attention: {failure.Message}");
+                        }
+                    }
                     if (now >= _nextDesktopCapabilityRefresh)
                     {
                         // The model host reports real byte progress. Poll it at the same
@@ -2911,11 +2986,30 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
                     continue;
                 }
 
-                var fresh = await Store.GetAsync(_active.Id, cancellationToken).ConfigureAwait(false);
+                var activeId = _active.Id;
+                var sequence = await Store.GetLastEventSequenceAsync(activeId, cancellationToken).ConfigureAwait(false);
+                if (observedConversation != activeId)
+                {
+                    observedConversation = activeId;
+                    // A sync may have arrived after the current thread was loaded.
+                    // Force one read for the newly observed thread before skipping polls.
+                    observedSequence = int.MinValue;
+                }
+
+                if (observedSequence == sequence)
+                    continue;
+
+                var fresh = await Store.GetAsync(activeId, cancellationToken).ConfigureAwait(false);
                 if (fresh is not null)
                 {
-                    _active = fresh;
-                    await InvokeAsync(StateHasChanged);
+                    observedSequence = sequence;
+                    await InvokeAsync(() =>
+                    {
+                        // The person may have switched threads while the read was in flight.
+                        if (_active?.Id != activeId) return;
+                        _active = fresh;
+                        StateHasChanged();
+                    });
                 }
             }
         }
@@ -3011,39 +3105,43 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     {
         public void Report(Concierge.Shared.Chat.TurnStep step)
         {
-            switch (step.Stage)
+            if (step.Stage == Concierge.Shared.Chat.TurnStage.Recorded)
             {
-                case Concierge.Shared.Chat.TurnStage.Streaming:
-                    page._streamingBuffer = step.Text ?? string.Empty;
-                    break;
-
-                case Concierge.Shared.Chat.TurnStage.Round:
-                    page._toolLoopIteration = step.Iteration;
-                    break;
-
-                case Concierge.Shared.Chat.TurnStage.Plan:
-                    page._planSteps = step.PlanSteps ?? [];
-                    page._planDone = step.PlanDone;
-                    break;
-
-                case Concierge.Shared.Chat.TurnStage.Answered:
-                    page._answeredBy = step.Answered;
-                    break;
-
-                case Concierge.Shared.Chat.TurnStage.Recorded:
-                    _ = page.InvokeAsync(page.RefreshActiveAsync);
-                    return;
-
-                case Concierge.Shared.Chat.TurnStage.UserMessageRecorded:
-                    _ = page.InvokeAsync(async () =>
-                    {
-                        await page.RememberSessionAsync();
-                        await page.RefreshActiveAsync();
-                    });
-                    return;
+                _ = page.InvokeAsync(page.RefreshActiveAsync);
+                return;
+            }
+            if (step.Stage == Concierge.Shared.Chat.TurnStage.UserMessageRecorded)
+            {
+                _ = page.InvokeAsync(async () =>
+                {
+                    await page.RememberSessionAsync();
+                    await page.RefreshActiveAsync();
+                });
+                return;
             }
 
-            _ = page.InvokeAsync(page.Redraw);
+            // A model stream can resume on a worker thread. Apply state and render together
+            // on the Blazor dispatcher so a frame never reads a half-updated turn.
+            _ = page.InvokeAsync(async () =>
+            {
+                switch (step.Stage)
+                {
+                    case Concierge.Shared.Chat.TurnStage.Streaming:
+                        page._streamingBuffer = step.Text ?? string.Empty;
+                        break;
+                    case Concierge.Shared.Chat.TurnStage.Round:
+                        page._toolLoopIteration = step.Iteration;
+                        break;
+                    case Concierge.Shared.Chat.TurnStage.Plan:
+                        page._planSteps = step.PlanSteps ?? [];
+                        page._planDone = step.PlanDone;
+                        break;
+                    case Concierge.Shared.Chat.TurnStage.Answered:
+                        page._answeredBy = step.Answered;
+                        break;
+                }
+                await page.RedrawAsync();
+            });
         }
     }
 
@@ -3055,11 +3153,10 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
             return;
         }
 
+        await RememberFollowPositionAsync();
         _active = await Store.GetAsync(_active.Id);
         await RefreshSidebarAsync();
         StateHasChanged();
-
-        await FollowTheThreadAsync();
     }
 
     /// <summary>
@@ -3075,11 +3172,11 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     /// move lives in the script beside the element rather than here: only it knows where they
     /// are looking at the moment the token lands.
     /// </summary>
-    private async Task FollowTheThreadAsync()
+    private async Task RememberFollowPositionAsync()
     {
         try
         {
-            await JS.InvokeVoidAsync("conciergeThread.follow", ".ws-thread");
+            _followAfterRender = await JS.InvokeAsync<bool>("conciergeThread.isAtEnd", ".ws-thread");
         }
         catch (Exception failure) when (failure is JSException or InvalidOperationException
                                         or TaskCanceledException or ObjectDisposedException)
@@ -3090,10 +3187,11 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     }
 
     /// <summary>Guarded, because a turn can outlive the component that started it.</summary>
-    private void Redraw()
+    private async Task RedrawAsync()
     {
         if (!_gone)
         {
+            await RememberFollowPositionAsync();
             StateHasChanged();
         }
     }
@@ -3364,6 +3462,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     private void WatchRuns()
     {
         Runs.Changed += OnRunsChanged;
+        RunDispatcher?.Dispatch(new Concierge.Shared.Components.State.RunningConversationsRefreshed(Runs.Running.ToArray()));
     }
 
     private void OnRunsChanged(object? sender, EventArgs e)
@@ -3372,6 +3471,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         {
             _ = InvokeAsync(async () =>
             {
+                RunDispatcher?.Dispatch(new Concierge.Shared.Components.State.RunningConversationsRefreshed(Runs.Running.ToArray()));
                 if (ConversationId is { } id)
                     await RefreshRunRecoveryStatusAsync(id);
                 StateHasChanged();

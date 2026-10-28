@@ -168,14 +168,14 @@ public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICirc
         return CircleAiLiveReadiness.Read(response.Rows);
     }
 
-    public Task<CircleAiServiceChatReply> SendChatAsync(string sessionId, string message, bool agentic,
-        CancellationToken cancellationToken) => SendChatCoreAsync(sessionId, message, agentic, null, cancellationToken);
+    public Task<CircleAiServiceChatReply> SendChatAsync(string sessionId, string message, string question, bool agentic,
+        CancellationToken cancellationToken) => SendChatCoreAsync(sessionId, message, question, agentic, null, cancellationToken);
 
-    public Task<CircleAiServiceChatReply> SendChatStreamingAsync(string sessionId, string message, bool agentic,
+    public Task<CircleAiServiceChatReply> SendChatStreamingAsync(string sessionId, string message, string question, bool agentic,
         Action<string> answerChunk, CancellationToken cancellationToken) =>
-        SendChatCoreAsync(sessionId, message, agentic, answerChunk, cancellationToken);
+        SendChatCoreAsync(sessionId, message, question, agentic, answerChunk, cancellationToken);
 
-    private async Task<CircleAiServiceChatReply> SendChatCoreAsync(string sessionId, string message, bool agentic,
+    private async Task<CircleAiServiceChatReply> SendChatCoreAsync(string sessionId, string message, string question, bool agentic,
         Action<string>? answerChunk, CancellationToken cancellationToken)
     {
         try
@@ -200,7 +200,7 @@ public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICirc
 #endif
                 return result;
             }
-            return await CircleAiQueuedChat.SendAsync(ObserveAskAsync, requestId, sessionId, message,
+            return await CircleAiQueuedChat.SendAsync(ObserveAskAsync, requestId, sessionId, message, question,
                 agentic, sentence => RequestProgress?.Invoke(sentence), cancellationToken, answerChunk,
                 background: run.Background);
         }

@@ -9,14 +9,14 @@ public sealed record CircleAiServiceChatReply(bool Ok, string? Text, string? Err
 public interface ICircleAiServiceChatLink
 {
     Task<CircleAiServiceChatStatus> ReadChatStatusAsync(CancellationToken cancellationToken);
-    Task<CircleAiServiceChatReply> SendChatAsync(string sessionId, string message, bool agentic,
+    Task<CircleAiServiceChatReply> SendChatAsync(string sessionId, string message, string question, bool agentic,
         CancellationToken cancellationToken);
 }
 
 /// <summary>Optional streaming path for services that expose AskStatus text offsets.</summary>
 public interface ICircleAiServiceStreamingChatLink
 {
-    Task<CircleAiServiceChatReply> SendChatStreamingAsync(string sessionId, string message, bool agentic,
+    Task<CircleAiServiceChatReply> SendChatStreamingAsync(string sessionId, string message, string question, bool agentic,
         Action<string> answerChunk, CancellationToken cancellationToken);
 }
 

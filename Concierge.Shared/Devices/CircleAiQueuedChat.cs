@@ -19,7 +19,7 @@ public static class CircleAiQueuedChat
 
     public static async Task<CircleAiServiceChatReply> SendAsync(
         Func<LinkVerbRequest, CancellationToken, Task<LinkRowsReply>> execute,
-        string requestId, string sessionId, string message, bool agentic,
+        string requestId, string sessionId, string message, string question, bool agentic,
         Action<string>? progress, CancellationToken cancellationToken, Action<string>? answerChunk = null,
         bool background = false)
     {
@@ -35,7 +35,10 @@ public static class CircleAiQueuedChat
                 [LinkAskRows.ArgRequestId] = requestId,
                 [LinkAskRows.ArgSession] = sessionId,
                 [LinkAskRows.ArgMessage] = message,
-                [LinkAskRows.ArgQuestion] = message,
+                // The service's shortcuts classify ArgQuestion. Do not let a
+                // weather word in earlier conversation context replace an
+                // unrelated follow-up before the model sees it.
+                [LinkAskRows.ArgQuestion] = question,
                 [LinkAskRows.ArgLane] = background ? "Background" : "Foreground",
                 [LinkAskRows.ArgAgentic] = agentic ? "1" : "0",
                 [LinkAskRows.ArgSideEffectFree] = agentic ? "0" : "1"
@@ -50,7 +53,7 @@ public static class CircleAiQueuedChat
                 if (askId is not null && ask.Id != askId)
                     return new(false, null, "Circle AI returned a different request record.");
                 askId = ask.Id;
-                progress?.Invoke(string.IsNullOrWhiteSpace(ask.Sentence) ? ask.StateName : ask.Sentence);
+                progress?.Invoke(DescribeProgress(ask));
                 answerLength = Math.Max(answerLength, ask.TextLength);
                 if (ask.TextOffset == answerOffset && !string.IsNullOrEmpty(ask.Text))
                 {
@@ -130,4 +133,27 @@ public static class CircleAiQueuedChat
     internal static TimeSpan PollDelay(TimeSpan elapsed)
         => elapsed < TimeSpan.FromMilliseconds(StatusWaitMilliseconds)
             ? TimeSpan.FromMilliseconds(StatusWaitMilliseconds) - elapsed : TimeSpan.Zero;
+
+    internal static string DescribeProgress(LinkAskView ask)
+    {
+        // Preserve a useful service explanation. Older services return only a
+        // state word, which is not a sentence a person can act on or understand.
+        if (!string.IsNullOrWhiteSpace(ask.Sentence)
+            && !string.Equals(ask.Sentence, ask.StateName, StringComparison.OrdinalIgnoreCase))
+            return ask.Sentence;
+
+        return ask.State switch
+        {
+            AskState.Queued => "Circle AI has your question and is waiting to start.",
+            AskState.WaitingForSetup => "Circle AI is preparing to answer.",
+            AskState.WaitingForModel => "Circle AI is preparing a model.",
+            AskState.WaitingForPermission => string.IsNullOrWhiteSpace(ask.NeedsPermission)
+                ? "Circle AI is waiting for a permission before it can answer."
+                : $"Circle AI is waiting for permission: {ask.NeedsPermission}.",
+            AskState.Running => "Circle AI is processing your question.",
+            AskState.Paused => "Circle AI paused this question and will resume it when the device allows.",
+            AskState.Succeeded => "Circle AI has finished the answer.",
+            _ => string.IsNullOrWhiteSpace(ask.Sentence) ? ask.StateName : ask.Sentence
+        };
+    }
 }

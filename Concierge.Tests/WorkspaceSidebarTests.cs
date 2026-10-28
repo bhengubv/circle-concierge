@@ -189,14 +189,17 @@ public sealed class WorkspaceSidebarTests : BunitContext
         var cut = RenderWorkspace();
         Header(cut, "About & updates").Click();
 
-        var hrefs = cut.FindAll("section.ws-group")[4]
-            .QuerySelectorAll("a.ws-room")
-            .Select(a => a.GetAttribute("href"))
-            .ToArray();
+        cut.WaitForAssertion(() =>
+        {
+            var hrefs = cut.Find("section.ws-group-about")
+                .QuerySelectorAll("a.ws-room")
+                .Select(a => a.GetAttribute("href"))
+                .ToArray();
 
-        Assert.Equal(
-            new[] { "product", "engineering", "beyond", "business-apis", "roadmap", "release", "pricing" },
-            hrefs);
+            Assert.Equal(
+                new[] { "product", "engineering", "beyond", "business-apis", "roadmap", "release", "pricing" },
+                hrefs);
+        }, TimeSpan.FromSeconds(5));
     }
 
     // ── Folding ───────────────────────────────────────────────────────────

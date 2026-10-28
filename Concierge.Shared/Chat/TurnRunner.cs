@@ -139,7 +139,8 @@ public sealed class TurnRunner(
     CapturedImages captured,
     RuntimeResolver? resolver = null,
     ConversationRunGate? runGate = null,
-    IKnowledgeNotebookStore? notebooks = null)
+    IKnowledgeNotebookStore? notebooks = null,
+    IAgentHarnessService? harness = null)
 {
     private readonly RuntimeResolver _resolver = resolver ?? new RuntimeResolver();
     private readonly ConversationRunGate _runGate = runGate ?? new ConversationRunGate();
@@ -250,6 +251,37 @@ public sealed class TurnRunner(
             }
 
             progress?.Report(new TurnStep(TurnStage.Recorded));
+
+            // The installed service's conversational endpoint does not invoke Concierge's
+            // tool catalogue. A direct request to read named local files can still be
+            // fulfilled by the read-only harness before inference. The same scheduler,
+            // hooks, trusted root, event log and result pruning apply as for model calls.
+            // Plan only never executes the read.
+            if (settings.ExecuteTools && harness is not null
+                && tools.Tools.Any(tool => tool.Name == "read_file_lines"))
+            {
+                var namedReads = ExplicitFileReadPlanner.Plan(request.Text, harness.WorkspaceRoot);
+                foreach (var read in namedReads)
+                    await store.AppendEventAsync(request.ConversationId, ConversationEventType.ToolCall,
+                        read.ToolName + " " + (read.Arguments?.ToJsonString() ?? "{}"),
+                        cancellationToken: runToken).ConfigureAwait(false);
+
+                if (namedReads.Count > 0)
+                {
+                    var readResults = await scheduler.ExecuteAsync(namedReads, runToken).ConfigureAwait(false);
+                    foreach (var outcome in readResults)
+                    {
+                        var trimmed = pruner.Prune(outcome.Result.Output);
+                        var result = trimmed.WasPruned
+                            ? outcome.Result with { Output = trimmed.Text }
+                            : outcome.Result;
+                        await store.AppendEventAsync(request.ConversationId, ConversationEventType.ToolResult,
+                            ToolCallProtocol.FormatResult(outcome.ToolName, result),
+                            cancellationToken: runToken).ConfigureAwait(false);
+                    }
+                    progress?.Report(new TurnStep(TurnStage.Recorded));
+                }
+            }
 
             // The outer loop drives the tool-call cycle: stream, persist, and if the reply
             // called for tools and the caller allows it, run them, write the results in as a
@@ -655,6 +687,8 @@ public sealed class TurnRunner(
         // token is hundreds of writes for one reply and the point is durability.
         var lastCheckpoint = DateTimeOffset.UtcNow;
         var checkpointed = 0;
+        var lastProgress = DateTimeOffset.MinValue;
+        var reportedLength = 0;
 
         try
         {
@@ -691,9 +725,15 @@ public sealed class TurnRunner(
                 cancellationToken).ConfigureAwait(false))
             {
                 buffer.Append(chunk);
-                progress?.Report(new TurnStep(TurnStage.Streaming, Text: buffer.ToString()));
-
                 var now = DateTimeOffset.UtcNow;
+                // The durable draft is checkpointed separately. A UI subscriber only needs
+                // a snapshot at a readable cadence, not a full-string copy per model chunk.
+                if (progress is not null && (now - lastProgress).TotalMilliseconds >= 80)
+                {
+                    progress.Report(new TurnStep(TurnStage.Streaming, Text: buffer.ToString()));
+                    lastProgress = now;
+                    reportedLength = buffer.Length;
+                }
 
                 if (buffer.Length - checkpointed >= 240 || (now - lastCheckpoint).TotalMilliseconds >= 1000)
                 {
@@ -730,6 +770,8 @@ public sealed class TurnRunner(
 
         var label = outcome?.Runtime.EngineLabel ?? request.Runtime.EngineLabel;
         var said = buffer.ToString();
+        if (progress is not null && buffer.Length != reportedLength)
+            progress.Report(new TurnStep(TurnStage.Streaming, Text: said));
 
         if (!string.IsNullOrWhiteSpace(said))
         {

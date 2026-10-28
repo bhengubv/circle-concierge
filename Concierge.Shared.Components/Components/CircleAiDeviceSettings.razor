@@ -70,6 +70,8 @@
                         @if (section.Id == "voice" && _gateway is ICircleAiVoiceSettingsLink)
                         {
                             <div class="row"><span class="row-sub">Manage the service’s wake phrase and resident listener. Android permission prompts still belong to Android; Circle AI reports whether those permissions are granted.</span></div>
+                            <div class="row"><span class="row-sub">Allow Concierge to read Circle AI's voice settings before changing the listener.</span>
+                                <button type="button" class="ai-settings-action" disabled="@_busy" @onclick="ConnectVoice">Connect voice settings</button></div>
                             <div class="row"><button type="button" class="ai-settings-action" disabled="@_busy" @onclick="ToggleListening">@(_residentRunning ? "Stop listening" : "Start listening")</button></div>
                             <div class="row wake-phrase-entry">
                                 <input class="comp-input" type="text" placeholder="Add a wake phrase" aria-label="New wake phrase" @bind="_wakePhrase" />

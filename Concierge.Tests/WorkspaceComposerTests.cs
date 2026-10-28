@@ -422,6 +422,16 @@ public sealed class WorkspaceComposerTests : BunitContext
             .NavigateTo($"/chat/{conversationId}?project={project.Id}&workspace={workspace.Id}");
         cut.WaitForAssertion(() => Assert.Contains("Customer research", cut.Find(".ws-context-label").TextContent));
 
+        var goalOverview = cut.Find(".ws-goal-overview");
+        Assert.Contains("WORKSPACE GOAL", goalOverview.TextContent);
+        Assert.Contains("Customer research", goalOverview.TextContent);
+        Assert.Contains("Learn what local customers need", goalOverview.TextContent);
+        Assert.Contains("Planned", goalOverview.TextContent);
+        Assert.Contains("0/1 workflows complete", goalOverview.TextContent);
+        Assert.Contains("0 tracked references", goalOverview.TextContent);
+        Assert.Equal($"/projects?project={project.Id}&conversation={conversationId}&workspace={workspace.Id}",
+            goalOverview.QuerySelector(".ws-goal-open")!.GetAttribute("href"));
+
         cut.Find("textarea.comp-input").Input("What is next?");
         Send(cut).Click();
         var messages = await _readyRuntime!.SeenMessages.Task.WaitAsync(TimeSpan.FromSeconds(10));

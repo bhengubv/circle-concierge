@@ -73,6 +73,21 @@ public sealed class WelcomePanelTests : BunitContext
     }
 
     [Fact]
+    public void Lazy_service_model_is_not_presented_as_an_already_proven_answer()
+    {
+        var catalog = new ChatRuntimeCapabilityCatalog(1, "circleai", "loopback schema 1",
+            DateTimeOffset.UtcNow,
+            [new("conversation", "Conversation", ChatRuntimeCapabilityState.Available,
+                "Circle AI will load its selected model when you ask.")], null);
+
+        var cut = Render<WelcomePanel>(parameters => parameters.Add(panel => panel.CapabilityCatalog, catalog));
+        var capability = cut.Find(".welcome-capability");
+        Assert.Contains("Model selected", capability.TextContent);
+        Assert.Contains("the conversation will show progress", capability.TextContent);
+        Assert.DoesNotContain("Circle AI can answer on this device", capability.TextContent);
+    }
+
+    [Fact]
     public void Connected_Desktop_catalogue_is_shown_as_a_separate_device()
     {
         var local = new ChatRuntimeCapabilityCatalog(

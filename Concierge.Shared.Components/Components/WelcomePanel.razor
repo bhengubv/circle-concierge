@@ -8,6 +8,14 @@
     </div>
     <h2 id="welcome-title">What would help today?</h2>
     <p class="welcome-intro">Choose an area to find a starting point. You can edit the draft before sending.</p>
+    @if (!IsHandheld)
+    {
+        <nav class="welcome-work-paths" aria-label="Where your work goes">
+            <a href="/projects"><strong>Projects</strong><span>Plan and track a bigger goal</span></a>
+            <a href="/notebooks"><strong>Notebooks</strong><span>Give Concierge sources to use</span></a>
+            <a href="/library"><strong>Library</strong><span>Return to conversations and creations</span></a>
+        </nav>
+    }
     @if (SetupGuidance is { } guidance)
     {
         <aside class="welcome-setup-guide" aria-labelledby="welcome-setup-title">
@@ -46,7 +54,7 @@
             }
         </aside>
     }
-    <details class="welcome-device-details" open="@(!IsHandheld)">
+    <details class="welcome-device-details">
         <summary>Device status and capabilities</summary>
     @if (CapabilityCatalog is { } catalog)
     {
@@ -58,7 +66,7 @@
                     var detail = CapabilityExplanation(capability, isRemote: false);
                     <div class="welcome-capability" data-state="@capability.State.ToString().ToLowerInvariant()">
                         <span class="welcome-capability-name">@capability.Name</span>
-                        <span class="welcome-capability-state">@CapabilityStateLabel(capability.State)</span>
+                        <span class="welcome-capability-state">@CapabilityStateLabel(capability)</span>
                         @if (!string.IsNullOrWhiteSpace(detail))
                         {
                             <span class="welcome-capability-detail">@detail</span>
@@ -116,7 +124,7 @@
                     var detail = CapabilityExplanation(capability, isRemote: true);
                     <div class="welcome-capability" data-state="@capability.State.ToString().ToLowerInvariant()">
                         <span class="welcome-capability-name">@capability.Name</span>
-                        <span class="welcome-capability-state">@CapabilityStateLabel(capability.State)</span>
+                        <span class="welcome-capability-state">@CapabilityStateLabel(capability)</span>
                         @if (!string.IsNullOrWhiteSpace(detail))
                         {
                             <span class="welcome-capability-detail">@detail</span>
@@ -187,6 +195,14 @@
 
     private static string CatalogVersion => typeof(CircleAI.Assistant.Capabilities).Assembly.GetName().Version?.ToString(2)
         ?? "unknown";
+
+    private static string CapabilityStateLabel(ChatRuntimeCapability capability)
+        => capability.State == ChatRuntimeCapabilityState.Available && LoadsOnFirstAsk(capability)
+            ? "Model selected"
+            : CapabilityStateLabel(capability.State);
+
+    private static bool LoadsOnFirstAsk(ChatRuntimeCapability capability)
+        => capability.Explanation?.Contains("will load its selected model when you ask", StringComparison.OrdinalIgnoreCase) == true;
 
     private static string CapabilityStateLabel(ChatRuntimeCapabilityState state) => state switch
     {
@@ -350,6 +366,8 @@
         var device = isRemote ? "your Desktop" : IsHandheld ? "this phone" : "this device";
         return capability.State switch
         {
+            ChatRuntimeCapabilityState.Available when LoadsOnFirstAsk(capability)
+                => $"Circle AI selected a model on {device}. Ask a question to start it; the conversation will show progress.",
             ChatRuntimeCapabilityState.Available => $"Circle AI can answer on {device}.",
             ChatRuntimeCapabilityState.Preparing => $"Circle AI is getting ready on {device}.",
             ChatRuntimeCapabilityState.ActionRequired => isRemote

@@ -3,6 +3,7 @@ using Concierge.Ai;
 using Concierge.Shared.Rpc.Mcp;
 using Concierge.Ai.Isolated;
 using MudBlazor.Services;
+using Fluxor;
 using Concierge.Chat.Cloud;
 using Concierge.Shared.Design;
 using Concierge.Diagrams.Design;
@@ -94,6 +95,8 @@ public static class MauiProgram
 			});
 
 		builder.Services.AddMauiBlazorWebView();
+		builder.Services.AddFluxor(options => options.ScanAssemblies(
+			typeof(Concierge.Shared.Components.State.RunningConversationsState).Assembly));
 #if ANDROID
 		builder.Services.AddSingleton<Concierge.Shared.Components.Workspace.IMicrophonePermissionGate,
 			AndroidMicrophonePermissionGate>();
@@ -184,27 +187,11 @@ public static class MauiProgram
 			.AddConciergeSafety();
 
 
-		// Search needs a key, and the key lives in the same store the API-key
-		// editor writes to. Read once at startup, like every other runtime —
-		// which is why that editor says a restart is needed.
+		// Resolve the saved key on the first search without blocking tool construction
+		// or the Blazor dispatcher. As before, a changed key takes effect on restart.
 		builder.Services.AddSingleton<Concierge.Shared.Web.IWebSearch>(sp =>
-		{
-			try
-			{
-				var secrets = sp.GetRequiredService<IConciergeSecretStore>()
-					.LoadAsync().GetAwaiter().GetResult();
-
-				return secrets.TryGetValue("Brave:ApiKey", out var key) && !string.IsNullOrWhiteSpace(key)
-					? new Concierge.Shared.Web.BraveWebSearch(key)
-					: new Concierge.Shared.Web.UnconfiguredWebSearch();
-			}
-			catch (Exception)
-			{
-				// An unreadable secrets file must not stop the app starting;
-				// search simply reports that it is not set up.
-				return new Concierge.Shared.Web.UnconfiguredWebSearch();
-			}
-		});
+			new Concierge.Shared.Web.SecretBackedWebSearch(
+				sp.GetRequiredService<IConciergeSecretStore>()));
 
 		builder.Services.AddSingleton<InteractiveToolApprovalService>();
 		builder.Services.AddSingleton<IToolApprovalService>(sp =>

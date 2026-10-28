@@ -23,15 +23,16 @@ public sealed class ServiceNotebookContextTests
         Assert.Contains("Friday at 10am", link.Message);
         Assert.Contains("Meeting notes", link.Message);
         Assert.Contains("When is the meeting?", link.Message);
+        Assert.Equal("When is the meeting?", link.Question);
         Assert.DoesNotContain("Private app instructions", link.Message);
     }
 
     private sealed class FakeLink : ICircleAiServiceChatLink
     {
-        public string? Message;
+        public string? Message, Question;
         public Task<CircleAiServiceChatStatus> ReadChatStatusAsync(CancellationToken token)
             => Task.FromResult(new CircleAiServiceChatStatus(true, "Ready", "Ready", "service"));
-        public Task<CircleAiServiceChatReply> SendChatAsync(string sessionId, string message, bool agentic, CancellationToken token)
-        { Message = message; return Task.FromResult(new CircleAiServiceChatReply(true, "Friday at 10am.", null)); }
+        public Task<CircleAiServiceChatReply> SendChatAsync(string sessionId, string message, string question, bool agentic, CancellationToken token)
+        { Message = message; Question = question; return Task.FromResult(new CircleAiServiceChatReply(true, "Friday at 10am.", null)); }
     }
 }
