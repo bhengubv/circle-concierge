@@ -238,7 +238,7 @@
                 {
                     <div class="ws-group-body" id="desktop-create">
                         <button class="ws-room ws-room-btn @(_designOpen ? "is-on" : null)" type="button" @onclick="ToggleDesign">
-                            @(_designOpen ? "Close Creator" : "Open Creator")
+                            @(_designOpen ? "Back to conversation" : "Start creating")
                         </button>
                         @foreach (var item in createLinks)
                         {
@@ -297,7 +297,7 @@
                 was last open — a heading describing something that is not on
                 screen, in the one place a person looks to know where they are.
             *@
-            <h1 class="ws-title">@(_designOpen ? "Creator" : _active?.Title ?? "Concierge")</h1>
+            <h1 class="ws-title">@(_designOpen ? "Create" : _active?.Title ?? "Concierge")</h1>
             <span class="ws-top-meta">
                 @if (_projectContextLabel is not null)
                 {

@@ -35,7 +35,7 @@
 
 <div class="sheet" @ref="_dialog" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="skills-title">
     <div class="sheet-head">
-        <h1 class="sheet-title" id="skills-title">Skills</h1>
+        <h1 class="sheet-title" id="skills-title">Specialist help</h1>
         <button class="icon-btn" type="button" title="Close" @onclick="Close">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
             <span class="sr">Close skills</span>
@@ -44,7 +44,7 @@
 
     <input class="comp-input skills-find"
            type="search"
-           placeholder="What do you want it to be good at?"
+           placeholder="What do you need help with?"
            aria-label="Search skills"
            value="@_filter"
            @oninput="OnFilterChanged" />
@@ -52,13 +52,13 @@
     <div class="sheet-count">
         @if (ActiveIds.Count > 0)
         {
-            <span class="state"><span class="dot dot-done" aria-hidden="true"></span>@ActiveIds.Count on</span>
+            <span class="state"><span class="dot dot-done" aria-hidden="true"></span>@ActiveIds.Count selected</span>
         }
         else
         {
-            <span>None on — it answers as itself</span>
+            <span>No specialist help selected</span>
         }
-        <span class="row-val">@shown.Count of @all.Count</span>
+        <span class="row-val sr">@shown.Count of @all.Count</span>
     </div>
 
     @if (shown.Count == 0)
@@ -83,9 +83,12 @@
                         type="button"
                         aria-pressed="@(on ? "true" : "false")"
                         @onclick="@(() => OnToggle.InvokeAsync(id))">
-                    <span class="row-name">
+                    <span class="row-name" title="@skill.Summary">
                         @skill.Name
-                        <span class="row-sub">@skill.Summary</span>
+                        @if (_filter.Length > 0 && !skill.Name.Contains(_filter, StringComparison.OrdinalIgnoreCase))
+                        {
+                            <span class="row-sub">@skill.Summary</span>
+                        }
                     </span>
                     @if (on)
                     {
@@ -96,7 +99,7 @@
                         @* Yours or ours. "Why is it answering like that?" is
                            answered by which skills are on and where they came
                            from, and until now the second half was not shown. *@
-                        <span class="row-val">@(skill.Source == "bundled" ? skill.Area : "yours")</span>
+                        @if (skill.Source != "bundled") { <span class="row-val">Yours</span> }
                     }
                 </button>
             }
@@ -104,7 +107,7 @@
 
         @if (shown.Count > 5)
         {
-            <p class="row-sub">@(shown.Count - 5) more — keep typing to narrow it down.</p>
+            <p class="row-sub">Search to find more.</p>
         }
     }
 

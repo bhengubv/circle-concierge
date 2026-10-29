@@ -119,7 +119,7 @@ public sealed class WorkspaceSkillsTests : BunitContext
         var cut = RenderWorkspace();
         OpenPicker(cut);
 
-        Assert.Equal("Skills", cut.Find(".sheet-title").TextContent.Trim());
+        Assert.Equal("Specialist help", cut.Find(".sheet-title").TextContent.Trim());
         Assert.NotNull(cut.Find(".ws-side"));
         Assert.NotNull(cut.Find(".comp-box"));
     }
@@ -138,7 +138,7 @@ public sealed class WorkspaceSkillsTests : BunitContext
 
         var rows = cut.FindAll(".skills-list .skill-row");
         Assert.True(rows.Count <= 5, $"expected at most 5 rows in the panel, found {rows.Count}");
-        Assert.Contains("more — keep typing", cut.Find(".sheet").TextContent);
+        Assert.Contains("Search to find more", cut.Find(".sheet").TextContent);
     }
 
     [Fact]
