@@ -6,24 +6,29 @@
 
 <div class="room">
     <div class="room-top"><a class="room-back" href="/">Workspace</a><h1>Scheduled</h1></div>
-    <p class="room-lede">Ask Concierge to do something later, once or repeatedly.</p>
+    <p class="room-lede">Tell Concierge what to do later.</p>
     <div class="room-body">
         <p class="room-note" role="status">@Worker.Status</p>
         @if (_error is not null) { <p class="room-note" role="alert">@_error</p> }
         <section class="room-sec schedule-editor" aria-label="Schedule editor">
             <label for="schedule-description">What should Concierge do?</label>
             <textarea id="schedule-description" class="comp-input" rows="3" maxlength="16000" @bind="_description"></textarea>
-            <label for="schedule-due">When (@TimeZoneInfo.Local.DisplayName)</label>
+            <label for="schedule-due">When <span class="schedule-local-time">(local time)</span></label>
             <input id="schedule-due" class="comp-input" type="datetime-local" @bind="_due" />
-            <label for="schedule-repeat">Repeat</label>
-            <select id="schedule-repeat" class="comp-input" @bind="_repeat">
-                <option value="0">Once</option><option value="1">Every hour</option><option value="24">Every 24 hours</option><option value="168">Every 7 days</option>
-            </select>
-            <label for="schedule-permission">Control over actions</label>
-            <select id="schedule-permission" class="comp-input" @bind="_permission">
-                @foreach (var mode in Enum.GetValues<ToolPermissionMode>()) { <option value="@mode">@mode.Label()</option> }
-            </select>
-            <p class="room-note">@_permission.Explain()</p>
+            <details class="schedule-options" open="@(_editing is not null)">
+                <summary>More options <span class="schedule-options-summary">@RepeatLabel(_repeat) · @_permission.DecisionLabel()</span></summary>
+                <div class="schedule-options-body">
+                    <label for="schedule-repeat">Repeat</label>
+                    <select id="schedule-repeat" class="comp-input" @bind="_repeat">
+                        <option value="0">Once</option><option value="1">Every hour</option><option value="24">Every day</option><option value="168">Every week</option>
+                    </select>
+                    <label for="schedule-permission">What may Concierge do?</label>
+                    <select id="schedule-permission" class="comp-input" @bind="_permission">
+                        @foreach (var mode in Enum.GetValues<ToolPermissionMode>()) { <option value="@mode">@mode.DecisionLabel()</option> }
+                    </select>
+                    <p class="room-note">@_permission.Explain()</p>
+                </div>
+            </details>
             <div class="schedule-actions">
                 <button class="btn btn-primary" @onclick="Save">@(_editing is null ? "Schedule" : "Save changes")</button>
                 @if (_editing is not null) { <button class="btn" @onclick="ClearEditor">Cancel edit</button> }
@@ -35,7 +40,7 @@
         {
             <article class="room-card" @key="task.Id">
                 <h3>@task.Description</h3>
-                <p>@(task.Enabled ? task.State : "Paused") · @task.PermissionMode.Label()</p>
+                <p>@(task.Enabled ? task.State : "Paused") · @task.PermissionMode.DecisionLabel()</p>
                 @if (task.DueAt != DateTimeOffset.MaxValue) { <p>Due @task.DueAt.ToLocalTime().ToString("g")</p> }
                 @if (task.LastRanAt is { } last) { <p>Last attempt @last.ToLocalTime().ToString("g")</p> }
                 @if (task.Error is not null) { <p role="alert">@task.Error</p> }
@@ -71,6 +76,13 @@
     private DateTime _due = DateTime.Now.AddHours(1);
     private int _repeat;
     private ToolPermissionMode _permission = ToolPermissionMode.AskFirst;
+    private static string RepeatLabel(int hours) => hours switch
+    {
+        1 => "Every hour",
+        24 => "Every day",
+        168 => "Every week",
+        _ => "Once"
+    };
     private string? _error;
     private readonly CancellationTokenSource _lifetime = new();
     protected override void OnInitialized() { Reload(); _ = RefreshLoopAsync(); }

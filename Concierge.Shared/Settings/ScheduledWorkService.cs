@@ -10,7 +10,7 @@ public sealed class ScheduledWorkService(IScheduledTaskStore store, IServiceScop
 {
     private readonly SemaphoreSlim _tick = new(1, 1);
     private readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, CancellationTokenSource> _active = new();
-    public string Status { get; private set; } = "Scheduled work runs while Concierge is open. Overdue work resumes when it opens.";
+    public string Status { get; private set; } = "Concierge runs scheduled work while open and catches up when reopened.";
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -73,7 +73,7 @@ public sealed class ScheduledWorkService(IScheduledTaskStore store, IServiceScop
                 }
                 finally { _active.TryRemove(task.Id, out _); }
             }
-            Status = "Scheduled work runs while Concierge is open. Overdue work resumes when it opens.";
+            Status = "Concierge runs scheduled work while open and catches up when reopened.";
         }
         finally { _tick.Release(); }
     }

@@ -5,13 +5,27 @@
 @if (_gateway is not null)
 {
     <section class="sheet-group" aria-label="Circle AI device settings">
-        <div class="row"><span class="row-name">Circle AI on this device
-            <span class="row-sub">Language, voice, readiness, permissions, storage, and trusted-device assistance. Circle AI owns these settings.</span>
-        </span></div>
+        <div class="row"><span class="row-name">Circle AI on this device</span></div>
         <div class="row">
-            <span class="row-sub" role="status" aria-live="polite">@_status</span>
+            <span class="row-sub" role="status" aria-live="polite">@VisibleStatus</span>
             <button type="button" class="ai-settings-action" disabled="@_busy" @onclick="Refresh">@(_refreshing ? "Checking…" : "Refresh status")</button>
         </div>
+        @if (_setupProgress?.InProgress == true)
+        {
+            <div class="row setup-progress" role="status" aria-live="polite">
+                <span class="row-name">@_setupStatus</span>
+                @if (_setupProgress.Fraction is double fraction)
+                {
+                    <progress max="1" value="@fraction.ToString(System.Globalization.CultureInfo.InvariantCulture)" aria-label="Circle AI setup progress"></progress>
+                    <span>@fraction.ToString("P0")</span>
+                }
+            </div>
+        }
+        @if (_setupError is not null) { <div class="row" role="alert">@_setupError</div> }
+        @if (_report is not null)
+        {
+            <details class="ai-settings-check"><summary>Last check</summary><p>@_status</p></details>
+        }
         @if (_connection is not null)
         {
             <div class="row"><span class="row-name" role="status">@(_connected == true ? "Connected to Circle AI service" : _connected == false ? "Circle AI connection needs approval" : "Circle AI connection has not been verified")
@@ -122,7 +136,20 @@
     private ICircleAiSharedServiceLink? _connection;
     private CircleAiSettingsReport? _report;
     private string _status = "Not checked yet.";
-    private string? _open = "readiness";
+    private string? _open;
+    private string VisibleStatus
+    {
+        get
+        {
+            if (!_status.StartsWith("Checked at", StringComparison.Ordinal)) return _status;
+            var readiness = _report?.Sections.FirstOrDefault(section => section.Id == "readiness")?.Facts
+                .FirstOrDefault(fact => fact.Name is "Text conversations" or "Conversation readiness" or "Conversation model");
+            if (readiness is null) return "Check what Circle AI can do below.";
+            if (readiness.Name == "Conversation model")
+                return readiness.Value == "Not reported ready" ? "Circle AI is still getting ready." : "Circle AI is connected.";
+            return $"Conversations: {readiness.Value}";
+        }
+    }
     private bool _busy;
     private bool _refreshing;
     private bool _connecting;
@@ -148,7 +175,11 @@
         _controls = Services.GetService(typeof(ICircleAiServiceControls)) as ICircleAiServiceControls;
         _connection = Services.GetService(typeof(ICircleAiSharedService)) as ICircleAiSharedServiceLink;
         if (_gateway is not null) await Refresh();
-        if (_gateway is ICircleAiServiceSetup) _ = MonitorSetup();
+        if (_gateway is ICircleAiServiceSetup)
+        {
+            _open = "readiness";
+            _ = MonitorSetup();
+        }
     }
     private async Task CancelSetup()
     {

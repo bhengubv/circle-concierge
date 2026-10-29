@@ -3,10 +3,8 @@
 
 @if (_preferences is not null)
 {
-    <section class="sheet-group" aria-label="Circle AI service settings">
-        <div class="row"><span class="row-name">Circle AI service settings
-            <span class="row-sub">For work answered by this Desktop. Changes apply to the next answer.</span>
-        </span></div>
+    <details class="sheet-group circle-ai-answer-options" aria-label="Circle AI answer preferences">
+        <summary>Answer preferences</summary>
         <div class="row">
             <span class="row-name">Stream answers
                 <span class="row-sub">Show the answer as it arrives. Off: wait for the complete answer.</span>
@@ -23,9 +21,9 @@
                 @onchange="ChangeAgentic" /><span class="toggle-track" aria-hidden="true"><span class="toggle-knob"></span></span>
                 <span class="sr">Agentic work</span></label>
         </div>
-        <div class="row"><span class="row-sub" role="status">Both preferences default to On. With this service version, streamed answers are conversational. Multi-step service assistance is not connected yet. Your Agentic work preference is saved, but cannot take effect yet. You can still chat.</span></div>
+        <div class="row"><span class="row-sub" role="status">Multi-step assistance is not available in this service version. Your preference is saved for when it becomes available.</span></div>
         @if (_error is not null) { <div class="row" role="alert">@_error</div> }
-    </section>
+    </details>
 }
 
 @code {

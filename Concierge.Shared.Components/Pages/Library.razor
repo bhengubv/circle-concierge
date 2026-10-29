@@ -12,7 +12,7 @@
     <p class="room-lede">Your conversations and the work they produced, together.</p>
 
     <div class="room-body">
-        <button class="btn" disabled="@_loading" @onclick="ReloadAsync">Refresh library</button>
+        <button class="btn" disabled="@_loading" @onclick="ReloadAsync">Refresh</button>
         @if (_error is not null) { <p class="room-note" role="alert">@_error</p> }
         <input class="comp-input skills-find" type="search" placeholder="Search your library"
                aria-label="Search your library" @bind="_query" @bind:event="oninput" />
@@ -31,7 +31,7 @@
         }
         else if (!VisibleItems.Any())
         {
-            <p class="room-note">@(_query.Length == 0 ? "Your library is ready for its first conversation or project." : "Nothing matches that search.")</p>
+            <p class="room-note">@(_query.Length > 0 ? "Nothing matches that search." : _filter == "creation" ? "No files or creations yet." : _filter == "conversation" ? "No conversations yet." : "Your library is ready for its first conversation or project.")</p>
         }
         else
         {
@@ -41,17 +41,17 @@
                     <div class="row">
                         <span class="row-name">
                             @item.Name
-                            <span class="row-sub">@item.Kind · @item.Context · @item.When.ToLocalTime().ToString("d MMM yyyy")</span>
+                            <span class="row-sub">@(item.Category == "conversation" ? item.When.ToLocalTime().ToString("d MMM yyyy") : $"{item.Kind} · {item.Context} · {item.When.ToLocalTime():d MMM yyyy}")</span>
                         </span>
                         <span class="library-actions">
-                            <a href="@item.Href">Open source</a>
+                            <a href="@item.Href">@(item.Href.StartsWith("/projects", StringComparison.Ordinal) ? "Open project" : "Open conversation")</a>
                             @if (item.SourceEventId is not null) { <button class="btn" @onclick="() => PreviewAsync(item)">Preview output</button> }
                             @if (item.Category == "conversation") { <a href="@($"/files/{item.ConversationId}")">Files and activity</a> }
                         </span>
                     </div>
                 }
             </div>
-            @if (VisibleItems.Count() > _limit) { <button class="btn" @onclick="() => _limit += 100">Show more</button> }
+            @if (VisibleItems.Count() > _limit) { <button class="btn" @onclick="() => _limit += 12">Show more</button> }
         }
         @if (_preview is not null || _previewData is not null)
         {
@@ -96,7 +96,7 @@
     private string _query = string.Empty;
     private string _filter = "all";
     private bool _loading = true;
-    private int _limit = 100;
+    private int _limit = 12;
     private string? _error, _preview, _previewName, _previewData, _previewKind;
 
     private IEnumerable<LibraryItem> VisibleItems => _items

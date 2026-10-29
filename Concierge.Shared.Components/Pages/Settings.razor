@@ -40,7 +40,6 @@
         </button>
     </div>
 
-    <DesktopSummonSettings />
     <section class="appearance-panel" aria-label="Appearance">
         <div class="appearance-heading">Make it yours</div>
         <div class="appearance-caption">Theme</div>
@@ -63,22 +62,11 @@
                 </button>
             }
         </div>
-        <p class="appearance-caption auto-model-note">Circle AI manages models and resources for this device.</p>
     </section>
 
-    @* ── Automatic model choice ─────────────────────────────────────── *@
-    <section class="sheet-group">
-        <div class="row">
-            <span class="row-name">
-                Circle AI chooses the model
-                <span class="row-sub">It picks from the options available on this device. Add provider keys below; Circle AI handles the routing.</span>
-            </span>
-        </div>
-    </section>
-
-    <CircleAiServiceSettings />
     <CircleAiDeviceSettings />
     <LocalVoiceSettings />
+    <CircleAiServiceSettings />
 
     @* ── Butler account ──────────────────────────────────────────────── *@
     <section class="sheet-group">
@@ -100,7 +88,7 @@
     <section class="sheet-group">
         <button class="sheet-head-btn" type="button" @onclick="@(() => Toggle("keys"))">
             <svg class="ws-chev @(IsOpen("keys") ? "is-open" : null)" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
-            <span class="sheet-label">Keys</span>
+            <span class="sheet-label">Online services</span>
         </button>
         @if (IsOpen("keys"))
         {
@@ -163,7 +151,7 @@
     <section class="sheet-group">
         <button class="sheet-head-btn" type="button" @onclick="@(() => Toggle("limits"))">
             <svg class="ws-chev @(IsOpen("limits") ? "is-open" : null)" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
-            <span class="sheet-label">Limits</span>
+            <span class="sheet-label">Work limits</span>
         </button>
         @if (IsOpen("limits"))
         {
@@ -173,6 +161,17 @@
             <div class="row"><span class="row-name">Give up after</span><span class="row-val">@snapshot.ResourceControl.RunTimeoutMinutes min</span></div>
             <div class="row"><span class="row-name">Clean up owned processes</span><span class="row-val">@(snapshot.ResourceControl.CleanupOwnedProcesses ? "On" : "Off")</span></div>
         </div>
+        }
+    </section>
+
+    <section class="sheet-group">
+        <button class="sheet-head-btn" type="button" @onclick="@(() => Toggle("shortcut"))">
+            <svg class="ws-chev @(IsOpen("shortcut") ? "is-open" : null)" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
+            <span class="sheet-label">Keyboard shortcut</span>
+        </button>
+        @if (IsOpen("shortcut"))
+        {
+            <DesktopSummonSettings />
         }
     </section>
 
@@ -257,12 +256,11 @@
     /// app, so a cut-off panel gives no sign there is more. Folding is the same
     /// answer the sidebar uses, and it means the panel fits.
     ///
-    /// Keys starts open because it is the only section that needs configuration.
     /// </summary>
     /// One at a time, deliberately. With several groups unfolded the panel ran
     /// 246px past the bottom of the window and, with scrollbars hidden app-wide,
     /// said nothing about it. An accordion cannot outgrow the space it has.
-    private string? _open = "keys";
+    private string? _open;
 
     private bool IsOpen(string key) => string.Equals(_open, key, StringComparison.Ordinal);
 

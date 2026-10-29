@@ -239,7 +239,7 @@ public sealed class WorkspaceSettingsTests : BunitContext
     {
         var cut = RenderWorkspace();
         Open(cut);
-        OpenGroup(cut, "Limits");
+        OpenGroup(cut, "Work limits");
 
         var names = cut.FindAll(".sheet .row-name").Select(e => e.TextContent).ToArray();
         Assert.Contains(names, n => n.Contains("Jobs at once"));
@@ -291,7 +291,7 @@ public sealed class WorkspaceSettingsTests : BunitContext
     /// and nothing to say so. Folding is the same answer the sidebar uses.
     /// </summary>
     [Fact]
-    public void Only_one_group_is_unfolded_so_the_panel_fits()
+    public void Optional_groups_start_folded_so_the_panel_fits()
     {
         var cut = RenderWorkspace();
         Open(cut);
@@ -299,7 +299,7 @@ public sealed class WorkspaceSettingsTests : BunitContext
         var openChevrons = cut.FindAll(".sheet .ws-chev")
             .Count(c => c.ClassName!.Contains("is-open"));
 
-        Assert.Equal(1, openChevrons);
+        Assert.Equal(0, openChevrons);
     }
 
     [Fact]
@@ -308,11 +308,11 @@ public sealed class WorkspaceSettingsTests : BunitContext
         var cut = RenderWorkspace();
         Open(cut);
 
-        // Limits is folded on arrival.
+        // Work limits is folded on arrival.
         Assert.DoesNotContain(cut.FindAll(".sheet .row-name").Select(e => e.TextContent),
                               n => n.Contains("Jobs at once"));
 
-        OpenGroup(cut, "Limits");
+        OpenGroup(cut, "Work limits");
 
         Assert.Contains(cut.FindAll(".sheet .row-name").Select(e => e.TextContent),
                         n => n.Contains("Jobs at once"));

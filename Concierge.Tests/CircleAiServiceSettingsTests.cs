@@ -59,7 +59,7 @@ public sealed class CircleAiServiceSettingsTests : BunitContext
             Services.AddSingleton(preferences);
             var panel = Render<Concierge.Shared.Components.Components.CircleAiServiceSettings>();
             Assert.All(panel.FindAll("input"), input => Assert.True(input.HasAttribute("checked")));
-            Assert.Contains("Your Agentic work preference is saved, but cannot take effect yet", panel.Markup);
+            Assert.Contains("Your preference is saved for when it becomes available", panel.Markup);
             panel.FindAll("input")[0].Change(false);
             panel.WaitForAssertion(() => Assert.False(preferences.Current.StreamAnswers));
             panel.FindAll("input")[1].Change(false);

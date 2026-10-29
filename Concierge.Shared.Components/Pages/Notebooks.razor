@@ -13,13 +13,13 @@
         @if (_error is not null) { <p role="alert" class="room-note">@_error</p> }
         <div class="notebook-actions">
             <button class="btn" @onclick="New">New notebook</button>
-            <button class="btn" @onclick="Reload">Reload saved notebooks</button>
+            <button class="btn" @onclick="Reload">Refresh</button>
             @if (DesktopClient is not null) { <button class="btn" @onclick="SyncWithDesktopAsync">Sync with Desktop</button> }
         </div>
         <nav class="rows" aria-label="Saved notebooks">
             @foreach (var notebook in _notebooks)
             {
-                <button class="row" @onclick="() => Select(notebook)"><span class="row-name">@notebook.Name<span class="row-sub">@notebook.Sources.Count sources · @notebook.ConversationIds.Count conversations</span></span></button>
+                <button class="row" @onclick="() => Select(notebook)"><span class="row-name">@notebook.Name<span class="row-sub">@notebook.Sources.Count source@(notebook.Sources.Count == 1 ? "" : "s") · @notebook.ConversationIds.Count conversation@(notebook.ConversationIds.Count == 1 ? "" : "s")</span></span></button>
             }
         </nav>
         @if (_selected is not null)

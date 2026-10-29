@@ -719,6 +719,12 @@ a:hover { text-decoration: underline; }
    aria-labelledby points at. Same margin reset, same reason. */
 .sheet-title { margin: 0; font-size: var(--t-lg); font-weight: 620; }
 .sheet-group { display: flex; flex-direction: column; gap: var(--s1); }
+.circle-ai-answer-options { display:block; padding:.55rem 0; border-top:1px solid var(--rule-soft); }
+.circle-ai-answer-options > summary { cursor:pointer; color:var(--ink); font-size:var(--t-sm); font-weight:600; }
+.circle-ai-answer-options[open] > summary { margin-bottom:var(--s2); }
+.ai-settings-check { padding:0 var(--s2) var(--s2); color:var(--ink-faint); font-size:var(--t-xs); }
+.ai-settings-check > summary { width:fit-content; cursor:pointer; }
+.ai-settings-check p { margin:var(--s1) 0 0; line-height:1.4; }
 .sheet-label {
     color: var(--ink-faint);
     font-size: var(--t-xs);
