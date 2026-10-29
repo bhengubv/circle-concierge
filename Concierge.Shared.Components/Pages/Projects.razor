@@ -16,9 +16,8 @@
 <main class="projects-page" aria-labelledby="projects-heading" aria-busy="@(_loading ? "true" : "false")">
     <header class="projects-header">
         <a class="projects-back" href="/">← Back to Concierge</a>
-        <p class="projects-eyebrow">Your work</p>
         <h1 id="projects-heading">Projects</h1>
-        <p class="projects-intro">Keep a bigger goal, its workflows, decisions, and outputs together. A simple chat can stay a simple chat.</p>
+        <p class="projects-intro">Plan and track bigger goals.</p>
     </header>
 
     @if (_error is not null)
@@ -39,7 +38,7 @@
             }
             else if (_projects.Count == 0)
             {
-                <p class="projects-empty">Your projects will show here. Start with an outcome you want to reach.</p>
+                <p class="projects-empty">No projects yet.</p>
             }
             else
             {
@@ -189,12 +188,16 @@
             else if (_creating || _selected is null)
             {
                 <div class="project-create-panel">
-                    <p class="projects-eyebrow">A goal worth tracking</p>
                     <h2>What do you want to make happen?</h2>
                     <section class="project-starters" aria-labelledby="project-starters-title">
-                        <p class="projects-eyebrow">Start with an example</p>
-                        <h3 id="project-starters-title">Explore a starter project</h3>
-                        <p>Choose one to see a useful first workflow. You can edit it before saving.</p>
+                        <h3 id="project-starters-title">Start with an example</h3>
+                        @if (_selectedStarter is not null)
+                        {
+                            <p class="project-starter-selection" role="status">
+                                <strong>@_selectedStarter.Name selected.</strong>
+                                <button type="button" @onclick="FocusStarterPreviewAsync">Review details ↓</button>
+                            </p>
+                        }
                         @foreach (var group in ProjectStarterTemplates.All.GroupBy(template => template.Group))
                         {
                             <div class="project-starter-group" aria-label="@group.Key starter projects">
@@ -213,14 +216,14 @@
                         }
                         @if (_selectedStarter is not null)
                         {
-                            <div class="project-starter-preview" role="status">
+                            <div class="project-starter-preview" id="project-starter-preview" tabindex="-1" @ref="_starterPreview">
                                 <h4>@_selectedStarter.WorkflowName</h4>
                                 <p>@_selectedStarter.WorkflowOutcome</p>
-                                <p><strong>Assistant focus:</strong> @_selectedStarter.AssistantFocus</p>
+                                <p><strong>Concierge can help with:</strong> @_selectedStarter.AssistantFocus</p>
                                 <ol>
                                     @foreach (var step in _selectedStarter.Steps) { <li>@step.Name</li> }
                                 </ol>
-                                <p>These are editable examples. The assistant focus describes the intended capability; availability depends on Circle AI and configured integrations.</p>
+                                <p>Edit this before saving. Connected actions require setup.</p>
                             </div>
                         }
                     </section>
@@ -755,6 +758,9 @@
 </main>
 
 @code {
+    private ElementReference _starterPreview;
+
+    private async Task FocusStarterPreviewAsync() => await _starterPreview.FocusAsync();
     [SupplyParameterFromQuery(Name = "conversation")]
     public Guid? ConversationId { get; set; }
     [SupplyParameterFromQuery(Name = "project")]

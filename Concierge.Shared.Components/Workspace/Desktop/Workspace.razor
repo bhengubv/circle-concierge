@@ -314,27 +314,21 @@
                        while something was happening. An ordinary sentence is still answered
                        locally and never gets here. *@
                     <span class="dot dot-waiting" aria-hidden="true"></span>
-                    <span>@(_toolLoopIteration > 0 ? $"working · step {_toolLoopIteration}" : "thinking")</span>
+                    <span>@(_toolLoopIteration > 0 ? $"Working · step {_toolLoopIteration}" : "Thinking")</span>
                 }
-                else if (_designOpen)
-                {
-                    @* No engine is answering, because none is needed. Naming one
-                       here would credit a model for work it did not do. *@
-                    <span>@(_design!.Current.IsEmpty ? "an empty page" : _design.Moments[_design.Position].What.ToLowerInvariant())</span>
-                }
-                else if (_streaming)
+                else if (!_designOpen && _streaming)
                 {
                     <span class="dot dot-waiting" aria-hidden="true"></span>
-                    <span>@(_toolLoopIteration > 0 ? $"working · step {_toolLoopIteration}" : "thinking")</span>
+                    <span>@(_toolLoopIteration > 0 ? $"Working · step {_toolLoopIteration}" : "Thinking")</span>
                 }
-                else
+                else if (!_designOpen)
                 {
                     <span>Powered by Circle AI</span>
                 }
             </span>
         </header>
 
-        @if (_turnProject is { } currentProject)
+        @if (!_designOpen && _turnProject is { } currentProject)
         {
             <section class="ws-goal-overview" aria-label="Project goal and progress">
                 <div class="ws-goal-heading">
@@ -364,7 +358,7 @@
                 </div>
             </section>
         }
-        else if (_turnStartup is { } currentStartup)
+        else if (!_designOpen && _turnStartup is { } currentStartup)
         {
             <section class="ws-goal-overview ws-goal-startup" aria-label="Start-Up goal and progress">
                 <div class="ws-goal-heading">
@@ -384,7 +378,7 @@
                 </div>
             </section>
         }
-        else if (hasConversationWork)
+        else if (!_designOpen && hasConversationWork)
         {
             <div class="ws-track-goal">
                 <span>Want to keep this goal, its conversations, and deliverables together?</span>

@@ -432,6 +432,12 @@ public sealed class WorkspaceComposerTests : BunitContext
         Assert.Equal($"/projects?project={project.Id}&conversation={conversationId}&workspace={workspace.Id}",
             goalOverview.QuerySelector(".ws-goal-open")!.GetAttribute("href"));
 
+        OpenDesign(cut);
+        Assert.Empty(cut.FindAll(".ws-goal-overview"));
+        Assert.Equal("Create", cut.Find(".ws-title").TextContent.Trim());
+        cut.FindAll("button.ws-room-btn").First(b => b.TextContent.Contains("Back to conversation")).Click();
+        cut.WaitForAssertion(() => Assert.Single(cut.FindAll(".ws-goal-overview")));
+
         cut.Find("textarea.comp-input").Input("What is next?");
         Send(cut).Click();
         var messages = await _readyRuntime!.SeenMessages.Task.WaitAsync(TimeSpan.FromSeconds(10));

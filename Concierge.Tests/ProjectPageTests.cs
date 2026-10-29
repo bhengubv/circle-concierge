@@ -64,13 +64,16 @@ public sealed class ProjectPageTests : BunitContext
         Services.AddConciergeChat(Path.Combine(directory, "concierge.db"));
         Services.AddSingleton<BackgroundRuns>();
 
+        Services.GetRequiredService<NavigationManager>().NavigateTo("/projects");
         var cut = Render<Projects>();
-        cut.WaitForState(() => cut.FindAll(".projects-page[aria-busy='false']").Count > 0);
+        cut.WaitForState(() => cut.FindAll(".projects-page[aria-busy='false']").Count > 0, TimeSpan.FromSeconds(10));
         cut.WaitForAssertion(() => Assert.Equal(9, cut.FindAll(".project-starter-card").Count));
         Assert.Equal(4, cut.Find(".project-starter-group[aria-label='Home starter projects']").QuerySelectorAll(".project-starter-card").Length);
         Assert.Equal(5, cut.Find(".project-starter-group[aria-label='Work starter projects']").QuerySelectorAll(".project-starter-card").Length);
 
         await cut.InvokeAsync(() => cut.FindAll(".project-starter-card").Single(card => card.TextContent.Contains("House Chores")).ClickAsync(new MouseEventArgs()));
+        cut.WaitForAssertion(() => Assert.Contains("House Chores selected.", cut.Find(".project-starter-selection").TextContent));
+        Assert.Equal("button", cut.Find(".project-starter-selection button").TagName.ToLowerInvariant());
         cut.WaitForAssertion(() => Assert.Contains("Allowance or pay planning", cut.Find(".project-starter-preview").TextContent));
         await cut.InvokeAsync(() => cut.Find("#project-name").ChangeAsync(new ChangeEventArgs { Value = "Our house routine" }));
         await cut.InvokeAsync(() => cut.Find(".project-primary").ClickAsync(new MouseEventArgs()));

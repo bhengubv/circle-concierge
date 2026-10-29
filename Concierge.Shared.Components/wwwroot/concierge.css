@@ -2053,12 +2053,12 @@ html[data-cm-host="windows-desktop"] .comp-sep { color:var(--cm-color-outline); 
 .diagram-source .chip-out { max-width:100%; overflow-x:auto; white-space:pre; }
 
 /* Projects keep larger goals inspectable without turning every chat into a project. */
-.projects-page { width:min(1160px, calc(100% - 48px)); margin:0 auto; padding:32px 0 72px; color:var(--ink); }
-.projects-header { max-width:760px; margin:0 0 28px; }
-.projects-back { display:inline-block; margin-bottom:26px; color:var(--ink-soft); font-size:var(--t-sm); }
+.projects-page { width:min(1160px, calc(100% - 48px)); margin:0 auto; padding:20px 0 72px; color:var(--ink); }
+.projects-header { max-width:760px; margin:0 0 16px; }
+.projects-back { display:inline-block; margin-bottom:12px; color:var(--ink-soft); font-size:var(--t-sm); }
 .projects-eyebrow { margin:0 0 7px; color:var(--cm-color-accent-text); font-size:.7rem; font-weight:750; letter-spacing:.02em; text-transform:none; }
-.projects-header h1 { margin:0; font-size:clamp(2.2rem, 5vw, 3.7rem); font-weight:650; letter-spacing:-.045em; }
-.projects-intro { max-width:620px; margin:10px 0 0; color:var(--ink-soft); font-size:var(--t-md); line-height:1.6; }
+.projects-header h1 { margin:0; font-size:clamp(2.2rem, 5vw, 3.2rem); font-weight:650; letter-spacing:-.045em; }
+.projects-intro { max-width:620px; margin:4px 0 0; color:var(--ink-soft); font-size:var(--t-sm); line-height:1.45; }
 .projects-layout { display:grid; grid-template-columns:minmax(220px, 285px) minmax(0, 1fr); align-items:start; gap:22px; }
 .projects-list, .projects-detail { min-width:0; border:1px solid var(--rule); border-radius:var(--r-lg); background:var(--surface); }
 .projects-list { padding:14px; position:sticky; top:18px; }
@@ -2077,9 +2077,11 @@ html[data-cm-host="windows-desktop"] .comp-sep { color:var(--cm-color-outline); 
 .projects-empty { margin:12px 4px; color:var(--ink-soft); font-size:var(--t-sm); line-height:1.55; }
 .projects-detail { padding:clamp(18px, 3vw, 30px); }
 .project-create-panel { max-width:610px; margin:0 auto; }
-.project-starters { margin:24px 0 28px; padding:18px; border:1px solid var(--rule); border-radius:20px; background:var(--raised); }
+.project-starters { margin:12px 0 24px; padding:16px; border:1px solid var(--rule); border-radius:20px; background:var(--raised); }
 .project-starters > h3 { margin:0 0 6px; font-size:var(--t-lg); }
 .project-starters > p:not(.projects-eyebrow) { margin:0 0 16px; color:var(--ink-soft); font-size:var(--t-sm); }
+.project-starter-selection { display:flex; flex-wrap:wrap; align-items:center; gap:4px 12px; }
+.project-starter-selection button { border:0; padding:0; background:none; color:var(--cm-color-accent-text); font:inherit; font-weight:700; cursor:pointer; }
 .project-starter-group + .project-starter-group { margin-top:16px; }
 .project-starter-group h4 { margin:0 0 8px; color:var(--ink-soft); font-size:var(--t-sm); }
 .project-starter-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
