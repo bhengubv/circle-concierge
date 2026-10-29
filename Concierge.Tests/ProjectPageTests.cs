@@ -67,8 +67,8 @@ public sealed class ProjectPageTests : BunitContext
         var cut = Render<Projects>();
         cut.WaitForState(() => cut.FindAll(".projects-page[aria-busy='false']").Count > 0);
         cut.WaitForAssertion(() => Assert.Equal(9, cut.FindAll(".project-starter-card").Count));
-        Assert.Equal(4, cut.Find(".project-starter-group[aria-label='Home starter Projects']").QuerySelectorAll(".project-starter-card").Length);
-        Assert.Equal(5, cut.Find(".project-starter-group[aria-label='Work starter Projects']").QuerySelectorAll(".project-starter-card").Length);
+        Assert.Equal(4, cut.Find(".project-starter-group[aria-label='Home starter projects']").QuerySelectorAll(".project-starter-card").Length);
+        Assert.Equal(5, cut.Find(".project-starter-group[aria-label='Work starter projects']").QuerySelectorAll(".project-starter-card").Length);
 
         await cut.InvokeAsync(() => cut.FindAll(".project-starter-card").Single(card => card.TextContent.Contains("House Chores")).ClickAsync(new MouseEventArgs()));
         cut.WaitForAssertion(() => Assert.Contains("Allowance or pay planning", cut.Find(".project-starter-preview").TextContent));
@@ -212,8 +212,8 @@ public sealed class ProjectPageTests : BunitContext
         await cut.InvokeAsync(() => cut.Find(".project-add-workspace button").ClickAsync(new MouseEventArgs()));
         cut.WaitForAssertion(() => Assert.Contains("Customer discovery", cut.Find(".project-workspaces").TextContent));
         var workspace = Assert.Single((await store.GetAsync(created.Id))!.Workspaces);
-        Assert.Contains("What should an agent investigate in this Workspace?", cut.Find(".project-workspace-agent").TextContent);
-        Assert.Contains("Concierge's AI must be ready", cut.Find(".project-workspace-agent").TextContent);
+        Assert.Contains("What should an agent investigate in this workspace?", cut.Find(".project-workspace-agent").TextContent);
+        Assert.Contains("Circle AI must be ready", cut.Find(".project-workspace-agent").TextContent);
         Assert.Equal(conversationId, workspace.ConversationIds.Single());
         Assert.Equal(workflowId, workspace.WorkflowIds.Single());
         Assert.Equal($"/chat/{conversationId}?project={created.Id}&workspace={workspace.Id}",
@@ -378,7 +378,7 @@ public sealed class ProjectPageTests : BunitContext
         await cut.InvokeAsync(() => cut.Find("#startup-name").ChangeAsync(new ChangeEventArgs { Value = "Northside Ads" }));
         await cut.InvokeAsync(() => cut.Find("#startup-context").ChangeAsync(new ChangeEventArgs { Value = "Two people, ten local customers, mostly one-off campaigns." }));
         await cut.InvokeAsync(() => cut.Find("#startup-goal").ChangeAsync(new ChangeEventArgs { Value = "Grow recurring customers and expand to a second area" }));
-        await cut.InvokeAsync(() => cut.FindAll("button.project-primary").Single(button => button.TextContent.Contains("Create Start-Up journey")).ClickAsync(new MouseEventArgs()));
+        await cut.InvokeAsync(() => cut.FindAll("button.project-primary").Single(button => button.TextContent.Contains("Create business journey")).ClickAsync(new MouseEventArgs()));
 
         cut.WaitForAssertion(() => Assert.Contains("Northside Ads", cut.Find(".startup-detail-head").TextContent));
         var startup = Assert.Single(await store.ListStartupsAsync());

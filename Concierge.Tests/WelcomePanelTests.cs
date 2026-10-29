@@ -46,6 +46,19 @@ public sealed class WelcomePanelTests : BunitContext
     }
 
     [Fact]
+    public void Desktop_welcome_offers_a_direct_plan_action_without_duplicate_destinations()
+    {
+        var requested = false;
+        var cut = Render<WelcomePanel>(parameters => parameters
+            .Add(panel => panel.OnPlanRequested, () => requested = true));
+
+        Assert.Empty(cut.FindAll(".welcome-work-paths"));
+        cut.Find(".welcome-plan-action").Click();
+
+        Assert.True(requested);
+    }
+
+    [Fact]
     public void Runtime_catalogue_is_rendered_as_live_readiness_not_as_a_starter_claim()
     {
         var catalog = new ChatRuntimeCapabilityCatalog(

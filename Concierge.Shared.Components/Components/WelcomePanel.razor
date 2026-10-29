@@ -7,14 +7,10 @@
         <span class="welcome-engine">Powered by Circle AI</span>
     </div>
     <h2 id="welcome-title">What would help today?</h2>
-    <p class="welcome-intro">Choose an area to find a starting point. You can edit the draft before sending.</p>
-    @if (!IsHandheld)
+    <p class="welcome-intro">Tell Concierge what you need, or add an idea to your message.</p>
+    @if (!IsHandheld && OnPlanRequested.HasDelegate)
     {
-        <nav class="welcome-work-paths" aria-label="Where your work goes">
-            <a href="/projects"><strong>Projects</strong><span>Plan and track a bigger goal</span></a>
-            <a href="/notebooks"><strong>Notebooks</strong><span>Give Concierge sources to use</span></a>
-            <a href="/library"><strong>Library</strong><span>Return to conversations and creations</span></a>
-        </nav>
+        <button class="welcome-plan-action" type="button" @onclick="OnPlanRequested">Make a plan</button>
     }
     @if (SetupGuidance is { } guidance)
     {
@@ -171,15 +167,15 @@
         @foreach (var capability in CurrentItems)
         {
             <button class="welcome-tile" type="button" @key="capability.Title"
+                    aria-label="Add @capability.Opener to your message"
                     @onclick="@(() => OnPromptSelected.InvokeAsync(capability.Opener))">
                 <span class="welcome-tile-icon" aria-hidden="true">@capability.Icon</span>
                 <span class="welcome-tile-title">@capability.Title</span>
                 <span class="welcome-tile-copy">@capability.Opener</span>
-                <span class="welcome-tile-arrow" aria-hidden="true">↗</span>
+                <span class="welcome-tile-add" aria-hidden="true">+</span>
             </button>
         }
     </div>
-    <p class="welcome-footnote">These are starting ideas, not separate apps. Nothing is sent until you choose to send it.</p>
 </section>
 
 @code {
@@ -431,6 +427,7 @@
     private static string FormatLocalTime(DateTimeOffset value) => value.ToLocalTime().ToString("t");
 
     [Parameter] public EventCallback<string> OnPromptSelected { get; set; }
+    [Parameter] public EventCallback OnPlanRequested { get; set; }
     [Parameter] public ChatRuntimeCapabilityCatalog? CapabilityCatalog { get; set; }
     [Parameter] public ChatRuntimeCapabilityCatalog? DesktopCapabilityCatalog { get; set; }
     [Parameter] public bool IsHandheld { get; set; }

@@ -4,7 +4,7 @@
 @if (Client is not null)
 {
 <details class="connected-devices" open="@_expanded">
-    <summary @onclick="() => _expanded = !_expanded" @onclick:preventDefault>@(_devices.Count == 0 ? "Finding Desktop…" : $"{_devices.Count(d => d.Connected)} devices connected")</summary>
+    <summary @onclick="() => _expanded = !_expanded" @onclick:preventDefault>@DeviceSummary</summary>
     <ul>
         @foreach (var device in _devices)
         {
@@ -19,6 +19,13 @@
     private IReadOnlyList<Concierge.Away.ConnectedDevice> _devices = [];
     private bool _expanded;
     private readonly CancellationTokenSource _stop = new();
+    private string DeviceSummary => _devices.Count == 0
+        ? "Looking for devices…"
+        : _devices.Count(d => d.Connected) switch
+        {
+            1 => "1 device connected",
+            var count => $"{count} devices connected"
+        };
     protected override void OnInitialized()
     {
         // Shared pages also run in heads without the Away bridge.

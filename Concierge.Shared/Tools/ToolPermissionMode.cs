@@ -49,15 +49,23 @@ public static class ToolPermissionModes
         _ => "Ask first",
     };
 
+    /// <summary>The consequence shown on the compact Desktop control.</summary>
+    public static string DecisionLabel(this ToolPermissionMode mode) => mode switch
+    {
+        ToolPermissionMode.PlanOnly => "Plan only",
+        ToolPermissionMode.ActFreely => "Act without asking",
+        _ => "Ask before changes",
+    };
+
     /// <summary>
     /// What it means, in one line, said plainly. A person choosing this is
     /// deciding what software may do to their machine.
     /// </summary>
     public static string Explain(this ToolPermissionMode mode) => mode switch
     {
-        ToolPermissionMode.PlanOnly => "It says what it would do, and does none of it.",
-        ToolPermissionMode.ActFreely => "It acts without asking, including writing files.",
-        _ => "It reads freely, and asks before changing anything.",
+        ToolPermissionMode.PlanOnly => "No actions are taken.",
+        ToolPermissionMode.ActFreely => "Makes changes without asking.",
+        _ => "Reads freely; asks before making changes.",
     };
 
     /// <summary>Whether tool calls execute at all.</summary>

@@ -16,7 +16,7 @@
 <main class="projects-page" aria-labelledby="projects-heading" aria-busy="@(_loading ? "true" : "false")">
     <header class="projects-header">
         <a class="projects-back" href="/">← Back to Concierge</a>
-        <p class="projects-eyebrow">YOUR WORK</p>
+        <p class="projects-eyebrow">Your work</p>
         <h1 id="projects-heading">Projects</h1>
         <p class="projects-intro">Keep a bigger goal, its workflows, decisions, and outputs together. A simple chat can stay a simple chat.</p>
     </header>
@@ -55,7 +55,7 @@
             @if (_startups.Count > 0)
             {
                 <section class="project-startup-list" aria-labelledby="startup-list-heading">
-                    <h3 id="startup-list-heading">Start-Up journeys</h3>
+                    <h3 id="startup-list-heading">Business journeys</h3>
                     @foreach (var startup in _startups)
                     {
                         <button class="project-list-item @(startup.Id == _selectedStartup?.Id ? "is-selected" : null)" type="button"
@@ -72,7 +72,7 @@
             @if (_creatingBusiness)
             {
                 <div class="project-create-panel startup-create-panel">
-                    <p class="projects-eyebrow">START-UP MODE · A BUSINESS-LEVEL JOURNEY</p>
+                    <p class="projects-eyebrow">Business journey</p>
                     <h2>New business or existing business?</h2>
                     <div class="startup-choice" role="group" aria-label="Business journey type">
                         <button type="button" aria-pressed="@(_newBusinessType == BusinessJourneyType.NewBusiness ? "true" : "false")"
@@ -96,9 +96,9 @@
                     }
                     <label for="startup-goal">Where would you like the business to get to?</label>
                     <textarea id="startup-goal" @bind="_startupGoal" rows="3" placeholder="Describe the outcome in your own words"></textarea>
-                    <p class="project-linked-chat">This saves the business journey first. You can connect Projects and workflows as the plan takes shape.</p>
+                    <p class="project-linked-chat">This saves the business journey first. You can connect projects and workflows as the plan takes shape.</p>
                     <button class="project-primary" type="button" disabled="@_saving" @onclick="CreateStartupAsync">
-                        @(_saving ? "Saving…" : "Create Start-Up journey")
+                        @(_saving ? "Saving…" : "Create business journey")
                     </button>
                 </div>
             }
@@ -106,7 +106,7 @@
             {
                 <div class="project-detail-head startup-detail-head">
                     <div>
-                        <p class="projects-eyebrow">START-UP MODE · @(_selectedStartup.Type == BusinessJourneyType.NewBusiness ? "NEW BUSINESS" : "EXISTING BUSINESS") · REVISION @_selectedStartup.Revision</p>
+                        <p class="projects-eyebrow">@(_selectedStartup.Type == BusinessJourneyType.NewBusiness ? "New business" : "Existing business") · Revision @_selectedStartup.Revision</p>
                         <h2>@_selectedStartup.Name</h2>
                         <p>@_selectedStartup.Goal</p>
                     </div>
@@ -120,7 +120,7 @@
                     </select>
                 </div>
                 <section class="project-section" aria-labelledby="startup-context-title">
-                    <div class="project-section-head"><div><p class="projects-eyebrow">BUSINESS CONTEXT</p><h3 id="startup-context-title">@(_selectedStartup.Type == BusinessJourneyType.NewBusiness ? "Starting point" : "Current business")</h3></div></div>
+                    <div class="project-section-head"><div><p class="projects-eyebrow">Business context</p><h3 id="startup-context-title">@(_selectedStartup.Type == BusinessJourneyType.NewBusiness ? "Starting point" : "Current business")</h3></div></div>
                     @if (_editingStartupDetails)
                     {
                         <div class="startup-edit-form">
@@ -146,7 +146,7 @@
                 @if (_selectedStartup.ConversationIds.Count > 0)
                 {
                     <section class="project-section" aria-labelledby="startup-conversations-title">
-                        <div class="project-section-head"><div><p class="projects-eyebrow">CONTINUE THE PLAN</p><h3 id="startup-conversations-title">Planning conversations</h3></div></div>
+                        <div class="project-section-head"><div><p class="projects-eyebrow">Continue the plan</p><h3 id="startup-conversations-title">Planning conversations</h3></div></div>
                         <ul class="startup-conversation-list">
                             @foreach (var conversationId in _selectedStartup.ConversationIds)
                             {
@@ -156,7 +156,7 @@
                     </section>
                 }
                 <section class="project-section" aria-labelledby="startup-projects-title">
-                    <div class="project-section-head"><div><p class="projects-eyebrow">CONNECTED WORK</p><h3 id="startup-projects-title">Projects</h3></div></div>
+                    <div class="project-section-head"><div><p class="projects-eyebrow">Connected work</p><h3 id="startup-projects-title">Projects</h3></div></div>
                     @if (_selectedStartup.ProjectIds.Count == 0)
                     {
                         <p class="projects-empty">No projects are connected yet. Start with one focused area of work, then add related projects as the business grows.</p>
@@ -189,15 +189,15 @@
             else if (_creating || _selected is null)
             {
                 <div class="project-create-panel">
-                    <p class="projects-eyebrow">A GOAL WORTH TRACKING</p>
+                    <p class="projects-eyebrow">A goal worth tracking</p>
                     <h2>What do you want to make happen?</h2>
                     <section class="project-starters" aria-labelledby="project-starters-title">
-                        <p class="projects-eyebrow">START WITH AN EXAMPLE</p>
-                        <h3 id="project-starters-title">Explore a starter Project</h3>
+                        <p class="projects-eyebrow">Start with an example</p>
+                        <h3 id="project-starters-title">Explore a starter project</h3>
                         <p>Choose one to see a useful first workflow. You can edit it before saving.</p>
                         @foreach (var group in ProjectStarterTemplates.All.GroupBy(template => template.Group))
                         {
-                            <div class="project-starter-group" aria-label="@group.Key starter Projects">
+                            <div class="project-starter-group" aria-label="@group.Key starter projects">
                                 <h4>@group.Key</h4>
                                 <div class="project-starter-grid">
                                     @foreach (var template in group)
@@ -230,7 +230,7 @@
                     <textarea id="project-outcome" @bind="_newOutcome" rows="3" placeholder="Describe the outcome in your own words"></textarea>
                     @if (_projectBeingCreatedForStartup is { } startupProjectId && _startups.FirstOrDefault(startup => startup.Id == startupProjectId) is { } parentStartup)
                     {
-                        <p class="project-linked-chat">This project will be connected to the @parentStartup.Name Start-Up journey.</p>
+                        <p class="project-linked-chat">This project will be connected to the @parentStartup.Name business journey.</p>
                     }
                     <label for="project-kind">What kind of work is this?</label>
                     <select id="project-kind" @bind="_newWorkType">
@@ -251,7 +251,7 @@
             {
                 <div class="project-detail-head">
                     <div>
-                        <p class="projects-eyebrow">@_selected.WorkType · REVISION @_selected.Revision</p>
+                        <p class="projects-eyebrow">@_selected.WorkType · Revision @_selected.Revision</p>
                         <h2>@_selected.Name</h2>
                         <p>@_selected.DesiredOutcome</p>
                     </div>
@@ -292,20 +292,20 @@
 
                 <section class="project-section" aria-labelledby="project-agents-title" aria-live="polite">
                     <div class="project-section-head">
-                        <div><p class="projects-eyebrow">BOUNDED CIRCLE AI WORK</p><h3 id="project-agents-title">Project agents</h3></div>
+                        <div><p class="projects-eyebrow">Circle AI work</p><h3 id="project-agents-title">Project agents</h3></div>
                     </div>
-                    <p>Concierge can research and analyse this Project in the background. These reviews cannot change files or take external actions; check the notes before using them. Concierge runs one review at a time on this device, with additional tasks queued.</p>
+                    <p>Concierge can research and analyse this project in the background. These reviews cannot change files or take external actions; check the notes before using them. Concierge runs one review at a time on this device, with additional tasks queued.</p>
                     @if (CircleAiRuntime is not { } agentRuntime)
                     {
                         <p class="projects-empty">Concierge's AI is not available in this app.</p>
                     }
                     else if (!agentRuntime.IsReady)
                     {
-                        <p class="projects-empty" role="status">Concierge's AI is getting ready. Project reviews will be available when it is ready.</p>
+                        <p class="projects-empty" role="status">Circle AI is getting ready. Project reviews will be available when it is ready.</p>
                     }
                     else if (_selected.Status is ProjectStatus.Completed or ProjectStatus.Archived)
                     {
-                        <p class="projects-empty">Reopen this Project before assigning agent work.</p>
+                        <p class="projects-empty">Reopen this project before assigning agent work.</p>
                     }
                     else
                     {
@@ -314,7 +314,7 @@
                             <input id="project-agent-name" @bind="_agentName" maxlength="80" />
                             <label for="project-agent-task">What should it investigate?</label>
                             <textarea id="project-agent-task" @bind="_agentTask" rows="3" maxlength="4000" placeholder="For example: Compare the first three customer groups for this idea. Return evidence to look for, assumptions, and a recommendation."></textarea>
-                            <button type="button" disabled="@_saving" @onclick="QueueAgentAsync">@(_saving ? "Queuing…" : "Ask Concierge to review this Project")</button>
+                            <button type="button" disabled="@_saving" @onclick="QueueAgentAsync">@(_saving ? "Queuing…" : "Ask Concierge to review this project")</button>
                         </div>
                     }
                     @if (!_selected.AgentRuns.Any(run => run.WorkspaceId is null))
@@ -362,11 +362,11 @@
                 </section>
 
                 <section class="project-section" aria-labelledby="project-butler-title" aria-live="polite">
-                    <div class="project-section-head"><div><p class="projects-eyebrow">OPERATIONAL EXECUTION</p><h3 id="project-butler-title">Butler activity</h3></div></div>
-                    <p>Concierge keeps Butler's external work attached to this Project so you can check progress and results here.</p>
+                    <div class="project-section-head"><div><p class="projects-eyebrow">External work</p><h3 id="project-butler-title">Butler activity</h3></div></div>
+                    <p>Concierge keeps Butler's external work attached to this project so you can check progress and results here.</p>
                     @if (_selected.ButlerRuns.Count == 0)
                     {
-                        <p class="projects-empty">No work has been sent to Butler from this Project.</p>
+                        <p class="projects-empty">No work has been sent to Butler from this project.</p>
                     }
                     else
                     {
@@ -416,7 +416,7 @@
                 </section>
 
                 <section class="project-section" aria-labelledby="project-activity-title" aria-live="polite">
-                    <div class="project-section-head"><div><p class="projects-eyebrow">FROM THE CONVERSATIONS</p><h3 id="project-activity-title">Recent activity</h3></div></div>
+                    <div class="project-section-head"><div><p class="projects-eyebrow">From your conversations</p><h3 id="project-activity-title">Recent activity</h3></div></div>
                     @if (_activity.Count == 0)
                     {
                         <p class="projects-empty">No conversations are linked to this project yet.</p>
@@ -446,7 +446,7 @@
                 </section>
 
                 <section class="project-section" aria-labelledby="workspaces-title">
-                    <div class="project-section-head"><div><p class="projects-eyebrow">FOCUSED AREAS OF WORK</p><h3 id="workspaces-title">Workspaces</h3></div></div>
+                    <div class="project-section-head"><div><p class="projects-eyebrow">Focused areas of work</p><h3 id="workspaces-title">Workspaces</h3></div></div>
                     @if (_selected.Workspaces.Count > 0)
                     {
                         <div class="project-workspaces">
@@ -516,17 +516,17 @@
                                                 </div>
                                             </article>
                                         }
-                                        <label for="@($"workspace-agent-task-{workspace.Id}")">What should an agent investigate in this Workspace?</label>
+                                        <label for="@($"workspace-agent-task-{workspace.Id}")">What should an agent investigate in this workspace?</label>
                                         <textarea id="@($"workspace-agent-task-{workspace.Id}")" rows="2" maxlength="4000"
                                                   value="@WorkspaceAgentTask(workspace.Id)"
                                                   @oninput="@(args => SetWorkspaceAgentTask(workspace.Id, args.Value?.ToString()))"></textarea>
                                         @if (CircleAiRuntime is { IsReady: true })
                                         {
-                                            <button type="button" disabled="@_saving" @onclick="@(() => QueueWorkspaceAgentAsync(workspace.Id))">Ask Concierge to review this Workspace</button>
+                                            <button type="button" disabled="@_saving" @onclick="@(() => QueueWorkspaceAgentAsync(workspace.Id))">Ask Concierge to review this workspace</button>
                                         }
                                         else
                                         {
-                                            <p class="projects-empty" role="status">Concierge's AI must be ready on this device before Workspace reviews can run.</p>
+                                            <p class="projects-empty" role="status">Circle AI must be ready on this device before workspace reviews can run.</p>
                                         }
                                     </section>
                                 </article>
@@ -535,7 +535,7 @@
                     }
                     else
                     {
-                        <p class="projects-empty">Create a focused Workspace for a related set of conversations and workflows.</p>
+                        <p class="projects-empty">Create a focused workspace for a related set of conversations and workflows.</p>
                     }
                     <div class="project-add-workflow project-add-workspace">
                         <label class="sr" for="workspace-name">Workspace name</label>
@@ -559,7 +559,7 @@
 
                 <section class="project-section" aria-labelledby="workflows-title">
                     <div class="project-section-head">
-                        <div><p class="projects-eyebrow">HOW THE WORK MOVES</p><h3 id="workflows-title">Workflows</h3></div>
+                        <div><p class="projects-eyebrow">How the work moves</p><h3 id="workflows-title">Workflows</h3></div>
                     </div>
                     @if (_selected.Workflows.Count == 0)
                     {
@@ -674,7 +674,7 @@
                 </section>
 
                 <section class="project-section" aria-labelledby="assumptions-title">
-                    <div class="project-section-head"><div><p class="projects-eyebrow">KEEP THE CONTEXT</p><h3 id="assumptions-title">Assumptions</h3></div></div>
+                    <div class="project-section-head"><div><p class="projects-eyebrow">Keep the context</p><h3 id="assumptions-title">Assumptions</h3></div></div>
                     @if (_selected.Assumptions.Count > 0)
                     {
                         <ul class="project-assumptions">@foreach (var assumption in _selected.Assumptions) { <li>@assumption</li> }</ul>
@@ -687,7 +687,7 @@
                 </section>
 
                 <section class="project-section" aria-labelledby="decisions-title">
-                    <div class="project-section-head"><div><p class="projects-eyebrow">WHY THE PLAN LOOKS THIS WAY</p><h3 id="decisions-title">Decisions</h3></div></div>
+                    <div class="project-section-head"><div><p class="projects-eyebrow">Why the plan looks this way</p><h3 id="decisions-title">Decisions</h3></div></div>
                     @if (_selected.Decisions.Count > 0)
                     {
                         @foreach (var decision in _selected.Decisions)
@@ -705,7 +705,7 @@
                 </section>
 
                 <section class="project-section" aria-labelledby="artifacts-title">
-                    <div class="project-section-head"><div><p class="projects-eyebrow">WHAT THE WORK PRODUCED</p><h3 id="artifacts-title">Artifacts</h3></div></div>
+                    <div class="project-section-head"><div><p class="projects-eyebrow">What the work produced</p><h3 id="artifacts-title">Artifacts</h3></div></div>
                     @if (_selected.Artifacts.Count > 0 || _conversationArtifacts.Count > 0)
                     {
                         <ul class="project-artifacts">
@@ -742,7 +742,7 @@
                 </section>
 
                 <section class="project-section project-resources" aria-labelledby="resources-title">
-                    <div><p class="projects-eyebrow">PLAN WITHIN YOUR LIMITS</p><h3 id="resources-title">Budget &amp; timing</h3></div>
+                    <div><p class="projects-eyebrow">Plan within your limits</p><h3 id="resources-title">Budget &amp; timing</h3></div>
                     <label for="project-budget">Budget limit</label>
                     <input id="project-budget" type="number" min="0" step="0.01" @bind="_budgetText" placeholder="Optional" />
                     <label for="project-target">Target date</label>

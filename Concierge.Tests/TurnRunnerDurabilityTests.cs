@@ -13,6 +13,63 @@ namespace Concierge.Tests;
 public sealed class TurnRunnerDurabilityTests : IAsyncLifetime
 {
     [Fact]
+    public async Task Explicit_folder_list_uses_the_read_only_tool_without_model_inference()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"concierge-list-{Guid.NewGuid():N}");
+        var folder = Path.Combine(root, "fixture");
+        Directory.CreateDirectory(folder);
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(folder, "orders.csv"), "id,status\n");
+            await File.WriteAllTextAsync(Path.Combine(folder, "policy.md"), "# Policy\n");
+            var harness = new AgentHarnessService(root);
+            var registry = new AgentToolRegistry([new ListFilesTool(harness)]);
+            var runtime = new CountingRuntime("invented.txt");
+            var conversation = await _store.StartAsync("local");
+
+            var result = await Runner(runtime, registry: registry, harness: harness).RunAsync(new TurnRequest(
+                conversation.Id,
+                "What files are in the fixture folder? Please look before answering.", runtime));
+
+            Assert.Equal(0, runtime.Calls);
+            Assert.Contains("fixture/orders.csv", result.Text);
+            Assert.Contains("fixture/policy.md", result.Text);
+            Assert.DoesNotContain("invented.txt", result.Text);
+            Assert.Equal("Concierge tools", result.AnsweredBy);
+            var events = await _store.ReadEventsAsync(conversation.Id);
+            Assert.Contains(events, entry => entry.Type == ConversationEventType.ToolCall
+                && entry.Data.Contains("list_files", StringComparison.Ordinal));
+            Assert.Contains(events, entry => entry.Type == ConversationEventType.ToolResult
+                && entry.Data.Contains("orders.csv", StringComparison.Ordinal));
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
+    public async Task Plan_only_does_not_list_a_folder()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"concierge-list-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(Path.Combine(root, "fixture"));
+        try
+        {
+            await File.WriteAllTextAsync(Path.Combine(root, "fixture", "private.txt"), "private");
+            var harness = new AgentHarnessService(root);
+            var registry = new AgentToolRegistry([new ListFilesTool(harness)]);
+            var runtime = new CountingRuntime("I would check the folder first.");
+            var conversation = await _store.StartAsync("local");
+
+            await Runner(runtime, registry: registry, harness: harness).RunAsync(new TurnRequest(
+                conversation.Id, "What files are in the fixture folder?", runtime,
+                Settings: new TurnSettings(ExecuteTools: false)));
+
+            Assert.Equal(1, runtime.Calls);
+            Assert.DoesNotContain(await _store.ReadEventsAsync(conversation.Id),
+                entry => entry.Type is ConversationEventType.ToolCall or ConversationEventType.ToolResult);
+        }
+        finally { Directory.Delete(root, recursive: true); }
+    }
+
+    [Fact]
     public async Task Explicit_workspace_file_read_reaches_the_runtime_with_a_tool_receipt()
     {
         var root = Path.Combine(Path.GetTempPath(), $"concierge-read-{Guid.NewGuid():N}");

@@ -9,9 +9,8 @@ namespace Concierge.Tests;
 ///
 /// **Found by reading Help and then looking at the composer it describes.** It said: *"The
 /// switch under the composer is 'May act on its own'. Off means it asks every time."* There is
-/// no switch. Nothing in the app carries that name. The composer has three buttons — Plan
-/// only, Ask first, Act freely — and Help is the one room whose entire job is telling somebody
-/// where to look.
+/// no switch. Nothing in the app carries that name. The composer has one action control
+/// with three choices, and Help is the one room whose job is telling somebody where to look.
 ///
 /// It also said the paperclip takes a text file up to 256 KB, and that was the kinder half of
 /// a worse problem. The file picker offers .png, .jpg, .gif and .webp. The send path handles
@@ -59,8 +58,8 @@ public sealed class HelpAndPaperclipTests : BunitContext
     /// </summary>
     [Theory]
     [InlineData("Plan only")]
-    [InlineData("Ask first")]
-    [InlineData("Act freely")]
+    [InlineData("Ask before changes")]
+    [InlineData("Act without asking")]
     public void And_names_the_three_that_are(string mode)
     {
         var room = Help();

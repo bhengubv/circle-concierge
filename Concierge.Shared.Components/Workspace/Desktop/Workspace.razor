@@ -87,12 +87,11 @@
             <button class="ws-item ws-start-conversation" type="button" @onclick="StartNewAsync">
                 <span class="ws-new-thread-mark" aria-hidden="true">+</span>
                 <span class="ws-item-label">New conversation</span>
-                <span class="ws-start-hint">Start here</span>
             </button>
             <a class="ws-item ws-project-link" href="@(_active is null ? "/projects" : $"/projects?conversation={_active.Id}")">
                 <span class="ws-new-thread-mark" aria-hidden="true">◇</span>
                 <span class="ws-item-label">Projects</span>
-                <span class="ws-start-hint">Organize bigger goals</span>
+                <span class="ws-start-hint">Goals and progress</span>
             </a>
             <WorkDestinations />
             @*
@@ -275,7 +274,7 @@
         <button class="ws-runtime" type="button" title="Open Circle AI and app settings" aria-label="Open Circle AI and app settings"
                 @onclick="OpenSettings">
             <span class="ws-ai-emblem" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#cm-icon-circle" /></svg><i class="@(runtime.RegistryAvailable ? "is-ready" : null)"></i></span>
-            <span class="ws-ai-copy"><span class="ws-ai-title">Circle AI</span><span class="ws-runtime-name">AI and app settings</span></span>
+            <span class="ws-ai-copy"><span class="ws-ai-title">Circle AI</span><span class="ws-runtime-name">@(_activeRuntime?.IsReady == true ? "Ready" : "Check status")</span></span>
             @* Was the literal text "on device", under whichever engine was
                selected — including the three that are a cloud provider. The
                sidebar was contradicting the product's main claim on the one
@@ -340,7 +339,7 @@
             <section class="ws-goal-overview" aria-label="Project goal and progress">
                 <div class="ws-goal-heading">
                     <div class="ws-goal-name-block">
-                        <span class="ws-goal-kicker">@(_turnProjectWorkspace is null ? "PROJECT GOAL" : "WORKSPACE GOAL")</span>
+                        <span class="ws-goal-kicker">@(_turnProjectWorkspace is null ? "Project goal" : "Workspace goal")</span>
                         <strong>@(_turnProjectWorkspace?.Name ?? currentProject.Name)</strong>
                     </div>
                     <span class="ws-goal-status" data-state="@(_turnProjectWorkspace is null ? ProjectStatusKey(currentProject.Status) : ProjectWorkStatusKey(_turnProjectWorkspace.Status))">
@@ -370,11 +369,11 @@
             <section class="ws-goal-overview ws-goal-startup" aria-label="Start-Up goal and progress">
                 <div class="ws-goal-heading">
                     <div class="ws-goal-name-block">
-                        <span class="ws-goal-kicker">START-UP GOAL · @(currentStartup.Type == Concierge.Shared.Planning.BusinessJourneyType.NewBusiness ? "NEW BUSINESS" : "EXISTING BUSINESS")</span>
+                        <span class="ws-goal-kicker">Startup goal · @(currentStartup.Type == Concierge.Shared.Planning.BusinessJourneyType.NewBusiness ? "New business" : "Existing business")</span>
                         <strong>@currentStartup.Name</strong>
                     </div>
                     <span class="ws-goal-status" data-state="@ProjectStatusKey(currentStartup.Status)">@ProjectStatusLabel(currentStartup.Status)</span>
-                    <a class="ws-goal-open" href="/projects">Open Start-Up overview <span aria-hidden="true">↗</span></a>
+                    <a class="ws-goal-open" href="/projects">Open startup overview <span aria-hidden="true">↗</span></a>
                 </div>
                 <p class="ws-goal-outcome">@currentStartup.Goal</p>
                 <div class="ws-goal-facts">
@@ -389,7 +388,7 @@
         {
             <div class="ws-track-goal">
                 <span>Want to keep this goal, its conversations, and deliverables together?</span>
-                <a href="@($"/projects?conversation={_active!.Id}")">Track it as a Project <span aria-hidden="true">↗</span></a>
+                <a href="@($"/projects?conversation={_active!.Id}")">Track it as a project <span aria-hidden="true">↗</span></a>
             </div>
         }
 
@@ -413,7 +412,7 @@
                 </svg>
                 <span class="empty-line">Ask for anything, or pick up a thread</span>
             </div>
-            <WelcomePanel OnPromptSelected="UseStarterPrompt" CapabilityCatalog="CircleAiCapabilityCatalog" />
+            <WelcomePanel OnPromptSelected="UseStarterPrompt" OnPlanRequested="StartPlanAsync" CapabilityCatalog="CircleAiCapabilityCatalog" />
         }
         else
         {
@@ -579,7 +578,7 @@
                     <textarea class="comp-input"
                               disabled="@(!WorkspaceReady)"
                               rows="1"
-                              placeholder="@CanvasInvitation"
+                              placeholder="@(_permission == Concierge.Shared.Tools.ToolPermissionMode.PlanOnly ? "What would you like to plan?" : CanvasInvitation)"
                               @bind="_composerText"
                               @bind:event="oninput"
                               @bind:after="OnComposerChangedAsync"></textarea>
@@ -635,8 +634,8 @@
                     </button>
                 </div>
 
-                @* Codex puts exactly these two under the input. Both were
-                   screens in Concierge. *@
+                @* Actions belong beside the message, with their consequences
+                   available when the person chooses to change them. *@
                 @if (_activeSkillIds.Count > 0)
                 {
                     @* Beside the input, because they change every reply that
@@ -656,23 +655,13 @@
                 }
 
                 <div class="comp-controls">
-                    @* A checkbox renders Windows' own blue tick box, which
-                       belongs to no design system. Codex uses a switch. *@
-                    @*
-                        Three choices, not a switch. A switch has two states and
-                        this has three, and the two it used to show were both
-                        mislabelled: off meant tools never ran rather than that
-                        it asked, and on still asked before every write.
-                    *@
-                    @*
-                        The permission modes and the engine name are both about a model
-                        answering, and with the canvas open none is. Worse than useless:
-                        the row said "Ask first" while Design deliberately acts without
-                        asking, so it advertised the opposite of what was happening.
-                    *@
+                    @* Show the chosen consequence first. The other choices stay one
+                       click away, and the control disappears for the canvas. *@
                     @if (!_designOpen)
                     {
-                    <div class="seg" role="group" aria-label="What it may do">
+                    <details class="action-mode-picker" @key="_permission">
+                        <summary title="@_permission.Explain()">@_permission.DecisionLabel()</summary>
+                        <div class="action-mode-options" role="group" aria-label="What Concierge may do">
                         @foreach (var mode in new[]
                         {
                             Concierge.Shared.Tools.ToolPermissionMode.PlanOnly,
@@ -681,15 +670,13 @@
                         })
                         {
                             var choice = mode;
-                            <button class="seg-opt @(_permission == choice ? "is-on" : null)"
+                            <button class="action-mode-option @(_permission == choice ? "is-on" : null)"
                                     type="button"
-                                    title="@choice.Explain()"
                                     aria-pressed="@(_permission == choice ? "true" : "false")"
-                                    @onclick="@(() => SetPermission(choice))">@choice.Label()</button>
+                                    @onclick="@(() => SetPermission(choice))"><strong>@choice.DecisionLabel()</strong><span>@choice.Explain()</span></button>
                         }
-                    </div>
-                    <span class="comp-sep">·</span>
-                    <span>Circle AI</span>
+                        </div>
+                    </details>
                     }
                     @if (!string.IsNullOrWhiteSpace(_composerHint))
                     {

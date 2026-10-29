@@ -110,8 +110,14 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         var hadDraft = !string.IsNullOrWhiteSpace(_composerText);
         _composerText = hadDraft ? _composerText.TrimEnd() + Environment.NewLine + prompt : prompt;
         _composerHint = hadDraft
-            ? "Added below your draft. Edit it before sending."
-            : "Added to the composer. Edit it before sending.";
+            ? "Added below your message. Review before sending."
+            : "Added to your message. Review before sending.";
+    }
+
+    protected async Task StartPlanAsync()
+    {
+        SetPermission(Concierge.Shared.Tools.ToolPermissionMode.PlanOnly);
+        await JS.InvokeVoidAsync("conciergeThread.focusComposer");
     }
     protected bool _streaming;
     protected string _streamingBuffer = string.Empty;
@@ -3199,7 +3205,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     protected static string FormatRole(string role) => role switch
     {
         "user" => "You",
-        "assistant" => "Assistant",
+        "assistant" => "Concierge",
         "system" => "System",
         _ => role
     };

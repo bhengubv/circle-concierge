@@ -67,7 +67,7 @@ public sealed class ModelSetupTutorialTests : BunitContext
 
         cut.Find(".model-setup-tutorial-navigation button:last-child").Click();
         Assert.Contains("STEP 2 OF 3", cut.Markup);
-        Assert.Contains("Choose how much control", cut.Find(".model-setup-tutorial").TextContent);
+        Assert.Contains("Decide what Concierge may do", cut.Find(".model-setup-tutorial").TextContent);
 
         cut.Find(".model-setup-tutorial-navigation button:last-child").Click();
         Assert.Contains("STEP 3 OF 3", cut.Markup);

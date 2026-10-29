@@ -226,6 +226,7 @@ public sealed class TurnRunner(
         var plan = new PlanProgress();
 
         FailoverOutcome? answeredBy = null;
+        string? localAnsweredBy = null;
         string? last = null;
         string? stopped = null;
         var runStatus = "completed";
@@ -251,6 +252,35 @@ public sealed class TurnRunner(
             }
 
             progress?.Report(new TurnStep(TurnStage.Recorded));
+
+            // A direct request for files in a named folder has a factual answer the
+            // read-only harness can supply immediately. Asking the model to decide
+            // whether to use list_files made this simple request take minutes and
+            // sometimes produce invented filenames instead of tool evidence.
+            var directList = settings.ExecuteTools && harness is not null
+                ? ExplicitFileListPlanner.Plan(request.Text)
+                : null;
+            if (directList is not null && tools.Tools.Any(tool => tool.Name == "list_files"))
+            {
+                await store.AppendEventAsync(request.ConversationId, ConversationEventType.ToolCall,
+                    directList.ToolName + " " + (directList.Arguments?.ToJsonString() ?? "{}"),
+                    cancellationToken: runToken).ConfigureAwait(false);
+                var outcome = (await scheduler.ExecuteAsync([directList], runToken).ConfigureAwait(false)).Single();
+                await store.AppendEventAsync(request.ConversationId, ConversationEventType.ToolResult,
+                    ToolCallProtocol.FormatResult(outcome.ToolName, outcome.Result),
+                    cancellationToken: runToken).ConfigureAwait(false);
+
+                last = outcome.Result.Success
+                    ? FormatFileList(outcome.Result.Output)
+                    : outcome.Result.FailureMessage ?? "I could not list that folder.";
+                localAnsweredBy = "Concierge tools";
+                await store.AppendEventAsync(request.ConversationId, ConversationEventType.AssistantMessage,
+                    last, localAnsweredBy, runToken).ConfigureAwait(false);
+                progress?.Report(new TurnStep(TurnStage.Streaming, Text: last));
+                progress?.Report(new TurnStep(TurnStage.Recorded));
+            }
+            else
+            {
 
             // The installed service's conversational endpoint does not invoke Concierge's
             // tool catalogue. A direct request to read named local files can still be
@@ -450,6 +480,7 @@ public sealed class TurnRunner(
                     break;
                 }
             }
+            }
         }
         catch (OperationCanceledException)
         {
@@ -464,7 +495,7 @@ public sealed class TurnRunner(
         finally
         {
             var receipt = new TurnRunReceipt(
-                runId, runStatus, last, answeredBy?.Runtime.EngineLabel ?? request.Runtime.EngineLabel,
+                runId, runStatus, last, localAnsweredBy ?? answeredBy?.Runtime.EngineLabel ?? request.Runtime.EngineLabel,
                 plan.Steps, plan.Done, stopped);
             try
             {
@@ -481,7 +512,7 @@ public sealed class TurnRunner(
 
         return new TurnResult(
             last,
-            answeredBy?.Runtime.EngineLabel ?? request.Runtime.EngineLabel,
+            localAnsweredBy ?? answeredBy?.Runtime.EngineLabel ?? request.Runtime.EngineLabel,
             plan.Steps,
             plan.Done,
             stopped);
@@ -515,6 +546,14 @@ public sealed class TurnRunner(
             .LastOrDefault(snapshot => snapshot?.RunId == runId);
         return new TurnResult(null, null, latestPlan?.Steps ?? [], latestPlan?.Done ?? 0,
             $"Run {runId} was interrupted after it started. Its recorded events are available for review; it was not run again.");
+    }
+
+    private static string FormatFileList(string output)
+    {
+        var lines = output.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+        return lines.Length <= 1
+            ? output
+            : lines[0] + "\n\n" + string.Join('\n', lines.Skip(1).Select(path => "- " + path));
     }
 
     private static string Fingerprint(TurnRequest request, TurnSettings settings, IReadOnlyList<ChatImage> images)

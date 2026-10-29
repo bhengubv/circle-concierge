@@ -423,7 +423,7 @@ public sealed class WorkspaceComposerTests : BunitContext
         cut.WaitForAssertion(() => Assert.Contains("Customer research", cut.Find(".ws-context-label").TextContent));
 
         var goalOverview = cut.Find(".ws-goal-overview");
-        Assert.Contains("WORKSPACE GOAL", goalOverview.TextContent);
+        Assert.Contains("Workspace goal", goalOverview.TextContent);
         Assert.Contains("Customer research", goalOverview.TextContent);
         Assert.Contains("Learn what local customers need", goalOverview.TextContent);
         Assert.Contains("Planned", goalOverview.TextContent);
@@ -822,7 +822,7 @@ public sealed class WorkspaceComposerTests : BunitContext
         Assert.Contains("Tutorial paused at step 2", restored.Find(".model-setup-tutorial").TextContent);
         restored.Find("button.model-setup-tutorial-toggle").Click();
         Assert.Contains("STEP 2 OF 3", restored.Find(".model-setup-tutorial").TextContent);
-        Assert.Contains("Choose how much control", restored.Find(".model-setup-tutorial").TextContent);
+        Assert.Contains("Decide what Concierge may do", restored.Find(".model-setup-tutorial").TextContent);
     }
 
     [Fact]
@@ -869,11 +869,11 @@ public sealed class WorkspaceComposerTests : BunitContext
     {
         var cut = RenderWith(runtimeReady: true);
 
-        var options = cut.FindAll(".comp-controls .seg .seg-opt")
+        var options = cut.FindAll(".action-mode-option strong")
             .Select(e => e.TextContent.Trim())
             .ToArray();
 
-        Assert.Equal(new[] { "Plan only", "Ask first", "Act freely" }, options);
+        Assert.Equal(new[] { "Plan only", "Ask before changes", "Act without asking" }, options);
     }
 
     /// <summary>
@@ -884,10 +884,11 @@ public sealed class WorkspaceComposerTests : BunitContext
     {
         var cut = RenderWith(runtimeReady: true);
 
-        var chosen = cut.FindAll(".comp-controls .seg .seg-opt")
+        var chosen = cut.FindAll(".action-mode-option")
             .Single(e => e.GetAttribute("aria-pressed") == "true");
 
-        Assert.Equal("Ask first", chosen.TextContent.Trim());
+        Assert.Equal("Ask before changes", chosen.QuerySelector("strong")?.TextContent.Trim());
+        Assert.Equal("Ask before changes", cut.Find(".action-mode-picker summary").TextContent.Trim());
     }
 
     [Fact]
@@ -905,12 +906,26 @@ public sealed class WorkspaceComposerTests : BunitContext
     {
         var cut = RenderWith(runtimeReady: true);
 
-        cut.FindAll(".comp-controls .seg .seg-opt").Single(e => e.TextContent.Trim() == "Plan only").Click();
+        cut.FindAll(".action-mode-option").Single(e => e.QuerySelector("strong")?.TextContent.Trim() == "Plan only").Click();
 
-        var chosen = cut.FindAll(".comp-controls .seg .seg-opt")
+        var chosen = cut.FindAll(".action-mode-option")
             .Single(e => e.GetAttribute("aria-pressed") == "true");
 
-        Assert.Equal("Plan only", chosen.TextContent.Trim());
+        Assert.Equal("Plan only", chosen.QuerySelector("strong")?.TextContent.Trim());
+    }
+
+    [Fact]
+    public void Make_a_plan_selects_plan_only_and_invites_a_goal()
+    {
+        JSInterop.SetupVoid("conciergeThread.focusComposer");
+        var cut = RenderWith(runtimeReady: true);
+
+        cut.Find(".welcome-plan-action").Click();
+
+        var chosen = cut.FindAll(".action-mode-option")
+            .Single(option => option.GetAttribute("aria-pressed") == "true");
+        Assert.Equal("Plan only", chosen.QuerySelector("strong")?.TextContent.Trim());
+        Assert.Equal("What would you like to plan?", cut.Find(".comp-input").GetAttribute("placeholder"));
     }
 
     /// <summary>
@@ -922,9 +937,9 @@ public sealed class WorkspaceComposerTests : BunitContext
     {
         var cut = RenderWith(runtimeReady: true);
 
-        foreach (var option in cut.FindAll(".comp-controls .seg .seg-opt"))
+        foreach (var option in cut.FindAll(".action-mode-option"))
         {
-            Assert.False(string.IsNullOrWhiteSpace(option.GetAttribute("title")));
+            Assert.False(string.IsNullOrWhiteSpace(option.QuerySelector("span")?.TextContent));
         }
     }
 
@@ -932,11 +947,12 @@ public sealed class WorkspaceComposerTests : BunitContext
     /// Which model is answering used to be the third group of a Settings page.
     /// </summary>
     [Fact]
-    public void The_model_answering_is_named_under_the_composer()
+    public void The_engine_is_named_in_settings_without_repeating_it_under_the_composer()
     {
         var cut = RenderWith(runtimeReady: true);
 
-        Assert.Contains("Circle AI", cut.Find(".comp-controls").TextContent);
+        Assert.Equal("Circle AI", cut.Find(".ws-ai-title").TextContent.Trim());
+        Assert.DoesNotContain("Circle AI", cut.Find(".comp-controls").TextContent);
     }
 
     // ── The three icon controls ───────────────────────────────────────────
@@ -1074,11 +1090,11 @@ public sealed class WorkspaceComposerTests : BunitContext
     {
         var cut = RenderWith(runtimeReady: true);
 
-        Assert.NotEmpty(cut.FindAll(".seg-opt"));
+        Assert.NotEmpty(cut.FindAll(".action-mode-option"));
 
         OpenDesign(cut);
 
-        Assert.Empty(cut.FindAll(".seg-opt"));
+        Assert.Empty(cut.FindAll(".action-mode-option"));
     }
 
     /// <summary>
