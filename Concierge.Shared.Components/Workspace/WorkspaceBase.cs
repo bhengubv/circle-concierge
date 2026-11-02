@@ -723,7 +723,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
                             ? "That Desktop link did not respond. Check that the link is current and Concierge is open on Desktop."
                             : "No Desktop found on this Wi-Fi. To connect from another network, add its HTTPS link below."
                     : _desktopCanAnswer
-                        ? "Desktop is ready. You can send a message."
+                        ? "Desktop is reachable for testing. QR authorization is not set up yet."
                         : "Desktop is connected. Follow the setup card above; this phone will show when Circle AI is ready.";
             }
             if (!_gone)

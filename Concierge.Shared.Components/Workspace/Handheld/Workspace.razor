@@ -351,10 +351,10 @@
                           DesktopSearchMessage="@_desktopSearchMessage"
                           IsHandheld="true" />
             <details class="welcome-desktop-link" open="@(!_desktopAvailable)">
-                <summary>@(_desktopAvailable ? "Desktop connected" : "Connect to your Desktop")</summary>
+                <summary>@(_desktopAvailable ? "Desktop reachable · test link" : "Connect to your Desktop")</summary>
                 @if (_desktopAvailable)
                 {
-                    <p>Connected to Concierge Desktop at @DesktopClient?.Where. Enter another address below to change Desktop.</p>
+                    <p>Desktop responds at @DesktopClient?.Where. This test link is not QR-authorized. Enter another address below to change Desktop.</p>
                 }
                 else
                 {
