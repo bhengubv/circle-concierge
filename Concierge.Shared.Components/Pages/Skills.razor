@@ -1,4 +1,5 @@
 @inject ISkillCatalogService SkillCatalog
+@inject Concierge.Shared.Skills.ISkillRuntime SkillRuntime
 @inject Concierge.Shared.Skills.UserSkillFolders Folders
 @inject IJSRuntime JS
 @inject IServiceProvider Services
@@ -272,6 +273,7 @@
         {
             catalogue.Refresh();
         }
+        SkillRuntime.Refresh();
     }
 
     // Narrow while typing. Waiting for blur on a list of sixty-nine is waiting

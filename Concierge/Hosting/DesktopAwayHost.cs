@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using System.Text;
 using Concierge.Away;
 using Concierge.Shared.Away;
+using Concierge.Shared.Planning;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Hosting;
@@ -61,6 +62,18 @@ public sealed class DesktopAwayHost(IServiceProvider services, ILogger<DesktopAw
             app.MapGet("/api/away/conversations", async (CancellationToken ct) => Results.Json(
                 await WristReadModel.ReadAsync(services.GetRequiredService<Concierge.Shared.Chat.IConversationStore>(),
                     services.GetService<Concierge.Shared.Chat.BackgroundRuns>(), ct).ConfigureAwait(false)));
+            app.MapGet("/api/away/notebooks", () => Results.Json(
+                services.GetRequiredService<IKnowledgeNotebookStore>().SyncItems()));
+            app.MapPost("/api/away/notebooks", (NotebookSyncItem[] items) =>
+            {
+                try
+                {
+                    services.GetRequiredService<IKnowledgeNotebookStore>().MergeSyncItems(items);
+                    return Results.Ok(new { synchronized = true });
+                }
+                catch (ArgumentException failure) { return Results.BadRequest(new { synchronized = false, message = failure.Message }); }
+                catch (InvalidOperationException failure) { return Results.Conflict(new { synchronized = false, message = failure.Message }); }
+            });
             app.MapGet("/api/away/conversations/{conversationId:guid}/recent", async (Guid conversationId, CancellationToken ct) => Results.Json(
                 await services.GetRequiredService<Concierge.Shared.Chat.IConversationStore>().ReadRecentEventsAsync(conversationId, 100, ct).ConfigureAwait(false)));
             app.MapPost("/api/away/cancel", async (CancelBody body, CancellationToken ct) =>

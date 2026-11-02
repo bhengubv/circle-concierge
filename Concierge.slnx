@@ -14,6 +14,7 @@
   <Project Path="Concierge.ProcessAcceptance.Tests/Concierge.ProcessAcceptance.Tests.csproj" />
   <Project Path="Concierge.Ai.Isolated/Concierge.Ai.Isolated.csproj" />
   <Project Path="Concierge.Model.Host/Concierge.Model.Host.csproj" />
+  <Project Path="Concierge.Ui.NUnitTests/Concierge.Ui.NUnitTests.csproj" />
   <Project Path="Concierge.Wear/Concierge.Wear.csproj" />
   <Project Path="Concierge.Web/Concierge.Web.csproj" />
   <Project Path="Concierge.Web.Client/Concierge.Web.Client.csproj" />

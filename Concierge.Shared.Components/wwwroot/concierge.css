@@ -49,6 +49,15 @@
     --ground:  var(--cm-color-canvas);
     --panel:   var(--cm-color-surface);
     --raised:  var(--cm-color-surface-raised);
+    /* Legacy room and project selectors still use these names. Keep them
+       mapped to the same CircleMetro roles instead of letting declarations
+       with unresolved var() values disappear. */
+    --surface: var(--cm-color-surface);
+    --r-md: var(--cm-radius-control);
+    --r-lg: var(--cm-radius-card);
+    --muted: var(--cm-color-text-secondary);
+    --subtle: var(--cm-color-text-disabled);
+    --line: var(--cm-color-outline);
 
     /* Local: no counterpart upstream, and the first thing looking at the running app
        caught.
@@ -345,8 +354,7 @@ a:hover { text-decoration: underline; }
 /* ============================================================
    MESSAGES
    ============================================================
-   A message is a name and some text. Not a bubble — a bubble is for a
-   messaging app, where who spoke is the point; here what was said is. */
+   Conversation turns keep their speaker labels and support rich content. */
 
 .msg { display: flex; flex-direction: column; gap: var(--s2); }
 .msg-who {
@@ -400,6 +408,8 @@ a:hover { text-decoration: underline; }
 }
 .chip:hover { color: var(--ink); }
 .chip-bolt { flex: 0 0 auto; color: var(--ink-faint); }
+.chips[data-tool-success="true"] .chip-bolt { color: var(--cm-color-accent); }
+.chips[data-tool-success="false"] .chip-bolt { color: var(--cm-color-danger, var(--danger)); }
 .chip-what { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chip-more { flex: 0 0 auto; color: var(--ink-faint); transition: transform 120ms ease; }
 .chip[aria-expanded="true"] .chip-more { transform: rotate(90deg); }
@@ -1634,6 +1644,11 @@ button.row:hover { color: var(--ink); }
 .welcome-mark { display:grid; place-items:center; width:1.8rem; height:1.8rem; border-radius:50%; color:var(--cm-color-accent-text); background:var(--cm-color-accent); font-size:1rem; font-weight:800; letter-spacing:0; }
 .welcome-panel h2 { margin:.55rem 0 .35rem; font-size:clamp(2.15rem, 4.6vw, 3.65rem); font-weight:300; letter-spacing:-.065em; line-height:.98; }
 .welcome-intro { max-width:34rem; margin:0 0 1rem; color:var(--cm-color-text-secondary); font-size:clamp(.95rem, 1.7vw, 1.1rem); line-height:1.5; }
+.welcome-work-paths { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:.45rem; margin:0 0 .7rem; }
+.welcome-work-paths a { display:flex; flex-direction:column; gap:.12rem; min-width:0; padding:.55rem .7rem; border:1px solid var(--cm-color-outline); border-radius:var(--cm-radius-control, .75rem); background:var(--cm-color-surface-raised); color:var(--cm-color-text-primary); text-decoration:none; }
+.welcome-work-paths a:hover,.welcome-work-paths a:focus-visible { border-color:var(--cm-color-accent); outline-offset:2px; }
+.welcome-work-paths strong { font-size:.82rem; }
+.welcome-work-paths span { color:var(--cm-color-text-secondary); font-size:.7rem; line-height:1.3; }
 .welcome-setup-guide { margin:0 0 .85rem; padding:.75rem .85rem; border:1px solid color-mix(in srgb, var(--cm-color-accent) 45%, var(--cm-color-outline)); border-radius:var(--cm-radius-card, 1.15rem); background:color-mix(in srgb, var(--cm-color-accent) 9%, var(--cm-color-surface-raised)); }
 .welcome-setup-guide h3 { margin:0 0 .25rem; color:var(--cm-color-text-primary); font-size:.9rem; font-weight:750; }
 .welcome-setup-guide p { margin:0; max-width:56rem; color:var(--cm-color-text-secondary); font-size:.8rem; line-height:1.45; }
@@ -1683,6 +1698,9 @@ button.row:hover { color: var(--ink); }
 @media (max-width:600px) { .welcome-panel { padding:1rem .85rem; } .welcome-tiles { grid-template-columns:repeat(2,minmax(0,1fr)); gap:.45rem; } .welcome-tile { min-height:6.2rem; padding:2rem .65rem .65rem; } .welcome-tile-icon { top:.55rem; left:.65rem; font-size:1.1rem; } .welcome-tile-title { font-size:.9rem; } .welcome-tile-copy { font-size:.72rem; } .welcome-category { min-height:2.15rem; padding:.35rem .6rem; font-size:.74rem; } }
 @media (prefers-reduced-motion:reduce) { .welcome-tile { transition:none; } .welcome-tile:hover { transform:none; } }
 html[data-cm-host="windows-desktop"] .welcome-panel { display:flex; flex:1; min-height:0; flex-direction:column; justify-content:flex-start; overflow-y:auto; }
+/* The shell already carries the brand. Put task choices ahead of diagnostics in a short window. */
+html[data-cm-host="windows-desktop"] .welcome-kicker { display:none; }
+html[data-cm-host="windows-desktop"] .welcome-device-details { order:1; margin-top:.65rem; }
 html[data-cm-host="windows-desktop"] .desktop-legacy-empty { display:none; }
 html[data-cm-host="windows-desktop"] .appearance-panel { display:block; }
 html[data-cm-host="windows-desktop"] .settings-provider-picker { display:none; }
@@ -1713,15 +1731,80 @@ html[data-cm-host="windows-desktop"] .ws-brand {
 html[data-cm-host="windows-desktop"] .ws-brand-dot { display:none; }
 html[data-cm-host="windows-desktop"] .ws-brand-mark {
   display:grid; place-items:center; flex:0 0 auto;
-  width:2.55rem; height:2.55rem; border:1px solid color-mix(in srgb, var(--cm-color-accent) 35%, var(--cm-color-outline));
-  border-radius:1rem; color:var(--cm-color-accent-text);
-  background:linear-gradient(145deg, color-mix(in srgb, var(--cm-color-accent) 84%, white), var(--cm-color-accent));
-  box-shadow:0 5px 14px color-mix(in srgb, var(--cm-color-accent) 20%, transparent);
+  width:2.55rem; height:2.55rem; border:1px solid var(--cm-brand-circle-blue-strong);
+  border-radius:1rem; color:var(--cm-brand-white);
+  background:linear-gradient(145deg, var(--cm-brand-circle-blue), var(--cm-brand-circle-blue-strong));
+  box-shadow:0 5px 14px color-mix(in srgb, var(--cm-brand-circle-blue) 20%, transparent);
 }
 html[data-cm-host="windows-desktop"] .ws-brand-mark svg { width:1.55rem; height:1.55rem; fill:none; stroke:currentColor; stroke-width:1.7; }
 html[data-cm-host="windows-desktop"] .ws-brand-lockup { display:flex; min-width:0; flex-direction:column; gap:.12rem; }
-html[data-cm-host="windows-desktop"] .ws-brand-lockup strong { font-size:1.12rem; line-height:1.1; letter-spacing:-.035em; }
-html[data-cm-host="windows-desktop"] .ws-brand-lockup small { display:block; color:var(--cm-color-text-secondary); font-size:.69rem; font-weight:650; letter-spacing:.12em; text-transform:uppercase; }
+/* The CircleMetro wordmark uses light, close-set type and a semantic accent.
+   Keep that hierarchy at sidebar scale in both themes. */
+html[data-cm-host="windows-desktop"] .ws-brand-lockup strong { color:var(--cm-color-text-primary); font-size:1.45rem; font-weight:320; line-height:1; letter-spacing:-.075em; }
+html[data-cm-host="windows-desktop"] .ws-brand-lockup small { display:block; color:var(--cm-color-text-secondary); font-size:.72rem; font-weight:550; letter-spacing:-.01em; text-transform:none; }
+html[data-cm-host="windows-desktop"] .ws-brand-lockup small span { color:var(--cm-color-accent-text); font-weight:650; }
+/* Light stays light. Colour comes from Circle's blue identity and the active
+   skin's tile/soft roles, leaving long-reading surfaces quiet. */
+html[data-cm-host="windows-desktop"][data-theme="light"] .ws-side {
+  background:
+    radial-gradient(circle at 0% 0%, color-mix(in srgb, var(--cm-brand-circle-blue) 13%, transparent), transparent 48%),
+    linear-gradient(180deg, var(--cm-color-accent-soft), var(--cm-color-surface) 60%);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .ws-brand {
+  border-bottom-color:color-mix(in srgb, var(--cm-brand-circle-blue) 36%, var(--cm-color-outline));
+  background:color-mix(in srgb, var(--cm-brand-circle-blue) 8%, var(--cm-color-surface-glass-tint));
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .ws-main {
+  background:
+    radial-gradient(ellipse at 83% 2%, color-mix(in srgb, var(--cm-brand-circle-blue) 14%, transparent), transparent 42%),
+    linear-gradient(145deg, color-mix(in srgb, var(--cm-brand-circle-blue) 5%, var(--cm-color-canvas)), var(--cm-color-canvas) 55%);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .welcome-work-paths a:first-child {
+  border-color:var(--cm-color-tile);
+  color:var(--cm-color-on-tile);
+  background:var(--cm-color-tile);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .welcome-work-paths a:first-child span {
+  color:var(--cm-color-on-tile);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .welcome-work-paths a:nth-child(2) {
+  border-color:color-mix(in srgb, var(--cm-brand-circle-blue) 35%, var(--cm-color-outline));
+  background:color-mix(in srgb, var(--cm-brand-circle-blue) 14%, var(--cm-color-surface));
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .welcome-work-paths a:nth-child(3) {
+  border-color:color-mix(in srgb, var(--cm-color-accent) 24%, var(--cm-color-outline));
+  background:var(--cm-color-accent-soft);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .welcome-tile:nth-child(3n + 1) {
+  border-color:var(--cm-color-tile);
+  color:var(--cm-color-on-tile);
+  background:var(--cm-color-tile);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .welcome-tile:nth-child(3n + 2) {
+  border-color:color-mix(in srgb, var(--cm-brand-circle-blue) 38%, var(--cm-color-outline));
+  background:color-mix(in srgb, var(--cm-brand-circle-blue) 16%, var(--cm-color-surface));
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .welcome-tile:nth-child(3n + 3) {
+  border-color:color-mix(in srgb, var(--cm-color-accent) 27%, var(--cm-color-outline));
+  background:var(--cm-color-accent-soft);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .welcome-tile:hover { filter:brightness(.96); }
+html[data-cm-host="windows-desktop"][data-theme="light"] .ws-start-conversation {
+  border-color:var(--cm-color-tile);
+  color:var(--cm-color-on-tile);
+  background:var(--cm-color-tile);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .ws-start-conversation .ws-start-hint,
+html[data-cm-host="windows-desktop"][data-theme="light"] .ws-start-conversation .ws-new-thread-mark {
+  color:var(--cm-color-on-tile);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .ws-start-conversation .ws-new-thread-mark {
+  background:color-mix(in srgb, var(--cm-color-on-tile) 20%, transparent);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .ws-runtime {
+  border-color:color-mix(in srgb, var(--cm-brand-circle-blue) 38%, var(--cm-color-outline));
+  background:color-mix(in srgb, var(--cm-brand-circle-blue) 12%, var(--cm-color-surface));
+}
 html[data-cm-host="windows-desktop"] .ws-scroll { padding: .45rem .7rem .8rem; }
 html[data-cm-host="windows-desktop"] .ws-start-conversation {
   min-height:3.15rem; margin:.35rem .2rem .75rem; padding:.55rem .72rem; gap:.65rem;
@@ -1801,9 +1884,70 @@ html[data-cm-host="windows-desktop"] .ws-top-meta {
   background:color-mix(in srgb, var(--cm-color-surface-raised) 76%, transparent); font-size:.72rem;
   text-overflow:ellipsis; white-space:nowrap;
 }
+/* A tracked goal stays in the conversation workspace. This gives the user a
+   compact, truthful reading of the project's outcome, progress and current
+   conversation state without sending them to a separate dashboard to regain
+   context. */
+.ws-goal-overview {
+  flex:0 0 auto; margin:.6rem 1.5rem 0; padding:.7rem .9rem .65rem;
+  border:1px solid var(--cm-color-outline, var(--rule)); border-radius:1rem;
+  color:var(--cm-color-text-primary, var(--ink));
+  background:linear-gradient(105deg,
+    color-mix(in srgb, var(--cm-color-accent, var(--accent)) 8%, var(--cm-color-surface-raised, var(--raised))),
+    color-mix(in srgb, var(--cm-color-surface-raised, var(--raised)) 92%, transparent));
+  box-shadow:0 5px 18px color-mix(in srgb, var(--cm-color-text-primary, var(--ink)) 4%, transparent);
+}
+.ws-goal-heading { display:flex; align-items:center; gap:.7rem; min-width:0; }
+.ws-goal-name-block { display:flex; min-width:0; flex:1; flex-direction:column; gap:.12rem; }
+.ws-goal-kicker { color:var(--cm-color-text-secondary, var(--ink-soft)); font-size:.61rem; font-weight:750; letter-spacing:.1em; }
+.ws-goal-name-block strong { overflow:hidden; font-size:.88rem; line-height:1.25; text-overflow:ellipsis; white-space:nowrap; }
+.ws-goal-status { flex:0 0 auto; padding:.24rem .55rem; border:1px solid var(--cm-color-outline, var(--rule)); border-radius:999px; color:var(--cm-color-text-secondary, var(--ink-soft)); background:var(--cm-color-surface, var(--surface)); font-size:.68rem; font-weight:700; }
+.ws-goal-status[data-state="active"] { color:var(--cm-color-accent-text, var(--ink)); border-color:color-mix(in srgb, var(--cm-color-accent, var(--accent)) 36%, var(--cm-color-outline, var(--rule))); }
+.ws-goal-status[data-state="review"] { color:var(--cm-color-accent, var(--accent)); border-color:color-mix(in srgb, var(--cm-color-accent, var(--accent)) 36%, var(--cm-color-outline, var(--rule))); }
+.ws-goal-status[data-state="blocked"], .ws-goal-status[data-state="awaitingperson"] { color:var(--cm-color-danger, var(--danger)); }
+.ws-goal-open { flex:0 0 auto; color:var(--cm-color-accent, var(--accent)); font-size:.7rem; font-weight:700; text-decoration:none; }
+.ws-goal-open:hover, .ws-track-goal a:hover { text-decoration:underline; }
+.ws-goal-outcome { display:-webkit-box; overflow:hidden; margin:.35rem 0 .48rem; color:var(--cm-color-text-secondary, var(--ink-soft)); font-size:.76rem; line-height:1.38; -webkit-box-orient:vertical; -webkit-line-clamp:2; }
+.ws-goal-facts { display:flex; flex-wrap:wrap; align-items:center; gap:.35rem .95rem; color:var(--cm-color-text-secondary, var(--ink-soft)); font-size:.68rem; }
+.ws-goal-facts > span { display:inline-flex; align-items:center; gap:.25rem; }
+.ws-goal-facts strong { color:var(--cm-color-text-primary, var(--ink)); font-weight:750; }
+.ws-goal-live { margin-left:auto; }
+.ws-track-goal { display:flex; align-items:center; justify-content:space-between; gap:.8rem; flex:0 0 auto; margin:.55rem 1.5rem 0; padding:.48rem .8rem; border:1px dashed var(--cm-color-outline, var(--rule)); border-radius:.85rem; color:var(--cm-color-text-secondary, var(--ink-soft)); font-size:.7rem; }
+.ws-track-goal a { flex:0 0 auto; color:var(--cm-color-accent, var(--accent)); font-weight:750; text-decoration:none; }
+@media (max-width:900px) {
+  .ws-goal-overview { margin-inline:.8rem; }
+  .ws-track-goal { margin-inline:.8rem; }
+  .ws-goal-heading { flex-wrap:wrap; }
+  .ws-goal-name-block { flex-basis:calc(100% - 9rem); }
+  .ws-goal-live { margin-left:0; }
+}
 html[data-cm-host="windows-desktop"] .ws-thread { padding:1.5rem; }
 html[data-cm-host="windows-desktop"] .ws-thread-inner { max-width:54rem; gap:1.6rem; }
-html[data-cm-host="windows-desktop"] .msg { gap:.45rem; }
+html[data-cm-host="windows-desktop"] .ws-thread .msg {
+  gap:.45rem;
+  width:fit-content;
+  max-width:96%;
+  padding:.9rem 1.1rem;
+  border:1px solid var(--cm-color-outline);
+  border-radius:var(--cm-radius-card);
+  background:var(--cm-color-surface-raised);
+  box-shadow:0 8px 24px color-mix(in srgb, var(--cm-color-text-primary) 6%, transparent);
+}
+html[data-cm-host="windows-desktop"] .ws-thread .msg[data-role="user"] {
+  align-self:flex-end;
+  max-width:78%;
+  border-color:color-mix(in srgb, var(--cm-color-tile) 42%, var(--cm-color-outline));
+  border-bottom-right-radius:.4rem;
+  background:color-mix(in srgb, var(--cm-color-tile) 20%, var(--cm-color-surface-raised));
+}
+html[data-cm-host="windows-desktop"] .ws-thread .msg[data-role="assistant"] {
+  align-self:flex-start;
+  border-bottom-left-radius:.4rem;
+}
+@media (max-width:700px) {
+  html[data-cm-host="windows-desktop"] .ws-thread .msg[data-role="user"] { max-width:94%; }
+  html[data-cm-host="windows-desktop"] .ws-thread .msg[data-role="assistant"] { max-width:100%; }
+}
 html[data-cm-host="windows-desktop"] .msg-who { color:var(--cm-color-text-secondary); font-size:.69rem; letter-spacing:.1em; }
 html[data-cm-host="windows-desktop"] .msg-body { color:var(--cm-color-text-primary); font-size:1rem; line-height:1.72; }
 html[data-cm-host="windows-desktop"] .comp { padding:.55rem 1.5rem .8rem; }
@@ -2050,6 +2194,8 @@ html[data-cm-host="windows-desktop"] .comp-sep { color:var(--cm-color-outline); 
 :root[data-theme="light"][data-skin="sana"] .project-inline-edit button { color:var(--cm-color-accent-text); }
 .project-primary:disabled, .project-add-workflow button:disabled, .project-add-step button:disabled { opacity:.55; cursor:wait; }
 .project-linked-chat { color:var(--ink-soft); font-size:var(--t-xs); }
+.project-linked-chat a { margin-left:.45rem; color:var(--accent); font-weight:700; text-decoration:none; }
+.project-linked-chat a:hover { text-decoration:underline; }
 .project-detail-head { display:flex; align-items:end; flex-wrap:wrap; justify-content:space-between; gap:16px; padding-bottom:20px; border-bottom:1px solid var(--rule); }
 .project-detail-head h2 { margin-bottom:6px; }
 .project-detail-head p:not(.projects-eyebrow) { margin:0; color:var(--ink-soft); line-height:1.5; }
@@ -2151,4 +2297,216 @@ html[data-cm-host="windows-desktop"] .comp-sep { color:var(--cm-color-outline); 
     .project-add-workflow, .project-add-step, .project-add-decision, .project-add-artifact { grid-template-columns:1fr; }
     .project-artifacts li { grid-template-columns:1fr; gap:4px; }
     .wake-phrase-actions .ai-settings-action { flex:1 1 130px; }
+}
+
+/* Desktop Light: carry the CircleMetro tile rhythm through every work surface.
+   Filled colour marks destinations and primary actions; reading and editing
+   stay on opaque light surfaces. These are host-scoped so mobile keeps its own
+   layout and Dark keeps its true-black Circle base. */
+html[data-cm-host="windows-desktop"][data-theme="light"] body {
+    background:
+        radial-gradient(ellipse at 100% 0%, color-mix(in srgb, var(--cm-brand-circle-blue) 13%, transparent), transparent 45%),
+        var(--cm-color-canvas);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .room {
+    background:
+        radial-gradient(ellipse at 100% 0%, color-mix(in srgb, var(--cm-brand-circle-blue) 20%, transparent), transparent 48%),
+        linear-gradient(155deg, color-mix(in srgb, var(--cm-color-accent) 15%, var(--cm-color-canvas)),
+            color-mix(in srgb, var(--cm-brand-circle-blue) 8%, var(--cm-color-canvas)) 72%);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .room-top {
+    border-bottom:2px solid color-mix(in srgb, var(--cm-color-accent) 45%, var(--cm-color-outline));
+    background:linear-gradient(100deg,
+        color-mix(in srgb, var(--cm-color-accent) 16%, var(--cm-color-surface)),
+        color-mix(in srgb, var(--cm-brand-circle-blue) 13%, var(--cm-color-surface)));
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .room-top h1,
+html[data-cm-host="windows-desktop"][data-theme="light"] .projects-header h1 {
+    color:var(--cm-color-text-primary);
+    letter-spacing:-.055em;
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .room-top h1 {
+    font-size:1.45rem;
+    font-weight:420;
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .room-back,
+html[data-cm-host="windows-desktop"][data-theme="light"] .projects-back {
+    color:var(--cm-color-accent-text);
+    font-weight:650;
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .room-lede {
+    color:var(--cm-color-text-primary);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .room-body > .rows {
+    width:min(100%, 68rem);
+    gap:.45rem;
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .room-body > .rows .row {
+    padding:.72rem .85rem;
+    border:1px solid color-mix(in srgb, var(--cm-brand-circle-blue) 26%, var(--cm-color-outline));
+    border-radius:var(--cm-radius-control);
+    background:color-mix(in srgb, var(--cm-brand-circle-blue) 10%, var(--cm-color-surface));
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .room-body > .rows .row:nth-child(3n + 2) {
+    border-color:color-mix(in srgb, var(--cm-color-accent) 28%, var(--cm-color-outline));
+    background:var(--cm-color-accent-soft);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .room-body > .rows .row:hover,
+html[data-cm-host="windows-desktop"][data-theme="light"] .room-card:hover {
+    border-color:var(--cm-color-accent);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .room-card {
+    border-color:color-mix(in srgb, var(--cm-brand-circle-blue) 25%, var(--cm-color-outline));
+    background:color-mix(in srgb, var(--cm-brand-circle-blue) 9%, var(--cm-color-surface));
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .room-grid > .room-card:nth-child(2n),
+html[data-cm-host="windows-desktop"][data-theme="light"] .room-body > .room-card:nth-of-type(2n) {
+    border-color:color-mix(in srgb, var(--cm-color-accent) 28%, var(--cm-color-outline));
+    background:var(--cm-color-accent-soft);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] :is(.notebook-editor, .schedule-editor) {
+    width:min(100%, 68rem);
+    padding:1.1rem;
+    border:1px solid color-mix(in srgb, var(--cm-color-accent) 29%, var(--cm-color-outline));
+    border-radius:var(--cm-radius-card);
+    background:linear-gradient(145deg, var(--cm-color-accent-soft),
+        color-mix(in srgb, var(--cm-brand-circle-blue) 8%, var(--cm-color-surface)));
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] :is(.notebook-editor, .schedule-editor) .comp-input {
+    background:var(--cm-color-surface);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .room .btn:hover {
+    border-color:var(--cm-color-accent);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .room-body > .btn,
+html[data-cm-host="windows-desktop"][data-theme="light"] .room-body > .notebook-actions .btn:first-child {
+    border-color:color-mix(in srgb, var(--cm-brand-circle-blue) 34%, var(--cm-color-outline));
+    background:color-mix(in srgb, var(--cm-brand-circle-blue) 12%, var(--cm-color-surface));
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .room .btn-primary {
+    border-color:var(--cm-color-accent);
+    color:var(--cm-color-on-accent);
+    background:var(--cm-color-accent);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .projects-header {
+    max-width:none;
+    margin-bottom:1.35rem;
+    padding:1.25rem 1.4rem;
+    border:1px solid color-mix(in srgb, var(--cm-color-accent) 29%, var(--cm-color-outline));
+    border-radius:var(--cm-radius-card);
+    background:linear-gradient(115deg, var(--cm-color-accent-soft),
+        color-mix(in srgb, var(--cm-brand-circle-blue) 13%, var(--cm-color-surface)));
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .projects-back { margin-bottom:1rem; }
+html[data-cm-host="windows-desktop"][data-theme="light"] .projects-list {
+    border-color:color-mix(in srgb, var(--cm-brand-circle-blue) 33%, var(--cm-color-outline));
+    background:color-mix(in srgb, var(--cm-brand-circle-blue) 10%, var(--cm-color-surface));
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .projects-detail {
+    border-color:color-mix(in srgb, var(--cm-color-accent) 27%, var(--cm-color-outline));
+    background:color-mix(in srgb, var(--cm-color-accent) 4%, var(--cm-color-surface));
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .projects-new:first-of-type,
+html[data-cm-host="windows-desktop"][data-theme="light"] .project-list-item.is-selected {
+    border-color:var(--cm-color-tile);
+    color:var(--cm-color-on-tile);
+    background:var(--cm-color-tile);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .project-list-item.is-selected span {
+    color:var(--cm-color-on-tile);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .project-starters,
+html[data-cm-host="windows-desktop"][data-theme="light"] :is(.project-workflow, .project-workspace, .project-activity-item) {
+    border-color:color-mix(in srgb, var(--cm-brand-circle-blue) 24%, var(--cm-color-outline));
+    background:color-mix(in srgb, var(--cm-brand-circle-blue) 9%, var(--cm-color-surface));
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .project-starter-card:nth-child(2n),
+html[data-cm-host="windows-desktop"][data-theme="light"] .project-agent-item {
+    border-color:color-mix(in srgb, var(--cm-color-accent) 25%, var(--cm-color-outline));
+    background:var(--cm-color-accent-soft);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .sheet {
+    border-color:color-mix(in srgb, var(--cm-color-accent) 28%, var(--cm-color-outline));
+    background:linear-gradient(165deg, var(--cm-color-accent-soft), var(--cm-color-surface) 38%);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .sheet-head {
+    margin:calc(-1 * var(--s3)) calc(-1 * var(--s5)) .3rem;
+    padding:.75rem var(--s5);
+    border-bottom:2px solid color-mix(in srgb, var(--cm-color-accent) 42%, var(--cm-color-outline));
+    background:color-mix(in srgb, var(--cm-brand-circle-blue) 14%, var(--cm-color-surface));
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .appearance-panel,
+html[data-cm-host="windows-desktop"][data-theme="light"] .sheet > .sheet-group {
+    border-color:color-mix(in srgb, var(--cm-color-accent) 26%, var(--cm-color-outline));
+    background:color-mix(in srgb, var(--cm-color-accent) 8%, var(--cm-color-surface));
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .sheet > .sheet-group {
+    padding:.7rem .8rem;
+    border-style:solid;
+    border-width:1px;
+    border-radius:var(--cm-radius-control);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .sheet > .sheet-group:nth-of-type(2n) {
+    border-color:color-mix(in srgb, var(--cm-brand-circle-blue) 30%, var(--cm-color-outline));
+    background:color-mix(in srgb, var(--cm-brand-circle-blue) 10%, var(--cm-color-surface));
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .appearance-themes .seg-opt.is-on {
+    color:var(--cm-color-on-tile);
+    background:var(--cm-color-tile);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .ws-start-conversation:hover {
+    border-color:var(--cm-color-accent-text);
+    color:var(--cm-color-on-tile);
+    background:color-mix(in srgb, var(--cm-color-tile) 91%, var(--cm-brand-ink));
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .ws-thread .msg[data-role="user"] {
+    background:color-mix(in srgb, var(--cm-color-tile) 24%, var(--cm-color-surface-raised));
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .ws-thread .msg[data-role="assistant"] .msg-who {
+    color:var(--cm-color-accent-text);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .dz-controls {
+    border-color:color-mix(in srgb, var(--cm-color-accent) 30%, var(--cm-color-outline));
+    background:color-mix(in srgb, var(--cm-brand-circle-blue) 9%, var(--cm-color-surface));
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .dz-canvas {
+    box-shadow:0 0 0 2px color-mix(in srgb, var(--cm-color-accent) 28%, var(--cm-color-outline));
+}
+
+/* SDPKT and SleptON use solid CircleMetro tile/on-tile pairs at the main
+   orientation points. Bring that same high-contrast colour structure to
+   Concierge; the soft washes above remain on supporting surfaces only. */
+html[data-cm-host="windows-desktop"][data-theme="light"] .ws-top,
+html[data-cm-host="windows-desktop"][data-theme="light"] .room-top,
+html[data-cm-host="windows-desktop"][data-theme="light"] .projects-header,
+html[data-cm-host="windows-desktop"][data-theme="light"] .sheet-head {
+    border-color:var(--cm-color-tile);
+    color:var(--cm-color-on-tile);
+    background:var(--cm-color-tile);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] :is(.ws-top .ws-title, .room-top h1,
+    .projects-header h1, .projects-header .projects-eyebrow, .projects-header .projects-intro,
+    .sheet-head .sheet-title) {
+    color:var(--cm-color-on-tile);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] :is(.room-top .room-back,
+    .projects-header .projects-back, .sheet-head .icon-btn) {
+    color:var(--cm-color-on-tile);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .room-top .room-back:hover,
+html[data-cm-host="windows-desktop"][data-theme="light"] .sheet-head .icon-btn:hover {
+    color:var(--cm-color-on-tile);
+    background:color-mix(in srgb, var(--cm-color-on-tile) 18%, transparent);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .ws-top-meta {
+    border-color:color-mix(in srgb, var(--cm-color-on-tile) 45%, transparent);
+    color:var(--cm-color-on-tile);
+    background:color-mix(in srgb, var(--cm-color-on-tile) 15%, transparent);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] .ws-top .ws-menu {
+    color:var(--cm-color-on-tile);
+}
+html[data-cm-host="windows-desktop"][data-theme="light"] :is(.room-body > h2,
+    .room-sec > h2, .project-section h3) {
+    color:var(--cm-color-accent-text);
 }

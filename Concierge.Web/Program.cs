@@ -21,6 +21,7 @@ using Concierge.Media.Cloud;
 using CircleAI.Core;
 using Microsoft.AspNetCore.RateLimiting;
 using MudBlazor.Services;
+using Fluxor;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Concierge.Shared.Away;
 using Concierge.Shared.Butler;
@@ -57,6 +58,8 @@ builder.Services.AddRazorComponents()
 // MudBlazor — same registration as the MAUI host. Web + MAUI share the
 // Razor component library, so MudServices must be wired in both hosts.
 builder.Services.AddMudServices();
+builder.Services.AddFluxor(options => options.ScanAssemblies(
+    typeof(Concierge.Shared.Components.State.RunningConversationsState).Assembly));
 builder.Services.AddHttpContextAccessor();
 builder.Services
     .AddConciergeCore()

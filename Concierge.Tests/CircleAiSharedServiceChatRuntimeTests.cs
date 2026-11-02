@@ -52,6 +52,7 @@ public sealed class CircleAiSharedServiceChatRuntimeTests
         Assert.Equal("5", answer);
         Assert.Equal(id.ToString("D"), link.Session);
         Assert.Equal("What is two plus three?", link.Message);
+        Assert.Equal("What is two plus three?", link.Question);
         Assert.False(link.Agentic); // No unsupported native action approval/cancellation bridge.
     }
 
@@ -144,6 +145,7 @@ public sealed class CircleAiSharedServiceChatRuntimeTests
         Assert.Contains("Person: The meeting starts at ten.", link.Message);
         Assert.Contains("Circle AI: Understood.", link.Message);
         Assert.Contains("What time does it start?", link.Message);
+        Assert.Equal("What time does it start?", link.Question);
     }
 
     [Fact]
@@ -221,12 +223,12 @@ public sealed class CircleAiSharedServiceChatRuntimeTests
     {
         public CircleAiServiceChatStatus Status = new(true, "Ready", "Ready", "58");
         public CircleAiServiceChatReply Reply = new(true, "5", null);
-        public string? Session, Message;
+        public string? Session, Message, Question;
         public bool Agentic;
         public int Sends;
         public Task<CircleAiServiceChatStatus> ReadChatStatusAsync(CancellationToken token) => Task.FromResult(Status);
-        public Task<CircleAiServiceChatReply> SendChatAsync(string sessionId, string message, bool agentic, CancellationToken token)
-        { Sends++; Session = sessionId; Message = message; Agentic = agentic; return Task.FromResult(Reply); }
+        public Task<CircleAiServiceChatReply> SendChatAsync(string sessionId, string message, string question, bool agentic, CancellationToken token)
+        { Sends++; Session = sessionId; Message = message; Question = question; Agentic = agentic; return Task.FromResult(Reply); }
     }
 
     private sealed class FakeKnowledgeLink : ICircleAiServiceKnowledgeLink
@@ -292,7 +294,7 @@ public sealed class CircleAiSharedServiceChatRuntimeTests
             if (Interlocked.Increment(ref _reads) >= 3) PolledWhilePreparing.TrySetResult();
             return Task.FromResult(new CircleAiServiceChatStatus(Ready, Ready ? "Ready" : "Loading", "Loading resources", "60", !Ready, .5));
         }
-        public Task<CircleAiServiceChatReply> SendChatAsync(string sessionId, string message, bool agentic, CancellationToken token)
+        public Task<CircleAiServiceChatReply> SendChatAsync(string sessionId, string message, string question, bool agentic, CancellationToken token)
         {
             Assert.True(Ready);
             Interlocked.Increment(ref Sends);

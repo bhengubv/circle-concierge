@@ -3,6 +3,8 @@
     Without `@` the strings are passed literally and Router silently fails to
     discover any @page route outside this assembly.
 *@
+@using Fluxor.Blazor.Web
+<StoreInitializer />
 <Router AppAssembly="@typeof(Program).Assembly"
         AdditionalAssemblies="@(new[] { typeof(Concierge.Shared.Components.ComponentAssemblyMarker).Assembly })"
         NotFoundPage="@typeof(Concierge.Shared.Components.Pages.NotFound)">

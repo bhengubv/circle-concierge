@@ -161,6 +161,48 @@ public sealed class FeatureGapTests : IAsyncLifetime
     }
 
     [Fact]
+    public void Notebook_sync_carries_sources_links_updates_and_deletions_without_resurrecting_them()
+    {
+        var phone = new FileKnowledgeNotebookStore(Path.Combine(_root, "phone-notebooks.json"));
+        var desktopPath = Path.Combine(_root, "desktop-notebooks.json");
+        var desktop = new FileKnowledgeNotebookStore(desktopPath);
+        var conversationId = Guid.NewGuid();
+        var saved = phone.Save(new KnowledgeNotebook(Guid.NewGuid(), "Meeting", "Cite the notes",
+            [new NotebookSource(Guid.NewGuid(), "Meeting notes", "Friday at 10am with Nandi")],
+            [conversationId], DateTimeOffset.UtcNow));
+
+        desktop.MergeSyncItems(phone.SyncItems());
+        var received = Assert.Single(new FileKnowledgeNotebookStore(desktopPath).All());
+        Assert.Equal(saved.Id, received.Id);
+        Assert.Equal("Friday at 10am with Nandi", Assert.Single(received.Sources).Text);
+        Assert.Contains(conversationId, received.ConversationIds);
+
+        var updated = desktop.Save(received with { Instructions = "Use the latest notes" });
+        phone.MergeSyncItems(desktop.SyncItems());
+        Assert.Equal(updated.Instructions, Assert.Single(phone.All()).Instructions);
+
+        phone.Delete(saved.Id);
+        desktop.MergeSyncItems(phone.SyncItems());
+        Assert.Empty(desktop.All());
+        Assert.Throws<InvalidOperationException>(() => desktop.Save(received));
+        desktop.MergeSyncItems(phone.SyncItems());
+        Assert.Empty(desktop.All());
+    }
+
+    [Fact]
+    public void Notebook_sync_rejects_simultaneous_edits_instead_of_silently_overwriting_sources()
+    {
+        var phone = new FileKnowledgeNotebookStore(Path.Combine(_root, "phone-conflict.json"));
+        var desktop = new FileKnowledgeNotebookStore(Path.Combine(_root, "desktop-conflict.json"));
+        var original = phone.Save(new KnowledgeNotebook(Guid.NewGuid(), "Sources", "", [], [], DateTimeOffset.UtcNow));
+        desktop.MergeSyncItems(phone.SyncItems());
+        phone.Save(original with { Instructions = "Phone edit" });
+        desktop.Save(Assert.Single(desktop.All()) with { Instructions = "Desktop edit" });
+        Assert.Throws<InvalidOperationException>(() => desktop.MergeSyncItems(phone.SyncItems()));
+        Assert.Equal("Desktop edit", Assert.Single(desktop.All()).Instructions);
+    }
+
+    [Fact]
     public void Corrupt_schedule_is_not_silently_replaced_and_stale_notebook_edits_are_rejected()
     {
         var path = Path.Combine(_root, "schedule.json");

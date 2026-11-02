@@ -152,6 +152,24 @@ public sealed class CircleAiWindowsServiceRuntimeTests
         Assert.Equal("13", await Answer(runtime));
     }
 
+    [Fact]
+    public async Task A_silent_service_cannot_hold_the_Desktop_turn_forever()
+    {
+        using var runtime = Ready(new SilentHandler());
+        runtime.ResponseIdleTimeout = TimeSpan.FromMilliseconds(80);
+        await Assert.ThrowsAsync<TimeoutException>(() => Answer(runtime));
+        Assert.Contains("has not sent an answer", runtime.StatusMessage);
+    }
+
+    private sealed class SilentHandler : HttpMessageHandler
+    {
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, token);
+            throw new InvalidOperationException("The canceled request should not finish.");
+        }
+    }
+
     private sealed class BlockingHandler : HttpMessageHandler
     {
         public readonly TaskCompletionSource FirstEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);

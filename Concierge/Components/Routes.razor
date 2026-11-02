@@ -5,6 +5,8 @@
     @page routes outside this assembly. The visible symptom was: every nav
     link rendered "Home" because no other route matched.
 *@
+@using Fluxor.Blazor.Web
+<StoreInitializer />
 <Router AppAssembly="@typeof(MauiProgram).Assembly"
         AdditionalAssemblies="@(new[] { typeof(Concierge.Shared.Components.ComponentAssemblyMarker).Assembly })"
         NotFoundPage="@typeof(Concierge.Shared.Components.Pages.NotFound)">

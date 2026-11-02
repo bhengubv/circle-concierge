@@ -91,7 +91,7 @@ public sealed class WorkspaceThreadTests : BunitContext
 
         // Two paragraphs, which is the AssistantContent behaviour — proof the
         // thread renders replies through it rather than dumping the raw string.
-        Assert.Equal(2, cut.FindAll("article.msg .msg-body p.prose").Count);
+        Assert.Equal(2, cut.FindAll("article.msg .assistant-markdown p").Count);
     }
 
     [Fact]
@@ -340,6 +340,62 @@ public sealed class WorkspaceThreadTests : BunitContext
         // And nothing rendered it as something somebody said.
         Assert.Empty(cut.FindAll("article.msg"));
         Assert.Empty(cut.FindAll(".msg-who"));
+    }
+
+    [Fact]
+    public void A_completed_tool_receipt_names_its_outcome_and_hides_detail_until_opened()
+    {
+        var store = Compose();
+        var conversation = store.StartAsync("local", title: "With a receipt").GetAwaiter().GetResult();
+        store.AppendEventAsync(conversation.Id, ConversationEventType.ToolResult,
+            ToolCallProtocol.FormatResult("read_file", new AgentToolResult(true, "42 lines read")))
+            .GetAwaiter().GetResult();
+
+        var cut = Open(conversation.Id);
+        cut.WaitForAssertion(() => Assert.Contains("Read file · Completed", cut.Find("button.chip").TextContent));
+        Assert.Equal("true", cut.Find(".chips[data-tool-success]").GetAttribute("data-tool-success"));
+        Assert.Empty(cut.FindAll("pre.chip-out"));
+
+        cut.Find("button.chip").Click();
+        cut.WaitForAssertion(() => Assert.Contains("42 lines read", cut.Find("pre.chip-out").TextContent));
+    }
+
+    [Fact]
+    public void A_tool_request_is_shown_as_activity_rather_than_an_intermediate_answer()
+    {
+        var store = Compose();
+        var conversation = store.StartAsync("local", title: "Tool work").GetAwaiter().GetResult();
+        store.AppendEventAsync(conversation.Id, ConversationEventType.AssistantMessage,
+            "I cannot browse this folder.\n```tool-call\n{\"name\":\"list_files\",\"arguments\":{\"path\":\"work\"}}\n```")
+            .GetAwaiter().GetResult();
+        store.AppendEventAsync(conversation.Id, ConversationEventType.ToolResult,
+            ToolCallProtocol.FormatResult("list_files", new AgentToolResult(true, "orders.csv")))
+            .GetAwaiter().GetResult();
+        store.AppendEventAsync(conversation.Id, ConversationEventType.AssistantMessage,
+            "I found orders.csv.").GetAwaiter().GetResult();
+
+        var cut = Open(conversation.Id);
+
+        cut.WaitForAssertion(() => Assert.Contains("List files · Completed", cut.Find("button.chip").TextContent));
+        Assert.DoesNotContain("I cannot browse this folder", cut.Find(".ws-thread").TextContent);
+        Assert.Single(cut.FindAll("article.msg"));
+        Assert.Contains("I found orders.csv.", cut.Find("article.msg").TextContent);
+    }
+
+    [Fact]
+    public void A_failed_tool_receipt_says_it_needs_attention()
+    {
+        var store = Compose();
+        var conversation = store.StartAsync("local", title: "Failed receipt").GetAwaiter().GetResult();
+        store.AppendEventAsync(conversation.Id, ConversationEventType.ToolResult,
+            ToolCallProtocol.FormatResult("web_search", new AgentToolResult(false, string.Empty, "Search is not configured")))
+            .GetAwaiter().GetResult();
+
+        var cut = Open(conversation.Id);
+        cut.WaitForAssertion(() => Assert.Contains("Web search · Needs attention", cut.Find("button.chip").TextContent));
+        Assert.Equal("false", cut.Find(".chips[data-tool-success]").GetAttribute("data-tool-success"));
+        cut.Find("button.chip").Click();
+        cut.WaitForAssertion(() => Assert.Contains("Search is not configured", cut.Find("pre.chip-out").TextContent));
     }
 
     [Fact]

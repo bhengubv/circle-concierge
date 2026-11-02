@@ -4,6 +4,7 @@
 @inject IKnowledgeNotebookStore Store
 @inject IConversationStore Conversations
 @inject NavigationManager Navigation
+@inject IServiceProvider Services
 
 <div class="room">
     <div class="room-top"><a class="room-back" href="/">Workspace</a><h1>Notebooks</h1></div>
@@ -13,6 +14,7 @@
         <div class="notebook-actions">
             <button class="btn" @onclick="New">New notebook</button>
             <button class="btn" @onclick="Reload">Reload saved notebooks</button>
+            @if (DesktopClient is not null) { <button class="btn" @onclick="SyncWithDesktopAsync">Sync with Desktop</button> }
         </div>
         <nav class="rows" aria-label="Saved notebooks">
             @foreach (var notebook in _notebooks)
@@ -72,7 +74,27 @@
     private string _name = "", _instructions = "", _sourceName = "", _sourceText = "";
     private string? _error, _status;
     private bool _confirmDelete, _starting;
-    protected override void OnInitialized() => Reload();
+    private Concierge.Away.AwayClient? DesktopClient => OperatingSystem.IsWindows() ? null
+        : Services.GetService(typeof(Concierge.Away.AwayClient)) as Concierge.Away.AwayClient;
+    protected override async Task OnInitializedAsync()
+    {
+        Reload();
+        if (DesktopClient is not null) await SyncWithDesktopAsync();
+    }
+    private async Task SyncWithDesktopAsync()
+    {
+        var client = DesktopClient;
+        if (client is null) return;
+        try
+        {
+            var synced = await NotebookExchange.SyncAsync(Store, client);
+            Reload();
+            _status = synced ? "Notebooks and sources are synced with Desktop."
+                : "Desktop notebook sync is unavailable. This device keeps your changes and will retry when you reopen Notebooks.";
+        }
+        catch (InvalidOperationException ex) { _error = $"Notebook sync needs your attention: {ex.Message}"; }
+        catch (ArgumentException ex) { _error = $"Notebook sync could not accept the other device's data: {ex.Message}"; }
+    }
     private void Reload()
     {
         try { _notebooks = Store.All(); _error = null; }
@@ -114,7 +136,10 @@
         }
         catch (Exception ex) { _error = ex.Message; return false; }
     }
-    private void Save() => SaveNotebook();
+    private async Task Save()
+    {
+        if (SaveNotebook()) await SyncWithDesktopAsync();
+    }
     private async Task StartConversationAsync()
     {
         if (_starting || !SaveNotebook()) return;
@@ -123,15 +148,16 @@
         {
             var conversation = await Conversations.StartAsync("local", _name);
             _selected = Store.LinkConversation(_selected!.Id, conversation.Id);
+            await SyncWithDesktopAsync();
             Navigation.NavigateTo($"/chat/{conversation.Id}");
         }
         catch (Exception ex) { _error = $"Could not start the conversation: {ex.Message}"; }
         finally { _starting = false; }
     }
-    private void Delete()
+    private async Task Delete()
     {
         if (_selected is null) return;
-        try { Store.Delete(_selected.Id); _selected = null; Reload(); }
+        try { Store.Delete(_selected.Id); _selected = null; Reload(); await SyncWithDesktopAsync(); }
         catch (Exception ex) { _error = ex.Message; }
     }
 }

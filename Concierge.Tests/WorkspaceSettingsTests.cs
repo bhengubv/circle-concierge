@@ -47,6 +47,7 @@ public sealed class WorkspaceSettingsTests : BunitContext
         Concierge.Shared.Safety.SafetyServiceCollectionExtensions.AddConciergeSafety(Services);
         Services.AddSingleton<IEnumerable<Concierge.Shared.Media.IImageRuntime>>(
             _ => Array.Empty<Concierge.Shared.Media.IImageRuntime>());
+        Services.AddSingleton<Concierge.Shared.Media.ILocalVoiceModelSetup, UnavailableVoiceSetup>();
         JSInterop.Mode = JSRuntimeMode.Loose;
 
         using (var db = Services.GetRequiredService<IDbContextFactory<ConciergeChatDbContext>>().CreateDbContext())

@@ -5,6 +5,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using Concierge.Shared.Chat;
+using Concierge.Shared.Planning;
 using Concierge.Shared.Tools;
 
 namespace Concierge.Away;
@@ -825,6 +826,62 @@ public sealed class AwayClient
                 && synchronized.ValueKind == JsonValueKind.True;
         }
         catch (Exception failure) when (failure is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            if (failure is TaskCanceledException && cancellationToken.IsCancellationRequested)
+                throw new OperationCanceledException(cancellationToken);
+            _where = null;
+            return false;
+        }
+    }
+
+    public async Task<IReadOnlyList<NotebookSyncItem>?> ReadNotebookSyncItemsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        _where ??= _told;
+        if (_where is null && !await FindAsync(cancellationToken: cancellationToken).ConfigureAwait(false))
+            return null;
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"{_where}/api/away/notebooks");
+            Sign(request);
+            using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            if (!response.IsSuccessStatusCode) return null;
+            return await response.Content.ReadFromJsonAsync<NotebookSyncItem[]>(cancellationToken: cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception failure) when (failure is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            if (failure is TaskCanceledException && cancellationToken.IsCancellationRequested)
+                throw new OperationCanceledException(cancellationToken);
+            _where = null;
+            return null;
+        }
+    }
+
+    public async Task<bool> SynchronizeNotebooksAsync(IReadOnlyList<NotebookSyncItem> items,
+        CancellationToken cancellationToken = default)
+    {
+        if (items.Count > 256) return false;
+        _where ??= _told;
+        if (_where is null && !await FindAsync(cancellationToken: cancellationToken).ConfigureAwait(false))
+            return false;
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"{_where}/api/away/notebooks")
+                { Content = JsonContent.Create(items) };
+            Sign(request);
+            using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+            if (response.StatusCode == HttpStatusCode.Conflict)
+            {
+                var body = await response.Content.ReadFromJsonAsync<JsonElement>(cancellationToken: cancellationToken)
+                    .ConfigureAwait(false);
+                var message = body.ValueKind == JsonValueKind.Object
+                    && body.TryGetProperty("message", out var detail) ? detail.GetString() : null;
+                throw new InvalidOperationException(message ?? "The two devices changed the same notebook. Review both copies.");
+            }
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception failure) when (failure is HttpRequestException or TaskCanceledException)
         {
             if (failure is TaskCanceledException && cancellationToken.IsCancellationRequested)
                 throw new OperationCanceledException(cancellationToken);

@@ -61,6 +61,10 @@ public interface IWebSearch
     /// fail, and the tool says so rather than trying.</summary>
     bool IsConfigured { get; }
 
+    /// <summary>Resolve configuration without blocking the caller's thread.</summary>
+    Task<bool> IsConfiguredAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(IsConfigured);
+
     /// <summary>Human-readable name of the provider, for the settings panel.</summary>
     string ProviderName { get; }
 

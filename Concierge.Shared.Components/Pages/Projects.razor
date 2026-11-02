@@ -277,7 +277,10 @@
                 {
                     @if (_selected.ConversationIds.Contains(currentConversationId))
                     {
-                        <p class="project-linked-chat" role="status">This conversation is linked to the project.</p>
+                        <p class="project-linked-chat" role="status">
+                            This conversation is linked to the project.
+                            <a href="@ConversationReturnHref(currentConversationId, _selected)">Return to the conversation</a>
+                        </p>
                     }
                     else
                     {
@@ -756,6 +759,8 @@
     public Guid? ConversationId { get; set; }
     [SupplyParameterFromQuery(Name = "project")]
     public Guid? SelectedProjectId { get; set; }
+    [SupplyParameterFromQuery(Name = "workspace")]
+    public Guid? WorkspaceId { get; set; }
 
     private sealed record ProjectConversationActivity(Guid ConversationId, string Title, string State,
         string StateKey, string Detail, DateTimeOffset? At);
@@ -824,6 +829,16 @@
         BackgroundRuns.Changed += OnBackgroundRunsChanged;
         AgentCoordinator.Changed += OnProjectAgentsChanged;
         ButlerMonitor.Changed += OnButlerRunsChanged;
+    }
+
+    private string ConversationReturnHref(Guid conversationId, ConciergeProject project)
+    {
+        var href = $"/chat/{conversationId}?project={project.Id}";
+        if (WorkspaceId is { } workspaceId
+            && project.Workspaces.Any(workspace => workspace.Id == workspaceId
+                && workspace.ConversationIds.Contains(conversationId)))
+            href += $"&workspace={workspaceId}";
+        return href;
     }
 
     protected override async Task OnParametersSetAsync()

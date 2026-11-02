@@ -125,6 +125,7 @@ public sealed class HandheldWorkspaceTests : BunitContext
         Concierge.Shared.Safety.SafetyServiceCollectionExtensions.AddConciergeSafety(Services);
         Services.AddSingleton<IEnumerable<Concierge.Shared.Media.IImageRuntime>>(
             _ => Array.Empty<Concierge.Shared.Media.IImageRuntime>());
+        Services.AddSingleton<Concierge.Shared.Media.ILocalVoiceModelSetup, UnavailableVoiceSetup>();
         JSInterop.Mode = JSRuntimeMode.Loose;
         if (desktopClient is not null)
             JSInterop.Setup<bool>("conciergeSense.isWindowsDesktop").SetResult(true);

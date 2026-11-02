@@ -160,7 +160,7 @@ public sealed class CircleAiSharedServiceChatRuntime(ICircleAiServiceChatLink li
                     var chunks = Channel.CreateUnbounded<string>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
                     async Task<CircleAiServiceChatReply> SendAndCloseAsync()
                     {
-                        try { return await SafeSend(() => streaming.SendChatStreamingAsync(conversation.ToString("D"), text, agentic,
+                        try { return await SafeSend(() => streaming.SendChatStreamingAsync(conversation.ToString("D"), text, query.Content, agentic,
                             chunk => chunks.Writer.TryWrite(chunk), cancellationToken)); }
                         finally { chunks.Writer.TryComplete(); }
                     }
@@ -172,7 +172,7 @@ public sealed class CircleAiSharedServiceChatRuntime(ICircleAiServiceChatLink li
                     }
                     reply = await sending;
                 }
-                else reply = await SafeSend(() => link.SendChatAsync(conversation.ToString("D"), text, agentic, cancellationToken));
+                else reply = await SafeSend(() => link.SendChatAsync(conversation.ToString("D"), text, query.Content, agentic, cancellationToken));
             }
             finally { if (progressSource is not null) progressSource.RequestProgress -= Progress; }
             if (!reply.Ok || string.IsNullOrWhiteSpace(reply.Text))

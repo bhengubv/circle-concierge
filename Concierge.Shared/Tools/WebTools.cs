@@ -140,7 +140,7 @@ public sealed class WebSearchTool : IAgentTool
             return new AgentToolResult(false, string.Empty, "Argument 'query' is required.");
         }
 
-        if (!_search.IsConfigured)
+        if (!await _search.IsConfiguredAsync(cancellationToken).ConfigureAwait(false))
         {
             return new AgentToolResult(false, string.Empty,
                 "No search provider is set up. Add a Brave Search key in Settings, under Keys.");

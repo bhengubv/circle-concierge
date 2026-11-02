@@ -59,6 +59,7 @@ public sealed class FilterRecordTests : BunitContext
         Services.AddSingleton(log);
         Services.AddLogging();
         Services.AddConciergeCore();
+        Services.AddSingleton<Concierge.Shared.Media.ILocalVoiceModelSetup, UnavailableVoiceSetup>();
         Services.AddSingleton<Concierge.Shared.Settings.IConciergeSecretStore, InMemorySecretStore>();
         Concierge.Shared.Safety.SafetyServiceCollectionExtensions.AddConciergeSafety(Services);
         JSInterop.Mode = JSRuntimeMode.Loose;

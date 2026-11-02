@@ -50,6 +50,8 @@ PublishProfiles/
 
 # ---- Concierge runtime artifacts (state, run logs, downloaded models) ------
 .concierge-artifacts/
+# Local build, probe and device-capture scratch output; reviewed evidence lives in docs/acceptance.
+work/
 *.db
 *.db-journal
 *.db-shm
