@@ -2165,6 +2165,13 @@ html[data-cm-host="windows-desktop"] .comp-sep { color:var(--cm-color-outline); 
 .project-starter-preview p, .project-starter-preview li { color:var(--ink-soft); font-size:var(--t-sm); line-height:1.5; }
 .project-starter-preview ol { margin:8px 0; padding-left:22px; }
 .project-starter-focus { margin:14px 0; padding:14px 16px; border-radius:14px; background:var(--raised); color:var(--ink-soft); font-size:var(--t-sm); }
+.project-vocation { margin:16px 0 24px; padding:22px; border:1px solid color-mix(in srgb,var(--cm-color-accent) 45%,var(--rule)); border-radius:22px; background:linear-gradient(130deg,color-mix(in srgb,var(--cm-color-accent) 16%,var(--surface)),var(--surface) 65%); }
+.project-vocation h3 { margin:3px 0 8px; font-size:clamp(1.35rem,2.2vw,1.8rem); }
+.project-vocation p { max-width:60ch; margin:8px 0; color:var(--ink-soft); line-height:1.5; }
+.project-vocation-tools { display:flex; flex-wrap:wrap; gap:8px; margin:17px 0; }
+.project-vocation-tools span { padding:7px 11px; border:1px solid var(--rule); border-radius:999px; background:var(--raised); color:var(--ink-soft); font-size:var(--t-xs); font-weight:680; }
+.project-vocation-tools .is-offered { border-color:color-mix(in srgb,var(--cm-color-accent) 55%,var(--rule)); color:var(--ink); }
+.project-vocation .project-vocation-note { font-size:var(--t-xs); }
 .startup-create-panel { max-width:660px; }
 .startup-choice { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:9px; margin:18px 0 4px; }
 .startup-choice button { min-height:48px; border:1px solid var(--rule); border-radius:14px; background:var(--raised); color:var(--ink-soft); font:inherit; font-size:var(--t-sm); font-weight:680; cursor:pointer; }

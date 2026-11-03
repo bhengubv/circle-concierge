@@ -66,9 +66,9 @@ public sealed class ProjectPageTests : BunitContext
 
         var cut = Render<Projects>();
         cut.WaitForState(() => cut.FindAll(".projects-page[aria-busy='false']").Count > 0);
-        cut.WaitForAssertion(() => Assert.Equal(9, cut.FindAll(".project-starter-card").Count));
+        cut.WaitForAssertion(() => Assert.Equal(10, cut.FindAll(".project-starter-card").Count));
         Assert.Equal(4, cut.Find(".project-starter-group[aria-label='Home starter Projects']").QuerySelectorAll(".project-starter-card").Length);
-        Assert.Equal(5, cut.Find(".project-starter-group[aria-label='Work starter Projects']").QuerySelectorAll(".project-starter-card").Length);
+        Assert.Equal(6, cut.Find(".project-starter-group[aria-label='Work starter Projects']").QuerySelectorAll(".project-starter-card").Length);
 
         await cut.InvokeAsync(() => cut.FindAll(".project-starter-card").Single(card => card.TextContent.Contains("House Chores")).ClickAsync(new MouseEventArgs()));
         cut.WaitForAssertion(() => Assert.Contains("Allowance or pay planning", cut.Find(".project-starter-preview").TextContent));
@@ -183,7 +183,7 @@ public sealed class ProjectPageTests : BunitContext
         Services.GetRequiredService<NavigationManager>().NavigateTo($"/projects?conversation={conversationId}");
         var cut = Render<Projects>();
         cut.WaitForState(() => cut.FindAll(".projects-page[aria-busy='false']").Count > 0);
-        cut.WaitForAssertion(() => Assert.Equal(9, cut.FindAll(".project-starter-card").Count));
+        cut.WaitForAssertion(() => Assert.Equal(10, cut.FindAll(".project-starter-card").Count));
         Assert.Contains("House Chores", cut.Find(".project-starters").TextContent);
         await cut.InvokeAsync(() => cut.Find("#project-name").ChangeAsync(new ChangeEventArgs { Value = "Neighborhood launch" }));
         await cut.InvokeAsync(() => cut.Find("#project-outcome").ChangeAsync(new ChangeEventArgs { Value = "Find first customers and launch our offer" }));

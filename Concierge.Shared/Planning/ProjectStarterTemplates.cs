@@ -16,7 +16,8 @@ public sealed record ProjectStarterTemplate(
     string WorkflowName,
     string WorkflowOutcome,
     string AssistantFocus,
-    IReadOnlyList<(string Name, string Description)> Steps)
+    IReadOnlyList<(string Name, string Description)> Steps,
+    string? VocationModeId = null)
 {
     public ConciergeProject CreateProject()
     {
@@ -29,6 +30,7 @@ public sealed record ProjectStarterTemplate(
         return ConciergeProject.Create(Name, Outcome, WorkType) with
         {
             StarterAgentFocus = AssistantFocus,
+            VocationModeId = VocationModeId,
             Workflows = [workflow],
         };
     }
@@ -75,6 +77,15 @@ public static class ProjectStarterTemplates
             "Software maintenance", "A prioritized, reviewable path from issue to verified change",
             "Wolverine by Circle AI is the intended development assistant; availability depends on the connected Circle AI runtime.",
             [("Describe the product and its users", "Capture purpose, stack, and the people affected."), ("Collect maintenance work", "Add defects, dependency updates, and small improvements."), ("Plan a reviewed release", "Order changes, verification, and release notes.")]),
+        new("social-media-manager", "Work", "Social Media Manager", "Plan, make, review, and measure a social campaign.", "Business",
+            "First campaign", "A reviewed campaign with reusable content and a clear measure of success",
+            "Concierge helps with research, drafts, media, and scheduling where tools are available. Publishing stays under your control.",
+            [("Write the brief", "Name the audience, offer, channels, tone, budget, and success measure."),
+             ("Plan the content", "Make a channel-specific calendar and drafts."),
+             ("Create the assets", "Make or import visuals and short video; record sources and usage rights."),
+             ("Review and publish", "Check claims, accessibility, permissions, and final copy before publishing."),
+             ("Measure and improve", "Record outcomes and decide what to repeat or change.")],
+            VocationModeId: VocationModes.SocialMediaManagerId),
     ];
 
     public static IReadOnlyList<ProjectStarterTemplate> Home => All.Where(template => template.Group == "Home").ToList();

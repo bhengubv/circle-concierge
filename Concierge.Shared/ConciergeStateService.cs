@@ -204,6 +204,8 @@ public static class ConciergeServiceCollectionExtensions
 {
     public static IServiceCollection AddConciergeCore(this IServiceCollection services)
     {
+        services.TryAddEnumerable(ServiceDescriptor.Singleton<Concierge.Shared.Skills.ISkillSource,
+            Concierge.Shared.Skills.BundledSkillSource>());
         // Skill catalog: composes the embedded bundle (always present) with
         // whatever ISkillSources have been registered (filesystem at dev time,
         // bundled-asset readers on mobile, remote indices later).

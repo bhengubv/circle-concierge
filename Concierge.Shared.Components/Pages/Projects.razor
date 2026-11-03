@@ -3,6 +3,7 @@
 @using Concierge.Shared.Chat
 @using Concierge.Shared.Butler
 @using Concierge.Shared.Planning
+@using Concierge.Shared.Tools
 @implements IDisposable
 @inject IProjectStore ProjectStore
 @inject ProjectAgentCoordinator AgentCoordinator
@@ -12,6 +13,7 @@
 @inject NavigationManager Nav
 @inject IButlerWorkRunApi ButlerRunsApi
 @inject ProjectButlerRunMonitor ButlerMonitor
+@inject IServiceProvider AppServices
 
 <main class="projects-page" aria-labelledby="projects-heading" aria-busy="@(_loading ? "true" : "false")">
     <header class="projects-header">
@@ -267,6 +269,23 @@
                 @if (!string.IsNullOrWhiteSpace(_selected.StarterAgentFocus))
                 {
                     <p class="project-starter-focus"><strong>Starter assistant focus:</strong> @_selected.StarterAgentFocus</p>
+                }
+
+                @if (VocationModes.Find(_selected.VocationModeId) is { } vocation)
+                {
+                    <section class="project-vocation" aria-label="@vocation.Name tools">
+                        <p class="projects-eyebrow">FOCUSED WORKSPACE</p>
+                        <h3>@vocation.Name</h3>
+                        <p>The marketing skill joins conversations in this Project. Work follows the editable steps below.</p>
+                        <div class="project-vocation-tools">
+                            @foreach (var tool in vocation.Tools)
+                            {
+                                <span class="@(IsToolOffered(tool.Name) ? "is-offered" : "is-missing")">@tool.Label · @(IsToolOffered(tool.Name) ? "In this app" : "Not set up")</span>
+                            }
+                        </div>
+                        <p class="project-vocation-note">A tool appearing here may still need a provider or permission. Concierge confirms that before using it. Publishing is not connected.</p>
+                        <button class="project-primary" type="button" disabled="@_saving" @onclick="StartProjectConversationAsync">Work with Concierge</button>
+                    </section>
                 }
 
                 @if (_selected.ConversationIds.Count > 0)
@@ -823,6 +842,24 @@
 
     private IChatRuntime? CircleAiRuntime
         => Runtimes.FirstOrDefault(runtime => string.Equals(runtime.Id, "circleai", StringComparison.OrdinalIgnoreCase));
+
+    private bool IsToolOffered(string name)
+        => AppServices.GetService(typeof(IAgentToolRegistry)) is IAgentToolRegistry registry
+            && registry.Tools.Any(tool => string.Equals(tool.Name, name, StringComparison.OrdinalIgnoreCase));
+
+    private async Task StartProjectConversationAsync()
+    {
+        if (_selected is null || _saving) return;
+        await WithSaving(async () =>
+        {
+            var conversation = await ConversationStore.StartAsync("local", $"{_selected.Name} work");
+            _selected = await ProjectStore.SaveAsync(_selected with
+            {
+                ConversationIds = _selected.ConversationIds.Append(conversation.Id).Distinct().ToArray(),
+            });
+            Nav.NavigateTo($"/chat/{conversation.Id}?project={_selected.Id}");
+        });
+    }
 
     protected override void OnInitialized()
     {

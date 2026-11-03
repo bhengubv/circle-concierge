@@ -87,6 +87,8 @@ public sealed record ConciergeProject
     public string WorkType { get; init; } = "General";
     /// <summary>Capability the selected starter example is designed to showcase; informational, not an agent execution claim.</summary>
     public string? StarterAgentFocus { get; init; }
+    /// <summary>Optional focused workspace profile; the Project still owns its editable workflow.</summary>
+    public string? VocationModeId { get; init; }
     public Guid? StartupJourneyId { get; init; }
     public ProjectStatus Status { get; init; } = ProjectStatus.Planning;
     public DateTimeOffset CreatedAt { get; init; } = DateTimeOffset.UtcNow;

@@ -22,6 +22,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Concierge.Shared.Chat;
+using Concierge.Shared.Planning;
 using Concierge.Shared.Tools;
 
 namespace Concierge.Shared.Components.Workspace;
@@ -854,6 +855,13 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
             contextLines.Add($"Workspace outcome: {JsonSerializer.Serialize(workspace.DesiredOutcome)}");
             foreach (var workflow in project.Workflows.Where(candidate => workspace.WorkflowIds.Contains(candidate.Id)))
                 contextLines.Add($"Related workflow: {JsonSerializer.Serialize(workflow.Name)} — {JsonSerializer.Serialize(workflow.DesiredOutcome)}");
+        }
+        if (VocationModes.Find(project.VocationModeId) is { } vocation)
+        {
+            contextLines.Add($"Focused vocation: {vocation.Name}. Use the attached vocation skill when relevant; report which tools are actually available before proposing an action.");
+            foreach (var workflow in project.Workflows)
+                foreach (var step in workflow.Steps)
+                    contextLines.Add($"Planned step: {JsonSerializer.Serialize(step.Name)} — {JsonSerializer.Serialize(step.Description)}");
         }
         _projectContextSystemPrompt = string.Join("\n", contextLines);
         if (!string.IsNullOrWhiteSpace(rawStartupId))
@@ -2610,7 +2618,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
             new Concierge.Shared.Chat.TurnSettings(
                 ExecuteTools: _executeToolCalls,
                 IncludeToolCatalog: _includeToolCatalog,
-                SkillIds: _activeSkillIds.ToArray(),
+                SkillIds: VocationModes.SkillIdsForProject(_turnProject, _activeSkillIds),
                 SystemPrompt: ComposeTurnSystemPrompt(),
                 PermissionMode: _permission),
             ProjectId: _turnProjectId,
