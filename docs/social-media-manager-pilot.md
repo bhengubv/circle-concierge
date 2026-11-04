@@ -21,5 +21,5 @@ The GitHub forks mentioned in the product discussion are research references for
 ## Current limits
 
 - Tool labels show which tools the app offers. They do not confirm that an account, provider, or network connection is ready.
-- Direct publishing and automatic analytics are not yet available.
+- Direct publishing and automatic analytics are not yet available in Concierge. SocialMediaAPI has publishing code, but its current queue stores post content on the server. See the [in-house API map](integrations/in-house-api-map.md) before integrating it with a local campaign.
 - Other occupations need their own workflows and tool connections.
