@@ -7,6 +7,15 @@ namespace Concierge.Tests;
 public sealed class ApiKeyAuthTests
 {
     [Fact]
+    public void Published_web_host_refuses_anonymous_startup()
+    {
+        Assert.Throws<InvalidOperationException>(() => WebHostAuthPolicy.RequireProtectedHost(false, null));
+        Assert.Throws<InvalidOperationException>(() => WebHostAuthPolicy.RequireProtectedHost(false, "  "));
+        WebHostAuthPolicy.RequireProtectedHost(false, "test-key");
+        WebHostAuthPolicy.RequireProtectedHost(true, null);
+    }
+
+    [Fact]
     public async Task Middleware_is_a_passthrough_when_no_key_is_configured()
     {
         var context = NewContext("/chat");
@@ -53,6 +62,22 @@ public sealed class ApiKeyAuthTests
 
         Assert.True(invoked);
         Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
+    }
+
+    [Theory]
+    [InlineData("/healthz-private")]
+    [InlineData("/metrics-admin")]
+    [InlineData("/_framework-secret")]
+    [InlineData("/app.css-private")]
+    public async Task Similar_looking_private_paths_do_not_bypass_the_gate(string path)
+    {
+        var context = NewContext(path);
+        var middleware = new ApiKeyAuthMiddleware(_ => Task.CompletedTask,
+            new ApiKeyAuthOptions { ConfiguredKey = "secret-key" });
+
+        await middleware.InvokeAsync(context);
+
+        Assert.Equal(StatusCodes.Status401Unauthorized, context.Response.StatusCode);
     }
 
     [Theory]

@@ -1,0 +1,7 @@
+# Web protection and REDMI12 acceptance, 4 November 2026
+
+The Web host previously allowed a Production process to start with no API key. It now refuses that configuration at startup. Development still permits an unset key. With a configured key, the existing `X-Concierge-Key` gate protects application routes; health and static assets remain reachable. Similar-looking paths such as `/healthz-private` are not exempt. The 16 focused authentication tests passed, and a Production launch without a key exited with the intended exception.
+
+This is a containment step, **not phone-approved Web sign-in**. A browser does not send `X-Concierge-Key` by itself, and there is no owner-bound browser session yet. Do not publish the Web app as a usable personal Web client until the QR approval, owner binding, secure cookie, and data isolation have been implemented and tested. The existing `QrPairingChallenges` type is only a challenge store.
+
+REDMI12 was identified over the existing ADB connection as a Redmi Note 12 Pro+ 5G (`22101316UG`). The Android Debug build passed with 0 errors and 17 warnings. The device has Circle AI Service build 60 and no Concierge install. Installing the freshly built signed APK returned `INSTALL_FAILED_USER_RESTRICTED: Install canceled by user`. No REDMI12 application journey or local AI reply has been verified; installation approval on the phone is needed before those checks.

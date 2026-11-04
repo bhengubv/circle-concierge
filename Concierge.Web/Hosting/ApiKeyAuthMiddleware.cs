@@ -22,16 +22,15 @@ public sealed class ApiKeyAuthMiddleware
     /// <summary>HTTP header callers send the key on.</summary>
     public const string HeaderName = "X-Concierge-Key";
 
-    private static readonly string[] AlwaysAllowedPrefixes =
+    private static readonly string[] AlwaysAllowedPaths =
     [
         "/healthz",
         "/metrics",
-        "/_framework/",
-        "/_content/",
-        "/lib/",
         "/app.css",
         "/favicon.png",
     ];
+
+    private static readonly string[] StaticAssetPaths = ["/_framework", "/_content", "/lib"];
 
     private readonly RequestDelegate _next;
     private readonly ApiKeyAuthOptions _options;
@@ -50,10 +49,19 @@ public sealed class ApiKeyAuthMiddleware
             return;
         }
 
-        var path = context.Request.Path.Value ?? string.Empty;
-        foreach (var prefix in AlwaysAllowedPrefixes)
+        var path = context.Request.Path;
+        foreach (var allowedPath in AlwaysAllowedPaths)
         {
-            if (path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            if (path.Equals(new PathString(allowedPath), StringComparison.OrdinalIgnoreCase))
+            {
+                await _next(context).ConfigureAwait(false);
+                return;
+            }
+        }
+
+        foreach (var assetPath in StaticAssetPaths)
+        {
+            if (path.StartsWithSegments(new PathString(assetPath), StringComparison.OrdinalIgnoreCase))
             {
                 await _next(context).ConfigureAwait(false);
                 return;
