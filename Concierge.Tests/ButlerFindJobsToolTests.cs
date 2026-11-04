@@ -88,7 +88,7 @@ public sealed class ButlerFindJobsToolTests
             var tool = Assert.Single(registry.Tools, item => item.Name == "butler_find_jobs");
             var result = await tool.InvokeAsync(new JsonObject { ["keyword"] = "plumber" });
             Assert.False(result.Success);
-            Assert.Contains("Connect your Butler account", result.FailureMessage);
+            Assert.Contains("Sign in to your TheGeekNetwork online account", result.FailureMessage);
             Assert.Null(api.Submitted);
         }
     }

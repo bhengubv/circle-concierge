@@ -219,7 +219,7 @@ public sealed class ButlerAccountSession(HttpClient authApi, IButlerSessionToken
 
         await tokenStore.SaveAsync(new ButlerSessionTokens(userId, email ?? string.Empty, accessToken,
             expiresAt, refreshToken, refreshTokenId), cancellationToken).ConfigureAwait(false);
-        return new ButlerSignInResult(ButlerSignInState.Connected, "Butler account connected.");
+        return new ButlerSignInResult(ButlerSignInState.Connected, "Signed in to your TheGeekNetwork online account for Butler.");
     }
 
     private static async Task<JsonDocument> ReadResponseAsync(HttpResponseMessage response, CancellationToken cancellationToken)
@@ -296,9 +296,9 @@ public sealed class ButlerAccountUnavailable : IButlerAccountSession
     public Task<ButlerAccountStatus> GetStatusAsync(CancellationToken cancellationToken = default)
         => Task.FromResult(new ButlerAccountStatus(false, false, null, false));
     public Task<ButlerSignInResult> SignInAsync(string emailOrMobile, string password, CancellationToken cancellationToken = default)
-        => Task.FromResult(new ButlerSignInResult(ButlerSignInState.Failed, "Butler account linking is not available on this host yet."));
+        => Task.FromResult(new ButlerSignInResult(ButlerSignInState.Failed, "TheGeekNetwork online sign-in for Butler is not available on this device yet."));
     public Task<ButlerSignInResult> CompleteTwoFactorAsync(string code, CancellationToken cancellationToken = default)
-        => Task.FromResult(new ButlerSignInResult(ButlerSignInState.Failed, "Butler account linking is not available on this host yet."));
+        => Task.FromResult(new ButlerSignInResult(ButlerSignInState.Failed, "TheGeekNetwork online sign-in for Butler is not available on this device yet."));
     public Task<string?> GetAccessTokenAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
     public Task SignOutAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 }

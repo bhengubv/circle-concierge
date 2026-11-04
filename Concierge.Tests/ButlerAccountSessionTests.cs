@@ -17,7 +17,7 @@ public sealed class ButlerAccountSessionTests
         var status = await session.GetStatusAsync();
 
         Assert.Equal(ButlerSignInState.Connected, result.State);
-        Assert.Equal("Butler account connected.", result.Message);
+        Assert.Equal("Signed in to your TheGeekNetwork online account for Butler.", result.Message);
         Assert.True(status.IsConnected);
         Assert.Equal("person@example.com", status.Email);
         Assert.False(status.NeedsTwoFactor);

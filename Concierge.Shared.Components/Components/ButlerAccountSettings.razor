@@ -4,7 +4,7 @@
 <div class="rows" aria-live="polite">
     @if (_status is null)
     {
-        <p class="row-sub">Checking Butler account status…</p>
+        <p class="row-sub">Checking online account status…</p>
     }
     else if (!_status.IsSupported)
     {
@@ -16,14 +16,14 @@
             <span class="row-name">Connected as @_status.Email</span>
             <span class="state"><span class="dot dot-done" aria-hidden="true"></span>Connected</span>
         </div>
-        <p class="row-sub">Concierge can attribute Butler work to your account. Signing in does not start or approve an operation.</p>
+        <p class="row-sub">This online account connects Butler work. Concierge works locally without signing in; connecting does not start or approve an operation.</p>
         <button class="btn" type="button" disabled="@_busy" @onclick="SignOutAsync">
-            @(_busy ? "Disconnecting…" : "Disconnect Butler")
+            @(_busy ? "Disconnecting…" : "Disconnect online account")
         </button>
     }
     else if (_status.NeedsTwoFactor)
     {
-        <p class="row-sub">Enter the code from your authenticator to finish connecting Butler.</p>
+        <p class="row-sub">Enter your authenticator code to finish signing in to your TheGeekNetwork online account for Butler.</p>
         <input class="comp-input" type="text" inputmode="numeric" autocomplete="one-time-code"
                placeholder="Verification code" aria-label="Butler verification code" @bind="_code" />
         <button class="btn btn-primary" type="button" disabled="@(_busy || string.IsNullOrWhiteSpace(_code))" @onclick="VerifyAsync">
@@ -32,13 +32,13 @@
     }
     else
     {
-        <p class="row-sub">Sign in with your Butler account. Your password is used only to sign in and is not saved by Concierge.</p>
+        <p class="row-sub">Sign in to your TheGeekNetwork online account to use Butler. Concierge works locally without signing in. Your password is not saved by Concierge.</p>
         <input class="comp-input" type="text" autocomplete="username" placeholder="Email or mobile number"
-               aria-label="Butler email or mobile number" @bind="_emailOrMobile" />
+               aria-label="TheGeekNetwork account email or mobile number" @bind="_emailOrMobile" />
         <input class="comp-input" type="password" autocomplete="current-password" placeholder="Password"
-               aria-label="Butler password" @bind="_password" />
+               aria-label="TheGeekNetwork account password" @bind="_password" />
         <button class="btn btn-primary" type="button" disabled="@(_busy || string.IsNullOrWhiteSpace(_emailOrMobile) || string.IsNullOrWhiteSpace(_password))" @onclick="SignInAsync">
-            @(_busy ? "Connecting…" : "Connect Butler")
+            @(_busy ? "Signing in…" : "Sign in for Butler")
         </button>
     }
     @if (!string.IsNullOrWhiteSpace(_message))
@@ -66,7 +66,7 @@
         catch (Exception)
         {
             _status = new ButlerAccountStatus(false, false, null, false);
-            _message = "Butler account storage could not be opened on this device.";
+            _message = "Online account storage could not be opened on this device.";
         }
     }
 
@@ -91,7 +91,7 @@
         try
         {
             await ButlerSession.SignOutAsync();
-            _message = "Butler disconnected.";
+            _message = "TheGeekNetwork online account disconnected.";
             await RefreshAsync();
         }
         catch (Exception)
@@ -116,7 +116,7 @@
         }
         catch (Exception)
         {
-            _message = "Butler account connection failed. Check your connection and try again.";
+            _message = "Online sign-in for Butler failed. Check your connection and try again.";
         }
         finally
         {

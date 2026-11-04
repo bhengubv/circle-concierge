@@ -145,7 +145,7 @@ public sealed class ButlerWorkRunApiClient(HttpClient http, IButlerAccountSessio
 }
 
 public sealed class ButlerAccountRequiredException()
-    : InvalidOperationException("Connect your Butler account in Settings before asking Concierge to run Butler work.");
+    : InvalidOperationException("Sign in to your TheGeekNetwork online account in Settings before running Butler work.");
 
 public sealed class ButlerWorkApiException(System.Net.HttpStatusCode statusCode, string message) : HttpRequestException(message, null, statusCode)
 { }
