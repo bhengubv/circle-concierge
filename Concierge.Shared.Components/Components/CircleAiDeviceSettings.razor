@@ -18,7 +18,11 @@
                 <span class="row-sub">@(_connected == true
                     ? "Circle AI manages Concierge’s approved access to Chat, Memory, Skills, Voice, Setup, and Background features."
                     : "Connect requests Chat, Memory, Skills, Voice, Setup, and Background access. Circle AI handles approval.")</span></span>
-                <button type="button" class="ai-settings-action" disabled="@_busy" @onclick="ConnectService">@(_connecting ? "Connecting…" : _connected == true ? "Manage Circle AI access" : "Connect Circle AI")</button></div>
+                @if (_connected != true)
+                {
+                    <button type="button" class="ai-settings-action" disabled="@_busy" @onclick="ConnectService">@(_connecting ? "Connecting…" : "Connect Circle AI")</button>
+                }
+            </div>
         }
         @if (_report is not null)
         {
