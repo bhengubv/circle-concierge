@@ -95,3 +95,8 @@ desktop.ini
 # ---- Python bytecode cache -------------------------------------------------
 __pycache__/
 *.py[cod]
+
+# ---- Browser acceptance output --------------------------------------------
+node_modules/
+playwright-report/
+test-results/

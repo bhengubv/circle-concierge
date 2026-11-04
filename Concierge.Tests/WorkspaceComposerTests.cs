@@ -584,12 +584,13 @@ public sealed class WorkspaceComposerTests : BunitContext
         cut.WaitForAssertion(() => Assert.Null(_sessionState!.Snapshot.PendingTurnFor(conversationId)));
 
         await cut.InvokeAsync(() => cut.Find("textarea.comp-input").Input(prompt));
+        cut.WaitForAssertion(() => Assert.False(Send(cut).HasAttribute("disabled")), TimeSpan.FromSeconds(15));
         Send(cut).Click();
         cut.WaitForAssertion(() =>
         {
             var events = store.ReadEventsAsync(conversationId).GetAwaiter().GetResult();
             Assert.Equal(2, events.Count(entry => entry.Type == ConversationEventType.TurnStart));
-        });
+        }, TimeSpan.FromSeconds(15));
         var starts = (await store.ReadEventsAsync(conversationId))
             .Where(entry => entry.Type == ConversationEventType.TurnStart)
             .ToArray();

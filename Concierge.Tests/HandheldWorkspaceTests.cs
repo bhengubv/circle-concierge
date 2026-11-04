@@ -91,6 +91,21 @@ public sealed class HandheldWorkspaceTests : BunitContext
         Assert.False(cut.Find(".welcome-desktop-link button[type='submit']").HasAttribute("disabled"));
     }
 
+    [Fact]
+    public void Mobile_user_can_open_settings_from_the_drawer_and_return_to_the_conversation()
+    {
+        var cut = RenderWorkspace();
+        cut.Find("button.ws-menu").Click();
+        Assert.Contains("is-open", cut.Find("aside.ws-side").ClassList);
+
+        cut.Find("button.ws-runtime").Click();
+        cut.WaitForAssertion(() => Assert.Equal("Settings", cut.Find("[role='dialog'] h1").TextContent));
+
+        cut.Find("[role='dialog'] button[title='Close']").Click();
+        cut.WaitForAssertion(() => Assert.Empty(cut.FindAll("[role='dialog']")));
+        Assert.NotEmpty(cut.FindAll("textarea.comp-input"));
+    }
+
     private IRenderedComponent<Concierge.Shared.Components.Workspace.Handheld.Workspace> RenderWorkspace(
         Guid? conversationId = null, CancellationTokenSource? activeRun = null,
         Concierge.Away.AwayClient? desktopClient = null, TaskCompletionSource? readGate = null,

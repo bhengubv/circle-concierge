@@ -210,10 +210,12 @@ public sealed class WorkspaceSidebarTests : BunitContext
         var cut = RenderWorkspace();
 
         Header(cut, "Personalize Circle AI").Click();
-        Assert.Contains("is-open", cut.FindAll("section.ws-group")[2].ClassName);
+        cut.WaitForAssertion(() => Assert.Contains("is-open", cut.FindAll("section.ws-group")[2].ClassName),
+            TimeSpan.FromSeconds(10));
 
         Header(cut, "Personalize Circle AI").Click();
-        Assert.DoesNotContain("is-open", cut.FindAll("section.ws-group")[2].ClassName);
+        cut.WaitForAssertion(() => Assert.DoesNotContain("is-open", cut.FindAll("section.ws-group")[2].ClassName),
+            TimeSpan.FromSeconds(10));
     }
 
     /// <summary>

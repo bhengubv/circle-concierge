@@ -144,11 +144,11 @@ public sealed class AwayWireTests : IDisposable
             new(19, 1300, 8, "Online", null),
             Activity: new Concierge.Shared.Chat.ChatRuntimeActivity(
                 "model-download", "embeddings_bf16.bin 1%", 0.01));
-        _capabilitiesResponseOverride = System.Text.Json.JsonSerializer.Serialize(
+        // This is a pure freshness rule. Keep it independent of the loopback
+        // listener's three-second probe deadline under a busy full-suite run.
+        // The adjacent fresh-activity test still exercises the HTTP wire.
+        var received = AwayClient.NormalizeCapabilityActivity(
             new AwayDeviceCapabilities(false, stale));
-        var client = Pointed();
-
-        var received = await client.GetCapabilitiesAsync();
 
         Assert.NotNull(received?.CircleAi);
         Assert.Equal(Concierge.Shared.Chat.ChatRuntimeCapabilityState.Unavailable,

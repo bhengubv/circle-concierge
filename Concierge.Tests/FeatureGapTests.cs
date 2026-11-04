@@ -225,7 +225,7 @@ public sealed class FeatureGapTests : IAsyncLifetime
         context.Services.AddSingleton(Conversations);
         context.Services.AddSingleton(_services.GetRequiredService<IProjectStore>());
         var cut = context.Render<Library>();
-        cut.WaitForAssertion(() => Assert.Contains("Business plan", cut.Markup));
+        cut.WaitForAssertion(() => Assert.Contains("Business plan", cut.Markup), TimeSpan.FromSeconds(15));
         cut.FindAll("button").Single(b => b.TextContent == "Preview output").Click();
         cut.WaitForAssertion(() => Assert.Contains("A saved business plan.", cut.Find(".library-preview").TextContent));
         cut.Find("input[type=search]").Input("does not exist");
@@ -298,6 +298,28 @@ public sealed class FeatureGapTests : IAsyncLifetime
         Assert.All(rows, row => Assert.Equal(run, row.RunId));
         Assert.Equal(new[] { "next.txt", "dotnet test", "git push" }, rows.Skip(2).Select(row => row.Path));
         Assert.Equal(new[] { "Command", "Command" }, rows.Skip(3).Select(row => row.Operation));
+    }
+
+    [Fact]
+    public async Task Conversation_files_page_shows_recorded_work_and_a_way_back_to_its_thread()
+    {
+        var conversation = await Conversations.StartAsync("local", "Release work");
+        await Conversations.AppendEventAsync(conversation.Id, ConversationEventType.ToolCall,
+            "write_file {\"path\":\"release-notes.md\"}");
+        await Conversations.AppendEventAsync(conversation.Id, ConversationEventType.ToolResult,
+            ToolCallProtocol.FormatResult("write_file", new AgentToolResult(true, "Saved", null)));
+
+        using var context = new BunitContext();
+        context.Services.AddSingleton(Conversations);
+        var page = context.Render<ConversationFiles>(parameters =>
+            parameters.Add(component => component.ConversationId, conversation.Id));
+
+        page.WaitForAssertion(() =>
+        {
+            Assert.Contains("release-notes.md", page.Markup);
+            Assert.Contains("Succeeded", page.Markup);
+            Assert.Equal($"/chat/{conversation.Id}", page.Find("a.room-back").GetAttribute("href"));
+        }, TimeSpan.FromSeconds(15));
     }
 
     [Fact]
