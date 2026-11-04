@@ -5,4 +5,8 @@ namespace Concierge.Shared.Chat;
 public interface IChatRuntimePreparation
 {
     bool CanWaitForPreparation { get; }
+
+    /// <summary>True only while loading or downloading is actually reported. A queued
+    /// request or an unknown readiness report alone is not preparation progress.</summary>
+    bool IsActivelyPreparing => CanWaitForPreparation;
 }

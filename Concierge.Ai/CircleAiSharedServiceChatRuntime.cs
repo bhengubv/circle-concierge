@@ -22,8 +22,10 @@ public sealed class CircleAiSharedServiceChatRuntime(ICircleAiServiceChatLink li
     private bool _sending;
     private string _stage = "Unknown";
     private bool _acceptsQueuedRequests;
+    private bool _answeredOnThisDevice;
     internal TimeSpan PreparationPollInterval { get; init; } = TimeSpan.FromSeconds(3);
     public bool CanWaitForPreparation { get; private set; }
+    public bool IsActivelyPreparing { get; private set; }
     public string Id => "circleai";
     public string EngineLabel => "Circle AI Android service";
     public bool LeavesDevice => false;
@@ -45,6 +47,7 @@ public sealed class CircleAiSharedServiceChatRuntime(ICircleAiServiceChatLink li
             IsReady = status.Ready;
             _acceptsQueuedRequests = status.AcceptsQueuedRequests;
             CanWaitForPreparation = status.CanWaitForPreparation || status.AcceptsQueuedRequests;
+            IsActivelyPreparing = status.PreparingNow;
             _stage = status.Stage;
             CurrentDownloadProgress = status.PreparationFraction is double fraction
                 ? new(fraction, status.Explanation) : null;
@@ -53,7 +56,10 @@ public sealed class CircleAiSharedServiceChatRuntime(ICircleAiServiceChatLink li
                 : status.Stage == "NeedsSetup" || status.Stage == "AuthorizationRequired"
                     ? ChatRuntimeCapabilityState.ActionRequired
                     : status.Stage == "Unavailable" ? ChatRuntimeCapabilityState.Unavailable : ChatRuntimeCapabilityState.Preparing;
-            StatusMessage = status.Explanation;
+            StatusMessage = _answeredOnThisDevice && !status.Ready && !status.PreparingNow
+                && status.Stage == "Unknown"
+                    ? "Circle AI answered your last question on this device. It has not reported current text readiness."
+                    : status.Explanation;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception)
@@ -61,6 +67,7 @@ public sealed class CircleAiSharedServiceChatRuntime(ICircleAiServiceChatLink li
             IsReady = false;
             _acceptsQueuedRequests = false;
             CanWaitForPreparation = false;
+            IsActivelyPreparing = false;
             CurrentDownloadProgress = null;
             _state = ChatRuntimeCapabilityState.Unavailable;
             StatusMessage = "Circle AI service could not respond on this device.";
@@ -180,6 +187,12 @@ public sealed class CircleAiSharedServiceChatRuntime(ICircleAiServiceChatLink li
                 RecordFailure(reply.Error ?? "Circle AI service returned no answer.");
                 throw new ChatRuntimeUnavailableException(StatusMessage);
             }
+            _answeredOnThisDevice = true;
+            if (!IsReady && !IsActivelyPreparing && _stage == "Unknown")
+            {
+                StatusMessage = "Circle AI answered your last question on this device. It has not reported current text readiness.";
+                StatusChanged?.Invoke(this, EventArgs.Empty);
+            }
             if (streamedText.Length == 0) yield return reply.Text;
             else if (reply.Text!.StartsWith(streamedText.ToString(), StringComparison.Ordinal))
                 yield return reply.Text[streamedText.Length..];
@@ -188,8 +201,10 @@ public sealed class CircleAiSharedServiceChatRuntime(ICircleAiServiceChatLink li
     }
     private void RecordFailure(string message)
     {
+        _answeredOnThisDevice = false;
         IsReady = false;
         CanWaitForPreparation = false;
+        IsActivelyPreparing = false;
         CurrentDownloadProgress = null;
         _state = ChatRuntimeCapabilityState.Unavailable;
         StatusMessage = message;

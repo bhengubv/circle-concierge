@@ -41,9 +41,14 @@ public sealed class CircleAiLiveReadinessTests
     [Fact]
     public void Automatic_fetch_is_waitable_but_missing_resources_alone_are_not()
     {
-        Assert.True(CircleAiLiveReadiness.Chat(Snapshot(BrainPhase.NoModel,
-            State(ReadinessComponents.Fetch, BrainPhase.Loading)), "60").CanWaitForPreparation);
+        var fetching = CircleAiLiveReadiness.Chat(Snapshot(BrainPhase.NoModel,
+            State(ReadinessComponents.Fetch, BrainPhase.Loading)), "60");
+        Assert.True(fetching.CanWaitForPreparation);
+        Assert.True(fetching.PreparingNow);
         Assert.False(CircleAiLiveReadiness.Chat(Snapshot(BrainPhase.NoModel), "60").CanWaitForPreparation);
+        Assert.False(CircleAiLiveReadiness.Chat(Snapshot(BrainPhase.Unknown), "60").PreparingNow);
+        Assert.False(CircleAiLiveReadiness.Chat(Snapshot(BrainPhase.Installed), "60").PreparingNow);
+        Assert.True(CircleAiLiveReadiness.Chat(Snapshot(BrainPhase.Loading), "60").PreparingNow);
     }
 
     [Fact]

@@ -217,6 +217,10 @@ public sealed class CircleAiSharedServiceChatRuntimeTests
         Assert.Equal("5", answer);
         Assert.Equal(1, link.Sends);
         Assert.False(runtime.IsReady);
+        Assert.False(runtime.IsActivelyPreparing);
+        Assert.Contains("answered your last question", runtime.StatusMessage);
+        await runtime.RefreshAsync(default);
+        Assert.Contains("answered your last question", runtime.StatusMessage);
     }
 
     private sealed class FakeLink : ICircleAiServiceChatLink

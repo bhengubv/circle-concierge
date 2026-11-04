@@ -152,19 +152,21 @@ public sealed class WorkspaceComposerTests : BunitContext
         public void Finish() => _finish.TrySetResult();
     }
 
-    private sealed class PreparingRuntime : IChatRuntime, IChatRuntimeCapabilitySource
+    private sealed class PreparingRuntime : IChatRuntime, IChatRuntimeCapabilitySource, IChatRuntimePreparation
     {
         public string Id => "circleai";
         public string EngineLabel => "Circle AI";
         public bool IsReady => false;
-        public string StatusMessage => "Loading Qwen model into memory (one-time)…";
-        public ChatRuntimeCapabilityCatalog CapabilityCatalog { get; } = new(
+        public bool CanWaitForPreparation { get; init; }
+        public bool IsActivelyPreparing { get; init; } = true;
+        public string StatusMessage { get; init; } = "Circle AI is getting ready on this device.";
+        public ChatRuntimeCapabilityCatalog CapabilityCatalog => new(
             1,
             "circleai",
             "3.6.0",
             DateTimeOffset.UtcNow,
             [new("conversation", "Conversation", ChatRuntimeCapabilityState.Preparing,
-                "Loading Qwen model into memory (one-time)…")],
+                StatusMessage)],
             new(24, 180, 8, "Online", null));
 
         ChatRuntimeCapabilityCatalog? IChatRuntimeCapabilitySource.CapabilityCatalog => CapabilityCatalog;
@@ -692,6 +694,20 @@ public sealed class WorkspaceComposerTests : BunitContext
         Assert.Contains("does not report a percentage", cut.Find(".runtime-readiness-progress").TextContent);
         Assert.False(cut.Find(".runtime-readiness").TextContent.Contains("Qwen", StringComparison.OrdinalIgnoreCase));
         Assert.True(Send(cut).HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public void Unknown_service_readiness_does_not_look_like_active_download_or_loading()
+    {
+        var cut = RenderWith(runtimeReady: false, runtimeOverride: new PreparingRuntime
+        {
+            CanWaitForPreparation = true,
+            IsActivelyPreparing = false,
+            StatusMessage = "Circle AI answered your last question on this device. It has not reported current text readiness."
+        });
+
+        Assert.Empty(cut.FindAll(".runtime-readiness-progress [role='progressbar']"));
+        Assert.Contains("answered your last question", cut.Find(".runtime-readiness").TextContent);
     }
 
     [Fact]

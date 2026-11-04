@@ -342,6 +342,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     /// </summary>
     protected bool CircleAiIsPreparing
         => PreparingConversation(CircleAiCapabilityCatalog) is not null
+            && (_activeRuntime is not IChatRuntimePreparation preparation || preparation.IsActivelyPreparing)
             || PreparingConversation(_desktopCapabilityCatalog) is not null;
 
     protected bool CircleAiIsLocallyUnavailable

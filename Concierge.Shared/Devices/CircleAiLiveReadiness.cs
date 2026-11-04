@@ -20,6 +20,7 @@ public static class CircleAiLiveReadiness
         var brain = snapshot.Brain;
         var fetch = snapshot.Components.FirstOrDefault(c => c.Component == ReadinessComponents.Fetch);
         var ready = snapshot.CanAnswerNow || brain.Phase == BrainPhase.Ready;
+        var preparingNow = !ready && (brain.Phase == BrainPhase.Loading || fetch?.Phase == BrainPhase.Loading);
         var waiting = !ready && (snapshot.CanAnswerSoon
             || brain.Phase is BrainPhase.Installed or BrainPhase.Loading
             || brain.Phase == BrainPhase.NoModel && fetch?.Phase is BrainPhase.Loading or BrainPhase.Paused);
@@ -39,7 +40,7 @@ public static class CircleAiLiveReadiness
         if (fetch is not null && fetch.Phase != BrainPhase.Unknown && !string.IsNullOrWhiteSpace(fetch.Detail))
             explanation += " Downloads: " + fetch.Detail;
         return new(ready, brain.Phase.ToString(), explanation, version,
-            waiting, Fraction(fetch?.Progress));
+            waiting, Fraction(fetch?.Progress), PreparingNow: preparingNow);
     }
 
     public static IReadOnlyList<CircleAiSettingFact> Facts(ReadinessSnapshot snapshot)
