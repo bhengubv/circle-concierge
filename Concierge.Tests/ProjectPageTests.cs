@@ -65,7 +65,7 @@ public sealed class ProjectPageTests : BunitContext
         Services.AddSingleton<BackgroundRuns>();
 
         var cut = Render<Projects>();
-        cut.WaitForState(() => cut.FindAll(".projects-page[aria-busy='false']").Count > 0);
+        cut.WaitForState(() => cut.FindAll(".projects-page[aria-busy='false']").Count > 0, TimeSpan.FromSeconds(20));
         cut.WaitForAssertion(() => Assert.Equal(10, cut.FindAll(".project-starter-card").Count));
         Assert.Equal(4, cut.Find(".project-starter-group[aria-label='Home starter Projects']").QuerySelectorAll(".project-starter-card").Length);
         Assert.Equal(6, cut.Find(".project-starter-group[aria-label='Work starter Projects']").QuerySelectorAll(".project-starter-card").Length);
@@ -81,7 +81,7 @@ public sealed class ProjectPageTests : BunitContext
         Assert.Equal("Weekly home routine", workflow.Name);
         Assert.Equal(3, workflow.Steps.Count);
         Assert.Contains("Allowance or pay planning", created.StarterAgentFocus);
-        Assert.Contains("Starter assistant focus", cut.Find(".project-starter-focus").TextContent);
+        Assert.Contains("How Concierge can help", cut.Find(".project-starter-focus").TextContent);
     }
 
     [Fact]

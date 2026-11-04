@@ -218,11 +218,11 @@
                             <div class="project-starter-preview" role="status">
                                 <h4>@_selectedStarter.WorkflowName</h4>
                                 <p>@_selectedStarter.WorkflowOutcome</p>
-                                <p><strong>Assistant focus:</strong> @_selectedStarter.AssistantFocus</p>
+                                <p><strong>How Concierge can help:</strong> @_selectedStarter.AssistantFocus</p>
                                 <ol>
                                     @foreach (var step in _selectedStarter.Steps) { <li>@step.Name</li> }
                                 </ol>
-                                <p>These are editable examples. The assistant focus describes the intended capability; availability depends on Circle AI and configured integrations.</p>
+                                <p>You can edit these steps before saving. Some features need a connected service.</p>
                             </div>
                         }
                     </section>
@@ -268,23 +268,23 @@
 
                 @if (!string.IsNullOrWhiteSpace(_selected.StarterAgentFocus))
                 {
-                    <p class="project-starter-focus"><strong>Starter assistant focus:</strong> @_selected.StarterAgentFocus</p>
+                    <p class="project-starter-focus"><strong>How Concierge can help:</strong> @_selected.StarterAgentFocus</p>
                 }
 
                 @if (VocationModes.Find(_selected.VocationModeId) is { } vocation)
                 {
                     <section class="project-vocation" aria-label="@vocation.Name tools">
-                        <p class="projects-eyebrow">FOCUSED WORKSPACE</p>
+                        <p class="projects-eyebrow">YOUR CAMPAIGN</p>
                         <h3>@vocation.Name</h3>
-                        <p>The marketing skill joins conversations in this Project. Work follows the editable steps below.</p>
+                        <p>Plan a campaign, create content, and review the results with Concierge. Edit the steps below to fit your work.</p>
                         <div class="project-vocation-tools">
                             @foreach (var tool in vocation.Tools)
                             {
-                                <span class="@(IsToolOffered(tool.Name) ? "is-offered" : "is-missing")">@tool.Label · @(IsToolOffered(tool.Name) ? "In this app" : "Not set up")</span>
+                                <span class="@(IsToolOffered(tool.Name) ? "is-offered" : "is-missing")">@tool.Label · @(IsToolOffered(tool.Name) ? "Supported" : "Unavailable")</span>
                             }
                         </div>
-                        <p class="project-vocation-note">A tool appearing here may still need a provider or permission. Concierge confirms that before using it. Publishing is not connected.</p>
-                        <button class="project-primary" type="button" disabled="@_saving" @onclick="StartProjectConversationAsync">Work with Concierge</button>
+                        <p class="project-vocation-note">Some tools need an account or your approval. Posting is not available yet.</p>
+                        <button class="project-primary" type="button" disabled="@_saving" @onclick="StartProjectConversationAsync">Work on this campaign</button>
                     </section>
                 }
 

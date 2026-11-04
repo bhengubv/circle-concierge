@@ -47,7 +47,7 @@ public sealed class VocationModeTests : BunitContext
         var page = Render<Projects>();
         page.WaitForState(() => page.FindAll(".projects-page[aria-busy='false']").Count > 0);
         Assert.Contains("Social Media Manager", page.Find(".project-vocation").TextContent);
-        Assert.Contains("Not set up", page.Find(".project-vocation-tools").TextContent);
+        Assert.Contains("Unavailable", page.Find(".project-vocation-tools").TextContent);
         await page.InvokeAsync(() => page.Find(".project-vocation button").Click());
 
         var saved = await projects.GetAsync(project.Id);
