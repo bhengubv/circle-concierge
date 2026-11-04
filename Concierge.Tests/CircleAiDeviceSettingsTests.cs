@@ -80,7 +80,8 @@ public sealed class CircleAiDeviceSettingsTests : BunitContext
         link.Approved = true;
         panel.FindAll("button").Single(b => b.TextContent == "Connect Circle AI").Click();
         panel.WaitForAssertion(() => Assert.Contains("Connected to Circle AI service", panel.Markup));
-        Assert.Contains("Reconnect Circle AI", panel.Markup);
+        Assert.Contains("Manage Circle AI access", panel.Markup);
+        Assert.DoesNotContain("Reconnect Circle AI", panel.Markup);
         Assert.Contains("Checked at", panel.Markup);
         Assert.Contains("Conversation: Not ready", panel.Markup);
         Assert.Equal(2, gateway.Reads);

@@ -88,6 +88,26 @@ public sealed class WelcomePanelTests : BunitContext
     }
 
     [Fact]
+    public void Handheld_asks_for_its_own_service_approval_before_directing_work_to_Desktop()
+    {
+        var local = new ChatRuntimeCapabilityCatalog(1, "circleai", "3.9.1", DateTimeOffset.UtcNow,
+            [new("conversation", "Conversation", ChatRuntimeCapabilityState.ActionRequired,
+                "not linked for Chat — approve in Circle AI first")], null);
+        var desktop = new ChatRuntimeCapabilityCatalog(1, "circleai", "3.9.2", DateTimeOffset.UtcNow,
+            [new("conversation", "Conversation", ChatRuntimeCapabilityState.Available)], null);
+
+        var cut = Render<WelcomePanel>(parameters => parameters
+            .Add(panel => panel.CapabilityCatalog, local)
+            .Add(panel => panel.DesktopCapabilityCatalog, desktop)
+            .Add(panel => panel.IsHandheld, true));
+
+        var guide = cut.Find(".welcome-setup-guide").TextContent;
+        Assert.Contains("Connect Circle AI on this phone", guide);
+        Assert.Contains("approve the request on this phone", guide);
+        Assert.DoesNotContain("cannot run the available model", guide);
+    }
+
+    [Fact]
     public void Connected_Desktop_catalogue_is_shown_as_a_separate_device()
     {
         var local = new ChatRuntimeCapabilityCatalog(

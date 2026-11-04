@@ -231,11 +231,18 @@
             if (local.State is ChatRuntimeCapabilityState.Available or ChatRuntimeCapabilityState.Preparing)
                 return null;
 
+            if (IsHandheld && local.State == ChatRuntimeCapabilityState.ActionRequired
+                && local.Explanation?.Contains("approve in Circle AI", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                return ("Connect Circle AI on this phone",
+                    "Open Settings, tap Connect Circle AI, and approve the request on this phone. You can use Desktop while the phone connection is being prepared.");
+            }
+
             if (desktop?.State == ChatRuntimeCapabilityState.Available)
             {
                 return IsHandheld
                     ? ("Circle AI is ready on your Desktop",
-                        "This phone cannot run the available model. Keep Concierge open on your Desktop; connect over the same Wi‑Fi or use its HTTPS link when you’re away.")
+                        "Circle AI has not confirmed that this phone can answer yet. Keep Concierge open on your Desktop while you check this phone's status in Settings.")
                     : ("Circle AI is ready on a connected device",
                         "This Desktop cannot run the available model. Keep this computer connected to the ready device's network to continue.");
             }

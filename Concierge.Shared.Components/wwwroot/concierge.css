@@ -2094,10 +2094,11 @@ html[data-cm-host="windows-desktop"] .comp-sep { color:var(--cm-color-outline); 
 .ws-handheld .ws-top-meta { color:var(--cm-color-text-secondary); }
 .ws-handheld .ws-title { color:var(--cm-color-text-primary); }
 .ws-handheld .comp { padding-left:.7rem; padding-right:.7rem; }
-.ws-handheld .comp-box { border-color:var(--cm-color-outline); border-radius:1.15rem; background:color-mix(in srgb, var(--cm-color-surface-raised) 90%, transparent); }
+.ws-handheld .comp-box { flex-wrap:wrap; border-color:var(--cm-color-outline); border-radius:1.15rem; background:color-mix(in srgb, var(--cm-color-surface-raised) 90%, transparent); }
 .ws-handheld .comp-box:focus-within { border-color:color-mix(in srgb, var(--cm-color-accent) 72%, var(--cm-color-outline)); box-shadow:0 0 0 3px color-mix(in srgb, var(--cm-color-accent) 14%, transparent); }
-.ws-handheld .comp-input { color:var(--cm-color-text-primary); }
+.ws-handheld .comp-input { flex:1 1 100%; width:100%; max-height:min(10rem, 28dvh); color:var(--cm-color-text-primary); }
 .ws-handheld .comp-input::placeholder { color:var(--cm-color-text-secondary); }
+.ws-handheld .comp-box > .icon-btn-send { margin-left:auto; }
 .ws-handheld .icon-btn-send { color:var(--cm-color-accent-text); background:var(--cm-color-accent); }
 .ws-handheld .icon-btn-send[aria-disabled="true"] { color:var(--cm-color-text-secondary); background:var(--cm-color-surface); }
 .ws-handheld .icon-btn-send:disabled { opacity:.58; filter:saturate(.35); cursor:not-allowed; }
