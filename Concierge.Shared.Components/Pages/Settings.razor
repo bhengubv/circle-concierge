@@ -84,11 +84,12 @@
     <section class="sheet-group">
         <button class="sheet-head-btn" type="button" @onclick="@(() => Toggle("butler"))">
             <svg class="ws-chev @(IsOpen("butler") ? "is-open" : null)" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
-            <span class="sheet-label">TheGeekNetwork online account</span>
+            <span class="sheet-label">Online account and wallet</span>
         </button>
         @if (IsOpen("butler"))
         {
-            <ButlerAccountSettings />
+            <ButlerAccountSettings SignedOut="@ClearWalletAsync" />
+            <WalletOverviewSettings @ref="_walletSettings" />
         }
     </section>
 
@@ -234,6 +235,8 @@
 </div>
 
 @code {
+    private Concierge.Shared.Components.Components.WalletOverviewSettings? _walletSettings;
+    private Task ClearWalletAsync() => _walletSettings?.ClearAsync() ?? Task.CompletedTask;
     /// <summary>Raised when the panel should close — the backdrop, the close
     /// control, or anything else that dismisses it.</summary>
     [Parameter] public EventCallback OnClose { get; set; }

@@ -1,0 +1,49 @@
+@using Concierge.Shared.Wallet
+@inject IWalletOverviewClient Wallets
+
+<div class="rows" aria-live="polite">
+    <div class="row">
+        <span class="row-name">Wallet
+            <span class="row-sub">View balances from your online account. This does not approve a payment.</span>
+        </span>
+        @if (Wallets.IsSupported)
+        {
+            <button class="btn" type="button" disabled="@_busy" @onclick="ReadAsync">
+                @(_busy ? "Checking…" : "View wallet")
+            </button>
+        }
+    </div>
+    @if (!Wallets.IsSupported)
+    {
+        <p class="row-sub">Wallet access needs secure online sign-in on this Concierge head.</p>
+    }
+    @if (_overview is not null)
+    {
+        <p class="row-sub" role="status">@_overview.Message</p>
+        @foreach (var wallet in _overview.Wallets)
+        {
+            <div class="row">
+                <span class="row-name">@(wallet.IsDefault ? "Main wallet" : "Wallet") · @wallet.CurrencyCode
+                    <span class="row-sub">@wallet.Status · Available balance</span>
+                </span>
+                <strong>@wallet.BalanceAvailable.ToString("N2")</strong>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private WalletOverview? _overview;
+    private bool _busy;
+
+    public Task ClearAsync() => InvokeAsync(() => { _overview = null; StateHasChanged(); });
+
+    private async Task ReadAsync()
+    {
+        _busy = true;
+        _overview = null;
+        try { _overview = await Wallets.ReadAsync(); }
+        catch (Exception) { _overview = new(WalletOverviewState.Unavailable, "Wallet details could not be read. Try again later.", []); }
+        finally { _busy = false; }
+    }
+}

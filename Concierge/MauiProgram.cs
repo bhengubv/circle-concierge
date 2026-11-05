@@ -18,6 +18,7 @@ using Concierge.Shared.Devices;
 using Concierge.Shared.Hooks;
 using Concierge.Shared.Away;
 using Concierge.Shared.Butler;
+using Concierge.Shared.Wallet;
 using Concierge.Shared.Chat;
 using Concierge.Shared.Safety;
 using Concierge.Shared.Diagrams;
@@ -120,6 +121,13 @@ public static class MauiProgram
 			client.Timeout = TimeSpan.FromSeconds(20);
 		});
 		builder.Services.AddSingleton<IButlerAccountSession>(sp => sp.GetRequiredService<ButlerAccountSession>());
+		builder.Services.AddHttpClient<WalletOverviewClient>(client =>
+		{
+			var walletApi = builder.Configuration["AppState:WalletApiUrl"] ?? "https://walletapi.thegeeknetwork.co.za/";
+			client.BaseAddress = new Uri(walletApi.TrimEnd('/') + "/");
+			client.Timeout = TimeSpan.FromSeconds(20);
+		});
+		builder.Services.AddSingleton<IWalletOverviewClient>(sp => sp.GetRequiredService<WalletOverviewClient>());
 		builder.Services.AddHttpClient<ButlerWorkRunApiClient>(client =>
 		{
 			var butlerApi = builder.Configuration["App:ButlerApiBaseUrl"] ?? "https://butlerapi.thegeeknetwork.co.za";

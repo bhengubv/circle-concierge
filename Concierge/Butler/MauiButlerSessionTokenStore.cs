@@ -7,6 +7,8 @@ namespace Concierge.Butler;
 /// <summary>Stores TGN refresh credentials with the Windows/Android platform secure-storage provider.</summary>
 public sealed class MauiButlerSessionTokenStore : IButlerSessionTokenStore
 {
+    // Keep the existing secure-storage key so an already linked TheGeekNetwork account
+    // remains linked when wallet reads begin using the same SSO session.
     private const string StorageKey = "concierge.butler.session.v1";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 

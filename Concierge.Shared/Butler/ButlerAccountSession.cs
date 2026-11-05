@@ -21,6 +21,7 @@ public interface IButlerSessionTokenStore
 }
 
 public sealed record ButlerAccountStatus(bool IsSupported, bool IsConnected, string? Email, bool NeedsTwoFactor);
+public sealed record OnlineAccountAuthorization(string UserId, string AccessToken);
 
 public enum ButlerSignInState
 {
@@ -37,12 +38,13 @@ public interface IButlerAccountSession
     Task<ButlerSignInResult> SignInAsync(string emailOrMobile, string password, CancellationToken cancellationToken = default);
     Task<ButlerSignInResult> CompleteTwoFactorAsync(string code, CancellationToken cancellationToken = default);
     Task<string?> GetAccessTokenAsync(CancellationToken cancellationToken = default);
+    Task<OnlineAccountAuthorization?> GetAuthorizationAsync(CancellationToken cancellationToken = default);
     Task SignOutAsync(CancellationToken cancellationToken = default);
 }
 
 /// <summary>
 /// Authenticates a person with the existing TGN AuthAPI and keeps its rotating tokens in a
-/// host-provided secure store. The access token is only exposed to the Butler API client.
+/// host-provided secure store. The same account authorizes explicit TheGeekNetwork actions.
 /// </summary>
 public sealed class ButlerAccountSession(HttpClient authApi, IButlerSessionTokenStore tokenStore) : IButlerAccountSession
 {
@@ -176,6 +178,16 @@ public sealed class ButlerAccountSession(HttpClient authApi, IButlerSessionToken
         }
     }
 
+    public async Task<OnlineAccountAuthorization?> GetAuthorizationAsync(CancellationToken cancellationToken = default)
+    {
+        var accessToken = await GetAccessTokenAsync(cancellationToken).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(accessToken)) return null;
+        var saved = await tokenStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        return saved is not null && saved.AccessToken == accessToken && Guid.TryParse(saved.UserId, out _)
+            ? new OnlineAccountAuthorization(saved.UserId, accessToken)
+            : null;
+    }
+
     public async Task SignOutAsync(CancellationToken cancellationToken = default)
     {
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -219,7 +231,7 @@ public sealed class ButlerAccountSession(HttpClient authApi, IButlerSessionToken
 
         await tokenStore.SaveAsync(new ButlerSessionTokens(userId, email ?? string.Empty, accessToken,
             expiresAt, refreshToken, refreshTokenId), cancellationToken).ConfigureAwait(false);
-        return new ButlerSignInResult(ButlerSignInState.Connected, "Signed in to your TheGeekNetwork online account for Butler.");
+        return new ButlerSignInResult(ButlerSignInState.Connected, "Signed in to your TheGeekNetwork online account.");
     }
 
     private static async Task<JsonDocument> ReadResponseAsync(HttpResponseMessage response, CancellationToken cancellationToken)
@@ -296,9 +308,11 @@ public sealed class ButlerAccountUnavailable : IButlerAccountSession
     public Task<ButlerAccountStatus> GetStatusAsync(CancellationToken cancellationToken = default)
         => Task.FromResult(new ButlerAccountStatus(false, false, null, false));
     public Task<ButlerSignInResult> SignInAsync(string emailOrMobile, string password, CancellationToken cancellationToken = default)
-        => Task.FromResult(new ButlerSignInResult(ButlerSignInState.Failed, "TheGeekNetwork online sign-in for Butler is not available on this device yet."));
+        => Task.FromResult(new ButlerSignInResult(ButlerSignInState.Failed, "TheGeekNetwork online sign-in is not available on this device yet."));
     public Task<ButlerSignInResult> CompleteTwoFactorAsync(string code, CancellationToken cancellationToken = default)
-        => Task.FromResult(new ButlerSignInResult(ButlerSignInState.Failed, "TheGeekNetwork online sign-in for Butler is not available on this device yet."));
+        => Task.FromResult(new ButlerSignInResult(ButlerSignInState.Failed, "TheGeekNetwork online sign-in is not available on this device yet."));
     public Task<string?> GetAccessTokenAsync(CancellationToken cancellationToken = default) => Task.FromResult<string?>(null);
+    public Task<OnlineAccountAuthorization?> GetAuthorizationAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult<OnlineAccountAuthorization?>(null);
     public Task SignOutAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 }

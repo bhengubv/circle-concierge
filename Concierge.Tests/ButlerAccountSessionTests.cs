@@ -17,11 +17,14 @@ public sealed class ButlerAccountSessionTests
         var status = await session.GetStatusAsync();
 
         Assert.Equal(ButlerSignInState.Connected, result.State);
-        Assert.Equal("Signed in to your TheGeekNetwork online account for Butler.", result.Message);
+        Assert.Equal("Signed in to your TheGeekNetwork online account.", result.Message);
         Assert.True(status.IsConnected);
         Assert.Equal("person@example.com", status.Email);
         Assert.False(status.NeedsTwoFactor);
         Assert.Equal("access", (await store.LoadAsync())?.AccessToken);
+        var authorized = await session.GetAuthorizationAsync();
+        Assert.Equal("11111111-1111-1111-1111-111111111111", authorized?.UserId);
+        Assert.Equal("access", authorized?.AccessToken);
     }
 
     [Fact]
@@ -121,7 +124,7 @@ public sealed class ButlerAccountSessionTests
         {
             data = new
             {
-                userId = "user-1",
+                userId = "11111111-1111-1111-1111-111111111111",
                 email = "person@example.com",
                 accessToken = access,
                 refreshToken = "refresh",
