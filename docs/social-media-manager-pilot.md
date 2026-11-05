@@ -10,7 +10,7 @@ Concierge can help with many kinds of work. You can also set up a project for a 
 4. Ask Concierge for a campaign brief or content calendar. It receives the project's goal and steps, along with the marketing skill, for each turn in that conversation.
 5. Check the tool labels before requesting research, images, a media export, or a reminder. A listed tool may still need an account or your approval.
 
-Any future publishing or ad spending must require your approval. This pilot has no connection to a social platform or analytics account. You can prepare content and record results, but publishing and automatic measurement need further integration.
+Publishing and ad spending are separate actions. Each needs your approval; spending also needs a connected TheGeekNetwork account and wallet, with the amount and limit shown before payment. This pilot has no connection to a social platform, wallet, or analytics account. You can prepare content and record results, but publishing, paid promotion, and automatic measurement need further integration.
 
 ## Why this shape
 

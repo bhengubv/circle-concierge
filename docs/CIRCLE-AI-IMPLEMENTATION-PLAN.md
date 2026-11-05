@@ -1484,3 +1484,15 @@ Remaining: background answer/status notifications, cross-device unread reconcili
 ### 13 October 2026 — mobile refresh and measured prompt pressure
 
 Updated Concierge debug clients on AngelDust and PixieDust; both installed and launched with existing data, and the Desktop presence response listed all four endpoints connected. Fresh Desktop 8+5 returned incorrect 10 with a measured 15,476-character request (3,919 estimated tokens, 3,901 in system text). Added content-free service prompt diagnostics and a passing measurement test. Full context accounting, capability-preserving progressive tool discovery, service configuration and suitable automatic model selection remain next work. See `acceptance/2026-10-13-mobile-update-and-prompt-budget.md`. No vision stage closed.
+
+### Wallet and online-action integration — 5 November 2026
+
+Concierge needs TheGeekNetwork account SSO and wallet access for actions involving money. Local chat, planning, and private SQLite projects must not require sign-in. The current Concierge code does not yet provide a complete wallet journey; the API source survey alone does not close it. See `integrations/in-house-api-map.md` for the action boundaries.
+
+Work remaining, in dependency order:
+
+1. Complete owner-bound TheGeekNetwork sign-in on Mobile, Desktop, and Web, including the intended QR approval path. Label it as **online account sign-in** so it cannot be confused with opening Concierge locally. Store and renew credentials in the platform's secure store; bind online actions to the confirmed account.
+2. Add an explicit pending-action record for purchases, allowances, business expenses, paid advertising, and payouts. Show the amount, counterparty, timing, and funding source where applicable. Keep local plans and drafts in SQLite.
+3. After sign-in, revalidate the pending action with the relevant WalletAPI, SdpktAPI, or commerce service. Require a separate final approval for money movement; publishing approval does not approve ad spend.
+4. Show progress, cancellation, failure, and a server-issued receipt or transaction reference. A failed or expired sign-in must not send the action or erase the local plan. Test duplicate taps, retries, account changes, and app restarts.
+5. Run a real Mobile and Web acceptance journey for at least one low-value transaction in a controlled environment before claiming the wallet integration works. No such journey has been run yet.

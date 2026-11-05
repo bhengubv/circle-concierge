@@ -2,15 +2,15 @@
 
 Source survey: 4 November 2026, with AuthAPI, SdpktAPI and SocialMediaAPI rechecked against `thegeeknetwork` `origin/master` at `97fbc429` on 5 November 2026. The original survey read the local `C:\Development\repos\thegeeknetwork\code\APIs` tree: **41 API projects**, their `Program.cs` files, route/controller surfaces, and relevant client and deployment code. This is a source inventory. It does not establish which APIs are deployed, healthy, migrated, or configured for a particular user. The monorepo checkout has unrelated uncommitted work; its local AuthAPI pairing endpoints for JobCenter and SleptOn are not part of the fetched `origin/master` contract.
 
-Concierge's default is local SQLite for personal work, conversations, plans, and created content. Auth and financial services are explicit server data boundaries. Other APIs should be called for a specific operation, with the minimum data needed and a clear user action. Finding an API is not permission to copy a private workspace to it.
+Concierge's default is local SQLite for personal work, conversations, plans, and created content. Auth and financial services are explicit server data boundaries. **The wallet is a required Concierge integration for work that moves money**: purchases, paid promotion, household allowances, business expenses, and receiving revenue. Local conversation and planning must work before sign-in. For an online action, Concierge should explain that the person is signing into their TheGeekNetwork account, then ask for the action-specific approval. Other APIs should be called with the minimum data needed for that action. Finding an API is not permission to copy a private workspace to it.
 
 ## Identity, trust, and money
 
 | API | Capability visible in source | Concierge boundary |
 | --- | --- | --- |
-| AuthAPI | Registration, mobile login, token renewal, web approval challenges, current user, service tokens | Account identity and sign-in; server exception. |
+| AuthAPI | Registration, mobile login, token renewal, web approval challenges, current user, service tokens | TheGeekNetwork account SSO for online actions, including wallet actions; separate from opening Concierge locally. |
 | AccountAPI | Account endpoints and privacy operations | Account records, not a substitute for local project storage. |
-| WalletAPI | Wallet views, tiers, limits, accounts, cards, and operations | Money and wallet data; server exception. |
+| WalletAPI | Wallet views, tiers, limits, accounts, cards, and operations | Wallet balance, limits, funding, and money movement when a person chooses a financial action. |
 | LedgerAPI | Balances, transaction history, transfers, reversals, fraud review, exports | Financial execution and records. |
 | ShhMoneyAPI | Budgets, spending, and savings goals | Optional financial connection; do not import a user's private plans automatically. |
 | PayfastAPI | Payment gateway and BRICS Pay routes | Explicit purchases and payment flows. |
@@ -41,7 +41,7 @@ Concierge's default is local SQLite for personal work, conversations, plans, and
 | KiffStoreAPI | Products, sellers, carts, orders, fulfillment, reviews, and promotions | Explicit shopping or selling. |
 | EcommerceAPI | Product and order management | Commerce operations, not local project storage. |
 | BidBaasAPI | Auctions, bids, auto-bids, sellers, watchlists, and advertising | Explicit marketplace actions. |
-| SdpktAPI | Digital retail, wallet, bounties, and related commerce | Explicit purchase or business flows. |
+| SdpktAPI | Digital retail, wallet, bounties, and related commerce | Explicit commerce and wallet workflows; never treat a local plan as a payment instruction. |
 | IncentivesAPI | Events, experience points, points, tiers, and rewards | Optional reward features. |
 | SortedClothingAPI | Clothing catalogue and retail routes | Explicit product or retail work. |
 | ThirdPartyAPI | Application keys, external provider connections, and OAuth integration routes | Configured external accounts; never infer a connection from source code alone. |
@@ -85,5 +85,17 @@ The next integration should start with a local campaign and a reviewed, explicit
 ## 5 November contract recheck
 
 - **AuthAPI:** the fetched `origin/master` has no new Concierge-specific pairing endpoint. It already has mobile login, current-user verification, and a push-to-app web challenge. The local uncommitted JobCenter and SleptOn QR endpoints do not establish a Concierge QR sign-in contract. Concierge still needs its own owner-bound sign-in and session journey before browser or social publishing can use a TGN identity.
-- **SdpktAPI:** the new commits repair payment proof concurrency, wallet history/inbox bookkeeping, and deployment-supplied ledger, bounty, stokvel, and Xero configuration. These are service-side commerce fixes. They do not justify moving Concierge's private project data server-side or adding a generic wallet sign-in to local chat.
+- **SdpktAPI:** the new commits repair payment proof concurrency, wallet history/inbox bookkeeping, and deployment-supplied ledger, bounty, stokvel, and Xero configuration. These service-side commerce fixes matter to Concierge's paid workflows. They do not move private projects server-side or make wallet sign-in a requirement for local chat.
 - **SocialMediaAPI:** the OAuth and retry source defects listed in the previous survey are fixed in the fetched source, and personal platform app setup is now part of the public connection contract. No running SocialMediaAPI instance was exercised in this recheck. Concierge does not yet call it.
+
+## Wallet actions Concierge must support
+
+| Work in Concierge | Online action | Required user-facing gate |
+| --- | --- | --- |
+| Plan a project, budget, campaign, or household allowance | None | Keep the plan local; no account or wallet sign-in. |
+| Buy a tool, subscription, material, or service | Checkout through the relevant commerce and wallet APIs | Show the item, payee, amount, and funding source; then ask for TheGeekNetwork account sign-in and transaction approval. |
+| Run paid advertising | Platform connection, campaign publication, and payment where applicable | Separate approval for publishing from approval for the spend and its limit. |
+| Pay a household allowance or business expense | Wallet transfer or payment | Show the recipient, amount, and timing; require sign-in and explicit confirmation. |
+| Receive sales or other business income | Commerce payout and wallet records | Link the owner's account and show the source, status, and destination of funds. |
+
+The app must keep an action's pending details while sign-in completes, then revalidate price, recipient, permissions, and wallet status before asking for final approval. A failed, cancelled, or expired sign-in must leave the local plan intact and must not execute the money action. The result and receipt belong to the server's financial record; Concierge may keep a local reference and status. These are implementation and acceptance requirements, **not current Concierge capabilities**. No end-to-end wallet action was verified in this survey.
