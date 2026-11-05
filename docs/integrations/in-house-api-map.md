@@ -1,6 +1,6 @@
 # In-house API options for Concierge
 
-Source survey: 4 November 2026. I read the local `C:\Development\repos\thegeeknetwork\code\APIs` tree: **41 API projects**, their `Program.cs` files, route/controller surfaces, and the relevant SocialMediaAPI source, tests, client library, deployment scripts, and design notes. This is a source inventory. It does not establish which APIs are deployed, healthy, or configured for a particular user. The monorepo checkout has unrelated uncommitted work, including changes in AuthAPI, SleptOnAPI, TagMeAPI, and TheJobCenterAPI; this inventory reflects that working tree.
+Source survey: 4 November 2026, with AuthAPI, SdpktAPI and SocialMediaAPI rechecked against `thegeeknetwork` `origin/master` at `97fbc429` on 5 November 2026. The original survey read the local `C:\Development\repos\thegeeknetwork\code\APIs` tree: **41 API projects**, their `Program.cs` files, route/controller surfaces, and relevant client and deployment code. This is a source inventory. It does not establish which APIs are deployed, healthy, migrated, or configured for a particular user. The monorepo checkout has unrelated uncommitted work; its local AuthAPI pairing endpoints for JobCenter and SleptOn are not part of the fetched `origin/master` contract.
 
 Concierge's default is local SQLite for personal work, conversations, plans, and created content. Auth and financial services are explicit server data boundaries. Other APIs should be called for a specific operation, with the minimum data needed and a clear user action. Finding an API is not permission to copy a private workspace to it.
 
@@ -23,7 +23,7 @@ Concierge's default is local SQLite for personal work, conversations, plans, and
 
 | API | Capability visible in source | Concierge boundary |
 | --- | --- | --- |
-| SocialMediaAPI | Account connections, queued cross-posts, per-platform results, adapters, SignalR updates | Candidate for approved publication; its current queue stores post content on the server. See findings below. |
+| SocialMediaAPI | Account connections, queued cross-posts, per-platform results, adapters, SignalR updates | Candidate for approved publication; its queue stores the approved post on the server. See findings below. |
 | MessagingAPI | Direct/group messaging, meetings, GIFs, and messaging features | A connected messaging channel; Concierge conversations stay local by default. |
 | NotificationAPI | Delivery, device registration, preferences, activity feed, and status | Optional cross-device alerts with minimal content. |
 | GlocellAPI | SMS, email, push, and in-app messaging | Delivery channel for explicit communication. |
@@ -72,11 +72,18 @@ Concierge's default is local SQLite for personal work, conversations, plans, and
 
 ## Social Media Manager: what is ready in source, and what is not
 
-- The current SocialMediaAPI source exposes `GET /api/social/connections`, OAuth start/callback, connection revoke, `POST /api/social/shares`, share list/detail, and `/hubs/social` updates. Fourteen platform adapter classes are registered. A shared .NET client exists in `code/Shared/TheGeekNetwork.Shared.SocialMedia`, but it only queues shares.
+- The current SocialMediaAPI source exposes `GET /api/social/connections`, `GET /api/social/connections/platforms`, OAuth authorize/callback/complete, connection revoke, `POST /api/social/shares`, share list/detail, and `/hubs/social` updates. Fourteen platform adapter classes are registered. The shared .NET client in `code/Shared/TheGeekNetwork.Shared.SocialMedia` only queues shares.
 - `social_shares` stores `content_text`, `media_urls`, hashtags, platform options, and schedule in server PostgreSQL. That is incompatible with treating Concierge's private campaign as local SQLite data. Sending an approved public post necessarily sends that post outward; it should not silently upload the campaign, drafts, or asset library.
-- The OAuth callback is marked anonymous but calls `GetUserId` on the callback request. A normal provider redirect has no TGN bearer identity, so this path needs correction and an end-to-end test before Concierge relies on it.
-- The worker declares retry/backoff settings, but the inspected worker uses them only in startup logging; it marks failed shares as failed rather than scheduling retries. Do not promise reliable scheduled publishing from this code yet.
+- The OAuth callback now reads the pending authorization by state without requiring a TGN bearer. The app must finish with authenticated `POST /api/social/connections/{platform}/complete`, which binds the connection to the user who started it. This corrects the earlier source-level callback defect; the full provider redirect and token exchange still need a live test.
+- The worker now requeues transient per-platform failures with backoff and an attempt limit. This corrects the earlier source-level retry defect; scheduled publishing and recovery still need a live service test.
+- User connections on platforms that require an app now need the person's own platform `clientId` and, where required, `clientSecret`. `GET /api/social/connections/platforms` supplies setup links and redirect URIs. Concierge must explain this setup before offering a connection and must not silently use The Geek's operator credentials for a person's account.
 - `AppInfo/APIs/SocialMediaAPI/README.md` still says “design stage” and lists planned routes that differ from the implemented routes. Source and an actual service test must govern integration. Deployment scripts exist; live service health was not tested in this survey.
 - OpSupportAPI has admin campaign and funnel endpoints, but they store campaign data centrally and serve platform operations. They are not a replacement for a person's local campaign workspace or a verified source of social-platform performance data.
 
-The next integration should start with a local campaign and a reviewed, explicit publish request. Before wiring the existing queue, decide whether SocialMediaAPI can support immediate posting with minimal server retention, and how scheduling works when the owner's devices are offline. Verify OAuth, per-platform posting, status updates, and failure recovery against a running service. Keep the original campaign, drafts, media, and measurements in Concierge's SQLite store.
+The next integration should start with a local campaign and a reviewed, explicit publish request. Decide how much of the approved public post the service must retain and how scheduling works when the owner's devices are offline. Verify owner sign-in, the platform app setup, OAuth, posting, status updates, and failure recovery against a running service. Keep the original campaign, drafts, media, and measurements in Concierge's SQLite store.
+
+## 5 November contract recheck
+
+- **AuthAPI:** the fetched `origin/master` has no new Concierge-specific pairing endpoint. It already has mobile login, current-user verification, and a push-to-app web challenge. The local uncommitted JobCenter and SleptOn QR endpoints do not establish a Concierge QR sign-in contract. Concierge still needs its own owner-bound sign-in and session journey before browser or social publishing can use a TGN identity.
+- **SdpktAPI:** the new commits repair payment proof concurrency, wallet history/inbox bookkeeping, and deployment-supplied ledger, bounty, stokvel, and Xero configuration. These are service-side commerce fixes. They do not justify moving Concierge's private project data server-side or adding a generic wallet sign-in to local chat.
+- **SocialMediaAPI:** the OAuth and retry source defects listed in the previous survey are fixed in the fetched source, and personal platform app setup is now part of the public connection contract. No running SocialMediaAPI instance was exercised in this recheck. Concierge does not yet call it.
