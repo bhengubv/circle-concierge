@@ -24,7 +24,7 @@
     else if (_status.NeedsTwoFactor)
     {
         <p class="row-sub">Enter your authenticator code to finish signing in to your TheGeekNetwork online account.</p>
-        <input class="comp-input" type="text" inputmode="numeric" autocomplete="one-time-code"
+        <input class="comp-input online-account-field" type="text" inputmode="numeric" autocomplete="one-time-code"
                placeholder="Verification code" aria-label="Online account verification code" @bind="_code" />
         <button class="btn btn-primary" type="button" disabled="@(_busy || string.IsNullOrWhiteSpace(_code))" @onclick="VerifyAsync">
             @(_busy ? "Checking…" : "Verify and connect")
@@ -33,9 +33,9 @@
     else
     {
         <p class="row-sub">Sign in to your TheGeekNetwork online account when you need connected services such as Butler or your wallet. Concierge works locally without signing in. Your password is not saved.</p>
-        <input class="comp-input" type="text" autocomplete="username" placeholder="Email or mobile number"
+        <input class="comp-input online-account-field" type="text" autocomplete="username" placeholder="Email or mobile number"
                aria-label="TheGeekNetwork account email or mobile number" @bind="_emailOrMobile" />
-        <input class="comp-input" type="password" autocomplete="current-password" placeholder="Password"
+        <input class="comp-input online-account-field" type="password" autocomplete="current-password" placeholder="Password"
                aria-label="TheGeekNetwork account password" @bind="_password" />
         <button class="btn btn-primary" type="button" disabled="@(_busy || string.IsNullOrWhiteSpace(_emailOrMobile) || string.IsNullOrWhiteSpace(_password))" @onclick="SignInAsync">
             @(_busy ? "Signing in…" : "Sign in to online account")
