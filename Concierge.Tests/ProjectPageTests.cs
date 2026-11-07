@@ -14,6 +14,28 @@ namespace Concierge.Tests;
 public sealed class ProjectPageTests : BunitContext
 {
     [Fact]
+    public async Task Desktop_project_shows_the_SolidCraft_connection_and_release_boundary()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"project-solidcraft-{Guid.NewGuid():N}");
+        Services.AddLogging();
+        Services.AddConciergeChat(Path.Combine(directory, "concierge.db"));
+        Services.AddSingleton<BackgroundRuns>();
+        var options = new Concierge.Shared.Rpc.Mcp.McpServerOptions(Path.Combine(directory, "mcp.json"));
+        var toolSource = new Concierge.Shared.Rpc.Mcp.McpToolSource(options,
+            Concierge.Shared.Tools.UnavailableToolApprovalService.Instance);
+        Services.AddSingleton(new Concierge.Shared.Rpc.Mcp.SolidCraftIntegration(options, toolSource));
+        var project = await Services.GetRequiredService<IProjectStore>().CreateAsync(
+            ConciergeProject.Create("Model", "Create a 3D model"));
+        Services.GetRequiredService<NavigationManager>().NavigateTo($"/projects?project={project.Id}");
+
+        var cut = Render<Projects>();
+        cut.WaitForState(() => cut.FindAll(".projects-page[aria-busy='false']").Count > 0);
+        var section = cut.Find(".project-solidcraft");
+        Assert.Contains("Connect SolidCraft", section.TextContent);
+        Assert.Contains("publishing connection is not configured", section.TextContent);
+    }
+
+    [Fact]
     public async Task Project_page_refreshes_and_cancels_persisted_Butler_work()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"project-butler-{Guid.NewGuid():N}");
@@ -66,8 +88,8 @@ public sealed class ProjectPageTests : BunitContext
 
         var cut = Render<Projects>();
         cut.WaitForState(() => cut.FindAll(".projects-page[aria-busy='false']").Count > 0, TimeSpan.FromSeconds(20));
-        cut.WaitForAssertion(() => Assert.Equal(10, cut.FindAll(".project-starter-card").Count));
-        Assert.Equal(4, cut.Find(".project-starter-group[aria-label='Home starter Projects']").QuerySelectorAll(".project-starter-card").Length);
+        cut.WaitForAssertion(() => Assert.Equal(11, cut.FindAll(".project-starter-card").Count));
+        Assert.Equal(5, cut.Find(".project-starter-group[aria-label='Home starter Projects']").QuerySelectorAll(".project-starter-card").Length);
         Assert.Equal(6, cut.Find(".project-starter-group[aria-label='Work starter Projects']").QuerySelectorAll(".project-starter-card").Length);
 
         await cut.InvokeAsync(() => cut.FindAll(".project-starter-card").Single(card => card.TextContent.Contains("House Chores")).ClickAsync(new MouseEventArgs()));
@@ -183,7 +205,7 @@ public sealed class ProjectPageTests : BunitContext
         Services.GetRequiredService<NavigationManager>().NavigateTo($"/projects?conversation={conversationId}");
         var cut = Render<Projects>();
         cut.WaitForState(() => cut.FindAll(".projects-page[aria-busy='false']").Count > 0);
-        cut.WaitForAssertion(() => Assert.Equal(10, cut.FindAll(".project-starter-card").Count));
+        cut.WaitForAssertion(() => Assert.Equal(11, cut.FindAll(".project-starter-card").Count));
         Assert.Contains("House Chores", cut.Find(".project-starters").TextContent);
         await cut.InvokeAsync(() => cut.Find("#project-name").ChangeAsync(new ChangeEventArgs { Value = "Neighborhood launch" }));
         await cut.InvokeAsync(() => cut.Find("#project-outcome").ChangeAsync(new ChangeEventArgs { Value = "Find first customers and launch our offer" }));

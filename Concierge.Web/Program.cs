@@ -12,6 +12,7 @@ using Concierge.Shared.Settings;
 using Concierge.Shared.Skills;
 using Concierge.Shared.Telemetry;
 using Concierge.Shared.Tools;
+using Concierge.Shared.Wallet;
 using Concierge.Ai;
 using Concierge.Chat.Cloud;
 using Concierge.Diagrams.Design;
@@ -43,6 +44,7 @@ builder.Services.AddSingleton<IConciergeSecretStore>(secretStore);
 // Web token storage is intentionally not backed by the shared plaintext settings file.
 // Add a server-side, per-person authenticated vault before enabling Butler here.
 builder.Services.AddSingleton<IButlerAccountSession, ButlerAccountUnavailable>();
+builder.Services.AddSingleton<IWalletOverviewClient, WalletOverviewUnavailable>();
 builder.Services.AddHttpClient<ButlerWorkRunApiClient>(client =>
 {
     var butlerApi = builder.Configuration["App:ButlerApiBaseUrl"] ?? "https://butlerapi.thegeeknetwork.co.za";

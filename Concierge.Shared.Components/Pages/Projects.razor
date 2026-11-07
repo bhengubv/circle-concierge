@@ -760,6 +760,23 @@
                     </div>
                 </section>
 
+                @if (SolidCraft is { } solidCraft)
+                {
+                    <section class="project-section project-solidcraft" aria-labelledby="solidcraft-title">
+                        <div class="project-section-head"><div><p class="projects-eyebrow">MAKE THE MODEL</p><h3 id="solidcraft-title">SolidCraft</h3></div></div>
+                        <p>Open SolidCraft first to watch Concierge model in its window. Keep the editable design and exports on this device, then attach the files above for review.</p>
+                        <p class="project-tool-location">Model folder: <code>@solidCraft.ModelFolder</code></p>
+                        <button type="button" disabled="@(_connectingSolidCraft || solidCraft.IsConnected)" @onclick="ConnectSolidCraftAsync">
+                            @(solidCraft.IsConnected ? "SolidCraft connected" : _connectingSolidCraft ? "Connecting…" : "Connect SolidCraft")
+                        </button>
+                        @if (_solidCraftMessage is not null)
+                        {
+                            <p role="status">@_solidCraftMessage</p>
+                        }
+                        <p>Release to SleptON follows listing review. A publishing connection is not configured here yet.</p>
+                    </section>
+                }
+
                 <section class="project-section project-resources" aria-labelledby="resources-title">
                     <div><p class="projects-eyebrow">PLAN WITHIN YOUR LIMITS</p><h3 id="resources-title">Budget &amp; timing</h3></div>
                     <label for="project-budget">Budget limit</label>
@@ -828,6 +845,30 @@
     private string _decisionAnswer = string.Empty;
     private string _artifactName = string.Empty;
     private string _artifactLocation = string.Empty;
+    private bool _connectingSolidCraft;
+    private string? _solidCraftMessage;
+    private Concierge.Shared.Rpc.Mcp.SolidCraftIntegration? SolidCraft
+        => AppServices.GetService(typeof(Concierge.Shared.Rpc.Mcp.SolidCraftIntegration))
+            as Concierge.Shared.Rpc.Mcp.SolidCraftIntegration;
+
+    private async Task ConnectSolidCraftAsync()
+    {
+        if (SolidCraft is not { } solidCraft || _connectingSolidCraft) return;
+        _connectingSolidCraft = true;
+        _solidCraftMessage = null;
+        try
+        {
+            _solidCraftMessage = await solidCraft.ConnectAsync();
+        }
+        catch (Exception exception)
+        {
+            _solidCraftMessage = $"SolidCraft could not connect: {exception.Message}";
+        }
+        finally
+        {
+            _connectingSolidCraft = false;
+        }
+    }
     private string _budgetText = string.Empty;
     private string _targetDateText = string.Empty;
     private string _agentName = "Analysis agent";
