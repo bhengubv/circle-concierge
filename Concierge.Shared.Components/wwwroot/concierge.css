@@ -2229,6 +2229,12 @@ html[data-cm-host="windows-desktop"] .comp-sep { color:var(--cm-color-outline); 
 .project-section:last-child { border-bottom:0; }
 .project-section-head { display:flex; align-items:center; justify-content:space-between; gap:14px; margin-bottom:13px; }
 .project-section h3 { margin:0; font-size:1.18rem; font-weight:680; letter-spacing:-.02em; }
+.project-solidcraft { margin:18px 0; padding:20px; border:1px solid color-mix(in srgb,var(--cm-color-accent) 48%,var(--rule)); border-radius:18px; background:linear-gradient(125deg,color-mix(in srgb,var(--cm-color-accent) 16%,var(--surface)),var(--raised) 72%); }
+.project-solidcraft p { color:var(--ink-soft); line-height:1.5; }
+.project-solidcraft .project-tool-location { overflow-wrap:anywhere; font-size:var(--t-xs); }
+.project-solidcraft button { min-height:42px; padding:9px 16px; border:0; border-radius:999px; background:var(--cm-color-accent); color:var(--cm-color-on-accent); font:inherit; font-weight:740; cursor:pointer; }
+.project-solidcraft button:disabled { opacity:.65; cursor:default; }
+.project-solidcraft [role="status"] { color:var(--ink); font-weight:680; }
 .project-workflow { margin:12px 0; padding:15px; border:1px solid var(--rule); border-radius:15px; background:var(--raised); }
 .project-workspace { margin:12px 0; padding:15px; border:1px solid var(--rule); border-radius:15px; background:var(--raised); }
 .project-workspace > header { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; }

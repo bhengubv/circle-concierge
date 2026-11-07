@@ -145,6 +145,9 @@ public static class MauiProgram
 			// Tools published by other software, over MCP. Reads
 			// %LOCALAPPDATA%/Concierge/mcp.json; with no file, nothing starts.
 			.AddConciergeMcp()
+			// An explicit Projects action connects the installed SolidCraft Desktop app.
+			// No CAD process or model is started during Concierge startup.
+			.AddConciergeSolidCraft()
 			// The device itself. Every other tool works on files, the web or a
 			// notebook; these reach the machine underneath. The portable two
 			// hold everywhere .NET runs; the MAUI set is written once and is

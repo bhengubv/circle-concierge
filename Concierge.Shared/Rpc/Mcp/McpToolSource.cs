@@ -193,6 +193,60 @@ public sealed class McpToolSource : IAgentToolSource, IManagedHostCollectionTele
         }
     }
 
+    /// <summary>Starts one newly configured server without interrupting other connected tools.</summary>
+    public async Task<McpServerStatus> ConnectConfiguredAsync(string name, CancellationToken cancellationToken = default)
+    {
+        var (servers, problem) = _options.Load();
+        var server = servers.FirstOrDefault(item => string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase));
+        if (server is null)
+            return new McpServerStatus(name, false, 0, problem ?? "This server is not configured.");
+        if (!server.Enabled)
+            return new McpServerStatus(name, false, 0, "Turned off.");
+        if (!OperatingSystem.IsWindows())
+            return new McpServerStatus(name, false, 0, "MCP workers are currently available on Windows only.");
+
+        Connection? exited = null;
+        lock (_gate)
+        {
+            var existing = _connections.FirstOrDefault(item =>
+                string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase));
+            if (existing is not null)
+            {
+                if (!existing.Child.HasExited)
+                    return _statuses.FirstOrDefault(item => string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase))
+                        ?? new McpServerStatus(name, true, existing.Tools.Count, "Connected.");
+                _connections.Remove(existing);
+                _tools = _tools.Except(existing.Tools).ToArray();
+                exited = existing;
+            }
+        }
+        if (exited is not null)
+            await exited.DisposeAsync().ConfigureAwait(false);
+
+        var availableMemory = _availableMemoryProvider();
+        if (availableMemory is null)
+            return new McpServerStatus(name, false, 0, "Available memory could not be measured.");
+        var budget = McpWorkerResourceBudget.FromAvailableMemory(availableMemory.Value);
+        int runningWorkers;
+        lock (_gate) runningWorkers = _connections.Count;
+        if (!budget.CanStartAnother(runningWorkers))
+            return new McpServerStatus(name, false, 0, "There is not enough free memory for another MCP worker.");
+
+        var (connection, status) = await StartWindowsAsync(server, budget, cancellationToken).ConfigureAwait(false);
+        lock (_gate)
+        {
+            if (connection is not null)
+            {
+                _connections.Add(connection);
+                _tools = _tools.Concat(connection.Tools).ToArray();
+            }
+            _statuses = _statuses.Where(item => !string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase))
+                .Append(status).ToArray();
+            _problem = problem;
+        }
+        return status;
+    }
+
     [SupportedOSPlatform("windows")]
     private async Task<(Connection? Connection, McpServerStatus Status)> StartWindowsAsync(
         McpServerConfig server,
