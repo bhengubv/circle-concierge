@@ -150,12 +150,12 @@
                     <svg class="ws-nav-icon" viewBox="0 0 24 24" aria-hidden="true"><use href="#cm-icon-shield" /></svg>
                     <svg class="ws-chev" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
                     <span class="ws-head-name">Needs your OK</span>
-                    <span class="ws-head-count">@_pendingApprovals.Count</span>
+                    <span class="ws-head-count">@(_pendingApprovals.Count + _desktopPendingApprovals.Count)</span>
                 </button>
                 @if (IsGroupOpen("approvals"))
                 {
                     <div class="ws-group-body">
-                        @if (_pendingApprovals.Count == 0)
+                        @if (_pendingApprovals.Count == 0 && _desktopPendingApprovals.Count == 0)
                         {
                             <p class="ws-group-note">Circle AI pauses here when an action needs your permission. You're all caught up.</p>
                         }
@@ -166,6 +166,21 @@
                                 <span class="ws-item-label">@approval.Request.Summary</span>
                                 <span class="ws-item-meta">@Ago(approval.AskedAt)</span>
                             </span>
+                        }
+                        @foreach (var approval in _desktopPendingApprovals)
+                        {
+                            <div class="ws-desktop-approval" data-approval-source="desktop">
+                                <span class="dot @RiskDot(approval.Risk)" aria-hidden="true"></span>
+                                <span class="ws-item-label">Desktop: @approval.Summary</span>
+                                <div class="ws-desktop-approval-actions">
+                                    <button type="button" @onclick="@(() => DecideDesktopApprovalAsync(approval.Id, true))">Allow</button>
+                                    <button type="button" @onclick="@(() => DecideDesktopApprovalAsync(approval.Id, false))">Deny</button>
+                                </div>
+                            </div>
+                        }
+                        @if (!string.IsNullOrEmpty(_desktopApprovalMessage))
+                        {
+                            <p class="ws-group-note" role="status">@_desktopApprovalMessage</p>
                         }
                         @*
                             The queue seen all at once, for clearing it rather
@@ -386,10 +401,9 @@
                     {
                         if (message.Role == "tool")
                         {
-                            var headline = message.Content.Split('\n')[0];
-                            var rest = message.Content.Length > headline.Length
-                                ? message.Content[(headline.Length + 1)..].Trim()
-                                : string.Empty;
+                            var receipt = ToolResultPresentation.From(message.Content);
+                            var headline = receipt.Headline;
+                            var rest = receipt.Details;
                             var open = _openTools.Contains(message.Id);
 
                             <div class="chips">

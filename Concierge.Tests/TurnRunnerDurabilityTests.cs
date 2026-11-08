@@ -13,6 +13,59 @@ namespace Concierge.Tests;
 public sealed class TurnRunnerDurabilityTests : IAsyncLifetime
 {
     [Fact]
+    public async Task Explicit_phoneuse_status_runs_as_a_recorded_tool_without_waiting_for_the_model()
+    {
+        var runtime = new CountingRuntime("Model should not answer this diagnostic");
+        var tool = new PhoneStatusTool();
+        var conversation = await _store.StartAsync("local");
+
+        var result = await Runner(runtime, registry: new AgentToolRegistry([tool]))
+            .RunAsync(new TurnRequest(conversation.Id, "Phoneuse status", runtime));
+
+        Assert.Equal(0, runtime.Calls);
+        Assert.Equal(1, tool.Calls);
+        Assert.Equal("Bridge disconnected", result.Text);
+        Assert.Equal("phoneuse tool", result.AnsweredBy);
+        var events = await _store.ReadEventsAsync(conversation.Id);
+        Assert.Contains(events, entry => entry.Type == ConversationEventType.ToolCall
+            && entry.Data.Contains("phoneuse__status", StringComparison.Ordinal));
+        Assert.Contains(events, entry => entry.Type == ConversationEventType.ToolResult
+            && entry.Data.Contains("Bridge disconnected", StringComparison.Ordinal));
+        Assert.Contains(events, entry => entry.Type == ConversationEventType.AssistantMessage
+            && entry.Data == "Bridge disconnected");
+    }
+
+    [Fact]
+    public async Task Plan_only_does_not_run_explicit_phoneuse_status()
+    {
+        var runtime = new CountingRuntime("I would check the phone bridge.");
+        var tool = new PhoneStatusTool();
+        var conversation = await _store.StartAsync("local");
+
+        await Runner(runtime, registry: new AgentToolRegistry([tool]))
+            .RunAsync(new TurnRequest(conversation.Id, "Phoneuse status", runtime,
+                Settings: new TurnSettings(ExecuteTools: false, PermissionMode: ToolPermissionMode.PlanOnly)));
+
+        Assert.Equal(0, tool.Calls);
+        Assert.Equal(1, runtime.Calls);
+    }
+
+    private sealed class PhoneStatusTool : IAgentTool
+    {
+        public string Name => "phoneuse__status";
+        public string Description => "Check phone control status";
+        public System.Text.Json.Nodes.JsonNode? ArgumentsSchema => null;
+        public bool IsReadOnly => false;
+        public int Calls { get; private set; }
+        public Task<AgentToolResult> InvokeAsync(
+            System.Text.Json.Nodes.JsonNode? arguments, CancellationToken cancellationToken = default)
+        {
+            Calls++;
+            return Task.FromResult(new AgentToolResult(true, "Bridge disconnected"));
+        }
+    }
+
+    [Fact]
     public async Task Explicit_workspace_file_read_reaches_the_runtime_with_a_tool_receipt()
     {
         var root = Path.Combine(Path.GetTempPath(), $"concierge-read-{Guid.NewGuid():N}");

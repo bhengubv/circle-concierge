@@ -2059,6 +2059,11 @@ html[data-cm-host="windows-desktop"] .comp-sep { color:var(--cm-color-outline); 
 .ws-handheld .ws-item.is-active { color:var(--cm-color-text-primary); background:color-mix(in srgb, var(--cm-color-accent) 13%, var(--cm-color-surface-raised)); box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--cm-color-accent) 22%, transparent); }
 .ws-handheld .ws-item-meta { color:var(--cm-color-text-secondary); }
 .ws-handheld .ws-group-note { margin:.12rem .55rem .36rem; color:var(--cm-color-text-secondary); font-size:.75rem; line-height:1.45; }
+.ws-handheld .ws-desktop-approval { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem; margin:.3rem .45rem; padding:.7rem; border:1px solid var(--cm-color-outline); border-radius:.8rem; color:var(--cm-color-text-primary); background:var(--cm-color-surface-raised); }
+.ws-handheld .ws-desktop-approval .ws-item-label { white-space:normal; }
+.ws-handheld .ws-desktop-approval-actions { display:flex; gap:.5rem; width:100%; padding-left:1rem; }
+.ws-handheld .ws-desktop-approval-actions button { min-height:2.5rem; padding:.4rem .8rem; border:1px solid var(--cm-color-outline); border-radius:.65rem; color:var(--cm-color-text-primary); background:var(--cm-color-surface); font:inherit; }
+.ws-handheld .ws-desktop-approval-actions button:first-child { color:var(--cm-color-on-accent); background:var(--cm-color-accent); border-color:var(--cm-color-accent); font-weight:700; }
 .ws-handheld .ws-more { min-height:2.55rem; padding:.48rem .55rem; border-radius:.7rem; color:var(--cm-color-accent); font-size:.76rem; }
 .ws-handheld .ws-history-link { display:flex; align-items:center; gap:.55rem; }
 .ws-handheld .ws-history-link svg { width:1rem; height:1rem; flex:0 0 auto; fill:none; stroke:currentColor; stroke-width:1.8; }

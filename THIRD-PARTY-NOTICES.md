@@ -1,7 +1,7 @@
 # Other people's work, and what its licence asks of us
 
 Concierge is held to a rule: everything it carries is free and open source under a
-permissive licence — MIT, Apache, BSD, OFL or public domain. Two things in this file
+permissive licence — MIT, Apache, BSD, OFL or public domain. Three things in this file
 are carried under that rule, and **one is not**, which is why this file exists rather
 than a line in a README.
 
@@ -11,8 +11,9 @@ than a line in a README.
 | --- | --- | --- |
 | three.js | `Concierge.Shared.Components/wwwroot/lib/three` | MIT — `LICENSE` beside it |
 | mermaid | `Concierge.Shared.Components/wwwroot/lib/mermaid` | MIT — `LICENSE` beside it |
+| phoneuse | `tools/phoneuse` | MIT — `LICENSE` beside it; copyright Aleksey Smolenchuk |
 
-Both are carried rather than fetched from a CDN, for a reason written up where they
+The two visual libraries are carried rather than fetched from a CDN, for a reason written up where they
 live: a design surface that needs the internet to draw a box is not a local-first
 product.
 

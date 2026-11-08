@@ -553,7 +553,10 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     protected bool _searchingDesktop;
     protected string? _desktopSearchMessage;
     protected string _desktopLinkDraft = string.Empty;
+    protected IReadOnlyList<Concierge.Away.AwayWaiting> _desktopPendingApprovals = [];
+    protected string? _desktopApprovalMessage;
     private DateTimeOffset _nextDesktopCapabilityRefresh = DateTimeOffset.MinValue;
+    private DateTimeOffset _nextDesktopApprovalRefresh = DateTimeOffset.MinValue;
     private DateTimeOffset _nextNotebookSync = DateTimeOffset.MinValue;
     private DateTimeOffset _nextDesktopDiscovery = DateTimeOffset.MinValue;
     private DateTimeOffset _nextLocalSidebarRefresh = DateTimeOffset.MinValue;
@@ -732,6 +735,8 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
                 ? await DesktopClient.GetCapabilitiesAsync()
                 : null;
             _desktopAvailable = found && capabilities is not null;
+            if (!_desktopAvailable)
+                _desktopPendingApprovals = [];
             _desktopCanAnswer = capabilities?.CanAnswer == true;
             _desktopCapabilityCatalog = capabilities?.CircleAi;
             if (showResult)
@@ -752,6 +757,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         catch
         {
             _desktopAvailable = false;
+            _desktopPendingApprovals = [];
             _desktopCanAnswer = false;
             _desktopCapabilityCatalog = null;
             if (showResult)
@@ -2870,6 +2876,27 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
                 if (!_windowsDesktopUsesCircleAi && _desktopAvailable && DesktopClient is not null)
                 {
                     var now = DateTimeOffset.UtcNow;
+                    if (now >= _nextDesktopApprovalRefresh)
+                    {
+                        _nextDesktopApprovalRefresh = now.AddSeconds(5);
+                        using var approvalTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                        approvalTimeout.CancelAfter(TimeSpan.FromSeconds(3));
+                        try
+                        {
+                            var pending = await DesktopClient.WaitingAsync(approvalTimeout.Token).ConfigureAwait(false);
+                            await InvokeAsync(() =>
+                            {
+                                _desktopPendingApprovals = pending;
+                                if (pending.Count > 0)
+                                    _desktopApprovalMessage = null;
+                                StateHasChanged();
+                            });
+                        }
+                        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+                        {
+                            // Keep the last known approvals visible during a brief network stall.
+                        }
+                    }
                     if (now >= _nextNotebookSync
                         && Services.GetService(typeof(Concierge.Shared.Planning.IKnowledgeNotebookStore))
                             is Concierge.Shared.Planning.IKnowledgeNotebookStore notebooks)
@@ -3541,6 +3568,21 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         {
             _ = RememberSessionAsync();
         }
+    }
+
+    protected async Task DecideDesktopApprovalAsync(Guid id, bool allowed)
+    {
+        if (DesktopClient is null || !_desktopPendingApprovals.Any(approval => approval.Id == id))
+            return;
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var answered = await DesktopClient.AnswerAsync(id, allowed, timeout.Token);
+        _desktopApprovalMessage = answered
+            ? allowed ? "Desktop may continue." : "Desktop action denied."
+            : "That Desktop request is no longer waiting.";
+        if (answered)
+            _desktopPendingApprovals = _desktopPendingApprovals.Where(approval => approval.Id != id).ToArray();
+        await InvokeAsync(StateHasChanged);
     }
 
     protected void DecideApproval(Guid id, bool allowed)

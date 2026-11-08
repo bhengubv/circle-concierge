@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "phoneuse"
+version = "0.1.0"
+description = "See and control an iPhone through an AirPlay host and Bluetooth HID bridge"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = ["numpy", "Pillow", "aiohttp"]
+
+[project.optional-dependencies]
+bridge = ["bleak", "cryptography", "pyserial"]
+portable = ["psutil", "keyring"]
+mcp = ["mcp>=2.3"]
+
+[project.scripts]
+phoneuse = "phoneuse.cli:main"
+phoneuse-mcp = "phoneuse.mcp_server:main"
+
+[tool.setuptools.packages.find]
+include = ["phoneuse*"]
+
+[tool.setuptools.package-data]
+phoneuse = ["web/*", "sounds/*"]

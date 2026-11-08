@@ -226,6 +226,7 @@ public sealed class TurnRunner(
         var plan = new PlanProgress();
 
         FailoverOutcome? answeredBy = null;
+        string? directToolAnswerer = null;
         string? last = null;
         string? stopped = null;
         var runStatus = "completed";
@@ -283,11 +284,41 @@ public sealed class TurnRunner(
                 }
             }
 
+            // A person can name this diagnostic explicitly. It is useful when the
+            // model is still loading: the watch and phone can ask Desktop whether
+            // its phone-control bridge is ready without waiting for inference.
+            // The scheduler still runs the tool's approval and hooks, and the
+            // call/result stay in the same durable conversation as every other tool.
+            var directPhoneStatus = settings.ExecuteTools
+                && settings.PermissionMode != ToolPermissionMode.PlanOnly
+                && string.Equals(request.Text.Trim(), "phoneuse status", StringComparison.OrdinalIgnoreCase)
+                && tools.Tools.Any(tool => tool.Name == "phoneuse__status");
+            if (directPhoneStatus)
+            {
+                const string toolName = "phoneuse__status";
+                await store.AppendEventAsync(request.ConversationId, ConversationEventType.ToolCall,
+                    toolName + " {}", cancellationToken: runToken).ConfigureAwait(false);
+                var outcome = (await scheduler.ExecuteAsync(
+                    [new PlannedToolCall(toolName, null)], runToken).ConfigureAwait(false))[0];
+                var trimmed = pruner.Prune(outcome.Result.Output);
+                var result = trimmed.WasPruned
+                    ? outcome.Result with { Output = trimmed.Text }
+                    : outcome.Result;
+                await store.AppendEventAsync(request.ConversationId, ConversationEventType.ToolResult,
+                    ToolCallProtocol.FormatResult(toolName, result),
+                    cancellationToken: runToken).ConfigureAwait(false);
+                last = result.Success ? result.Output : result.FailureMessage ?? result.Output;
+                directToolAnswerer = "phoneuse tool";
+                await store.AppendEventAsync(request.ConversationId, ConversationEventType.AssistantMessage,
+                    last, directToolAnswerer, runToken).ConfigureAwait(false);
+                progress?.Report(new TurnStep(TurnStage.Recorded));
+            }
+
             // The outer loop drives the tool-call cycle: stream, persist, and if the reply
             // called for tools and the caller allows it, run them, write the results in as a
             // turn of their own, and stream again. Capped so a reply that keeps calling the
             // same thing cannot pin the conversation.
-            for (var iteration = 0; iteration <= options.MaxToolIterations; iteration++)
+            for (var iteration = 0; !directPhoneStatus && iteration <= options.MaxToolIterations; iteration++)
             {
                 progress?.Report(new TurnStep(TurnStage.Round, Iteration: iteration));
 
@@ -464,7 +495,7 @@ public sealed class TurnRunner(
         finally
         {
             var receipt = new TurnRunReceipt(
-                runId, runStatus, last, answeredBy?.Runtime.EngineLabel ?? request.Runtime.EngineLabel,
+                runId, runStatus, last, directToolAnswerer ?? answeredBy?.Runtime.EngineLabel ?? request.Runtime.EngineLabel,
                 plan.Steps, plan.Done, stopped);
             try
             {
@@ -481,7 +512,7 @@ public sealed class TurnRunner(
 
         return new TurnResult(
             last,
-            answeredBy?.Runtime.EngineLabel ?? request.Runtime.EngineLabel,
+            directToolAnswerer ?? answeredBy?.Runtime.EngineLabel ?? request.Runtime.EngineLabel,
             plan.Steps,
             plan.Done,
             stopped);
