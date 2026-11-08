@@ -797,6 +797,8 @@
     public Guid? SelectedProjectId { get; set; }
     [SupplyParameterFromQuery(Name = "workspace")]
     public Guid? WorkspaceId { get; set; }
+    [SupplyParameterFromQuery(Name = "starter")]
+    public string? StarterId { get; set; }
 
     private sealed record ProjectConversationActivity(Guid ConversationId, string Title, string State,
         string StateKey, string Detail, DateTimeOffset? At);
@@ -925,6 +927,12 @@
         _loading = true;
         _projects = (await ProjectStore.ListAsync()).ToList();
         _startups = (await ProjectStore.ListStartupsAsync()).ToList();
+        if (!string.IsNullOrWhiteSpace(StarterId) && ProjectStarterTemplates.All.FirstOrDefault(
+                template => string.Equals(template.Id, StarterId, StringComparison.OrdinalIgnoreCase)) is { } starter)
+        {
+            StartNew();
+            SelectStarter(starter);
+        }
         if (SelectedProjectId is { } selectedId && _projects.Any(p => p.Id == selectedId))
             await SelectAsync(selectedId);
         if (_selected is not null)

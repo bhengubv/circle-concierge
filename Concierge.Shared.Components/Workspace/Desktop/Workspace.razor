@@ -94,6 +94,10 @@
                 <span class="ws-item-label">Projects</span>
                 <span class="ws-start-hint">Organize bigger goals</span>
             </a>
+            <button class="ws-item ws-feature-link" type="button" @onclick="OpenToolsAndFeatures">
+                <span class="ws-new-thread-mark" aria-hidden="true">⊞</span>
+                <span class="ws-item-label">Tools and features</span>
+            </button>
             <WorkDestinations />
             @*
                 Long lists are folded, not scrolled. Threads and Approvals open
@@ -768,6 +772,13 @@
     @if (_settingsOpen)
     {
         <Settings OnClose="@(() => _settingsOpen = false)" />
+    }
+
+    @if (_toolsAndFeaturesOpen)
+    {
+        <ToolsAndFeatures ActiveIds="_activeSkillIds" ConversationId="_active?.Id" OnToggleSkill="ToggleSkill"
+                          OnBrowseSkills="BrowseSkillsFromFeatures"
+                          OnClose="@(() => _toolsAndFeaturesOpen = false)" />
     }
 
     @if (_showSkillPicker)

@@ -1,0 +1,127 @@
+@using Concierge.Shared.Rpc.Mcp
+@inject IServiceProvider Services
+
+<div class="sheet-back" @onclick="Close" aria-hidden="true"></div>
+<div class="sheet feature-sheet" role="dialog" aria-modal="true" aria-labelledby="features-title">
+    <div class="sheet-head">
+        <h1 class="sheet-title" id="features-title">Tools and features</h1>
+        <button class="icon-btn" type="button" aria-label="Close tools and features" @onclick="Close">×</button>
+    </div>
+    <p class="feature-intro">Choose what you want to do. You can change this later.</p>
+
+    <h2 class="feature-heading">Ways to work</h2>
+    <div class="feature-grid">
+        @foreach (var pack in Packs)
+        {
+            var ready = pack.SkillIds.All(ActiveIds.Contains);
+            <div class="feature-card">
+                <div class="feature-card-top"><strong>@pack.Name</strong><span class="feature-state">@(ready ? "On" : "Included")</span></div>
+                <p>@pack.Summary</p>
+                <div class="feature-actions">
+                    <button type="button" class="feature-action" aria-pressed="@(ready ? "true" : "false")"
+                            @onclick="@(() => SetPackAsync(pack, !ready))">@(ready ? "Turn off" : "Add to this conversation")</button>
+                    <a href="@ProjectHref(pack.StarterId)">Start project</a>
+                </div>
+            </div>
+        }
+    </div>
+    <button class="feature-browse" type="button" @onclick="OnBrowseSkills">Browse individual skills →</button>
+
+    <h2 class="feature-heading">Connected tools</h2>
+    <div class="feature-card">
+        <div class="feature-card-top"><strong>SolidCraft</strong><span class="feature-state">@SolidCraftState</span></div>
+        <p>Design and export 3D models on this computer.</p>
+        @if (_solidCraft is not null && _solidCraft.IsInstalled && !_solidCraft.IsConnected)
+        {
+            <button type="button" class="feature-action" disabled="@_connecting" @onclick="ConnectSolidCraftAsync">@(_connecting ? "Connecting…" : "Connect SolidCraft")</button>
+        }
+    </div>
+    @foreach (var tool in ConfiguredTools)
+    {
+        var status = _mcpTools?.Statuses.FirstOrDefault(item => string.Equals(item.Name, tool.Name, StringComparison.OrdinalIgnoreCase));
+        <div class="feature-card">
+            <div class="feature-card-top"><strong>@tool.Name</strong><span class="feature-state">@(status?.Connected == true ? "Connected" : tool.Enabled ? "Ready to connect" : "Turned off")</span></div>
+            <p>@(status?.Connected == true ? $"{status.ToolCount} tools available in Concierge." : "Configured on this computer.")</p>
+            @if (tool.Enabled && status?.Connected != true)
+            {
+                <button type="button" class="feature-action" disabled="@_connecting" @onclick="@(() => ConnectConfiguredToolAsync(tool.Name))">Connect</button>
+            }
+        </div>
+    }
+    @if (!string.IsNullOrWhiteSpace(_message))
+    {
+        <p class="feature-feedback" role="status">@_message</p>
+    }
+    <p class="feature-footnote">More tools appear here when they have a working connection. Circle AI manages its own models and service skills.</p>
+</div>
+
+@code {
+    [Parameter] public IReadOnlyCollection<string> ActiveIds { get; set; } = Array.Empty<string>();
+    [Parameter] public Guid? ConversationId { get; set; }
+    [Parameter] public EventCallback<string> OnToggleSkill { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnBrowseSkills { get; set; }
+
+    private SolidCraftIntegration? _solidCraft;
+    private McpToolSource? _mcpTools;
+    private IReadOnlyList<McpServerConfig> _configuredTools = [];
+    private bool _connecting;
+    private string? _message;
+
+    private sealed record FeaturePack(string Name, string Summary, string StarterId, string[] SkillIds);
+    private string ProjectHref(string starterId)
+        => ConversationId is { } id ? $"/projects?starter={starterId}&conversation={id}" : $"/projects?starter={starterId}";
+    private static readonly FeaturePack[] Packs =
+    [
+        new("Social Media Manager", "Plan campaigns, write posts and prepare creative work.", "social-media-manager", ["marketing-growth", "media-publishing-content-operations"]),
+        new("App Developer", "Plan, build and review software.", "development", ["development", "ui-ux-design"]),
+        new("3D Product Designer", "Plan a model, check it and prepare a release.", "product-model", ["product-management"]),
+    ];
+
+    private IReadOnlyList<McpServerConfig> ConfiguredTools => _configuredTools;
+
+    protected override void OnInitialized()
+    {
+        _solidCraft = Services.GetService(typeof(SolidCraftIntegration)) as SolidCraftIntegration;
+        if (Services.GetService(typeof(McpServerOptions)) is McpServerOptions options)
+            _configuredTools = options.Load().Servers.Where(item => !string.Equals(item.Name, "SolidCraft", StringComparison.OrdinalIgnoreCase)).ToArray();
+        _mcpTools = Services.GetService(typeof(McpToolSource)) as McpToolSource;
+    }
+
+    private string SolidCraftState => _solidCraft is null || !OperatingSystem.IsWindows()
+        ? "Desktop only"
+        : _solidCraft.IsConnected ? "Connected" : _solidCraft.IsInstalled ? "Ready to connect" : "Needs SolidCraft Desktop";
+
+    private async Task SetPackAsync(FeaturePack pack, bool turnOn)
+    {
+        foreach (var id in pack.SkillIds)
+            if (ActiveIds.Contains(id) != turnOn)
+                await OnToggleSkill.InvokeAsync(id);
+    }
+
+    private async Task ConnectSolidCraftAsync()
+    {
+        if (_solidCraft is null) return;
+        _connecting = true;
+        _message = null;
+        try { _message = await _solidCraft.ConnectAsync(); }
+        catch (Exception error) { _message = $"SolidCraft could not connect: {error.Message}"; }
+        finally { _connecting = false; }
+    }
+
+    private async Task ConnectConfiguredToolAsync(string name)
+    {
+        if (_mcpTools is null) return;
+        _connecting = true;
+        _message = null;
+        try
+        {
+            var status = await _mcpTools.ConnectConfiguredAsync(name);
+            _message = status.Connected ? $"{name} connected." : $"{name} could not connect: {status.Status}";
+        }
+        catch (Exception error) { _message = $"{name} could not connect: {error.Message}"; }
+        finally { _connecting = false; }
+    }
+
+    private Task Close() => OnClose.InvokeAsync();
+}

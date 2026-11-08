@@ -728,6 +728,23 @@ a:hover { text-decoration: underline; }
     box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
 }
 .sheet-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); }
+.feature-sheet { width: min(94vw, 680px); gap: .8rem; }
+.feature-intro, .feature-footnote { margin: 0; color: var(--ink-soft); font-size: var(--t-sm); line-height: 1.45; }
+.feature-heading { margin: .3rem 0 0; color: var(--ink); font-size: var(--t-sm); font-weight: 700; }
+.feature-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; }
+.feature-card { padding: .85rem; border: 1px solid var(--rule); border-radius: var(--radius-lg); background: var(--raised); }
+.feature-card-top { display: flex; align-items: start; justify-content: space-between; gap: .5rem; color: var(--ink); }
+.feature-card-top strong { font-size: var(--t-sm); }
+.feature-state { flex: 0 0 auto; color: var(--cm-color-accent); font-size: var(--t-xs); font-weight: 700; }
+.feature-card p { margin: .4rem 0 .65rem; color: var(--ink-soft); font-size: var(--t-xs); line-height: 1.4; }
+.feature-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .65rem; }
+.feature-action { padding: .45rem .7rem; border: 1px solid var(--cm-color-accent); border-radius: .65rem; background: color-mix(in srgb, var(--cm-color-accent) 17%, var(--panel)); color: var(--ink); font: inherit; font-size: var(--t-xs); font-weight: 700; cursor: pointer; }
+.feature-action:hover { background: color-mix(in srgb, var(--cm-color-accent) 28%, var(--panel)); }
+.feature-action:disabled { opacity: .6; cursor: wait; }
+.feature-actions a { color: var(--cm-color-accent); font-size: var(--t-xs); font-weight: 700; }
+.feature-browse { align-self: flex-start; padding: .15rem 0; border: 0; background: none; color: var(--cm-color-accent); font: inherit; font-size: var(--t-sm); font-weight: 700; cursor: pointer; }
+.feature-card .feature-feedback { margin-bottom: 0; }
+@media (max-width: 520px) { .feature-grid { grid-template-columns: 1fr; } }
 /* Also an h1: a panel is its own document region, and it is what
    aria-labelledby points at. Same margin reset, same reason. */
 .sheet-title { margin: 0; font-size: var(--t-lg); font-weight: 620; }

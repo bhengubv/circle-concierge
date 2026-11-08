@@ -538,6 +538,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     }
 
     protected bool _showSkillPicker;
+    protected bool _toolsAndFeaturesOpen;
     protected string _skillFilter = string.Empty;
 
     // Named the two icons sitting right beside it and pointed at a emoji that
@@ -1345,6 +1346,18 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         // The picker is a panel over everything. Leaving the drawer open
         // underneath it means dismissing two things to get back to the work.
         _drawerOpen = false;
+    }
+
+    protected void OpenToolsAndFeatures()
+    {
+        _toolsAndFeaturesOpen = true;
+        _drawerOpen = false;
+    }
+
+    protected void BrowseSkillsFromFeatures()
+    {
+        _toolsAndFeaturesOpen = false;
+        _showSkillPicker = true;
     }
 
     /// <summary>Opens settings, and closes the drawer it was pressed in.</summary>
