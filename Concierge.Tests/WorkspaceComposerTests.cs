@@ -711,6 +711,25 @@ public sealed class WorkspaceComposerTests : BunitContext
     }
 
     [Fact]
+    public void Unknown_local_readiness_does_not_borrow_desktop_preparation_bar()
+    {
+        var cut = RenderWith(runtimeReady: false, runtimeOverride: new PreparingRuntime
+        {
+            CanWaitForPreparation = true,
+            IsActivelyPreparing = false,
+            StatusMessage = "Circle AI answered your last question on this device. It has not reported current text readiness."
+        });
+        var field = typeof(Concierge.Shared.Components.Workspace.WorkspaceBase).GetField(
+            "_desktopCapabilityCatalog", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        field.SetValue(cut.Instance, new ChatRuntimeCapabilityCatalog(1, "desktop", "1", DateTimeOffset.UtcNow,
+            [new("conversation", "Conversation", ChatRuntimeCapabilityState.Preparing, "Desktop is loading")], null));
+        cut.Find("textarea.comp-input").Input("A new question");
+
+        Assert.Empty(cut.FindAll(".runtime-readiness-progress [role='progressbar']"));
+        Assert.Contains("answered your last question", cut.Find(".runtime-readiness").TextContent);
+    }
+
+    [Fact]
     public void Composer_explains_local_unavailability_without_exposing_the_model_choice()
     {
         var cut = RenderWith(runtimeReady: false, runtimeOverride: new UnavailableRuntime());
