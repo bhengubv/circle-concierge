@@ -26,6 +26,7 @@ using Concierge.Shared.Settings;
 using Concierge.Shared.Skills;
 using Concierge.Shared.Telemetry;
 using Concierge.Shared.Tools;
+using Concierge.DeveloperStudio;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
@@ -135,6 +136,8 @@ public static class MauiProgram
 			client.Timeout = TimeSpan.FromSeconds(30);
 		});
 		builder.Services.AddSingleton<IButlerWorkRunApi>(sp => sp.GetRequiredService<ButlerWorkRunApiClient>());
+		if (OperatingSystem.IsWindows())
+			builder.Services.AddSingleton<IDeveloperStudio, WindowsDeveloperStudio>();
 		builder.Services
 			.AddConciergeCore()
 			.AddLocalSkillSources()

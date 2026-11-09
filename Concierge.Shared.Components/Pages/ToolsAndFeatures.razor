@@ -28,6 +28,14 @@
     <button class="feature-browse" type="button" @onclick="OnBrowseSkills">Browse individual skills →</button>
 
     <h2 class="feature-heading">Connected tools</h2>
+    @if (Services.GetService(typeof(IDeveloperStudio)) is not null)
+    {
+        <div class="feature-card">
+            <div class="feature-card-top"><strong>Developer Studio</strong><span class="feature-state">Optional</span></div>
+            <p>Edit Project code in a VS Code workbench. First use downloads the editor to this computer.</p>
+            <div class="feature-actions"><a href="@ProjectHref("development")">Start a development Project</a></div>
+        </div>
+    }
     <div class="feature-card">
         <div class="feature-card-top"><strong>SolidCraft</strong><span class="feature-state">@SolidCraftState</span></div>
         <p>Design and export 3D models on this computer.</p>

@@ -2562,3 +2562,13 @@ html[data-cm-host="windows-desktop"][data-theme="light"] :is(.room-body > h2,
     .room-sec > h2, .project-section h3) {
     color:var(--cm-color-accent-text);
 }
+
+.developer-studio-page { display:flex; flex-direction:column; min-height:100vh; color:var(--ink); background:var(--canvas); }
+.developer-studio-head { display:flex; align-items:center; gap:22px; padding:13px 22px; border-bottom:1px solid var(--rule); background:var(--surface); }
+.developer-studio-head a { color:var(--cm-color-accent-text); font-weight:700; }
+.developer-studio-head h1 { margin:0; font-size:var(--t-lg); }
+.developer-studio-head button, .developer-studio-start button { border:0; border-radius:999px; padding:10px 18px; background:var(--cm-color-accent); color:var(--cm-color-on-accent); font:inherit; font-weight:700; cursor:pointer; }
+.developer-studio-head button { margin-left:auto; }
+.developer-studio-start { margin:auto; padding:26px; text-align:center; }
+.developer-studio-start p { color:var(--ink-soft); }
+.developer-studio-error { max-width:540px; color:var(--danger-text, var(--ink)); }

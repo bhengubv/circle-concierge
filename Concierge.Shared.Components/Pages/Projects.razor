@@ -266,6 +266,15 @@
                     </select>
                 </div>
 
+                @if (AppServices.GetService(typeof(IDeveloperStudio)) is not null)
+                {
+                    <section class="project-section" aria-labelledby="project-editor-title">
+                        <div class="project-section-head"><div><p class="projects-eyebrow">BUILD</p><h3 id="project-editor-title">Developer Studio</h3></div></div>
+                        <p>Edit this Project's source files in a VS Code workbench on your computer.</p>
+                        <a class="project-primary" href="@($"/projects/{_selected.Id}/studio")">Open editor</a>
+                    </section>
+                }
+
                 @if (!string.IsNullOrWhiteSpace(_selected.StarterAgentFocus))
                 {
                     <p class="project-starter-focus"><strong>How Concierge can help:</strong> @_selected.StarterAgentFocus</p>

@@ -1,0 +1,91 @@
+@page "/projects/{ProjectId:guid}/studio"
+@using Concierge.Shared.Planning
+@implements IAsyncDisposable
+@inject IProjectStore Projects
+@inject IServiceProvider Services
+
+<main class="developer-studio-page">
+    <header class="developer-studio-head">
+        <a href="@($"/projects?project={ProjectId}")">← Project</a>
+        <div><p class="projects-eyebrow">DEVELOPER STUDIO</p><h1>@(_project?.Name ?? "Project editor")</h1></div>
+        @if (_url is not null)
+        {
+            <button type="button" @onclick="CloseAsync">Close editor</button>
+        }
+    </header>
+
+    @if (_project is null)
+    {
+        <p role="status">Project not found.</p>
+    }
+    else if (_url is null)
+    {
+        <section class="developer-studio-start">
+            <p>Edit code and files for this Project on this computer.</p>
+            @if (_studio is null)
+            {
+                <p role="status">Developer Studio is available in Concierge Desktop.</p>
+            }
+            else
+            {
+                <p>First use downloads a 74 MB editor runtime to this computer.</p>
+                <button type="button" disabled="@_opening" @onclick="OpenAsync">@(_opening ? "Preparing editor…" : "Open editor")</button>
+                @if (!string.IsNullOrWhiteSpace(_error))
+                {
+                    <p class="developer-studio-error" role="alert">@_error</p>
+                }
+            }
+        </section>
+    }
+    else
+    {
+        <p class="developer-studio-start" role="status">Developer Studio is open.</p>
+    }
+</main>
+
+@code {
+    [Parameter] public Guid ProjectId { get; set; }
+
+    private ConciergeProject? _project;
+    private IDeveloperStudio? _studio;
+    private Uri? _url;
+    private string? _error;
+    private bool _opening;
+
+    protected override void OnInitialized()
+    {
+        _studio = Services.GetService(typeof(IDeveloperStudio)) as IDeveloperStudio;
+        if (_studio is not null) _studio.Closed += OnStudioClosed;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _project = await Projects.GetAsync(ProjectId);
+    }
+
+    private void OnStudioClosed(object? sender, EventArgs args)
+        => _ = InvokeAsync(() => { _url = null; StateHasChanged(); });
+
+    private async Task OpenAsync()
+    {
+        if (_studio is null || _project is null || _opening) return;
+        _opening = true;
+        _error = null;
+        StateHasChanged();
+        try { _url = await _studio.OpenAsync(_project.Id, _project.Name); }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _opening = false; }
+    }
+
+    private async Task CloseAsync()
+    {
+        if (_studio is not null) await _studio.CloseAsync();
+        _url = null;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_studio is not null) _studio.Closed -= OnStudioClosed;
+        if (_url is not null && _studio is not null) await _studio.CloseAsync();
+    }
+}
