@@ -340,10 +340,15 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     /// loading an existing model into memory. Show an indeterminate progress bar instead of
     /// letting the composer look idle or inventing a percentage.
     /// </summary>
+    private bool ActiveCircleAiIsPreparing
+        => string.Equals(_activeRuntime?.Id, "circleai", StringComparison.OrdinalIgnoreCase)
+            && PreparingConversation(CircleAiCapabilityCatalog) is not null
+            && (_activeRuntime is not IChatRuntimePreparation preparation || preparation.IsActivelyPreparing);
+
     protected bool CircleAiIsPreparing
-        => PreparingConversation(CircleAiCapabilityCatalog) is not null
-            && (_activeRuntime is not IChatRuntimePreparation preparation || preparation.IsActivelyPreparing)
-            || PreparingConversation(_desktopCapabilityCatalog) is not null;
+        => ActiveCircleAiIsPreparing
+            || !string.Equals(_activeRuntime?.Id, "circleai", StringComparison.OrdinalIgnoreCase)
+                && PreparingConversation(_desktopCapabilityCatalog) is not null;
 
     protected bool CircleAiIsLocallyUnavailable
         => string.Equals(_activeRuntime?.Id, "circleai", StringComparison.OrdinalIgnoreCase)
@@ -366,7 +371,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     {
         get
         {
-            if (_activeRuntime is IChatRuntimePreparation && PreparingConversation(CircleAiCapabilityCatalog) is not null)
+            if (ActiveCircleAiIsPreparing)
                 return _activeRuntime.StatusMessage;
             if (PreparingConversation(_desktopCapabilityCatalog) is not null)
                 return "Circle AI is getting ready on your Desktop.";
