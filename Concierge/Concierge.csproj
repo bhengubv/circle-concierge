@@ -40,7 +40,7 @@
         <ApplicationTitle>Concierge</ApplicationTitle>
 
         <!-- App Identifier -->
-        <ApplicationId>com.companyname.concierge</ApplicationId>
+        <ApplicationId>za.co.thegeeknetwork.concierge</ApplicationId>
 
         <!-- Versions -->
         <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>

@@ -38,8 +38,8 @@ try {
 
     foreach ($case in @(
         @{ Platform = 'windows-x64'; Channel = 'Microsoft'; Entry = 'Concierge.exe'; Name = 'Concierge-Windows-x64.zip' },
-        @{ Platform = 'android-aab'; Channel = 'Google'; Entry = 'base/manifest/AndroidManifest.xml'; Name = 'com.companyname.concierge-Signed.aab' },
-        @{ Platform = 'wear-apk'; Channel = 'TheGeek'; Entry = 'AndroidManifest.xml'; Name = 'com.companyname.concierge.wear.apk' }
+        @{ Platform = 'android-aab'; Channel = 'Google'; Entry = 'base/manifest/AndroidManifest.xml'; Name = 'za.co.thegeeknetwork.concierge-Signed.aab' },
+        @{ Platform = 'wear-apk'; Channel = 'TheGeek'; Entry = 'AndroidManifest.xml'; Name = 'za.co.thegeeknetwork.concierge.wear.apk' }
     )) {
         $folder = Join-Path $fixturePath $case.Platform
         $entry = Join-Path $folder ($case.Entry.Replace('/', [IO.Path]::DirectorySeparatorChar))

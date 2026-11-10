@@ -105,7 +105,7 @@ internal sealed class AndroidModelDownloadCoordinator : IModelDownloadCoordinato
 }
 
 [Service(
-    Name = "com.companyname.concierge.AndroidModelDownloadForegroundService",
+    Name = "za.co.thegeeknetwork.concierge.AndroidModelDownloadForegroundService",
     Exported = false)]
 internal sealed class AndroidModelDownloadForegroundService : Service
 {
@@ -180,7 +180,7 @@ internal sealed class AndroidModelDownloadForegroundService : Service
     private Notification BuildNotification(string detail, double? ratio)
     {
         var stopIntent = new Intent(this, typeof(AndroidModelDownloadCancelReceiver));
-        stopIntent.SetAction("com.companyname.concierge.STOP_MODEL_DOWNLOAD");
+        stopIntent.SetAction("za.co.thegeeknetwork.concierge.STOP_MODEL_DOWNLOAD");
         var stop = PendingIntent.GetBroadcast(this, AndroidModelDownloadCoordinator.JobId, stopIntent,
             PendingIntentFlags.UpdateCurrent | PendingIntentFlags.Immutable);
         var builder = OperatingSystem.IsAndroidVersionAtLeast(26)
@@ -220,7 +220,7 @@ internal sealed class AndroidModelDownloadForegroundService : Service
 }
 
 [Service(
-    Name = "com.companyname.concierge.AndroidModelDownloadJobService",
+    Name = "za.co.thegeeknetwork.concierge.AndroidModelDownloadJobService",
     Permission = "android.permission.BIND_JOB_SERVICE",
     Exported = false)]
 internal sealed class AndroidModelDownloadJobService : JobService
@@ -388,7 +388,7 @@ internal sealed class AndroidModelDownloadJobService : JobService
     private Notification BuildNotification(string detail, double? ratio)
     {
         var stopIntent = new Intent(this, typeof(AndroidModelDownloadCancelReceiver));
-        stopIntent.SetAction("com.companyname.concierge.STOP_MODEL_DOWNLOAD");
+        stopIntent.SetAction("za.co.thegeeknetwork.concierge.STOP_MODEL_DOWNLOAD");
         var stop = PendingIntent.GetBroadcast(
             this,
             AndroidModelDownloadCoordinator.JobId,

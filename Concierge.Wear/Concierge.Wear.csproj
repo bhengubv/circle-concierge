@@ -24,7 +24,7 @@
     <RuntimeIdentifier Condition="'$(ConciergeWearRuntimeIdentifier)' != ''">$(ConciergeWearRuntimeIdentifier)</RuntimeIdentifier>
     <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
 
-    <ApplicationId>com.companyname.concierge.wear</ApplicationId>
+    <ApplicationId>za.co.thegeeknetwork.concierge.wear</ApplicationId>
     <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
     <ApplicationVersion>1</ApplicationVersion>
 
