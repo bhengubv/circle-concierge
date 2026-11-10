@@ -52,6 +52,21 @@ try {
         if (-not (Test-Path -LiteralPath $staged)) { throw "$($case.Platform) went to the wrong channel." }
     }
 
+    $manifestPath = Join-Path $releaseDir 'release.json'
+    $approved = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -AsHashtable
+    $approved.publishReady = $true
+    $approved | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifestPath
+    $newZip = Join-Path $fixturePath 'concierge-web-second.zip'
+    Copy-Item -LiteralPath $zip -Destination $newZip
+    $approvedRejected = $false
+    try {
+        & $stage -Platform web -ArtifactPath $newZip -VersionName 1.0 -VersionCode 1 -DestinationRoot $destination | Out-Null
+    }
+    catch { $approvedRejected = $_.Exception.Message.Contains('approved release manifest') }
+    if (-not $approvedRejected -or (Test-Path -LiteralPath (Join-Path $releaseDir 'concierge-web-second.zip'))) {
+        throw 'An unverified artifact was added to an approved release.'
+    }
+
     Write-Output 'Concierge release staging fixture passed.'
 }
 finally {

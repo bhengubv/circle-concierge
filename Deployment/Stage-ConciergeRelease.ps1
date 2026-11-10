@@ -98,6 +98,9 @@ if ($manifest.app -ne 'Concierge' -or $manifest.versionName -ne $VersionName -or
     [int]$manifest.versionCode -ne $VersionCode -or $manifest.sourceCommit -ne $sourceCommit) {
     throw "Existing release.json belongs to a different source or version: $manifestPath"
 }
+if ($manifest.publishReady -eq $true) {
+    throw "An approved release manifest cannot accept a new unverified artifact: $manifestPath"
+}
 
 New-Item -ItemType Directory -Path $destination -Force | Out-Null
 $temporaryFile = Join-Path $destination ('.' + [guid]::NewGuid().ToString('N') + '.partial')
