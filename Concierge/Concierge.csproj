@@ -99,7 +99,7 @@
     <ItemGroup>
         <PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
         <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Maui" Version="$(MauiVersion)" />
-        <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.13" />
         <!-- MAUI does not include this RCL's transitive package in its runtime bundle. -->
         <PackageReference Include="Markdig" Version="0.40.0" />
     </ItemGroup>
