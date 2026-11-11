@@ -25,8 +25,8 @@
     <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
 
     <ApplicationId>za.co.thegeeknetwork.concierge.wear</ApplicationId>
-    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
-    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>1.0.1</ApplicationDisplayVersion>
+    <ApplicationVersion>2</ApplicationVersion>
 
     <!-- Coverage gates in Concierge.Tests do not apply to a UI head. -->
     <CollectCoverage>false</CollectCoverage>

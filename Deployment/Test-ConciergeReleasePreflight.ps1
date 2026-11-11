@@ -14,6 +14,14 @@ if ($mobileId -ne 'za.co.thegeeknetwork.concierge' -or $wearId -ne "$mobileId.we
     throw "Unexpected release identities: Mobile=$mobileId Wear=$wearId"
 }
 
+$mobileVersion = $mobileProject.SelectSingleNode('/Project/PropertyGroup/ApplicationDisplayVersion')?.InnerText
+$wearVersion = $wearProject.SelectSingleNode('/Project/PropertyGroup/ApplicationDisplayVersion')?.InnerText
+$mobileCode = $mobileProject.SelectSingleNode('/Project/PropertyGroup/ApplicationVersion')?.InnerText
+$wearCode = $wearProject.SelectSingleNode('/Project/PropertyGroup/ApplicationVersion')?.InnerText
+if ($mobileVersion -ne $wearVersion -or $mobileCode -ne $wearCode) {
+    throw "Mobile and Wear release versions differ: Mobile=$mobileVersion-$mobileCode Wear=$wearVersion-$wearCode"
+}
+
 $mobileBackup = $mobileManifest.manifest.application.GetAttribute('allowBackup', $androidNamespace)
 $wearBackup = $wearManifest.manifest.application.GetAttribute('allowBackup', $androidNamespace)
 if ($mobileBackup -ne 'false' -or $wearBackup -ne 'false') {
@@ -28,4 +36,4 @@ if ($downloadService -ne "$mobileId.AndroidModelDownloadForegroundService") {
     throw "The download service still has an old package name: $downloadService"
 }
 
-Write-Output "Concierge release preflight passed: $mobileId, $wearId, backup disabled."
+Write-Output "Concierge release preflight passed: $mobileVersion-$mobileCode, $mobileId, $wearId, backup disabled."
