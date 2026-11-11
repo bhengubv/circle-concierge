@@ -130,6 +130,12 @@
         <PackageReference Include="FFmpegKit.Net.Full.Android" Version="8.1.2.5" />
     </ItemGroup>
 
+    <!-- Removes transitive desktop Whisper binaries from Apple mobile bundles. The
+         verified MIT-licensed package is in the existing Concierge-local feed. -->
+    <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-ios' Or '$(TargetFramework)' == 'net10.0-maccatalyst'">
+        <PackageReference Include="Circle.Maui.Apple.Build" Version="1.0.0" />
+    </ItemGroup>
+
     <ItemGroup>
       <ProjectReference Include="..\Concierge.Shared\Concierge.Shared.csproj" />
       <ProjectReference Include="..\Concierge.Shared.Components\Concierge.Shared.Components.csproj" />

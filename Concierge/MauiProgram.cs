@@ -145,6 +145,9 @@ public static class MauiProgram
 			.AddConciergeDiagrams()
 			.AddConciergeMetrics()
 			.AddConciergeTools()
+			// Optional SleptON! catalogue reads; its CLI is installed separately.
+			// The signed-in account token goes only to the authenticated child call.
+			.AddConciergeSleptOnCli(includeAuthenticated: true)
 			// Tools published by other software, over MCP. Reads
 			// %LOCALAPPDATA%/Concierge/mcp.json; with no file, nothing starts.
 			.AddConciergeMcp()
