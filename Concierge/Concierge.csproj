@@ -72,7 +72,11 @@
                   Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'" />
 
         <!-- Splash Screen -->
-        <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#2196F3" BaseSize="128,128" />
+        <!-- Android needs an alpha-only mark; its background is supplied by the native theme. -->
+        <MauiSplashScreen Include="Resources\Splash\splash.svg" BaseSize="128,128"
+                          Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'" />
+        <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#2196F3" BaseSize="128,128"
+                          Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) != 'android'" />
 
         <!-- Images -->
         <MauiImage Include="Resources\Images\*" />

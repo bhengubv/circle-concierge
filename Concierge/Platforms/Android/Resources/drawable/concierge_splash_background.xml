@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- One solid blue surface behind the generated transparent Circle ring. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/concierge_splash_blue" />
+    <item android:gravity="center" android:drawable="@drawable/maui_splash_image" />
+</layer-list>
