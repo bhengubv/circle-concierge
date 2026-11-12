@@ -1496,3 +1496,13 @@ Work remaining, in dependency order:
 3. After sign-in, revalidate the pending action with the relevant WalletAPI, SdpktAPI, or commerce service. Require a separate final approval for money movement; publishing approval does not approve ad spend.
 4. Show progress, cancellation, failure, and a server-issued receipt or transaction reference. A failed or expired sign-in must not send the action or erase the local plan. Test duplicate taps, retries, account changes, and app restarts.
 5. Run a real Mobile and Web acceptance journey for at least one low-value transaction in a controlled environment before claiming the wallet integration works. No such journey has been run yet.
+
+### Mobile-led Concierge sign-in — 13 November 2026
+
+The Mobile entry presents two plain choices: **Sign In: Device** for local Concierge access and **Sign In: Online** for the TheGeekNetwork account. Device sign-in uses Android's screen-lock prompt; Concierge must not collect the device PIN. Online sign-in starts when a person chooses it or takes an online action, and returns to that action after verification. Device access must not silently create an online account session. After Mobile has a verified owner and device identity, Desktop and Web show a short-lived QR code; Mobile scans it, shows which client is requesting access, and approves or denies the session. The QR must not contain a reusable credential. Approval must issue a revocable, owner-bound session and protect that owner's local work on the receiving client. This is the intended WhatsApp-style relationship: Mobile authorizes Desktop and Web, not three unrelated password forms.
+
+The current code has an online account form, a local workspace that opens directly, and an in-memory QR challenge primitive. It does **not** yet have device sign-in, a QR scanner, a Desktop/Web sign-in session, or owner isolation in the Web host. Do not label a device link or reachable Desktop as signed in. Complete and test those boundaries before showing a working QR sign-in control.
+
+The **View wallet** read is now retained across the existing online account form and retried after successful verification. This is a UI-only step; live AuthAPI sign-in and wallet retrieval have not been exercised for this change.
+
+SDPKT's verified PixieDust flow is the interaction reference: Lock → Sign In: Device → Android screen lock → local workspace; an online action → Sign In: Online → verification → return to the pending action; later online actions reuse the session and still apply their own approval or identity gate. Concierge must not place credentials or verification codes in chat, logs, or screenshots. Coordinate device time before testing on a shared phone.

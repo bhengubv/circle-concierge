@@ -33,17 +33,21 @@
 </div>
 
 @code {
+    [Parameter] public EventCallback SignInRequired { get; set; }
     private WalletOverview? _overview;
     private bool _busy;
 
     public Task ClearAsync() => InvokeAsync(() => { _overview = null; StateHasChanged(); });
 
-    private async Task ReadAsync()
+    public async Task ReadAsync()
     {
         _busy = true;
         _overview = null;
         try { _overview = await Wallets.ReadAsync(); }
         catch (Exception) { _overview = new(WalletOverviewState.Unavailable, "Wallet details could not be read. Try again later.", []); }
         finally { _busy = false; }
+        if (_overview?.State == WalletOverviewState.SignInRequired)
+            await SignInRequired.InvokeAsync();
+        await InvokeAsync(StateHasChanged);
     }
 }

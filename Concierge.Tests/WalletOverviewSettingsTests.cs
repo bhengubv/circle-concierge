@@ -38,6 +38,21 @@ public sealed class WalletOverviewSettingsTests : BunitContext
     }
 
     [Fact]
+    public void Wallet_request_is_remembered_for_online_sign_in()
+    {
+        var signInRequests = 0;
+        Services.AddSingleton<IWalletOverviewClient>(new StubWallet(new(WalletOverviewState.SignInRequired,
+            "Sign in to view your wallet.", [])));
+
+        var panel = Render<Concierge.Shared.Components.Components.WalletOverviewSettings>(parameters =>
+            parameters.Add(component => component.SignInRequired, () => signInRequests++));
+        panel.Find("button").Click();
+
+        panel.WaitForAssertion(() => Assert.Equal(1, signInRequests));
+        Assert.Empty(panel.FindAll(".row strong"));
+    }
+
+    [Fact]
     public void Web_without_a_secure_account_session_does_not_offer_a_dead_wallet_button()
     {
         Services.AddSingleton<IWalletOverviewClient>(new WalletOverviewUnavailable());
