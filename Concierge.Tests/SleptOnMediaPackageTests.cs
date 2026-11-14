@@ -85,6 +85,37 @@ public sealed class SleptOnMediaPackageTests
         Assert.False(Directory.Exists(output));
     }
 
+    [Fact]
+    public async Task Prepared_package_reopens_and_can_be_copied_from_Files_without_network()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "concierge-handoff", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var audio = Write(root, "song.wav", "audio bytes");
+        var writer = new SleptOnMediaPackageWriter(Path.Combine(root, "original"));
+        var original = await writer.AudioAsync(new NotaAudioDraft(audio, "wav", 11, true), true);
+
+        Assert.Equal("song", Assert.Single(SleptOnPackageLibrary.Recent(writer.OutputRoot, "audio-draft")).Title);
+        await using var input = File.OpenRead(original.Path);
+        var copied = await SleptOnPackageLibrary.ImportAsync(input, Path.Combine(root, "from-files"));
+
+        Assert.Equal("audio-draft", copied.Kind);
+        Assert.Equal("song", copied.Title);
+        Assert.True(File.Exists(copied.Path));
+        Assert.Equal(await SleptOnPackageIdentity.ComputeAsync(original.Path),
+            await SleptOnPackageIdentity.ComputeAsync(copied.Path));
+        Assert.Single(SleptOnPackageLibrary.Recent(Path.GetDirectoryName(copied.Path)!, "audio-draft"));
+    }
+
+    [Fact]
+    public async Task Invalid_Files_package_leaves_no_partial_copy()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "concierge-handoff", Guid.NewGuid().ToString("N"));
+        await using var input = new MemoryStream("not a zip"u8.ToArray());
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => SleptOnPackageLibrary.ImportAsync(input, root));
+        Assert.Empty(Directory.GetFiles(root));
+    }
+
     private static string Write(string folder, string name, string data)
     {
         var path = Path.Combine(folder, name);

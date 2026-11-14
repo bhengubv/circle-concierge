@@ -14,6 +14,7 @@ public sealed class BookTrailerPageTests : BunitContext
     private readonly string _root = Path.Combine(Path.GetTempPath(), "concierge-trailer-page", Guid.NewGuid().ToString("N"));
     private readonly RecordingSleptOnPackageFileSave _fileSave;
     private readonly FixedSleptOnReceiptPicker _receiptPicker = new();
+    private readonly RecordingSleptOnPackagePicker _packagePicker = new();
 
     public BookTrailerPageTests()
     {
@@ -22,6 +23,7 @@ public sealed class BookTrailerPageTests : BunitContext
         Services.AddSingleton(new SleptOnMediaPackageWriter(Path.Combine(_root, "handoff")));
         Services.AddSingleton<ISleptOnPackageFileSave>(_fileSave);
         Services.AddSingleton<ISleptOnImportReceiptPicker>(_receiptPicker);
+        Services.AddSingleton<ISleptOnPackagePicker>(_packagePicker);
     }
 
     [Fact]
@@ -103,9 +105,14 @@ public sealed class BookTrailerPageTests : BunitContext
         firstPage.FindAll("input[type=checkbox]")[1].Change(true);
         firstPage.Find("button.btn-primary").Click();
         firstPage.WaitForAssertion(() => Assert.Single(firstPage.FindAll("video")));
+        firstPage.Find("button[data-action=package]").Click();
+        firstPage.WaitForAssertion(() => Assert.Single(Directory.GetFiles(Path.Combine(_root, "handoff"), "*.zip")));
 
         var reopened = Render<Concierge.Shared.Components.Pages.BookTrailer>();
         reopened.WaitForAssertion(() => Assert.Contains("Preview this cut", reopened.Markup));
+        Assert.Contains("Earlier SleptON! packages", reopened.Markup);
+        Assert.Single(reopened.FindAll("button[data-action=save-package]"));
+        Assert.Single(reopened.FindAll("button[data-action=read-receipt]"));
         reopened.FindAll("button").Single(button => button.TextContent.Contains("Make another cut")).Click();
         reopened.WaitForAssertion(() => Assert.Contains("lantern · TXT", reopened.Markup));
         Assert.True(reopened.Find("button.btn-primary").HasAttribute("disabled"));
@@ -119,6 +126,27 @@ public sealed class BookTrailerPageTests : BunitContext
 
         Assert.Contains("keep the book on your device", page.Markup);
         Assert.Empty(page.FindAll("input[type=file]"));
+        Assert.Empty(page.FindAll("button[data-action=open-package]"));
+    }
+
+    [Fact]
+    public async Task A_prepared_trailer_from_Files_reopens_without_the_source_book()
+    {
+        var fixture = Path.Combine(_root, "fixture");
+        Directory.CreateDirectory(fixture);
+        string Write(string name) { var path = Path.Combine(fixture, name); File.WriteAllText(path, name); return path; }
+        var draft = new BookTrailerDraft(fixture, Write("video.mp4"), Write("source.json"),
+            Write("captions.srt"), Write("script.json"), Write("credits.md"), new string('a', 64),
+            "The Lantern", "source-excerpts");
+        _packagePicker.SourcePath = (await new SleptOnMediaPackageWriter(Path.Combine(_root, "external"))
+            .BookAsync(draft, true)).Path;
+        var page = Render<Concierge.Shared.Components.Pages.BookTrailer>();
+
+        page.Find("button[data-action=open-package]").Click();
+        page.WaitForAssertion(() => Assert.Contains("Earlier SleptON! packages", page.Markup));
+        Assert.Contains("The Lantern", page.Markup);
+        Assert.Single(page.FindAll("button[data-action=read-receipt]"));
+        Assert.Single(Directory.GetFiles(Path.Combine(_root, "handoff"), "*.zip"));
     }
 
     [Fact]

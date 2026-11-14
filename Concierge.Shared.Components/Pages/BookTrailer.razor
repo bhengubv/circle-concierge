@@ -96,6 +96,29 @@
                     }
                 </RoomSection>
             }
+            @if (PackagePicker is not null)
+            {
+                <button class="btn" type="button" data-action="open-package" disabled="@_busy" @onclick="OpenPackageAsync">Open prepared package from Files</button>
+            }
+            @if (_prepared.Any(package => !_packages.Values.Any(current => current.Path == package.Path)))
+            {
+                <RoomSection Title="Earlier SleptON! packages" Open="true">
+                    @foreach (var package in _prepared.Where(package => !_packages.Values.Any(current => current.Path == package.Path)))
+                    {
+                        <section class="room-card" aria-label="Prepared trailer package">
+                            <h2>@package.Title</h2>
+                            @if (PackageSave is not null)
+                            {
+                                <button class="btn" type="button" data-action="save-package" disabled="@_busy" @onclick="() => SavePackageAsync(package)">Save to Files</button>
+                            }
+                            @if (ReceiptPicker is not null)
+                            {
+                                <button class="btn" type="button" data-action="read-receipt" disabled="@_busy" @onclick="() => ReadReceiptAsync(package)">Read SleptON! result</button>
+                            }
+                        </section>
+                    }
+                </RoomSection>
+            }
             @if (_receipt is not null)
             {
                 <p role="status" class="room-note">@(_receipt.Status == "accepted"
@@ -113,6 +136,7 @@
     private readonly List<BookTrailerDraft> _drafts = [];
     private readonly Dictionary<string, string> _previewUris = new();
     private readonly Dictionary<string, SleptOnMediaPackage> _packages = new();
+    private readonly List<SleptOnMediaPackage> _prepared = [];
     private readonly Dictionary<string, string> _packageUris = new();
     private CancellationTokenSource? _work;
     private string _mood = "mysterious", _stage = "", _error = "";
@@ -125,6 +149,7 @@
         ?? new SleptOnMediaPackageWriter(Concierge.Shared.ConciergeDataPaths.Default.SleptOnPackages);
     private ISleptOnPackageFileSave? PackageSave => Services.GetService(typeof(ISleptOnPackageFileSave)) as ISleptOnPackageFileSave;
     private ISleptOnImportReceiptPicker? ReceiptPicker => Services.GetService(typeof(ISleptOnImportReceiptPicker)) as ISleptOnImportReceiptPicker;
+    private ISleptOnPackagePicker? PackagePicker => Services.GetService(typeof(ISleptOnPackagePicker)) as ISleptOnPackagePicker;
     private SleptOnImportReceipt? _receipt;
     private string OutputRoot => (Services.GetService(typeof(BookTrailerLocalPaths)) as BookTrailerLocalPaths)?.Root
         ?? Concierge.Shared.ConciergeDataPaths.Default.BookTrailers;
@@ -137,6 +162,7 @@
         {
             _store = new BookTrailerStore(OutputRoot);
             _drafts.AddRange((await _store.RecentAsync()).Reverse());
+            _prepared.AddRange(SleptOnPackageLibrary.Recent(PackageWriter.OutputRoot, "book-trailer"));
         }
         catch (Exception error) { _error = $"Could not reopen your saved trailers: {error.Message}"; }
     }
@@ -219,6 +245,7 @@
         {
             var package = await PackageWriter.BookAsync(draft, rightsConfirmed: true);
             _packages[draft.Folder] = package;
+            _prepared.Insert(0, package);
             if (PackageSave is null && new FileInfo(package.Path).Length <= MaxInlinePreviewBytes)
                 _packageUris[draft.Folder] = "data:application/zip;base64,"
                     + Convert.ToBase64String(await File.ReadAllBytesAsync(package.Path));
@@ -255,6 +282,26 @@
             _receipt = selected;
         }
         catch (Exception error) { _error = $"Could not read the SleptON! result: {error.Message}"; }
+        finally { _busy = false; }
+    }
+
+    private async Task OpenPackageAsync()
+    {
+        if (PackagePicker is not { } picker || _busy) return;
+        _busy = true; _error = "";
+        try
+        {
+            var package = await picker.PickAsync(PackageWriter.OutputRoot);
+            if (package is null) return;
+            if (package.Kind != "book-trailer")
+                _error = "This is an audio draft. Open Audio studio to review it.";
+            else
+            {
+                _prepared.Insert(0, package);
+                _stage = "Trailer package opened from Files. Nothing was uploaded.";
+            }
+        }
+        catch (Exception error) { _error = $"Could not open the package: {error.Message}"; }
         finally { _busy = false; }
     }
 

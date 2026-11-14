@@ -101,6 +101,7 @@ public static class MauiProgram
 		builder.Services.AddMauiBlazorWebView();
 		builder.Services.AddSingleton<ISleptOnPackageFileSave, MauiSleptOnPackageFileSave>();
 		builder.Services.AddSingleton<ISleptOnImportReceiptPicker, MauiSleptOnImportReceiptPicker>();
+		builder.Services.AddSingleton<ISleptOnPackagePicker, MauiSleptOnPackagePicker>();
 		builder.Services.AddFluxor(options => options.ScanAssemblies(
 			typeof(Concierge.Shared.Components.State.RunningConversationsState).Assembly));
 #if ANDROID

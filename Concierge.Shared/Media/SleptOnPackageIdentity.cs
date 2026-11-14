@@ -27,6 +27,11 @@ public static class SleptOnPackageIdentity
         await using var manifestStream = manifestEntry.Open();
         using var manifest = await JsonDocument.ParseAsync(manifestStream, cancellationToken: cancellationToken);
         var root = manifest.RootElement;
+        if (root.GetProperty("schemaVersion").GetInt32() != 1
+            || root.GetProperty("status").GetString() != "draft"
+            || root.GetProperty("published").GetBoolean()
+            || !root.GetProperty("rightsConfirmed").GetBoolean())
+            throw new InvalidDataException("This is not a rights-confirmed SleptON! v1 draft.");
         var kind = Text(root, "kind");
         var title = Text(root, "title");
         var sourceSha256 = root.TryGetProperty("sourceSha256", out var source)

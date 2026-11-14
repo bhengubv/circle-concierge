@@ -51,6 +51,9 @@ public sealed class NotaStudioPageTests : BunitContext
         var reopened = Render<Concierge.Shared.Components.Pages.AudioStudio>();
         reopened.WaitForAssertion(() => Assert.Contains("My first song", reopened.Markup));
         Assert.Contains("Play this draft", reopened.Markup);
+        Assert.Contains("Earlier SleptON! packages", reopened.Markup);
+        Assert.Single(reopened.FindAll("button[data-action=save-package]"));
+        Assert.Single(reopened.FindAll("button[data-action=read-receipt]"));
     }
 
     [Fact]
@@ -59,5 +62,29 @@ public sealed class NotaStudioPageTests : BunitContext
         var page = Render<Concierge.Shared.Components.Pages.AudioStudio>();
         Assert.Contains("Desktop", page.Markup);
         Assert.Empty(page.FindAll("button[data-action=export]"));
+    }
+
+    [Fact]
+    public async Task Phone_can_open_a_prepared_audio_package_from_Files_without_Nota()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "concierge-audio-files", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var audio = Path.Combine(root, "song.wav");
+        await File.WriteAllTextAsync(audio, "audio fixture");
+        var package = await new SleptOnMediaPackageWriter(Path.Combine(root, "external"))
+            .AudioAsync(new NotaAudioDraft(audio, "wav", 13, true), true);
+        var picker = new RecordingSleptOnPackagePicker { SourcePath = package.Path };
+        Services.AddSingleton<ISleptOnPackagePicker>(picker);
+        Services.AddSingleton(new SleptOnMediaPackageWriter(Path.Combine(root, "handoff")));
+        Services.AddSingleton<ISleptOnPackageFileSave>(new RecordingSleptOnPackageFileSave(Path.Combine(root, "Files")));
+        Services.AddSingleton<ISleptOnImportReceiptPicker>(new FixedSleptOnReceiptPicker());
+        var page = Render<Concierge.Shared.Components.Pages.AudioStudio>();
+
+        Assert.Empty(page.FindAll("button[data-action=export]"));
+        page.Find("button[data-action=open-package]").Click();
+        page.WaitForAssertion(() => Assert.Contains("Earlier SleptON! packages", page.Markup));
+        Assert.Contains("song", page.Markup);
+        Assert.Single(page.FindAll("button[data-action=save-package]"));
+        Assert.Single(page.FindAll("button[data-action=read-receipt]"));
     }
 }

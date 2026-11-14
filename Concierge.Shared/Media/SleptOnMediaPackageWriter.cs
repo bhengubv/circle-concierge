@@ -6,7 +6,7 @@ using Concierge.Shared.Rpc.Mcp;
 
 namespace Concierge.Shared.Media;
 
-public sealed record SleptOnMediaPackage(string Path, string Kind);
+public sealed record SleptOnMediaPackage(string Path, string Kind, string Title = "");
 
 /// <summary>
 /// Creates a local, versioned draft archive for SleptON! to import. This never
@@ -15,6 +15,7 @@ public sealed record SleptOnMediaPackage(string Path, string Kind);
 public sealed class SleptOnMediaPackageWriter(string outputRoot, long maxPackageBytes = 50L * 1024 * 1024)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
+    public string OutputRoot => outputRoot;
 
     public Task<SleptOnMediaPackage> BookAsync(BookTrailerDraft draft, bool rightsConfirmed,
         CancellationToken cancellationToken = default)
@@ -110,7 +111,7 @@ public sealed class SleptOnMediaPackageWriter(string outputRoot, long maxPackage
             if (new FileInfo(temporary).Length > maxPackageBytes)
                 throw new IOException("This draft is too large for SleptON!'s current 50 MiB import limit.");
             File.Move(temporary, final);
-            return new(final, kind);
+            return new(final, kind, title);
         }
         catch
         {
