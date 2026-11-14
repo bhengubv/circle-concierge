@@ -72,6 +72,19 @@ public sealed class SleptOnMediaPackageTests
         Assert.False(manifest.RootElement.GetProperty("published").GetBoolean());
     }
 
+    [Fact]
+    public async Task Package_larger_than_the_importer_limit_is_refused_without_a_partial_file()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "concierge-handoff", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(root);
+        var audio = Write(root, "song.wav", new string('x', 200));
+        var output = Path.Combine(root, "handoff");
+        var writer = new SleptOnMediaPackageWriter(output, maxPackageBytes: 128);
+
+        await Assert.ThrowsAsync<IOException>(() => writer.AudioAsync(new NotaAudioDraft(audio, "wav", 200, true), true));
+        Assert.False(Directory.Exists(output));
+    }
+
     private static string Write(string folder, string name, string data)
     {
         var path = Path.Combine(folder, name);

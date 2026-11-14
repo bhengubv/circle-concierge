@@ -30,6 +30,7 @@ using Concierge.DeveloperStudio;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging;
+using CommunityToolkit.Maui;
 #if ANDROID
 using Concierge.Platforms.Android;
 #endif
@@ -91,12 +92,15 @@ public static class MauiProgram
 #endif
 		builder
 			.UseMauiApp<App>()
+			.UseMauiCommunityToolkit()
 			.ConfigureFonts(fonts =>
 			{
 				fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
 			});
 
 		builder.Services.AddMauiBlazorWebView();
+		builder.Services.AddSingleton<ISleptOnPackageFileSave, MauiSleptOnPackageFileSave>();
+		builder.Services.AddSingleton<ISleptOnImportReceiptPicker, MauiSleptOnImportReceiptPicker>();
 		builder.Services.AddFluxor(options => options.ScanAssemblies(
 			typeof(Concierge.Shared.Components.State.RunningConversationsState).Assembly));
 #if ANDROID

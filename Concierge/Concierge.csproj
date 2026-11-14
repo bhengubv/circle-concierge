@@ -106,6 +106,7 @@
         <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.13" />
         <!-- MAUI does not include this RCL's transitive package in its runtime bundle. -->
         <PackageReference Include="Markdig" Version="0.40.0" />
+        <PackageReference Include="CommunityToolkit.Maui" Version="13.0.0" />
     </ItemGroup>
 
     <!--

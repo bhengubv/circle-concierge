@@ -12,11 +12,16 @@ namespace Concierge.Tests;
 public sealed class BookTrailerPageTests : BunitContext
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "concierge-trailer-page", Guid.NewGuid().ToString("N"));
+    private readonly RecordingSleptOnPackageFileSave _fileSave;
+    private readonly FixedSleptOnReceiptPicker _receiptPicker = new();
 
     public BookTrailerPageTests()
     {
+        _fileSave = new RecordingSleptOnPackageFileSave(Path.Combine(_root, "Files"));
         Services.AddSingleton(new BookTrailerLocalPaths(_root));
         Services.AddSingleton(new SleptOnMediaPackageWriter(Path.Combine(_root, "handoff")));
+        Services.AddSingleton<ISleptOnPackageFileSave>(_fileSave);
+        Services.AddSingleton<ISleptOnImportReceiptPicker>(_receiptPicker);
     }
 
     [Fact]
@@ -45,6 +50,14 @@ public sealed class BookTrailerPageTests : BunitContext
         page.Find("button[data-action=package]").Click();
         page.WaitForAssertion(() => Assert.Single(Directory.GetFiles(Path.Combine(_root, "handoff"), "*.zip")));
         Assert.Contains("SleptON! package", page.Markup);
+        Assert.Contains("Save to Files", page.Markup);
+        page.WaitForElement("button[data-action=save-package]").Click();
+        page.WaitForAssertion(() => Assert.NotNull(_fileSave.SavedPath));
+        Assert.True(File.Exists(_fileSave.SavedPath));
+        Assert.Contains("Import from Concierge", page.Markup);
+        page.WaitForElement("button[data-action=read-receipt]").Click();
+        page.WaitForAssertion(() => Assert.True(_receiptPicker.Called));
+        Assert.Contains("SleptON! reports an imported draft", page.Markup);
 
         page.Find("#trailer-mood").Change("hopeful");
         page.Find("button.btn-primary").Click();

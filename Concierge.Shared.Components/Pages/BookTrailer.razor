@@ -77,16 +77,30 @@
                             <button class="btn" type="button" data-action="package" disabled="@(!_rightsConfirmed || _busy)" @onclick="() => PackageAsync(draft)">Prepare for SleptON!</button>
                             @if (_packages.TryGetValue(draft.Folder, out var package))
                             {
-                                <p class="room-note">SleptON! package saved on this device: @package.Path</p>
-                                @if (_packageUris.TryGetValue(draft.Folder, out var packageUri))
+                                <p class="room-note">Your SleptON! package is ready on this device. Save it to Files, then import it in SleptON!.</p>
+                                @if (PackageSave is not null)
+                                {
+                                    <button class="btn" type="button" data-action="save-package" disabled="@_busy" @onclick="() => SavePackageAsync(package)">Save to Files</button>
+                                }
+                                else if (_packageUris.TryGetValue(draft.Folder, out var packageUri))
                                 {
                                     <a class="btn" href="@packageUri" download="@Path.GetFileName(package.Path)">Save package</a>
+                                }
+                                @if (ReceiptPicker is not null)
+                                {
+                                    <button class="btn" type="button" data-action="read-receipt" disabled="@_busy" @onclick="ReadReceiptAsync">Read SleptON! result</button>
                                 }
                             }
                             <p class="room-note">@(draft.SelectionMethod == "circle-ai-selection" ? "Circle AI chose these excerpts." : "This cut uses selected book excerpts.") Draft saved on this device: @draft.Folder</p>
                         </section>
                     }
                 </RoomSection>
+            }
+            @if (_receipt is not null)
+            {
+                <p role="status" class="room-note">@(_receipt.Status == "accepted"
+                    ? $"SleptON! reports an imported draft: {_receipt.DraftId}. Check it in SleptON!."
+                    : $"SleptON! rejected the import: {_receipt.Errors[0].Message}")</p>
             }
         }
     </div>
@@ -109,6 +123,9 @@
     private SleptOnMediaPackageWriter PackageWriter =>
         (Services.GetService(typeof(SleptOnMediaPackageWriter)) as SleptOnMediaPackageWriter)
         ?? new SleptOnMediaPackageWriter(Concierge.Shared.ConciergeDataPaths.Default.SleptOnPackages);
+    private ISleptOnPackageFileSave? PackageSave => Services.GetService(typeof(ISleptOnPackageFileSave)) as ISleptOnPackageFileSave;
+    private ISleptOnImportReceiptPicker? ReceiptPicker => Services.GetService(typeof(ISleptOnImportReceiptPicker)) as ISleptOnImportReceiptPicker;
+    private SleptOnImportReceipt? _receipt;
     private string OutputRoot => (Services.GetService(typeof(BookTrailerLocalPaths)) as BookTrailerLocalPaths)?.Root
         ?? Concierge.Shared.ConciergeDataPaths.Default.BookTrailers;
     private BookTrailerStore? _store;
@@ -202,12 +219,35 @@
         {
             var package = await PackageWriter.BookAsync(draft, rightsConfirmed: true);
             _packages[draft.Folder] = package;
-            if (new FileInfo(package.Path).Length <= MaxInlinePreviewBytes)
+            if (PackageSave is null && new FileInfo(package.Path).Length <= MaxInlinePreviewBytes)
                 _packageUris[draft.Folder] = "data:application/zip;base64,"
                     + Convert.ToBase64String(await File.ReadAllBytesAsync(package.Path));
             _stage = "SleptON! package ready on this device. Nothing was uploaded.";
         }
         catch (Exception error) { _error = $"Could not prepare the SleptON! package: {error.Message}"; }
+        finally { _busy = false; }
+    }
+
+    private async Task SavePackageAsync(SleptOnMediaPackage package)
+    {
+        if (PackageSave is not { } saver || _busy) return;
+        _busy = true; _error = "";
+        try
+        {
+            var saved = await saver.SaveAsync(package.Path);
+            _stage = saved is null ? "Save cancelled. Your package is still here."
+                : "Package saved to Files. Open SleptON! and choose Import from Concierge.";
+        }
+        catch (Exception error) { _error = $"Could not save the package to Files: {error.Message}"; }
+        finally { _busy = false; }
+    }
+
+    private async Task ReadReceiptAsync()
+    {
+        if (ReceiptPicker is not { } picker || _busy) return;
+        _busy = true; _error = "";
+        try { _receipt = await picker.PickAsync(); }
+        catch (Exception error) { _error = $"Could not read the SleptON! result: {error.Message}"; }
         finally { _busy = false; }
     }
 

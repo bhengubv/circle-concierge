@@ -12,7 +12,7 @@ public sealed record SleptOnMediaPackage(string Path, string Kind);
 /// Creates a local, versioned draft archive for SleptON! to import. This never
 /// connects to SleptON!, signs in, submits, or publishes anything.
 /// </summary>
-public sealed class SleptOnMediaPackageWriter(string outputRoot)
+public sealed class SleptOnMediaPackageWriter(string outputRoot, long maxPackageBytes = 50L * 1024 * 1024)
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web) { WriteIndented = true };
 
@@ -51,7 +51,18 @@ public sealed class SleptOnMediaPackageWriter(string outputRoot)
             throw new InvalidOperationException("Confirm that you have permission to share this work first.");
         if (string.IsNullOrWhiteSpace(outputRoot) || !Path.IsPathRooted(outputRoot))
             throw new ArgumentException("The package folder must be absolute.", nameof(outputRoot));
+        if (maxPackageBytes <= 0)
+            throw new ArgumentOutOfRangeException(nameof(maxPackageBytes));
         cancellationToken.ThrowIfCancellationRequested();
+        long sourceBytes = 0;
+        foreach (var (source, entryName, _) in sources)
+        {
+            if (!File.Exists(source) || new FileInfo(source).Length == 0)
+                throw new IOException($"The {entryName} draft file is missing or empty.");
+            sourceBytes = checked(sourceBytes + new FileInfo(source).Length);
+            if (sourceBytes >= maxPackageBytes)
+                throw new IOException("This draft is too large for SleptON!'s current 50 MiB import limit.");
+        }
         Directory.CreateDirectory(outputRoot);
         var final = Path.Combine(outputRoot, $"{kind}-{Guid.NewGuid():N}.zip");
         var temporary = final + ".partial";
@@ -64,8 +75,6 @@ public sealed class SleptOnMediaPackageWriter(string outputRoot)
             {
                 foreach (var (source, entryName, mediaType) in sources)
                 {
-                    if (!File.Exists(source) || new FileInfo(source).Length == 0)
-                        throw new IOException($"The {entryName} draft file is missing or empty.");
                     var entry = archive.CreateEntry(entryName, CompressionLevel.Optimal);
                     await using var input = new FileStream(source, FileMode.Open, FileAccess.Read,
                         FileShare.Read, 64 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan);
@@ -93,6 +102,13 @@ public sealed class SleptOnMediaPackageWriter(string outputRoot)
                     createdUtc = DateTimeOffset.UtcNow, files,
                 }, Json, cancellationToken);
             }
+            using (var package = ZipFile.OpenRead(temporary))
+            {
+                if (package.Entries.Sum(entry => entry.Length) > maxPackageBytes)
+                    throw new IOException("This draft is too large for SleptON!'s current 50 MiB import limit.");
+            }
+            if (new FileInfo(temporary).Length > maxPackageBytes)
+                throw new IOException("This draft is too large for SleptON!'s current 50 MiB import limit.");
             File.Move(temporary, final);
             return new(final, kind);
         }
