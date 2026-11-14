@@ -169,12 +169,14 @@ public sealed class WorkspaceSidebarTests : BunitContext
         var cut = RenderWorkspace();
         Header(cut, "Make something").Click();
 
-        var hrefs = cut.FindAll("section.ws-group")[3]
-            .QuerySelectorAll("a.ws-room")
-            .Select(a => a.GetAttribute("href"))
-            .ToArray();
-
-        Assert.Equal(new[] { "diagrams", "images" }, hrefs);
+        cut.WaitForAssertion(() =>
+        {
+            var hrefs = cut.FindAll("section.ws-group")[3]
+                .QuerySelectorAll("a.ws-room")
+                .Select(a => a.GetAttribute("href"))
+                .ToArray();
+            Assert.Equal(new[] { "diagrams", "images" }, hrefs);
+        });
     }
 
     /// <summary>
@@ -270,7 +272,7 @@ public sealed class WorkspaceSidebarTests : BunitContext
         Assert.Empty(skills.QuerySelectorAll(".ws-item"));
 
         Header(cut, "Personalize Circle AI").Click();
-        Assert.Contains("Browse abilities", cut.FindAll("section.ws-group")[2].TextContent);
+        cut.WaitForAssertion(() => Assert.Contains("Browse abilities", cut.FindAll("section.ws-group")[2].TextContent));
     }
 
     // ── Approvals ─────────────────────────────────────────────────────────

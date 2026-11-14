@@ -46,11 +46,12 @@ public sealed class SleptOnImportReceiptTests
 internal sealed class FixedSleptOnReceiptPicker : ISleptOnImportReceiptPicker
 {
     public bool Called { get; private set; }
+    public string RevisionId { get; set; } = new string('a', 64);
 
     public Task<SleptOnImportReceipt?> PickAsync(CancellationToken cancellationToken = default)
     {
         Called = true;
         return Task.FromResult<SleptOnImportReceipt?>(new SleptOnImportReceipt(
-            "accepted", "26b690a5-5e28-4e6d-9d88-92c4bf835d4f", new string('a', 64), []));
+            "accepted", "26b690a5-5e28-4e6d-9d88-92c4bf835d4f", RevisionId, []));
     }
 }

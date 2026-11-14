@@ -74,7 +74,7 @@
                                 }
                                 @if (ReceiptPicker is not null)
                                 {
-                                    <button class="btn" type="button" data-action="read-receipt" disabled="@_busy" @onclick="ReadReceiptAsync">Read SleptON! result</button>
+                                    <button class="btn" type="button" data-action="read-receipt" disabled="@_busy" @onclick="() => ReadReceiptAsync(package)">Read SleptON! result</button>
                                 }
                             }
                             <p class="room-note">Saved on this computer: @draft.Path</p>
@@ -218,11 +218,18 @@
         finally { _busy = false; }
     }
 
-    private async Task ReadReceiptAsync()
+    private async Task ReadReceiptAsync(SleptOnMediaPackage package)
     {
         if (ReceiptPicker is not { } picker || _busy) return;
-        _busy = true; _error = "";
-        try { _receipt = await picker.PickAsync(); }
+        _busy = true; _error = ""; _receipt = null;
+        try
+        {
+            var selected = await picker.PickAsync();
+            if (selected?.Status == "accepted" && !string.Equals(selected.RevisionId,
+                await SleptOnPackageIdentity.ComputeAsync(package.Path), StringComparison.Ordinal))
+                throw new InvalidDataException("This result belongs to a different SleptON! package.");
+            _receipt = selected;
+        }
         catch (Exception error) { _error = $"Could not read the SleptON! result: {error.Message}"; }
         finally { _busy = false; }
     }

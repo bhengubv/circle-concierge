@@ -42,6 +42,8 @@ public sealed class NotaStudioPageTests : BunitContext
         page.WaitForAssertion(() => Assert.NotNull(fileSave.SavedPath));
         Assert.True(File.Exists(fileSave.SavedPath));
         Assert.Contains("Import from Concierge", page.Markup);
+        receiptPicker.RevisionId = await SleptOnPackageIdentity.ComputeAsync(
+            Assert.Single(Directory.GetFiles(Path.Combine(root, "handoff"), "*.zip")));
         page.WaitForElement("button[data-action=read-receipt]").Click();
         page.WaitForAssertion(() => Assert.True(receiptPicker.Called));
         Assert.Contains("SleptON! reports an imported draft", page.Markup);

@@ -25,7 +25,7 @@ public sealed class BookTrailerPageTests : BunitContext
     }
 
     [Fact]
-    public void A_real_upload_reaches_the_importer_then_the_video_export_once_per_cut()
+    public async Task A_real_upload_reaches_the_importer_then_the_video_export_once_per_cut()
     {
         var exporter = new RecordingExport();
         Services.AddSingleton<IMediaExport>(exporter);
@@ -55,9 +55,15 @@ public sealed class BookTrailerPageTests : BunitContext
         page.WaitForAssertion(() => Assert.NotNull(_fileSave.SavedPath));
         Assert.True(File.Exists(_fileSave.SavedPath));
         Assert.Contains("Import from Concierge", page.Markup);
+        _receiptPicker.RevisionId = await SleptOnPackageIdentity.ComputeAsync(
+            Assert.Single(Directory.GetFiles(Path.Combine(_root, "handoff"), "*.zip")));
         page.WaitForElement("button[data-action=read-receipt]").Click();
         page.WaitForAssertion(() => Assert.True(_receiptPicker.Called));
         Assert.Contains("SleptON! reports an imported draft", page.Markup);
+        _receiptPicker.RevisionId = new string('b', 64);
+        page.Find("button[data-action=read-receipt]").Click();
+        page.WaitForAssertion(() => Assert.Contains("different SleptON! package", page.Markup));
+        Assert.DoesNotContain("SleptON! reports an imported draft", page.Markup);
 
         page.Find("#trailer-mood").Change("hopeful");
         page.Find("button.btn-primary").Click();
