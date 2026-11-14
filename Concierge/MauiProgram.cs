@@ -263,6 +263,11 @@ public static class MauiProgram
 		// local one reports what it can do, which is nothing until its model files are here.
 		builder.Services.AddConciergeLocalVoice();
 		builder.Services.AddConciergeMediaCloudDefaults();
+#if WINDOWS || MACCATALYST
+		// Nota is an optional studio running on this computer. Its MCP connection is
+		// opened by the person, then a small set of tools becomes available to chat.
+		builder.Services.AddConciergeNotaStudio();
+#endif
 
 		// Replace the NullDeviceContext registered by AddConciergeAi with the MAUI-aware one.
 		builder.Services.RemoveAll<IDeviceContext>();

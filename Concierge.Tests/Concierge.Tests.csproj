@@ -31,6 +31,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.1.0" />
     <PackageReference Include="AetherNet" Version="$(AetherNetPackageVersion)" Aliases="ConciergeAetherNet" />
     <PackageReference Include="bunit" Version="2.9.0" />
     <PackageReference Include="coverlet.collector" Version="6.0.4" />

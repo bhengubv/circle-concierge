@@ -1,0 +1,215 @@
+@page "/book-trailer"
+@using Concierge.Shared.BookTrailers
+@using Concierge.Shared.Design
+@using Concierge.Shared.Media
+@using Concierge.Shared.Chat
+@using Microsoft.AspNetCore.Hosting
+@inject IServiceProvider Services
+@inject IEnumerable<IChatRuntime> Runtimes
+
+<main class="room" aria-labelledby="book-trailer-heading">
+    <div class="room-top"><a class="room-back" href="/projects">Projects</a><h1 id="book-trailer-heading">Book trailer</h1></div>
+    <p class="room-lede">Turn your book into a 30-second first look.</p>
+    <div class="room-body">
+        @if (IsWebHost)
+        {
+            <p role="status" class="room-note">Open Concierge on your phone or computer to keep the book on your device. Web import is not available yet.</p>
+        }
+        else
+        {
+            <RoomSection Title="Your book" Open="true">
+                <label>Choose a PDF, EPUB, or TXT file
+                    <InputFile OnChange="ImportAsync" accept=".pdf,.epub,.txt" disabled="@_busy" />
+                </label>
+                @if (_book is not null)
+                {
+                    <p role="status" class="room-note">@_book.Title · @_book.Format.ToUpperInvariant() · @_book.Sections.Count source sections</p>
+                }
+            </RoomSection>
+
+            @if (_book is not null)
+            {
+                <RoomSection Title="The first look" Open="true">
+                    <label for="trailer-mood">Mood</label>
+                    <select id="trailer-mood" class="comp-input" @bind="_mood" disabled="@_busy">
+                        <option value="mysterious">Mysterious</option>
+                        <option value="hopeful">Hopeful</option>
+                        <option value="dramatic">Dramatic</option>
+                        <option value="warm">Warm</option>
+                    </select>
+                    <label><input type="checkbox" @bind="_allowSpoilers" disabled="@_busy" /> Include ending details</label>
+                    <label><input type="checkbox" @bind="_rightsConfirmed" disabled="@_busy" /> I have permission to use this book</label>
+                    @if (CanRender)
+                    {
+                        <button class="btn btn-primary" type="button" disabled="@(!_rightsConfirmed || _busy)" @onclick="MakeAsync">
+                            @(_drafts.Count == 0 ? "Make a first cut" : "Make another cut")
+                        </button>
+                    }
+                    else
+                    {
+                        <p class="room-note">Video export is unavailable on this device. Your book has been read locally; try Concierge on a device with video export.</p>
+                    }
+                    <p class="room-note">This first cut uses source passages and moving title cards. It has no narration or generated imagery yet.</p>
+                </RoomSection>
+            }
+
+            @if (_busy)
+            {
+                <p role="status" class="room-note" aria-live="polite">@_stage</p>
+                <button class="btn" type="button" @onclick="Cancel">Stop</button>
+            }
+            @if (!_busy && !string.IsNullOrWhiteSpace(_stage)) { <p role="status" class="room-note">@_stage</p> }
+            @if (!string.IsNullOrWhiteSpace(_error)) { <p role="alert" class="room-note">@_error</p> }
+            @if (_drafts.Count > 0)
+            {
+                <RoomSection Title="Review your cuts" Count="@_drafts.Count" Open="true">
+                    @foreach (var draft in _drafts.AsEnumerable().Reverse())
+                    {
+                        <section class="room-card" aria-label="Trailer draft">
+                            <h2>@draft.SourceTitle</h2>
+                            @if (_previewUris.TryGetValue(draft.Folder, out var uri))
+                            {
+                                <video controls preload="metadata" src="@uri" style="width:100%;max-width:48rem;" aria-label="Book trailer preview"></video>
+                                <a class="btn" href="@uri" download="trailer.mp4">Save trailer</a>
+                            }
+                            else { <button class="btn" type="button" @onclick="() => PreviewAsync(draft)">Preview this cut</button> }
+                            <button class="btn" type="button" @onclick="() => ContinueAsync(draft)">Make another cut</button>
+                            <button class="btn" type="button" data-action="package" disabled="@(!_rightsConfirmed || _busy)" @onclick="() => PackageAsync(draft)">Prepare for SleptON!</button>
+                            @if (_packages.TryGetValue(draft.Folder, out var package))
+                            {
+                                <p class="room-note">SleptON! package saved on this device: @package.Path</p>
+                                @if (_packageUris.TryGetValue(draft.Folder, out var packageUri))
+                                {
+                                    <a class="btn" href="@packageUri" download="@Path.GetFileName(package.Path)">Save package</a>
+                                }
+                            }
+                            <p class="room-note">@(draft.SelectionMethod == "circle-ai-selection" ? "Circle AI chose these excerpts." : "This cut uses selected book excerpts.") Draft saved on this device: @draft.Folder</p>
+                        </section>
+                    }
+                </RoomSection>
+            }
+        }
+    </div>
+</main>
+
+@code {
+    private const long MaxFileBytes = 100L * 1024 * 1024;
+    private const long MaxInlinePreviewBytes = 20L * 1024 * 1024;
+    private BookSourceDocument? _book;
+    private readonly List<BookTrailerDraft> _drafts = [];
+    private readonly Dictionary<string, string> _previewUris = new();
+    private readonly Dictionary<string, SleptOnMediaPackage> _packages = new();
+    private readonly Dictionary<string, string> _packageUris = new();
+    private CancellationTokenSource? _work;
+    private string _mood = "mysterious", _stage = "", _error = "";
+    private bool _allowSpoilers, _rightsConfirmed, _busy;
+    private bool IsWebHost => Services.GetService(typeof(IWebHostEnvironment)) is not null;
+    private IMediaExport? Encoder => Services.GetService(typeof(IMediaExport)) as IMediaExport;
+    private bool CanRender => Encoder is not null;
+    private SleptOnMediaPackageWriter PackageWriter =>
+        (Services.GetService(typeof(SleptOnMediaPackageWriter)) as SleptOnMediaPackageWriter)
+        ?? new SleptOnMediaPackageWriter(Concierge.Shared.ConciergeDataPaths.Default.SleptOnPackages);
+    private string OutputRoot => (Services.GetService(typeof(BookTrailerLocalPaths)) as BookTrailerLocalPaths)?.Root
+        ?? Concierge.Shared.ConciergeDataPaths.Default.BookTrailers;
+    private BookTrailerStore? _store;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (IsWebHost) return;
+        try
+        {
+            _store = new BookTrailerStore(OutputRoot);
+            _drafts.AddRange((await _store.RecentAsync()).Reverse());
+        }
+        catch (Exception error) { _error = $"Could not reopen your saved trailers: {error.Message}"; }
+    }
+
+    private async Task ImportAsync(InputFileChangeEventArgs args)
+    {
+        _error = "";
+        _busy = true;
+        _stage = "Reading your book…";
+        _work = new CancellationTokenSource();
+        try
+        {
+            await using var stream = args.File.OpenReadStream(MaxFileBytes, _work.Token);
+            var imported = await BookSourceReader.ReadAsync(stream, args.File.Name, _work.Token);
+            if (_store is not null) await _store.SaveBookAsync(imported, _work.Token);
+            _book = imported;
+            _rightsConfirmed = false;
+            _stage = "Book ready. Choose a mood to make a first cut.";
+        }
+        catch (OperationCanceledException) { _stage = "Stopped."; }
+        catch (Exception error) { _error = $"Could not read this book: {error.Message}"; }
+        finally { _busy = false; _work?.Dispose(); _work = null; }
+    }
+
+    private async Task MakeAsync()
+    {
+        if (_book is null || !_rightsConfirmed || Encoder is not { } encoder || _busy) return;
+        _error = ""; _busy = true; _stage = "Making your first cut…";
+        _work = new CancellationTokenSource();
+        try
+        {
+            var localCircleAi = Runtimes.FirstOrDefault(runtime =>
+                string.Equals(runtime.Id, "circleai", StringComparison.OrdinalIgnoreCase) && !runtime.LeavesDevice);
+            var draft = await new BookTrailerMaker(encoder, localCircleAi)
+                .CreateAsync(_book, OutputRoot, _mood, _allowSpoilers, _work.Token);
+            if (_store is not null) await _store.SaveDraftAsync(draft, _work.Token);
+            _drafts.Add(draft);
+            await PreviewAsync(draft);
+            _stage = "Your first cut is ready to review.";
+        }
+        catch (OperationCanceledException) { _stage = "Stopped. Your earlier cuts are still here."; }
+        catch (Exception error) { _error = $"Could not make the trailer: {error.Message}"; }
+        finally { _busy = false; _work?.Dispose(); _work = null; }
+    }
+
+    private async Task PreviewAsync(BookTrailerDraft draft)
+    {
+        try
+        {
+            var info = new FileInfo(draft.VideoPath);
+            if (info.Length > MaxInlinePreviewBytes)
+            {
+                _error = "This video is too large for an inline preview. The saved file is still available on this device.";
+                return;
+            }
+            _previewUris[draft.Folder] = "data:video/mp4;base64,"
+                + Convert.ToBase64String(await File.ReadAllBytesAsync(draft.VideoPath));
+        }
+        catch (Exception error) { _error = $"Could not preview this cut: {error.Message}"; }
+    }
+
+    private async Task ContinueAsync(BookTrailerDraft draft)
+    {
+        if (_store is null) return;
+        try
+        {
+            _book = await _store.LoadBookAsync(draft.SourceSha256);
+            _rightsConfirmed = false;
+            _stage = _book is null ? "The source text is missing. Import the book again to revise it."
+                : $"Ready to make another cut of {_book.Title}.";
+        }
+        catch (Exception error) { _error = $"Could not reopen this book: {error.Message}"; }
+    }
+
+    private async Task PackageAsync(BookTrailerDraft draft)
+    {
+        if (!_rightsConfirmed || _busy) return;
+        _busy = true; _error = ""; _stage = "Preparing a local SleptON! package…";
+        try
+        {
+            var package = await PackageWriter.BookAsync(draft, rightsConfirmed: true);
+            _packages[draft.Folder] = package;
+            if (new FileInfo(package.Path).Length <= MaxInlinePreviewBytes)
+                _packageUris[draft.Folder] = "data:application/zip;base64,"
+                    + Convert.ToBase64String(await File.ReadAllBytesAsync(package.Path));
+            _stage = "SleptON! package ready on this device. Nothing was uploaded.";
+        }
+        catch (Exception error) { _error = $"Could not prepare the SleptON! package: {error.Message}"; }
+        finally { _busy = false; }
+    }
+
+    private void Cancel() => _work?.Cancel();
+}

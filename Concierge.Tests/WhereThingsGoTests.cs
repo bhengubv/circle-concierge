@@ -3,22 +3,8 @@ using Concierge.Shared;
 namespace Concierge.Tests;
 
 /// <summary>
-/// A file goes somewhere a person can find it, on every head.
-///
-/// **Four call sites asked the operating system for Music, Video, Pictures or
-/// Documents and used the answer unchecked.** `GetFolderPath` hands back an empty
-/// string rather than throwing where a platform has no such folder — the ordinary
-/// case on Android, where an app has its own sandbox and no music folder of its
-/// own — and `Path.Combine("", "Concierge", "Footage")` is then a relative path.
-/// So a clip landed wherever the working directory happened to be, and the answer
-/// still read "Saved to Concierge\Footage\clip.mp4".
-///
-/// One of the five already had the fallback, and said in its own comment exactly
-/// why: a saved file nobody can find is the same as no saved file. The other four
-/// were written after it and did not.
-///
-/// Found by reading the handheld against the desktop rather than by somebody
-/// losing a deck.
+/// Every durable creation is rooted under Concierge content so one deliberate
+/// export can gather it. The OS media folders are destinations, not defaults.
 /// </summary>
 public sealed class WhereThingsGoTests
 {
@@ -49,22 +35,20 @@ public sealed class WhereThingsGoTests
         => Assert.True(Path.IsPathRooted(folder), $"{which} is not rooted: '{folder}'");
 
     /// <summary>
-    /// On a desktop they are the real folders rather than the home directory, so
-    /// the fallback has not quietly become the answer everywhere — which would
-    /// hide a broken lookup behind a test that still passes.
+    /// User creations stay below one portable Concierge content root even on a
+    /// desktop with Music and Documents folders of its own.
     /// </summary>
     [Fact]
-    public void On_a_machine_that_has_them_they_are_the_real_ones()
+    public void On_a_machine_that_has_them_they_still_use_one_concierge_root()
     {
         if (!OperatingSystem.IsWindows())
         {
             return;
         }
 
-        Assert.Equal(
-            Environment.GetFolderPath(Environment.SpecialFolder.MyMusic), WhereThingsGo.Music);
-        Assert.Equal(
-            Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), WhereThingsGo.Documents);
+        Assert.Equal(ConciergeDataPaths.Default.Music, WhereThingsGo.Music);
+        Assert.Equal(ConciergeDataPaths.Default.Documents, WhereThingsGo.Documents);
+        Assert.NotEqual(Environment.GetFolderPath(Environment.SpecialFolder.MyMusic), WhereThingsGo.Music);
     }
 
     /// <summary>

@@ -1038,12 +1038,12 @@ public sealed class FfmpegMediaExport : IMediaExport
             // template: drawtext otherwise reads `%` as a date format and refuses
             // the whole frame over "50% off".
             var said = System.IO.Path.Combine(workspace, $"{name}.txt");
-            await File.WriteAllTextAsync(said, words, cancellationToken).ConfigureAwait(false);
+            await File.WriteAllTextAsync(said, WrapCardText(words), cancellationToken).ConfigureAwait(false);
 
             arguments.AddRange([
                 "-vf",
                 $"drawtext=fontfile='{face}':textfile='{Escaped(said)}':expansion=none"
-                + $":fontcolor=0x{ink}:fontsize=56:x=(w-text_w)/2:y=(h-text_h)/2",
+                + $":fontcolor=0x{ink}:fontsize=52:x=(w-text_w)/2:y=(h-text_h)/2",
             ]);
         }
 
@@ -1063,6 +1063,34 @@ public sealed class FfmpegMediaExport : IMediaExport
         }
 
         return path;
+    }
+
+    /// <summary>Keep a title or source excerpt within the safe area of a 720p card.</summary>
+    internal static string WrapCardText(string words)
+    {
+        const int maxLine = 22;
+        var lines = new List<string>();
+        var line = new StringBuilder();
+        foreach (var word in words.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var rest = word;
+            while (rest.Length > maxLine)
+            {
+                if (line.Length > 0) { lines.Add(line.ToString()); line.Clear(); }
+                lines.Add(rest[..maxLine]);
+                rest = rest[maxLine..];
+            }
+            if (rest.Length == 0) continue;
+            if (line.Length > 0 && line.Length + 1 + rest.Length > maxLine)
+            {
+                lines.Add(line.ToString());
+                line.Clear();
+            }
+            if (line.Length > 0) line.Append(' ');
+            line.Append(rest);
+        }
+        if (line.Length > 0) lines.Add(line.ToString());
+        return string.Join('\n', lines);
     }
 
     /// <summary>

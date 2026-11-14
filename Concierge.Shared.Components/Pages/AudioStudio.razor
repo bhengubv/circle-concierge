@@ -1,0 +1,189 @@
+@page "/audio-studio"
+@using Concierge.Shared.Rpc.Mcp
+@using Concierge.Shared.Media
+@inject IServiceProvider Services
+
+<main class="room audio-studio-page" aria-labelledby="audio-studio-heading">
+    <div class="room-top"><a class="room-back" href="/projects">Projects</a><h1 id="audio-studio-heading">Audio studio</h1></div>
+    <p class="room-lede">Work on a song in Nota, then hear a local draft here.</p>
+    <div class="room-body">
+        @if (_studio is null)
+        {
+            <p role="status" class="room-note">Nota production runs on Desktop. You can start an idea here and continue it on your computer.</p>
+            <a class="btn btn-primary audio-studio-action" href="/">Start an audio idea</a>
+        }
+        else
+        {
+            <RoomSection Title="Your studio" Open="true">
+                <p class="room-note">Open a song in Nota. In Nota Settings, turn on AI control. Then connect here.</p>
+                @if (!_studio.IsConnected)
+                {
+                    <button class="btn btn-primary audio-studio-action" type="button" data-action="connect" disabled="@_busy" @onclick="ConnectAsync">Connect to Nota</button>
+                }
+                else
+                {
+                    <div class="audio-studio-actions"><a class="btn" href="/">Ask for music ideas</a>
+                    <button class="btn" type="button" disabled="@_busy" @onclick="RefreshAsync">Refresh song</button></div>
+                }
+                @if (!string.IsNullOrWhiteSpace(_status)) { <p role="status" class="room-note">@_status</p> }
+                @if (!string.IsNullOrWhiteSpace(_overview)) { <p class="room-note">@_overview</p> }
+            </RoomSection>
+
+            @if (_studio.IsConnected)
+            {
+                <RoomSection Title="Hear a draft" Open="true">
+                    <label for="audio-name">Name</label>
+                    <input id="audio-name" class="comp-input" @bind="_name" disabled="@_busy" />
+                    <label for="audio-beats">Length in beats</label>
+                    <input id="audio-beats" class="comp-input" type="number" min="1" max="100000" @bind="_beats" disabled="@_busy" />
+                    <label for="audio-format">Format</label>
+                    <select id="audio-format" class="comp-input" @bind="_format" disabled="@_busy">
+                        <option value="wav">WAV</option><option value="flac">FLAC</option><option value="mp3">MP3</option>
+                    </select>
+                    <button class="btn btn-primary audio-studio-action" type="button" data-action="export" disabled="@_busy" @onclick="ExportAsync">Make an audio draft</button>
+                    <p class="room-note">This exports the song open in Nota. It stays on this computer until you choose to share it.</p>
+                </RoomSection>
+            }
+
+            @if (_drafts.Count > 0)
+            {
+                <RoomSection Title="Your drafts" Count="@_drafts.Count" Open="true">
+                    <label><input type="checkbox" data-action="share-rights" @bind="_rightsConfirmed" /> I own or have permission to share this audio</label>
+                    @foreach (var draft in _drafts)
+                    {
+                        <section class="room-card" aria-label="Audio draft">
+                            <h2>@DraftName(draft.Path)</h2>
+                            @if (draft.Audible == false) { <p class="audio-studio-warning" role="status">This draft is silent. Add notes or audio in Nota, then make another draft.</p> }
+                            @if (_previews.TryGetValue(draft.Path, out var preview))
+                            {
+                                <audio controls preload="metadata" src="@preview" aria-label="Audio draft preview"></audio>
+                                <a class="btn" href="@preview" download="@Path.GetFileName(draft.Path)">Save audio</a>
+                            }
+                            else { <button class="btn" type="button" @onclick="() => PreviewAsync(draft)">Play this draft</button> }
+                            <button class="btn" type="button" data-action="package" disabled="@(!_rightsConfirmed || _busy || draft.Audible == false)" @onclick="() => PackageAsync(draft)">Prepare for SleptON!</button>
+                            @if (_packages.TryGetValue(draft.Path, out var package))
+                            {
+                                <p class="room-note">SleptON! package saved on this computer: @package.Path</p>
+                                @if (_packageUris.TryGetValue(draft.Path, out var packageUri))
+                                {
+                                    <a class="btn" href="@packageUri" download="@Path.GetFileName(package.Path)">Save package</a>
+                                }
+                            }
+                            <p class="room-note">Saved on this computer: @draft.Path</p>
+                        </section>
+                    }
+                </RoomSection>
+            }
+        }
+        @if (!string.IsNullOrWhiteSpace(_error)) { <p role="alert" class="room-note">@_error</p> }
+    </div>
+</main>
+
+@code {
+    private const long MaxInlineAudioBytes = 12L * 1024 * 1024;
+    private NotaStudio? _studio;
+    private readonly List<NotaAudioDraft> _drafts = [];
+    private readonly Dictionary<string, string> _previews = new();
+    private readonly Dictionary<string, SleptOnMediaPackage> _packages = new();
+    private readonly Dictionary<string, string> _packageUris = new();
+    private string _status = "", _overview = "", _error = "", _name = "My first song", _format = "wav";
+    private double _beats = 16;
+    private bool _busy, _rightsConfirmed;
+    private SleptOnMediaPackageWriter PackageWriter =>
+        (Services.GetService(typeof(SleptOnMediaPackageWriter)) as SleptOnMediaPackageWriter)
+        ?? new SleptOnMediaPackageWriter(Concierge.Shared.ConciergeDataPaths.Default.SleptOnPackages);
+
+    private static string DraftName(string path)
+    {
+        var filename = Path.GetFileNameWithoutExtension(path);
+        var suffixStart = filename.LastIndexOf('-');
+        return suffixStart >= 0 && Guid.TryParseExact(filename[(suffixStart + 1)..], "N", out _)
+            ? filename[..suffixStart] : filename;
+    }
+
+    protected override void OnInitialized()
+    {
+        _studio = Services.GetService(typeof(NotaStudio)) as NotaStudio;
+        if (_studio is null) return;
+        try
+        {
+            if (!Directory.Exists(_studio.OutputRoot)) return;
+            _drafts.AddRange(Directory.EnumerateFiles(_studio.OutputRoot)
+                .Where(path => Path.GetExtension(path) is ".wav" or ".flac" or ".mp3")
+                .OrderByDescending(File.GetLastWriteTimeUtc)
+                .Take(30)
+                .Select(NotaStudio.ReadDraft));
+        }
+        catch (Exception error) { _error = $"Could not reopen your audio drafts: {error.Message}"; }
+    }
+
+    private async Task ConnectAsync()
+    {
+        if (_studio is null || _busy) return;
+        _busy = true; _error = ""; _status = "Connecting to Nota…";
+        try
+        {
+            var status = await _studio.ConnectAsync();
+            _status = status.Message;
+            if (status.Connected) _overview = await _studio.OverviewAsync();
+        }
+        catch (Exception error) { _error = $"Nota could not describe this song: {error.Message}"; }
+        finally { _busy = false; }
+    }
+
+    private async Task RefreshAsync()
+    {
+        if (_studio is null || _busy) return;
+        _busy = true; _error = "";
+        try { _overview = await _studio.OverviewAsync(); }
+        catch (Exception error) { _error = $"Could not refresh the song: {error.Message}"; }
+        finally { _busy = false; }
+    }
+
+    private async Task ExportAsync()
+    {
+        if (_studio is null || _busy) return;
+        _busy = true; _error = ""; _status = "Rendering your audio draft…";
+        try
+        {
+            var draft = await _studio.ExportAsync(_name, _beats, _format);
+            _drafts.Insert(0, draft);
+            await PreviewAsync(draft);
+            _status = "Your audio draft is ready to hear.";
+        }
+        catch (Exception error) { _error = $"Could not make this audio draft: {error.Message}"; _status = ""; }
+        finally { _busy = false; }
+    }
+
+    private async Task PreviewAsync(NotaAudioDraft draft)
+    {
+        try
+        {
+            if (draft.Bytes > MaxInlineAudioBytes)
+            {
+                _error = "This audio file is too large for an inline preview. It is saved on this computer.";
+                return;
+            }
+            var mime = draft.Format switch { "mp3" => "audio/mpeg", "flac" => "audio/flac", _ => "audio/wav" };
+            _previews[draft.Path] = $"data:{mime};base64," + Convert.ToBase64String(await File.ReadAllBytesAsync(draft.Path));
+        }
+        catch (Exception error) { _error = $"Could not preview this draft: {error.Message}"; }
+    }
+
+    private async Task PackageAsync(NotaAudioDraft draft)
+    {
+        if (!_rightsConfirmed || _busy) return;
+        _busy = true; _error = ""; _status = "Preparing a local SleptON! package…";
+        try
+        {
+            var package = await PackageWriter.AudioAsync(draft, rightsConfirmed: true);
+            _packages[draft.Path] = package;
+            if (new FileInfo(package.Path).Length <= MaxInlineAudioBytes)
+                _packageUris[draft.Path] = "data:application/zip;base64,"
+                    + Convert.ToBase64String(await File.ReadAllBytesAsync(package.Path));
+            _status = "SleptON! package ready on this computer. Nothing was uploaded.";
+        }
+        catch (Exception error) { _error = $"Could not prepare the SleptON! package: {error.Message}"; }
+        finally { _busy = false; }
+    }
+}

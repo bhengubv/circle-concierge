@@ -1,0 +1,9 @@
+# Concierge local storage
+
+Concierge treats every operating system as a host. New creations go below one app-owned content folder, `Concierge/content`, under the platform's local app-data directory. It contains `Music`, `Video`, `Pictures` and `Documents`. Nota drafts use `content/Music/Nota drafts`; book trailers use `content/Video/Book trailers`; prepared SleptON! draft packages use `content/Exports/SleptON`. Conversations and Projects remain in `Concierge/concierge.db` and `Concierge/projects.db` alongside the content folder. These are local data, not online account storage.
+
+System Music, Videos, Pictures and Documents folders are destinations a person may choose when exporting. They are no longer implicit save locations. Service connection credentials, models and temporary files are outside `content`; copying `content` alone does not copy conversations or Projects. A complete one-action export still needs a database snapshot and a native destination picker on each head. Do not label a copy of `content` as a complete account export.
+
+On the next Desktop launch, the Nota integration copies files from the older `Concierge/Nota drafts` folder into `Concierge/content/Music/Nota drafts`. The source stays in place and an existing destination is never overwritten. This is intentionally reversible and safe to retry. Older direct saves in system media folders cannot be identified reliably without a manifest; Concierge will not sweep unrelated personal files from those folders.
+
+The next storage increment should provide **Export my data** in Settings: snapshot the live SQLite databases, package them with `content` and other durable app state, exclude service secrets/model caches, let the person choose a destination, then verify the archive and offer a restore path. It needs Desktop, Mobile and Web acceptance before being described as complete portability.
