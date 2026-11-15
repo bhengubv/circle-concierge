@@ -17,9 +17,14 @@ public static class DesignToolRegistration
     /// nothing at all while no canvas is open, so a model in an ordinary
     /// conversation is never offered a tool for a surface that is not there.
     /// </summary>
-    public static IServiceCollection AddConciergeDesignTools(this IServiceCollection services)
+    public static IServiceCollection AddConciergeDesignTools(this IServiceCollection services,
+        bool allowLocalFileImports = false, string? spatialGameExportRoot = null)
     {
-        services.TryAddSingleton<DesignWorkbench>();
+        services.TryAddSingleton(_ => new DesignWorkbench
+        {
+            AllowLocalFileImports = allowLocalFileImports,
+            SpatialGameExportRoot = spatialGameExportRoot,
+        });
 
         // TryAddEnumerable and by type rather than by factory, for the same
         // reason the device capabilities are registered that way: it deduplicates

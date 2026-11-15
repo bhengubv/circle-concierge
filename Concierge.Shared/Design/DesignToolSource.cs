@@ -22,6 +22,10 @@ namespace Concierge.Shared.Design;
 /// </summary>
 public sealed class DesignWorkbench
 {
+    /// <summary>Only native heads may read a person's local capture path.</summary>
+    public bool AllowLocalFileImports { get; set; }
+    /// <summary>Centralized local SleptON draft folder, when this head can export files.</summary>
+    public string? SpatialGameExportRoot { get; set; }
     /// <summary>The canvas on screen, or null when none is.</summary>
     public DesignSession? Session { get; private set; }
 
@@ -146,6 +150,12 @@ public sealed class DesignToolSource : IAgentToolSource
                 new HangItOn(_workbench),
                 new LayAPlan(_workbench),
                 new FurnishTheRoom(_workbench),
+                .. _workbench.AllowLocalFileImports
+                    ? [new ImportRoomCaptureTool(_workbench)]
+                    : Array.Empty<IAgentTool>(),
+                .. _workbench.SpatialGameExportRoot is not null
+                    ? [new PackageSpatialGameTool(_workbench)]
+                    : Array.Empty<IAgentTool>(),
                 new SetAPanel(_workbench),
                 new ReadTheGuide(_workbench),
 

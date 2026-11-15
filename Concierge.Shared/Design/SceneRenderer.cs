@@ -63,8 +63,9 @@ public static class SceneRenderer
             }
         }
 
+        var span = RoomSpan(document, showing);
         html.AppendLine("<div class=\"stage\"><div class=\"world\" id=\"world\">");
-        html.AppendLine("<div class=\"floor\"></div>");
+        html.AppendLine($"<div class=\"floor\" style=\"width:{span}px;height:{span}px;left:-{span / 2}px;top:-{span / 2}px\"></div>");
 
         foreach (var thing in document.ChildrenOf(showing.Id))
         {
@@ -126,7 +127,7 @@ public static class SceneRenderer
         // drawing of the same thing, and the two would drift the first time either
         // changed.
         html.AppendLine("<canvas id=\"deep\" hidden></canvas>");
-        html.AppendLine($"<script type=\"application/json\" id=\"room\">{RoomJson(document, showing, selectedId)}</script>");
+        html.AppendLine($"<script type=\"application/json\" id=\"room\">{RoomJson(document, showing, selectedId, span)}</script>");
 
         // Sound in the room.
         //
@@ -176,9 +177,10 @@ public static class SceneRenderer
                 // strips showing. Measured each draw rather than assumed once,
                 // because the canvas resizes with the window.
                 function fit() {
-                  var room = 440 * Math.abs(Math.sin(tilt * Math.PI / 180)) + 160;
+                  var room = (document.querySelector('.floor').offsetWidth || 440)
+                    * Math.abs(Math.sin(tilt * Math.PI / 180)) + 160;
                   var have = document.documentElement.clientHeight;
-                  return Math.min(1, Math.max(0.35, have / room));
+                  return Math.min(1, Math.max(0.03, have / room));
                 }
                 // Looking around, as a function rather than only as a key handler.
                 //
@@ -282,7 +284,7 @@ public static class SceneRenderer
                   var scene = new THREE.Scene();
                   scene.background = new THREE.Color(room.ground);
 
-                  var camera = new THREE.PerspectiveCamera(42, 1, 1, 4000);
+                  var camera = new THREE.PerspectiveCamera(42, 1, 1, Math.max(4000, room.span * 4));
 
                   // Two lights, and the second is much of the point of having an
                   // engine at all: one that casts and one that fills. A single hard
@@ -303,7 +305,7 @@ public static class SceneRenderer
                   scene.add(new THREE.HemisphereLight(0xffffff, new THREE.Color(room.raised), 1.1));
 
                   var floor = new THREE.Mesh(
-                    new THREE.PlaneGeometry(440, 440),
+                    new THREE.PlaneGeometry(room.span, room.span),
                     new THREE.MeshStandardMaterial({ color: new THREE.Color(room.raised), roughness: 1 }));
                   floor.rotation.x = -Math.PI / 2;
                   floor.receiveShadow = true;
@@ -312,7 +314,7 @@ public static class SceneRenderer
                   // The same 60px squares the flat room draws, so moving between
                   // the two is one room and not two.
                   var grid = new THREE.GridHelper(
-                    440, 440 / 60, new THREE.Color(room.ink), new THREE.Color(room.ink));
+                    room.span, Math.max(1, Math.round(room.span / 60)), new THREE.Color(room.ink), new THREE.Color(room.ink));
                   grid.material.opacity = 0.16;
                   grid.material.transparent = true;
                   grid.position.y = 0.6;
@@ -399,6 +401,7 @@ public static class SceneRenderer
                     // together — a floor whose furniture stayed on the ground
                     // would be worse than no floors at all.
                     mesh.position.y += riseOf(thing.level);
+                    if (thing.kind === 'solid' && thing.shape !== 'wall') mesh.rotation.y += thing.rotation || 0;
 
                     mesh.userData.id = thing.id;
                     scene.add(mesh);
@@ -752,7 +755,7 @@ public static class SceneRenderer
 
                   var turn = -24 * Math.PI / 180;
                   var tilt = 52 * Math.PI / 180;
-                  var away = 760;
+                  var away = Math.max(760, room.span * 1.75);
 
                   function place() {
                     var flatness = Math.cos(tilt) * away;
@@ -773,7 +776,7 @@ public static class SceneRenderer
                     // backed away from rather than cropped. Measured every time,
                     // the way the flat room measures its scale and for the same
                     // reason: this canvas is whatever size the window leaves it.
-                    away = 760 * Math.max(1, 1.15 / Math.max(0.35, camera.aspect));
+                    away = Math.max(760, room.span * 1.75) * Math.max(1, 1.15 / Math.max(0.35, camera.aspect));
                     camera.updateProjectionMatrix();
                     place();
                   }
@@ -855,7 +858,31 @@ public static class SceneRenderer
     /// and a title containing a quote must not be able to end the script tag it is
     /// sitting inside.
     /// </summary>
-    private static string RoomJson(DesignDocument document, DesignNode room, string? selectedId)
+    private static int RoomSpan(DesignDocument document, DesignNode room)
+    {
+        var extent = 220;
+        foreach (var thing in document.ChildrenOf(room.Id))
+        {
+            if (thing.Kind != DesignNodeKind.Solid) continue;
+            var x = DesignMediums.Number(thing, "x", 0);
+            var y = DesignMediums.Number(thing, "y", 0);
+            var x2 = DesignMediums.Number(thing, "x2", x);
+            var y2 = DesignMediums.Number(thing, "y2", y);
+            var half = Math.Max(DesignMediums.Number(thing, "width", 0),
+                DesignMediums.Number(thing, "depth", 0)) / 2;
+            extent = Math.Max(extent, Math.Max(Math.Max(Math.Abs(x), Math.Abs(y)),
+                Math.Max(Math.Abs(x2), Math.Abs(y2))) + half);
+        }
+        return Math.Clamp((int)Math.Ceiling((double)extent * 2 + 40), 440, 20_000);
+    }
+
+    private static double RotationOf(DesignNode thing)
+        => thing.Props.TryGetValue("rotation", out var value)
+            && double.TryParse(value, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var rotation)
+            && double.IsFinite(rotation) ? rotation : 0;
+
+    private static string RoomJson(DesignDocument document, DesignNode room, string? selectedId, int span)
     {
         var look = DesignLooks.Of(document.Look);
 
@@ -872,6 +899,7 @@ public static class SceneRenderer
                 DesignMediums.Number(thing, "width", 120),
                 DesignMediums.Number(thing, "depth", 120),
                 DesignMediums.Number(thing, "height", 80),
+                RotationOf(thing),
 
                 // Where a wall ends. Only a wall uses these, and a wall with no
                 // end is two metres of nothing — so it falls back to a straight
@@ -936,7 +964,7 @@ public static class SceneRenderer
                 room.Props.TryGetValue("showing", out var showing) ? showing : "whole",
                 DesignMediums.Number(room, "only", 0),
 
-                things),
+                span, things),
             new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
 
         // The one character that could close the tag this sits in. Escaped as a
@@ -947,12 +975,12 @@ public static class SceneRenderer
 
     private sealed record Room(
         string Ground, string Ink, string Raised, string Accent, string Picked,
-        string Showing, int Only,
+        string Showing, int Only, int Span,
         IReadOnlyList<Thing> Things);
 
     private sealed record Thing(
         string Id, string Kind, string Text, string Shape,
-        int X, int Y, int Width, int Depth, int Height,
+        int X, int Y, int Width, int Depth, int Height, double Rotation,
         int X2, int Y2, int Thickness, int Level,
         string On, string Src, int At, int Sill,
         IReadOnlyList<Opening> Openings);

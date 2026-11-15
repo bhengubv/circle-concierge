@@ -159,7 +159,9 @@ public static class MauiProgram
 			// is constructed and the scheduler behaves exactly as before.
 			.AddConciergeHooks()
 			.AddConciergeDeviceCapabilities()
-			.AddConciergeDesignTools()
+			.AddConciergeDesignTools(
+				allowLocalFileImports: OperatingSystem.IsWindows(),
+				spatialGameExportRoot: Path.Combine(FileSystem.AppDataDirectory, "content", "Exports", "SleptON"))
 			// Looking inside a media file. Registered only where there is an
 			// encoder to look with, so a machine without one is never offered
 			// tools that would always fail.

@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#07111f">
+  <title>Circle Signal Hunt</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; background: #07111f; color: #f4f9ff; }
+    * { box-sizing: border-box; }
+    body { margin: 0; overflow: hidden; }
+    #scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+    .hud { position: fixed; z-index: 2; inset: env(safe-area-inset-top) 0 auto; display: flex; align-items: start;
+      justify-content: space-between; gap: 1rem; padding: 1rem; pointer-events: none; }
+    .brand, .status, .controls, .help { border: 1px solid #6bd8ff55; background: #081d32dc;
+      box-shadow: 0 12px 32px #0008, inset 0 1px #ffffff26; backdrop-filter: blur(18px); border-radius: 1.1rem; }
+    .brand { padding: .8rem 1.1rem; min-width: 12rem; }
+    .brand strong { display: block; font-size: 1.1rem; letter-spacing: -.02em; }
+    .brand small, .status small { display: block; color: #b7d3e8; font-size: .75rem; }
+    .ring { display: inline-block; width: .75rem; height: .75rem; border: 2px solid #3ad0ff; border-radius: 50%;
+      box-shadow: 0 0 12px #3ad0ff; margin-right: .4rem; }
+    .status { padding: .8rem 1rem; min-width: 9rem; text-align: right; }
+    #progress { font-size: 1.4rem; font-weight: 750; }
+    .controls { position: fixed; z-index: 3; bottom: calc(1rem + env(safe-area-inset-bottom)); left: 50%;
+      transform: translateX(-50%); padding: .5rem; display: flex; gap: .5rem; max-width: calc(100vw - 1rem); }
+    button { background: #126a9b; border: 1px solid #5acfff; border-radius: .75rem; color: white;
+      font: inherit; font-weight: 650; min-height: 2.8rem; padding: .5rem .8rem; cursor: pointer; }
+    button:hover, button:focus-visible { background: #1785bd; outline: 2px solid #fff; outline-offset: 2px; }
+    button[hidden] { display: none; }
+    .help { position: fixed; z-index: 2; bottom: 5.6rem; left: 50%; transform: translateX(-50%);
+      width: min(31rem, calc(100vw - 2rem)); padding: .7rem 1rem; text-align: center; font-size: .85rem; pointer-events: none; }
+    #message { color: #d3f5ff; }
+    @media (max-width: 560px) { .hud { padding: .6rem; } .brand { min-width: 0; } .brand small { display: none; }
+      .status { min-width: 6rem; } .controls { width: max-content; } .help { bottom: 5.5rem; } }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; } }
+  </style>
+</head>
+<body>
+  <canvas id="scene" aria-label="Three-dimensional signal hunt"></canvas>
+  <div class="hud">
+    <div class="brand"><strong><span class="ring" aria-hidden="true"></span><span id="game-title">Circle Signal Hunt</span></strong><small>Find the three signals</small></div>
+    <div class="status" role="status" aria-live="polite"><small>Signals found</small><span id="progress">0 / 3</span></div>
+  </div>
+  <div class="help" id="message" role="status" aria-live="polite">Drag to look around. Tap a glowing object to collect its signal.</div>
+  <div class="controls" role="group" aria-label="Game controls">
+    <button id="reset" type="button">Start again</button>
+    <button id="vr" type="button" hidden>Enter VR</button>
+    <button id="ar" type="button" hidden>Place in AR</button>
+  </div>
+  <script type="module" src="./game.js"></script>
+</body>
+</html>

@@ -32,6 +32,14 @@
   <ItemGroup>
     <EmbeddedResource Include="Skills\Curated\**\SKILL.md" />
     <EmbeddedResource Include="Skills\Curated\catalog.json" />
+    <EmbeddedResource Include="Design\SpatialGameTemplate\*" />
+    <!-- Reuse the existing bundled MIT three.js instead of adding a second source copy. -->
+    <EmbeddedResource Include="..\Concierge.Shared.Components\wwwroot\lib\three\three.module.js"
+                      LogicalName="Concierge.Shared.Design.SpatialGameTemplate.vendor.three.module.js" />
+    <EmbeddedResource Include="..\Concierge.Shared.Components\wwwroot\lib\three\three.core.js"
+                      LogicalName="Concierge.Shared.Design.SpatialGameTemplate.vendor.three.core.js" />
+    <EmbeddedResource Include="..\Concierge.Shared.Components\wwwroot\lib\three\LICENSE"
+                      LogicalName="Concierge.Shared.Design.SpatialGameTemplate.vendor.LICENSE" />
   </ItemGroup>
 
 </Project>

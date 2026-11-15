@@ -59,3 +59,15 @@ for the exact version above.
 
 Nothing here is vendored source we have modified. Every entry is upstream, unaltered,
 at a pinned version.
+
+## 3D Model Anything format reference
+
+The Concierge Space room importer is independently implemented against the
+`house-capture/5` RoomPlan JSON and `scan-to-threejs` room JSON described by
+[wesbos/3d-model-anything](https://github.com/wesbos/3d-model-anything).
+That project's source and agent skill are MIT licensed. Its demo assets are
+not included; they have [separate terms](https://github.com/wesbos/3d-model-anything/blob/main/ASSETS-LICENSE.md).
+
+The spatial game draft bundles the existing MIT-licensed three.js module and
+core with `vendor/LICENSE` inside each ZIP. It does not copy 3D Model Anything
+source or visual assets.
