@@ -1,6 +1,8 @@
 @page "/studio"
 @using Concierge.Shared.Planning
 @inject IProjectStore Projects
+@inject IServiceProvider Services
+@implements IDisposable
 
 <main class="cm-studio" aria-labelledby="cm-studio-title">
     <p class="cm-home-eyebrow">CONCIERGE STUDIO</p>
@@ -10,6 +12,17 @@
         <a href="/projects">New project <span aria-hidden="true">↗</span></a>
         <a href="/creator">Create on canvas <span aria-hidden="true">↗</span></a>
     </nav>
+    <section aria-labelledby="cm-studio-3d">
+        <h2 id="cm-studio-3d">Make a 3D draft</h2>
+        <p>@(Infinigen?.Status ?? "3D generation is available from Concierge Desktop.")</p>
+        @if (Infinigen?.IsAvailable == true)
+        {
+            <button type="button" disabled="@_making3d" @onclick="Make3dAsync">@(_making3d ? "Making a sofa…" : "Make a sofa")</button>
+            @if (_making3d) { <button type="button" @onclick="Stop3d">Stop</button> }
+        }
+        @if (_draft3d is not null) { <p role="status">Draft saved in Concierge Studio: @_draft3d</p> }
+        @if (_draft3dError is not null) { <p role="alert">@_draft3dError</p> }
+    </section>
     <section aria-labelledby="cm-studio-projects">
         <h2 id="cm-studio-projects">Projects</h2>
         @if (_error is not null) { <p role="alert">@_error</p> }
@@ -40,6 +53,23 @@
     private IReadOnlyList<ConciergeProject> _projects = [];
     private bool _loading = true;
     private string? _error;
+    private Concierge.Shared.Design.InfinigenDrafts? Infinigen => Services.GetService(typeof(Concierge.Shared.Design.InfinigenDrafts)) as Concierge.Shared.Design.InfinigenDrafts;
+    private bool _making3d;
+    private CancellationTokenSource? _draft3dCancellation;
+    private string? _draft3d;
+    private string? _draft3dError;
+    private async Task Make3dAsync()
+    {
+        _making3d = true;
+        _draft3dError = null;
+        _draft3dCancellation = new CancellationTokenSource();
+        try { _draft3d = await Infinigen!.CreateSofaAsync(0, _draft3dCancellation.Token); }
+        catch (OperationCanceledException) { _draft3dError = "3D draft stopped."; }
+        catch (Exception ex) { _draft3dError = $"3D draft failed: {ex.Message}"; }
+        finally { _making3d = false; _draft3dCancellation.Dispose(); _draft3dCancellation = null; }
+    }
+    private void Stop3d() => _draft3dCancellation?.Cancel();
+    public void Dispose() => _draft3dCancellation?.Cancel();
     protected override async Task OnInitializedAsync()
     {
         try { _projects = await Projects.ListAsync(); }

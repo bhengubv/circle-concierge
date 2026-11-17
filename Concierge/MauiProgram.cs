@@ -242,6 +242,9 @@ public static class MauiProgram
 		builder.Services.AddSingleton<Concierge.Shared.Planning.IProjectAgentRuntimeSelector,
 			Concierge.Away.AwayProjectAgentRuntimeSelector>();
 		builder.Services.AddConciergeState(Path.Combine(FileSystem.AppDataDirectory, "state"));
+		builder.Services.AddSingleton(_ => new Concierge.Shared.Design.InfinigenDrafts(
+			Path.Combine(FileSystem.AppDataDirectory, "content", "Studio", "Infinigen"),
+			Environment.GetEnvironmentVariable("CONCIERGE_INFINIGEN_EXE")));
 
 		// Work that runs end to end, keeping its place on disk so an interrupted run
 		// carries on rather than starting again.
