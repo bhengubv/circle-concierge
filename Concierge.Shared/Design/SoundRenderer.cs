@@ -42,11 +42,14 @@ public static class SoundRenderer
         var html = new StringBuilder();
         DesignMediums.OpenDocument(html, DesignLooks.Of(document.Look), Style);
 
-        // Tracks live either as frames or loose on the root, because "add some
-        // music" should work before anybody has thought about running order.
-        var tracks = document.Frames.Count > 0
-            ? document.Frames
-            : document.ChildrenOf(document.RootId);
+        // A converted canvas may already have frames when a person attaches a
+        // sound. Keep those sections, but do not hide root-level audio behind
+        // them: the new track must be visible and playable immediately.
+        var root = document.ChildrenOf(document.RootId);
+        var tracks = root
+            .Where(node => node.Kind is DesignNodeKind.Frame or DesignNodeKind.Sound)
+            .ToList();
+        if (tracks.Count == 0) tracks = root.ToList();
 
         if (tracks.Count == 0)
         {

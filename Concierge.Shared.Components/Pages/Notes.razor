@@ -1,0 +1,87 @@
+@page "/notes"
+@using Concierge.Shared.Planning
+@inject IKnowledgeNotebookStore Store
+
+<main class="cm-studio cm-notes" aria-labelledby="cm-notes-title">
+    <p class="cm-home-eyebrow">YOUR THOUGHTS</p>
+    <h1 id="cm-notes-title">Notes</h1>
+    <p class="cm-studio-intro">Write it down now. Return to it when you need it.</p>
+
+    <section class="cm-note-editor" aria-label="Write a note">
+        <label for="cm-note-kind">Type</label>
+        <select id="cm-note-kind" @bind="_kind"><option>Note</option><option>Transcript</option><option>Meeting minutes</option></select>
+        <label for="cm-note-title">Title</label>
+        <input id="cm-note-title" maxlength="200" @bind="_title" placeholder="Give this note a name" />
+        <label for="cm-note-body">What would you like to keep?</label>
+        <textarea id="cm-note-body" rows="7" maxlength="48000" @bind="_body" placeholder="Write or paste your notes here"></textarea>
+        <div class="cm-note-actions">
+            <button type="button" @onclick="Save" disabled="@_saving">@(_saving ? "Saving…" : "Save note")</button>
+            @if (_editing is not null) { <button type="button" @onclick="New">New note</button> }
+        </div>
+        @if (_status is not null) { <p role="status">@_status</p> }
+        @if (_error is not null) { <p role="alert">@_error</p> }
+    </section>
+
+    <section aria-labelledby="cm-saved-notes-title">
+        <h2 id="cm-saved-notes-title">Saved notes</h2>
+        @if (_notes.Count == 0) { <p>Your saved notes will appear here.</p> }
+        else
+        {
+            <div class="cm-studio-project-list cm-saved-notes">
+                @foreach (var note in _notes)
+                {
+                    <button type="button" @onclick="() => Open(note)"><strong>@note.Name</strong><span>@KindOf(note) · @note.UpdatedAt.ToLocalTime().ToString("d")</span></button>
+                }
+            </div>
+        }
+    </section>
+    <a class="cm-notebook-link" href="/notebooks">Work with notebooks and sources ↗</a>
+</main>
+
+@code {
+    private const string SourcePrefix = "Concierge note · ";
+    private IReadOnlyList<KnowledgeNotebook> _notes = [];
+    private KnowledgeNotebook? _editing;
+    private string _kind = "Note", _title = "", _body = "";
+    private string? _status, _error;
+    private bool _saving;
+
+    protected override void OnInitialized() => Reload();
+    private void Reload() => _notes = Store.All().Where(note => note.Sources.Count == 1
+        && note.Sources[0].Name.StartsWith(SourcePrefix, StringComparison.Ordinal)).ToArray();
+    private static string KindOf(KnowledgeNotebook note) => note.Sources[0].Name[SourcePrefix.Length..];
+    private void Open(KnowledgeNotebook note)
+    {
+        _editing = note;
+        _kind = KindOf(note);
+        _title = note.Name;
+        _body = note.Sources[0].Text;
+        _status = _error = null;
+    }
+    private void New()
+    {
+        _editing = null;
+        _kind = "Note";
+        _title = _body = "";
+        _status = _error = null;
+    }
+    private void Save()
+    {
+        if (string.IsNullOrWhiteSpace(_title) || string.IsNullOrWhiteSpace(_body))
+        { _error = "Add a title and some text before saving."; return; }
+        _saving = true;
+        try
+        {
+            var source = new NotebookSource(_editing?.Sources[0].Id ?? Guid.NewGuid(), SourcePrefix + _kind, _body.Trim());
+            var note = _editing is null
+                ? new KnowledgeNotebook(Guid.NewGuid(), _title.Trim(), "", [source], [], DateTimeOffset.UtcNow)
+                : _editing with { Name = _title.Trim(), Sources = [source] };
+            _editing = Store.Save(note);
+            Reload();
+            _error = null;
+            _status = "Saved on this device.";
+        }
+        catch (Exception ex) { _error = $"Could not save this note: {ex.Message}"; }
+        finally { _saving = false; }
+    }
+}

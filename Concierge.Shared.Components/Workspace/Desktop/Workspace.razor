@@ -592,12 +592,12 @@
                         page, which is the only way to put a real one in a design.
                     *@
                     <label class="icon-btn"
-                           title="@(_designOpen ? "Put a picture on the page" : "Attach a file or a picture")">
+                           title="@AttachmentLabel">
                         <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><use href="#cm-icon-file"/></svg>
-                        <span class="sr">@(_designOpen ? "Put a picture on the page" : "Attach a file or a picture")</span>
+                        <span class="sr">@AttachmentLabel</span>
                         <InputFile OnChange="OnAttachmentSelected" class="file-over"
                                    disabled="@(!WorkspaceReady)"
-                                   accept=".txt,.md,.markdown,.json,.cs,.razor,.xml,.yaml,.yml,.toml,.csv,.log,.png,.jpg,.jpeg,.gif,.webp" />
+                                   accept="@AttachmentAccept" />
                     </label>
 
                     <button class="icon-btn @(_recording ? "is-on" : null)" type="button"

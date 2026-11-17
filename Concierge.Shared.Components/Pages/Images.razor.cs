@@ -16,11 +16,15 @@ public partial class Images
     private string? _selectedRuntimeId;
     private string _prompt = string.Empty;
     private string _negative = string.Empty;
+    private bool _editing;
+    private List<ImageReference> _references = [];
+    private List<string> _referenceNames = [];
     private int _size = 1024;
     private int _count = 1;
     private bool _busy;
     private string _statusMessage = string.Empty;
     private List<ImageArtifact> _artifacts = new();
+    private int _resultVersion;
 
     protected override void OnInitialized()
     {
@@ -35,7 +39,8 @@ public partial class Images
 
     private bool CanGenerate => !_busy
         && !string.IsNullOrWhiteSpace(_prompt)
-        && Chosen is { IsReady: true };
+        && Chosen is { IsReady: true }
+        && (!_editing || (Chosen is IImageEditingRuntime && _references.Count > 0));
 
     private IImageRuntime? Chosen
         => _orderedRuntimes.FirstOrDefault(runtime => runtime.Id == _selectedRuntimeId);
@@ -68,9 +73,53 @@ public partial class Images
                 return Chosen.StatusMessage;
             }
 
+            if (_editing && Chosen is not IImageEditingRuntime)
+                return "Choose an image maker that can edit photos.";
+
+            if (_editing && _references.Count == 0)
+                return "Choose a photo to edit.";
+
             return string.IsNullOrWhiteSpace(_prompt)
                 ? "Describe the picture you want."
                 : string.Empty;
+        }
+    }
+
+    private void SetMode(bool editing)
+    {
+        _editing = editing;
+        _statusMessage = string.Empty;
+        if (editing && Chosen is not IImageEditingRuntime)
+            _selectedRuntimeId = _orderedRuntimes.OfType<IImageEditingRuntime>()
+                .FirstOrDefault(runtime => runtime.IsReady)?.Id
+                ?? _orderedRuntimes.OfType<IImageEditingRuntime>().FirstOrDefault()?.Id;
+    }
+
+    private async Task OnReferencesSelected(InputFileChangeEventArgs args)
+    {
+        _references = [];
+        _referenceNames = [];
+        try
+        {
+            var files = args.GetMultipleFiles(4);
+            foreach (var file in files)
+            {
+                if (file.ContentType is not ("image/png" or "image/jpeg" or "image/webp" or "image/heic" or "image/heif"))
+                    throw new InvalidOperationException("Choose PNG, JPEG, WebP or HEIC/HEIF photos.");
+                // A smaller per-photo limit keeps a mobile WebView from holding hundreds of MB.
+                using var stream = file.OpenReadStream(16 * 1024 * 1024);
+                using var buffer = new MemoryStream();
+                await stream.CopyToAsync(buffer);
+                _references.Add(new ImageReference(file.ContentType, buffer.ToArray()));
+                _referenceNames.Add(file.Name);
+            }
+            _statusMessage = $"{_references.Count} photo(s) ready to edit.";
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or ArgumentException)
+        {
+            _references = [];
+            _referenceNames = [];
+            _statusMessage = ex.Message;
         }
     }
 
@@ -88,7 +137,7 @@ public partial class Images
 
         var runtime = _orderedRuntimes.First(r => r.Id == _selectedRuntimeId);
         _busy = true;
-        _statusMessage = $"Calling {runtime.EngineLabel}…";
+        _statusMessage = _editing ? "Editing your photo…" : "Making your picture…";
         try
         {
             var request = new ImageGenerationRequest(
@@ -96,12 +145,16 @@ public partial class Images
                 NegativePrompt: string.IsNullOrWhiteSpace(_negative) ? null : _negative.Trim(),
                 Size: _size,
                 Count: _count);
-            var produced = await runtime.GenerateAsync(request);
+            var produced = _editing
+                ? await ((IImageEditingRuntime)runtime).EditAsync(new ImageEditRequest(
+                    request.Prompt, _references.ToArray(), request.Size, request.Count))
+                : await runtime.GenerateAsync(request);
             // Newest-first so the page doesn't bury fresh results.
             _artifacts = produced.Concat(_artifacts).ToList();
+            if (produced.Count > 0) _resultVersion++;
             _statusMessage = produced.Count > 0
                 ? $"Got {produced.Count} image(s)."
-                : "Runtime returned nothing. Check the engine status pill above.";
+                : "No image was returned. Try again, or check the image maker's account and connection.";
         }
         catch (Exception ex)
         {

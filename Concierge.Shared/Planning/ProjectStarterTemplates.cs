@@ -92,6 +92,7 @@ public static class ProjectStarterTemplates
              ("Plan the content", "Draft a content calendar and posts for each channel."),
              ("Create the assets", "Make or import visuals and short videos; record sources and usage rights."),
              ("Review the content", "Check claims, accessibility, permissions, and final copy before publishing."),
+             ("Send to SleptON!", "Transfer the reviewed draft privately. Account connection and publishing are separate choices in SleptON!."),
              ("Measure and improve", "Record outcomes and decide what to repeat or change.")],
             VocationModeId: VocationModes.SocialMediaManagerId),
     ];

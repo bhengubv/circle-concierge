@@ -100,6 +100,7 @@ public sealed class SecretStoreTests
         Assert.Contains(ConciergeSecretKeys.OpenAiImages, keys);
         Assert.Contains(ConciergeSecretKeys.OpenAiVoice, keys);
         Assert.Contains(ConciergeSecretKeys.Stability, keys);
+        Assert.Contains(ConciergeSecretKeys.MiniMaxImages, keys);
         Assert.Contains(ConciergeSecretKeys.PenPot, keys);
         Assert.Contains(ConciergeSecretKeys.Figma, keys);
         Assert.Contains(ConciergeSecretKeys.ConciergeApiKey, keys);

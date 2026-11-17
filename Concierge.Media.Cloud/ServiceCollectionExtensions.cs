@@ -26,6 +26,16 @@ public static class ConciergeCloudMediaServiceCollectionExtensions
         return services;
     }
 
+    public static IServiceCollection AddMiniMaxImages(
+        this IServiceCollection services,
+        Func<IServiceProvider, MiniMaxImageOptions> optionsFactory)
+    {
+        services.AddHttpClient<MiniMaxImageRuntime>(client => client.Timeout = TimeSpan.FromMinutes(10));
+        services.AddSingleton(optionsFactory);
+        services.AddSingleton<IImageRuntime>(sp => sp.GetRequiredService<MiniMaxImageRuntime>());
+        return services;
+    }
+
     public static IServiceCollection AddOpenAiVoice(
         this IServiceCollection services,
         Func<IServiceProvider, OpenAiVoiceOptions> optionsFactory)

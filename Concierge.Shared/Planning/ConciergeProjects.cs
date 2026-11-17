@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Concierge.Shared.Butler;
+using Concierge.Shared.Design;
 using Concierge.Shared.Tools;
 
 namespace Concierge.Shared.Planning;
@@ -103,6 +104,8 @@ public sealed record ConciergeProject
     public IReadOnlyList<ProjectWorkspace> Workspaces { get; init; } = [];
     public IReadOnlyList<ProjectDecision> Decisions { get; init; } = [];
     public IReadOnlyList<ProjectArtifact> Artifacts { get; init; } = [];
+    /// <summary>Private, editable campaign work. Only an approved transfer package leaves this device.</summary>
+    public SocialCampaignDraft? SocialCampaign { get; init; }
     /// <summary>Analysis-only agent work owned by this Project and retained with its history.</summary>
     public IReadOnlyList<ProjectAgentRun> AgentRuns { get; init; } = [];
     /// <summary>Durable request identities let a retry recover a run even when its caller restarted.</summary>

@@ -108,8 +108,7 @@
     const SKIN_KEY = 'cu-skin';
     const THEMES = ['light', 'dark', 'auto'];
     const SKINS = ['circle', 'tide', 'berry'];
-    // CircleMetro is being rolled out to the Windows desktop head first.
-    // Other MAUI heads keep their current theme until their own design pass.
+    // The shared CircleMetro tokens read :root on every head.
     const WINDOWS_DESKTOP = Boolean(window.chrome && window.chrome.webview);
     if (WINDOWS_DESKTOP) {
         document.documentElement.setAttribute('data-cm-host', 'windows-desktop');
@@ -154,7 +153,6 @@
     }
 
     function applyAppearance(mode, skin) {
-        if (!WINDOWS_DESKTOP) return;
         const theme = THEMES.includes(mode) ? mode : 'auto';
         const nextSkin = SKINS.includes(skin) ? skin : 'circle';
         try {
@@ -166,31 +164,19 @@
     }
 
     function applyTheme(mode) {
-        if (!WINDOWS_DESKTOP) {
-            // Preserve the pre-existing MAUI behaviour on the heads not in this pass.
-            try {
-                if (mode === 'auto') {
-                    document.body?.removeAttribute('data-theme');
-                    localStorage.removeItem(THEME_KEY);
-                } else {
-                    document.body?.setAttribute('data-theme', mode);
-                    localStorage.setItem(THEME_KEY, mode);
-                }
-            } catch { /* Best effort when storage is unavailable. */ }
-            return;
-        }
         applyAppearance(mode, getSkin());
     }
 
     function applySkin(skin) {
-        if (WINDOWS_DESKTOP) applyAppearance(getTheme(), skin);
+        applyAppearance(getTheme(), skin);
     }
 
     function loadAppearance() {
         if (!WINDOWS_DESKTOP) {
-            // Keep Android/iOS/Mac Catalyst's previous saved theme behavior.
+            // Preserve the dark first-run choice, but apply a saved preference
+            // to :root so the CircleMetro token selectors can actually switch.
             const saved = readPreference(THEME_KEY, ['light', 'dark'], null);
-            if (saved && document.body) document.body.setAttribute('data-theme', saved);
+            paintAppearance(saved || document.documentElement.dataset.theme || 'dark', getSkin());
             return;
         }
         paintAppearance(resolvedTheme(getTheme()), getSkin());

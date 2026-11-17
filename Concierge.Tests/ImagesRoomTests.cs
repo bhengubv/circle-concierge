@@ -2,6 +2,7 @@ using Bunit;
 using Concierge.Shared;
 using Concierge.Shared.Media;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.AspNetCore.Components.Forms;
 
 namespace Concierge.Tests;
 
@@ -30,6 +31,32 @@ public sealed class ImagesRoomTests : BunitContext
         public Task<IReadOnlyList<ImageArtifact>> GenerateAsync(
             ImageGenerationRequest request, CancellationToken cancellationToken = default)
             => Task.FromResult<IReadOnlyList<ImageArtifact>>([]);
+    }
+
+    private sealed class Editor : IImageEditingRuntime
+    {
+        public string Id => "editor";
+        public string EngineLabel => "An image editor";
+        public bool IsReady => true;
+        public string StatusMessage => "Ready";
+        public ImageEditRequest? Edited { get; private set; }
+        public ImageGenerationRequest? Generated { get; private set; }
+
+        public Task<IReadOnlyList<ImageArtifact>> GenerateAsync(ImageGenerationRequest request, CancellationToken cancellationToken = default)
+        {
+            Generated = request;
+            return Task.FromResult<IReadOnlyList<ImageArtifact>>([
+                new(Id, request.Prompt, "image/png", null, [1, 2, 3], DateTimeOffset.UtcNow),
+            ]);
+        }
+
+        public Task<IReadOnlyList<ImageArtifact>> EditAsync(ImageEditRequest request, CancellationToken cancellationToken = default)
+        {
+            Edited = request;
+            return Task.FromResult<IReadOnlyList<ImageArtifact>>([
+                new(Id, request.Prompt, "image/png", null, [4, 5, 6], DateTimeOffset.UtcNow),
+            ]);
+        }
     }
 
     private IRenderedComponent<Concierge.Shared.Components.Pages.Images> Room(params IImageRuntime[] runtimes)
@@ -86,5 +113,55 @@ public sealed class ImagesRoomTests : BunitContext
         var room = Room(new Maker(ready: true, why: "Ready"));
 
         Assert.Contains("Describe the picture you want", room.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_person_can_create_and_see_the_result_in_the_shared_room()
+    {
+        var editor = new Editor();
+        var room = Room(editor);
+        room.Find("textarea[aria-label='What to draw']").Input("A blue concert poster");
+        room.Find("button.btn-primary").Click();
+
+        Assert.Equal("A blue concert poster", editor.Generated?.Prompt);
+        Assert.Contains("data:image/png;base64,AQID", room.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_person_can_upload_and_edit_a_photo_in_the_same_room()
+    {
+        var editor = new Editor();
+        var room = Room(editor);
+        room.FindAll("button.seg-opt").Single(button => button.TextContent == "Edit a photo").Click();
+        room.FindComponent<InputFile>().UploadFiles(
+            InputFileContent.CreateFromBinary([1, 2, 3], "source.png", contentType: "image/png"));
+        room.Find("textarea[aria-label='What to change']").Input("Make it blue");
+        room.Find("button.btn-primary").Click();
+
+        Assert.Equal("Make it blue", editor.Edited?.Prompt);
+        Assert.Equal([1, 2, 3], Assert.Single(editor.Edited!.References).Bytes);
+        Assert.Contains("data:image/png;base64,BAUG", room.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_edit_action_waits_for_a_source_photo()
+    {
+        var room = Room(new Editor());
+        room.FindAll("button.seg-opt").Single(button => button.TextContent == "Edit a photo").Click();
+        room.Find("textarea[aria-label='What to change']").Input("Make it blue");
+
+        Assert.True(room.Find("button.btn-primary").HasAttribute("disabled"));
+        Assert.Contains("Choose a photo to edit", room.Markup, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void An_empty_provider_response_is_explained_without_claiming_an_image_was_made()
+    {
+        var room = Room(new Maker(ready: true, why: "Ready"));
+        room.Find("textarea[aria-label='What to draw']").Input("A concert poster");
+        room.Find("button.btn-primary").Click();
+
+        Assert.Contains("No image was returned", room.Markup, StringComparison.Ordinal);
+        Assert.DoesNotContain("Got 1 image", room.Markup, StringComparison.Ordinal);
     }
 }

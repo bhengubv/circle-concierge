@@ -128,8 +128,8 @@ public sealed class ShellPageTests : BunitContext
         Compose();
         var cut = Render<Concierge.Shared.Components.Components.ApiKeyEditor>();
 
-        // Three model providers plus the search provider.
-        Assert.Equal(4, cut.FindAll("button.row").Count);
+        Assert.Contains("MiniMax images", cut.Markup, StringComparison.Ordinal);
+        Assert.True(cut.FindAll("button.row").Count >= 4);
         Assert.Empty(cut.FindAll("input[type=password]"));
 
         cut.FindAll("button.row")[0].Click();
@@ -152,6 +152,22 @@ public sealed class ShellPageTests : BunitContext
 
         var field = cut.Find("input[type=password]");
         Assert.Equal("off", field.GetAttribute("autocomplete"));
+    }
+
+    [Fact]
+    public void MiniMax_image_key_can_be_saved_without_showing_its_value()
+    {
+        Compose();
+        var store = (FakeSecretStore)Services.GetRequiredService<IConciergeSecretStore>();
+        var cut = Render<Concierge.Shared.Components.Components.ApiKeyEditor>();
+
+        cut.FindAll("button.row").Single(button => button.TextContent.Contains("MiniMax images", StringComparison.Ordinal)).Click();
+        cut.Find("input[type=password]").Input("minimax-secret-test");
+        cut.Find("button.btn-primary").Click();
+
+        Assert.Equal("minimax-secret-test", store.Secrets[ConciergeSecretKeys.MiniMaxImages]);
+        Assert.DoesNotContain("minimax-secret-test", cut.Markup, StringComparison.Ordinal);
+        Assert.Contains("Restart Concierge", cut.Markup, StringComparison.Ordinal);
     }
 
     private sealed class FakeSecretStore : IConciergeSecretStore

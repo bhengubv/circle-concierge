@@ -27,6 +27,12 @@
       font: inherit; font-weight: 650; min-height: 2.8rem; padding: .5rem .8rem; cursor: pointer; }
     button:hover, button:focus-visible { background: #1785bd; outline: 2px solid #fff; outline-offset: 2px; }
     button[hidden] { display: none; }
+    #xr-overlay { display: none; position: fixed; inset: 0; z-index: 6; padding: max(1rem, env(safe-area-inset-top));
+      pointer-events: none; }
+    #xr-overlay.active { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+    .xr-card { border: 1px solid #6bd8ff99; background: #081d32e8; color: #f4f9ff;
+      border-radius: 1rem; padding: .7rem 1rem; font-weight: 700; box-shadow: 0 8px 30px #0009; }
+    #xr-exit { pointer-events: auto; }
     .help { position: fixed; z-index: 2; bottom: 5.6rem; left: 50%; transform: translateX(-50%);
       width: min(31rem, calc(100vw - 2rem)); padding: .7rem 1rem; text-align: center; font-size: .85rem; pointer-events: none; }
     #message { color: #d3f5ff; }
@@ -46,6 +52,10 @@
     <button id="reset" type="button">Start again</button>
     <button id="vr" type="button" hidden>Enter VR</button>
     <button id="ar" type="button" hidden>Place in AR</button>
+  </div>
+  <div id="xr-overlay" aria-live="polite">
+    <div class="xr-card"><span id="xr-progress">0 / 3 signals</span><br><small id="xr-message">Find the glowing objects.</small></div>
+    <button id="xr-exit" type="button">Exit XR</button>
   </div>
   <script type="module" src="./game.js"></script>
 </body>

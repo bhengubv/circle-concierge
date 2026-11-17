@@ -18,7 +18,7 @@
         <h1>Images</h1>
     </div>
 
-    <p class="room-lede">Describe a picture and it will make one.</p>
+    <p class="room-lede">Make a picture or change one you have.</p>
 
     <div class="room-body">
         @if (_orderedRuntimes.Count == 0)
@@ -30,35 +30,56 @@
         else
         {
             <RoomSection Title="Describe it" Open="true">
-                <div class="row">
+                <div class="seg" role="group" aria-label="Image task">
+                    <button class="seg-opt @(!_editing ? "is-on" : null)" type="button"
+                            aria-pressed="@(!_editing ? "true" : "false")" @onclick="@(() => SetMode(false))">Create</button>
+                    <button class="seg-opt @(_editing ? "is-on" : null)" type="button"
+                            aria-pressed="@(_editing ? "true" : "false")" @onclick="@(() => SetMode(true))">Edit a photo</button>
+                </div>
+                <div class="row images-runtime-row">
                     <span class="row-name">Made by</span>
-                    <div class="seg" role="group" aria-label="Runtime">
+                    <div class="seg images-runtime-options" role="group" aria-label="Runtime">
                         @foreach (var runtime in _orderedRuntimes)
                         {
                             var id = runtime.Id;
                             <button class="seg-opt @(_selectedRuntimeId == id ? "is-on" : null)"
                                     type="button"
                                     aria-pressed="@(_selectedRuntimeId == id ? "true" : "false")"
-                                    @onclick="@(() => _selectedRuntimeId = id)">@runtime.Id</button>
+                                    @onclick="@(() => _selectedRuntimeId = id)">@runtime.EngineLabel</button>
                         }
                     </div>
                 </div>
 
+                @if (_editing)
+                {
+                    <label class="room-note" for="image-references">Photos to edit (up to 4)</label>
+                    <InputFile id="image-references" OnChange="OnReferencesSelected" multiple disabled="@_busy"
+                               accept="image/png,image/jpeg,image/webp,image/heic,image/heif" />
+                    @if (_referenceNames.Count > 0)
+                    {
+                        <p class="room-note">@string.Join(", ", _referenceNames)</p>
+                    }
+                    <p class="room-note">Your selected photos and instructions are sent to the chosen image maker when you press Edit.</p>
+                }
+
                 <textarea class="comp-input" rows="3" style="width:100%;"
                           placeholder="A quiet hotel lobby at dawn"
-                          aria-label="What to draw"
+                          aria-label="@(_editing ? "What to change" : "What to draw")"
                           value="@_prompt"
                           @oninput="OnPromptChanged"></textarea>
 
-                <input class="comp-input" type="text" style="width:100%;"
-                       placeholder="Anything to avoid (optional)"
-                       aria-label="What to avoid"
-                       value="@_negative"
-                       @oninput="OnNegativeChanged" />
+                @if (!_editing && Chosen?.SupportsNegativePrompt == true)
+                {
+                    <input class="comp-input" type="text" style="width:100%;"
+                           placeholder="Anything to avoid (optional)"
+                           aria-label="What to avoid"
+                           value="@_negative"
+                           @oninput="OnNegativeChanged" />
+                }
 
                 <button class="btn btn-primary" type="button" disabled="@(!CanGenerate)"
                         @onclick="GenerateAsync">
-                    @(_busy ? "Drawing…" : "Draw it")
+                    @(_busy ? "Working…" : _editing ? "Edit photo" : "Draw it")
                 </button>
 
                 @* What is missing, when something is — in the words of whatever is
@@ -105,7 +126,7 @@
 
             </RoomSection>
 
-            <RoomSection Title="What came back" Count="@_artifacts.Count">
+            <RoomSection @key="_resultVersion" Title="What came back" Count="@_artifacts.Count" Open="@(_artifacts.Count > 0)">
                 @if (_artifacts.Count == 0)
                 {
                     <p class="room-note">Nothing yet.</p>

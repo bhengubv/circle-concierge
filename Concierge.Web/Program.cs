@@ -165,6 +165,7 @@ builder.Services.AddConciergeFigmaDiagrams(sp => sp.GetRequiredService<IConfigur
 // only wants TTS but not DALL-E (or vice versa).
 builder.Services.AddOpenAiImages(sp => sp.GetRequiredService<IConfiguration>().GetSection("OpenAIImages").Get<OpenAiImageOptions>() ?? new OpenAiImageOptions());
 builder.Services.AddStabilityImages(sp => sp.GetRequiredService<IConfiguration>().GetSection("Stability").Get<StabilityImageOptions>() ?? new StabilityImageOptions());
+builder.Services.AddMiniMaxImages(sp => sp.GetRequiredService<IConfiguration>().GetSection("MiniMaxImages").Get<MiniMaxImageOptions>() ?? new MiniMaxImageOptions());
 builder.Services.AddOpenAiVoice(sp => sp.GetRequiredService<IConfiguration>().GetSection("OpenAIVoice").Get<OpenAiVoiceOptions>() ?? new OpenAiVoiceOptions());
 // Speech on the device, beside the cloud one.
 builder.Services.AddConciergeLocalVoice();

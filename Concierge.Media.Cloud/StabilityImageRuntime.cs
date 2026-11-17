@@ -39,6 +39,7 @@ public sealed class StabilityImageRuntime : IImageRuntime
     public string EngineLabel => $"Stability AI · {_options.Model}";
     public bool IsReady => !string.IsNullOrWhiteSpace(_options.ApiKey);
     public string StatusMessage => IsReady ? $"Ready · {_options.Model}" : "Stability AI API key not configured — set Stability:ApiKey to enable.";
+    public bool SupportsNegativePrompt => true;
 
     public async Task<IReadOnlyList<ImageArtifact>> GenerateAsync(ImageGenerationRequest request, CancellationToken cancellationToken = default)
     {

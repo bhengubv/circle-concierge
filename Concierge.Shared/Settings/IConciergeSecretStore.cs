@@ -35,6 +35,7 @@ public static class ConciergeSecretKeys
     public const string Anthropic = "Anthropic:ApiKey";
     public const string Gemini = "Gemini:ApiKey";
     public const string Stability = "Stability:ApiKey";
+    public const string MiniMaxImages = "MiniMaxImages:ApiKey";
     public const string PenPot = "PenPot:AccessToken";
     public const string Figma = "Figma:AccessToken";
     public const string ConciergeApiKey = "Auth:ApiKey";
@@ -50,6 +51,7 @@ public static class ConciergeSecretKeys
         (Gemini,         "Google Gemini",   "Gemini 2.0 Flash streamGenerateContent."),
         (OpenAiImages,   "OpenAI · images", "DALL-E 3 image generation."),
         (Stability,      "Stability AI",    "Stable Diffusion 3.5 generation."),
+        (MiniMaxImages, "MiniMax images", "H3 image creation and editing."),
         (OpenAiVoice,    "OpenAI · voice",  "Whisper transcription + TTS synthesis."),
         (PenPot,         "PenPot",          "Personal access token from PenPot settings."),
         (Figma,          "Figma",           "Personal access token from Figma settings."),

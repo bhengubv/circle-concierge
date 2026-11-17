@@ -3,7 +3,7 @@
 
 @if (Client is not null)
 {
-<details class="connected-devices" open="@_expanded">
+<details class="connected-devices @(Inline ? "is-inline" : null)" open="@_expanded">
     <summary @onclick="() => _expanded = !_expanded" @onclick:preventDefault>@(_devices.Count == 0 ? "Finding Desktop…" : $"{_devices.Count(d => d.Connected)} devices connected")</summary>
     <ul>
         @foreach (var device in _devices)
@@ -15,6 +15,7 @@
 }
 
 @code {
+    [Parameter] public bool Inline { get; set; }
     private Concierge.Away.AwayClient? Client;
     private IReadOnlyList<Concierge.Away.ConnectedDevice> _devices = [];
     private bool _expanded;

@@ -685,12 +685,14 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
         await RefreshSidebarAsync();
 
-        // Land where you left. Only from the bare workspace — an explicit
+        // Land where you left in Chat. Home has its own route; an explicit
         // /chat/{id} is a deliberate destination and must not be overridden —
         // and only if that thread still exists, since it may have been deleted
         // from History since.
-        var hasStartupHandoff = !string.IsNullOrWhiteSpace(System.Web.HttpUtility.ParseQueryString(new Uri(Nav.Uri).Query)["startup"]);
-        if (ConversationId is null && !hasStartupHandoff
+        var initialQuery = System.Web.HttpUtility.ParseQueryString(new Uri(Nav.Uri).Query);
+        var hasStartupHandoff = !string.IsNullOrWhiteSpace(initialQuery["startup"]);
+        var hasVoiceHandoff = initialQuery["voice"] == "1";
+        if (ConversationId is null && !hasStartupHandoff && !hasVoiceHandoff
             && _session.LastConversationId is { } last
             && _conversations.Any(c => c.Id == last))
         {
@@ -709,7 +711,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         //                sessionStorage already (the Home mic flow stores it).
         //   ?demo=1    — script a single "show me what you can do" turn.
         // LocationChanged, not OnParametersSetAsync. This component owns both
-        // "/" and "/chat", and moving between two @page routes on the SAME
+        // "/chat" and "/studio", and moving between two @page routes on the SAME
         // component does not re-run OnInitializedAsync and — verified on the
         // running app — does not reliably re-run OnParametersSetAsync either.
         // The composer stayed empty and no conversation was created, so every
@@ -779,6 +781,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
             // Leaving it open would cover the thing it was used to reach.
             _drawerOpen = false;
 
+            await ApplyStudioRouteAsync();
             await RefreshProjectTurnContextAsync();
             await ConsumeHomeHandoffAsync();
             StateHasChanged();
@@ -973,6 +976,31 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
                 return;
             }
 
+            if (q["draft"] == "1")
+            {
+                var spoken = await JS.InvokeAsync<string?>("sessionStorage.getItem", "concierge-pending-voice");
+                await JS.InvokeVoidAsync("sessionStorage.removeItem", "concierge-pending-voice");
+                if (!string.IsNullOrWhiteSpace(spoken))
+                {
+                    _active ??= await Store.StartAsync(OwnerId, title: "Talking with B!");
+                    _composerText = string.IsNullOrWhiteSpace(_composerText)
+                        ? spoken : $"{_composerText.TrimEnd()} {spoken}";
+                    _composerHint = "Review what B! heard, then send it.";
+                    await RefreshSidebarAsync();
+                    StateHasChanged();
+                }
+                return;
+            }
+
+            if (q["voice"] == "1")
+            {
+                _active ??= await Store.StartAsync(OwnerId, title: "Talking with B!");
+                await RefreshSidebarAsync();
+                await ToggleMicAsync();
+                StateHasChanged();
+                return;
+            }
+
             var prefill = q["q"];
             if (!string.IsNullOrWhiteSpace(prefill))
             {
@@ -1084,10 +1112,20 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     {
         WorkspaceReady = false;
         await LoadWorkspaceParametersAsync();
+        await ApplyStudioRouteAsync();
         WorkspaceReady = true;
         // A handed-off prompt can run for a while. Restoration is already complete;
         // keep the composer usable while the assistant works.
         await ConsumeHomeHandoffAsync();
+    }
+    private bool? _lastStudioRoute;
+    private async Task ApplyStudioRouteAsync()
+    {
+        var studio = new Uri(Nav.Uri).AbsolutePath.TrimEnd('/')
+            .Equals("/creator", StringComparison.OrdinalIgnoreCase);
+        if (_lastStudioRoute == studio) return;
+        _lastStudioRoute = studio;
+        if (studio != _designOpen) await ToggleDesign();
     }
 
     private async Task LoadWorkspaceParametersAsync()
@@ -1392,6 +1430,12 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
     protected async Task OnAttachmentSelected(InputFileChangeEventArgs args)
     {
+        if (_designOpen && _design?.Current.Medium == Concierge.Shared.Design.DesignMedium.Sound)
+        {
+            await PutSoundsOnThePageAsync(args);
+            return;
+        }
+
         // With the canvas open a picture belongs on the page, not on the next chat
         // turn — there is no next chat turn. The paperclip was hidden in Design
         // because it silently did nothing; this is what it should have done all
@@ -1442,6 +1486,48 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
             _composerHint = isPicture
                 ? "Picture ready. It goes with the next message."
                 : "Attachment ready. Text contents will quote into the next message.";
+        }
+    }
+
+    protected string AttachmentAccept => _designOpen && _design?.Current.Medium == Concierge.Shared.Design.DesignMedium.Sound
+        ? "audio/*"
+        : ".txt,.md,.markdown,.json,.cs,.razor,.xml,.yaml,.yml,.toml,.csv,.log,.png,.jpg,.jpeg,.gif,.webp";
+
+    protected string AttachmentLabel => _designOpen
+        ? _design?.Current.Medium == Concierge.Shared.Design.DesignMedium.Sound
+            ? "Add audio to this design"
+            : "Put a picture on the page"
+        : "Attach a file or a picture";
+
+    private async Task PutSoundsOnThePageAsync(InputFileChangeEventArgs args)
+    {
+        if (_design is null) return;
+
+        foreach (var file in args.GetMultipleFiles(4))
+        {
+            if (file.Size > Concierge.Shared.Design.SoundAttachment.MaxBytes)
+            {
+                _composerHint = $"{file.Name} is too big. Add audio up to 2 MB at a time.";
+                continue;
+            }
+
+            using var stream = file.OpenReadStream(Concierge.Shared.Design.SoundAttachment.MaxBytes);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            var bytes = buffer.ToArray();
+            var mediaType = Concierge.Shared.Design.SoundAttachment.MediaType(bytes);
+            if (mediaType is null)
+            {
+                _composerHint = $"{file.Name} is not a supported audio file.";
+                continue;
+            }
+
+            var source = $"data:{mediaType};base64,{Convert.ToBase64String(bytes)}";
+            _design.Record(_design.Current.Add(Concierge.Shared.Design.DesignNode.New(
+                Concierge.Shared.Design.DesignNodeKind.Sound, null,
+                ("src", source), ("text", Path.GetFileNameWithoutExtension(file.Name)))),
+                "Added audio");
+            _composerHint = $"{file.Name} is on your Sound canvas.";
         }
     }
 
@@ -1682,79 +1768,9 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     /// </remarks>
     private async Task<string?> WhatWasSaidAsync(string base64)
     {
-        byte[] audio;
-
-        try
-        {
-            audio = Convert.FromBase64String(base64);
-        }
-        catch (FormatException)
-        {
-            _composerHint = "That recording could not be read.";
-            return null;
-        }
-
-        if (Ears is { } ears)
-        {
-            try
-            {
-                using var sound = new MemoryStream(audio, writable: false);
-
-                var said = await ears.TranscribeAsync(sound, "capture.webm");
-
-                if (!string.IsNullOrWhiteSpace(said.Text))
-                {
-                    return said.Text;
-                }
-
-                // Silence is a real answer and a common one — a muted microphone, a loud
-                // room, a press that caught nothing. Said as itself rather than as a failure,
-                // because there is nothing here for anybody to fix.
-                _composerHint = "Nothing was said in that.";
-                return null;
-            }
-            catch (Exception failure) when (failure is not OperationCanceledException)
-            {
-                _composerHint = $"That could not be written down: {failure.Message}";
-                return null;
-            }
-        }
-
-        try
-        {
-            var http = VoiceClient(Nav.BaseUri);
-
-            using var response = await http.PostAsJsonAsync(
-                "api/voice/transcribe", new { audioBase64 = base64, fileName = "capture.webm" });
-
-            if (!response.IsSuccessStatusCode)
-            {
-                // A status code is not an answer. Somebody reading "failed (404)" goes looking
-                // for a network fault, and the truth is that this device cannot hear yet.
-                _composerHint = response.StatusCode == System.Net.HttpStatusCode.NotFound
-                    ? "Nothing on this device can listen yet."
-                    : $"That could not be written down ({(int)response.StatusCode}).";
-
-                return null;
-            }
-
-            var transcript = await response.Content.ReadFromJsonAsync<TranscriptResponse>();
-
-            if (!string.IsNullOrWhiteSpace(transcript?.Text))
-            {
-                return transcript.Text;
-            }
-
-            _composerHint = "Nothing was said in that.";
-            return null;
-        }
-        catch (Exception failure) when (failure is HttpRequestException or TaskCanceledException)
-        {
-            // Which is what the desktop head did every time: no server, no route, and a
-            // message about a status code from something that was never listening.
-            _composerHint = "Nothing on this device can listen yet.";
-            return null;
-        }
+        var result = await VoiceTranscript.TranscribeAsync(base64, Services, new Uri(Nav.BaseUri));
+        if (result.Problem is not null) _composerHint = result.Problem;
+        return result.Text;
     }
 
     /// <summary>

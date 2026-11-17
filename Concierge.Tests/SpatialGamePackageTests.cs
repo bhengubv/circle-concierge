@@ -66,6 +66,24 @@ public sealed class SpatialGamePackageTests
     }
 
     [Fact]
+    public void Opens_a_packaged_sample_inside_the_app_without_a_network_url()
+    {
+        var folder = Path.Combine(AppContext.BaseDirectory, "spatial-game-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var sample = SpatialGameSample.AddTo(DesignDocument.Blank());
+            var path = SpatialGamePackage.Create(sample, "Sample room", folder);
+            var html = SpatialGameInlinePreview.FromPackage(path);
+            Assert.Contains("/_content/Concierge.Shared.Components/lib/three/three.module.js", html);
+            Assert.Contains("data:application/json;base64,", html);
+            Assert.Contains("<script type=\"module\">", html);
+            Assert.DoesNotContain("src=\"./game.js\"", html);
+            Assert.DoesNotContain("http://127.0.0.1", html);
+        }
+        finally { if (Directory.Exists(folder)) Directory.Delete(folder, true); }
+    }
+
+    [Fact]
     public async Task Tool_is_available_only_with_a_local_export_root()
     {
         var folder = Path.Combine(AppContext.BaseDirectory, "spatial-game-" + Guid.NewGuid().ToString("N"));

@@ -107,9 +107,11 @@
     function applyTheme(mode) {
         // mode: "light" | "dark" | "auto"
         if (mode === 'auto') {
+            document.documentElement.setAttribute('data-theme', window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
             document.body.removeAttribute('data-theme');
             localStorage.removeItem('cu-theme');
         } else {
+            document.documentElement.setAttribute('data-theme', mode);
             document.body.setAttribute('data-theme', mode);
             localStorage.setItem('cu-theme', mode);
         }
@@ -117,6 +119,7 @@
     function loadTheme() {
         const saved = localStorage.getItem('cu-theme');
         if (saved === 'light' || saved === 'dark') {
+            document.documentElement.setAttribute('data-theme', saved);
             document.body.setAttribute('data-theme', saved);
         }
     }

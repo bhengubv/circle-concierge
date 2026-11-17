@@ -1,0 +1,288 @@
+@using Concierge.Shared.Design
+@using Concierge.Shared.Planning
+@using Microsoft.AspNetCore.Components.Forms
+@inject IServiceProvider Services
+
+<section class="project-section campaign-studio" aria-labelledby="campaign-studio-title">
+    <div class="project-section-head"><div><p class="projects-eyebrow">CAMPAIGN CONTENT</p><h3 id="campaign-studio-title">Social posts</h3></div></div>
+    <p>Write here. Send the private draft to SleptON! when the copy and media are ready. Nothing is posted from Concierge.</p>
+
+    <div class="campaign-fields">
+        <label>Campaign name <input @bind="_title" maxlength="100" /></label>
+        <label>Who should see it? <input @bind="_audience" maxlength="300" /></label>
+        <button type="button" disabled="@_busy" @onclick="SaveDetailsAsync">Save campaign</button>
+    </div>
+
+    @if (_draft.Posts.Count > 0)
+    {
+        <ol class="campaign-posts">
+            @foreach (var post in _draft.Posts)
+            {
+                <li>
+                    <div><strong>@post.Brand</strong><span>@string.Join(", ", post.DestinationHints)</span></div>
+                    <p>@post.Copy</p>
+                    @if (post.MediaType is not null)
+                    {
+                        <small>@(post.MediaType.StartsWith("image/", StringComparison.Ordinal) ? "Image" : post.MediaType == "video/mp4" ? "Video" : "Audio") attached · @post.AltText</small>
+                    }
+                    <div class="campaign-post-actions">
+                        <button type="button" disabled="@_busy" @onclick="() => EditPost(post)">Edit</button>
+                        <button type="button" disabled="@_busy" @onclick="() => RemovePostAsync(post.Id)" aria-label="Remove post for @post.Brand">Remove</button>
+                    </div>
+                </li>
+            }
+        </ol>
+    }
+
+    <div class="campaign-fields">
+        <h4>@(_editingPostId is null ? "Add a post" : "Edit post")</h4>
+        <label>Brand
+            <select @bind="_brand"><option>Concierge</option><option>SleptON!</option><option>Concierge + SleptON!</option></select>
+        </label>
+        <label>Where could it go? <input @bind="_destinations" placeholder="Instagram, LinkedIn" maxlength="180" /></label>
+        <label>Post copy <textarea @bind="_copy" rows="4" maxlength="5000"></textarea></label>
+        @if (ExportRoot is not null)
+        {
+            @if (CreatorExport is not null && Services.GetService(typeof(IDesignStore)) is IDesignStore)
+            {
+                <div class="campaign-creator-actions" role="group" aria-label="Use your Creator work">
+                    <button type="button" disabled="@_busy" @onclick="() => AddCreatorMediaAsync(DesignMedium.Motion)">Use Creator video</button>
+                    <button type="button" disabled="@_busy" @onclick="() => AddCreatorMediaAsync(DesignMedium.Sound)">Use Creator audio</button>
+                </div>
+            }
+            <label>Image, video or audio <InputFile OnChange="AddMediaAsync" accept="image/png,image/jpeg,video/mp4,audio/mp4,.m4a" disabled="@_busy" /></label>
+            @if (_mediaType is not null) { <small>@_mediaName attached</small> }
+            @if (_mediaType is "image/png" or "image/jpeg" or "video/mp4")
+            {
+                <label>Describe the picture or video <input @bind="_altText" maxlength="500" /></label>
+            }
+        }
+        <div class="campaign-post-actions">
+            <button type="button" disabled="@_busy" @onclick="AddPostAsync">@(_editingPostId is null ? "Add post" : "Save post")</button>
+            @if (_editingPostId is not null)
+            {
+                <button type="button" disabled="@_busy" @onclick="CancelEdit">Cancel edit</button>
+            }
+        </div>
+    </div>
+
+    @if (_draft.Posts.Count > 0 && ExportRoot is not null && Share is not null)
+    {
+        <div class="campaign-send">
+            <label><input type="checkbox" @bind="_rightsConfirmed" /> I have the rights to share the copy and media.</label>
+            <button class="project-primary" type="button" disabled="@(_busy || !_rightsConfirmed)" @onclick="SendAsync">
+                @(_busy ? "Preparing…" : "Send draft to SleptON!")
+            </button>
+        </div>
+    }
+    @if (_message is not null) { <p role="status">@_message</p> }
+</section>
+
+@code {
+    [Parameter, EditorRequired] public ConciergeProject Project { get; set; } = default!;
+    [Parameter] public EventCallback<SocialCampaignDraft> OnSave { get; set; }
+
+    private Guid _projectId;
+    private SocialCampaignDraft _draft = new();
+    private string _title = string.Empty;
+    private string _audience = string.Empty;
+    private string _brand = "Concierge";
+    private string _destinations = "Instagram, LinkedIn";
+    private string _copy = string.Empty;
+    private string _altText = string.Empty;
+    private string? _mediaPath;
+    private string? _mediaType;
+    private string? _mediaName;
+    private Guid? _editingPostId;
+    private bool _rightsConfirmed;
+    private bool _busy;
+    private string? _message;
+
+    private string? ExportRoot =>
+        (Services.GetService(typeof(DesignWorkbench)) as DesignWorkbench)?.SpatialGameExportRoot;
+    private IMediaExport? CreatorExport =>
+        (Services.GetService(typeof(DesignWorkbench)) as DesignWorkbench)?.Export;
+    private IDraftShare? Share => Services.GetService(typeof(IDraftShare)) as IDraftShare;
+
+    protected override void OnParametersSet()
+    {
+        if (_projectId == Project.Id) return;
+        _projectId = Project.Id;
+        _draft = Project.SocialCampaign ?? new SocialCampaignDraft { Title = Project.Name };
+        _title = _draft.Title;
+        _audience = _draft.Audience;
+        _message = null;
+        _rightsConfirmed = false;
+        CancelEdit();
+    }
+
+    private async Task SaveDetailsAsync()
+    {
+        _draft = _draft with { Title = _title.Trim(), Audience = _audience.Trim() };
+        await OnSave.InvokeAsync(_draft);
+        _message = "Campaign saved on this device.";
+    }
+
+    private async Task AddMediaAsync(InputFileChangeEventArgs args)
+    {
+        if (ExportRoot is not { } root) return;
+        _message = null;
+        var file = args.File;
+        var extension = Path.GetExtension(file.Name).ToLowerInvariant();
+        var type = extension switch
+        {
+            ".png" => "image/png", ".jpg" or ".jpeg" => "image/jpeg",
+            ".mp4" => "video/mp4", ".m4a" => "audio/mp4", _ => null
+        };
+        if (type is null || file.Size is < 16 or > 49L * 1024 * 1024)
+        {
+            _message = "Choose a PNG, JPEG, MP4 video or M4A audio under 49 MB.";
+            return;
+        }
+        _busy = true;
+        try
+        {
+            var folder = Path.Combine(root, "campaign-media", Project.Id.ToString("N"));
+            Directory.CreateDirectory(folder);
+            var path = Path.Combine(folder, Guid.NewGuid().ToString("N") + extension);
+            try
+            {
+                await using var input = file.OpenReadStream(49L * 1024 * 1024);
+                await using var output = File.Create(path);
+                await input.CopyToAsync(output);
+            }
+            catch { if (File.Exists(path)) File.Delete(path); throw; }
+            _mediaPath = path;
+            _mediaType = type;
+            _mediaName = file.Name;
+            _message = "Media attached. Add the post to keep it with this campaign.";
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            _message = "Could not attach media: " + error.Message;
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task AddCreatorMediaAsync(DesignMedium medium)
+    {
+        if (_busy || ExportRoot is not { } root || CreatorExport is not { } exporter ||
+            Services.GetService(typeof(IDesignStore)) is not IDesignStore designs) return;
+        _busy = true;
+        _message = "Preparing your Creator work…";
+        try
+        {
+            var restored = await designs.LoadAsync();
+            if (restored.Document is not { } document || document.Medium != medium)
+            {
+                _message = medium == DesignMedium.Motion
+                    ? "Open Creator, make a Video, then return here."
+                    : "Open Creator, make Sound, then return here.";
+                return;
+            }
+            var folder = Path.Combine(root, "campaign-media", Project.Id.ToString("N"));
+            Directory.CreateDirectory(folder);
+            var path = Path.Combine(folder, Guid.NewGuid().ToString("N") +
+                (medium == DesignMedium.Motion ? ".mp4" : ".m4a"));
+            var made = medium == DesignMedium.Motion
+                ? await exporter.VideoAsync(document, path)
+                : await exporter.SoundAsync(document, path);
+            if (!made.Ok || made.Left is not null)
+            {
+                if (File.Exists(path)) File.Delete(path);
+                throw new InvalidDataException(made.Problem ?? made.Left ?? "The Creator export is incomplete.");
+            }
+            _mediaPath = path;
+            _mediaType = medium == DesignMedium.Motion ? "video/mp4" : "audio/mp4";
+            _mediaName = medium == DesignMedium.Motion ? "Creator video" : "Creator audio";
+            _message = "Creator work attached. Add the post to keep it with this campaign.";
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException
+            or InvalidOperationException or ArgumentException)
+        {
+            _message = "Could not attach Creator work: " + error.Message;
+        }
+        finally { _busy = false; }
+    }
+
+    private async Task AddPostAsync()
+    {
+        var destinations = _destinations.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (string.IsNullOrWhiteSpace(_title) || string.IsNullOrWhiteSpace(_audience) ||
+            string.IsNullOrWhiteSpace(_copy) || destinations.Length == 0 ||
+            ((_mediaType is "image/png" or "image/jpeg" or "video/mp4") && string.IsNullOrWhiteSpace(_altText)))
+        {
+            _message = "Add a campaign name, audience, post copy, destinations and any media description.";
+            return;
+        }
+        if (_editingPostId is null && _draft.Posts.Count >= 20)
+        { _message = "A campaign can hold up to 20 posts."; return; }
+        var post = new SocialPostDraft
+        {
+            Id = _editingPostId ?? Guid.NewGuid(),
+            Brand = _brand, Copy = _copy.Trim(), DestinationHints = destinations,
+            AltText = _altText.Trim(), MediaPath = _mediaPath, MediaType = _mediaType
+        };
+        _draft = _draft with { Title = _title.Trim(), Audience = _audience.Trim(),
+            Posts = _editingPostId is { } editing
+                ? _draft.Posts.Select(existing => existing.Id == editing ? post : existing).ToArray()
+                : _draft.Posts.Append(post).ToArray() };
+        await OnSave.InvokeAsync(_draft);
+        CancelEdit();
+        _rightsConfirmed = false;
+        _message = "Post saved on this device.";
+    }
+
+    private void EditPost(SocialPostDraft post)
+    {
+        _editingPostId = post.Id;
+        _brand = post.Brand;
+        _destinations = string.Join(", ", post.DestinationHints);
+        _copy = post.Copy;
+        _altText = post.AltText;
+        _mediaPath = post.MediaPath;
+        _mediaType = post.MediaType;
+        _mediaName = post.MediaType is null ? null : "Current media";
+        _message = "Edit the post, then save it.";
+    }
+
+    private void CancelEdit()
+    {
+        _editingPostId = null;
+        _brand = "Concierge";
+        _destinations = "Instagram, LinkedIn";
+        _copy = _altText = string.Empty;
+        _mediaPath = _mediaType = _mediaName = null;
+    }
+
+    private async Task RemovePostAsync(Guid id)
+    {
+        _draft = _draft with { Posts = _draft.Posts.Where(post => post.Id != id).ToArray() };
+        await OnSave.InvokeAsync(_draft);
+        if (_editingPostId == id) CancelEdit();
+        _rightsConfirmed = false;
+        _message = "Post removed.";
+    }
+
+    private async Task SendAsync()
+    {
+        if (_busy || !_rightsConfirmed || ExportRoot is not { } root || Share is not { } share) return;
+        _busy = true;
+        _message = "Checking and packaging the campaign…";
+        try
+        {
+            var package = await Task.Run(() => SocialCampaignPackage.Create(_draft, root, rightsConfirmed: true));
+            var result = await share.ShareAsync(package);
+            _message = result == DraftShareResult.OpenedSleptOn
+                ? "Opened SleptON!. Accept and review the campaign there. Nothing has been posted."
+                : "Choose SleptON! from the share options. Nothing has been posted.";
+            _rightsConfirmed = false;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException
+            or InvalidOperationException or ArgumentException)
+        {
+            _message = "Could not send the campaign: " + error.Message;
+        }
+        finally { _busy = false; }
+    }
+}

@@ -20,6 +20,8 @@
     <queries>
         <package android:name="com.bhengubv.circleai.service" />
         <package android:name="com.bhengubv.circleai.hybrid" />
+        <package android:name="co.za.thegeeknetwork.slepton" />
+        <package android:name="co.za.thegeeknetwork.slepton.conciergecheck" />
     </queries>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.INTERNET" />

@@ -65,6 +65,19 @@ try {
   await send('Runtime.evaluate', { expression: "document.querySelector('#reset').click()" });
   const reset = await evaluate("document.querySelector('#progress').textContent");
   if (reset !== '0 / 3') throw new Error(`Reset stopped at ${reset}.`);
+  await send('Runtime.evaluate', { expression: `
+    Object.defineProperty(navigator, 'xr', { configurable: true, value: {
+      requestSession: async () => { throw new Error('No XR device'); }
+    }});
+    document.querySelector('#ar').hidden = false;
+    document.querySelector('#ar').click();
+  ` });
+  for (let i = 0; i < 40; i++) {
+    if (await evaluate("document.querySelector('#message').textContent.includes('No XR device')")) break;
+    await new Promise(done => setTimeout(done, 100));
+  }
+  if (!await evaluate("document.querySelector('#message').textContent.includes('No XR device') && !document.querySelector('#ar').disabled && !document.querySelector('#xr-overlay').classList.contains('active')"))
+    throw new Error('XR failure did not restore the ordinary game controls.');
   await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
   await send('Page.reload', { ignoreCache: true });
   await new Promise(done => setTimeout(done, 700));
@@ -81,7 +94,7 @@ try {
     const { data } = await send('Page.captureScreenshot', { format: 'png' });
     await writeFile(process.argv[4], Buffer.from(data, 'base64'));
   }
-  console.log('Browser smoke passed: loaded room, collected all three signals, reset to 0 / 3; mobile layout fits.');
+  console.log('Browser smoke passed: room game, reset, XR failure recovery, and mobile layout.');
   socket.close();
 } finally {
   server.kill();

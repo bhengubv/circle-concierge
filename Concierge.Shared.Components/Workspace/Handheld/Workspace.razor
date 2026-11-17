@@ -1,13 +1,11 @@
 @inherits Concierge.Shared.Components.Workspace.WorkspaceBase
-<ConnectedDevices />
 
 @*
     The tablet and phone recipe.
 
-    Same work, less room. The sidebar is a drawer over the thread rather than a
-    column beside it, opened from the top bar and dismissed by the scrim or by
-    going anywhere — a phone cannot afford a permanent 220px column, and a tab
-    bar would be a second navigation model for a sidebar that already works.
+    Same work, less room. The bottom bar provides primary phone navigation;
+    the drawer keeps detailed conversation and skill controls available without
+    occupying the viewport.
 
     Both of these have a soft keyboard, so typing costs a third of the screen
     and voice is often the faster way in. The composer keeps its microphone
@@ -72,6 +70,7 @@
             <span class="ws-brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><use href="#cm-icon-circle" /></svg></span>
             <span class="ws-brand-lockup"><strong>Concierge</strong><small>by Circle</small></span>
         </a>
+        <ConnectedDevices Inline="true" />
 
         @* Recreate the scroll viewport on each drawer open. Keeping its old
            scrollTop can leave New conversation hidden under the fixed brand
@@ -410,8 +409,8 @@
                         }
                         else
                         {
-                            <article class="msg">
-                                <span class="msg-who">@FormatRole(message.Role)</span>
+                            <article class="msg" data-role="@message.Role">
+                                <span class="msg-who">@(message.Role == "assistant" ? "Concierge" : FormatRole(message.Role))</span>
                                 <div class="msg-body">
                                     @if (message.Role == "assistant")
                                     {
@@ -462,7 +461,7 @@
 
                     @if (_streaming)
                     {
-                        <article class="msg">
+                        <article class="msg" data-role="assistant">
                             <span class="msg-who">Concierge</span>
                             <div class="msg-body"><AssistantContent Content="@_streamingBuffer" /></div>
                         </article>
@@ -553,12 +552,12 @@
                         page, which is the only way to put a real one in a design.
                     *@
                     <label class="icon-btn"
-                           title="@(_designOpen ? "Put a picture on the page" : "Attach a file or a picture")">
+                           title="@AttachmentLabel">
                         <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><use href="#cm-icon-file"/></svg>
-                        <span class="sr">@(_designOpen ? "Put a picture on the page" : "Attach a file or a picture")</span>
+                        <span class="sr">@AttachmentLabel</span>
                         <InputFile OnChange="OnAttachmentSelected" class="file-over"
                                    disabled="@(!WorkspaceReady)"
-                                   accept=".txt,.md,.markdown,.json,.cs,.razor,.xml,.yaml,.yml,.toml,.csv,.log,.png,.jpg,.jpeg,.gif,.webp" />
+                                   accept="@AttachmentAccept" />
                     </label>
 
                     <button class="icon-btn" type="button"
@@ -737,7 +736,9 @@
                     }
                     else if (RuntimeReadinessMessage is { } readinessMessage && !CircleAiPreparationShownInWelcome)
                     {
-                        <span class="runtime-readiness" role="status" aria-live="polite">
+                        <details class="cm-ai-readiness" open="@(!CircleAiIsPreparing)">
+                            <summary role="status">@(CircleAiIsPreparing ? "Circle AI is getting ready" : "Circle AI needs attention")</summary>
+                        <span class="runtime-readiness" aria-live="polite">
                             @if (CircleAiIsPreparing)
                             {
                                 <span class="runtime-readiness-progress">
@@ -761,6 +762,7 @@
                                 }
                             }
                         </span>
+                        </details>
                     }
                 </div>
                 <ModelSetupTutorial Show="@(!_designOpen && (_downloading || CurrentModelDownload is not null || (_desktopAvailable && DesktopActivity is not null)))"

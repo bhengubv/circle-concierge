@@ -3,6 +3,7 @@
 @using Concierge.Shared.Chat
 @using Concierge.Shared.Butler
 @using Concierge.Shared.Planning
+@using Concierge.Shared.Design
 @using Concierge.Shared.Tools
 @implements IDisposable
 @inject IProjectStore ProjectStore
@@ -283,9 +284,14 @@
                                 <span class="@(IsToolOffered(tool.Name) ? "is-offered" : "is-missing")">@tool.Label · @(IsToolOffered(tool.Name) ? "Supported" : "Unavailable")</span>
                             }
                         </div>
-                        <p class="project-vocation-note">Some tools need an account or your approval. Posting is not available yet.</p>
+                        <p class="project-vocation-note">Some tools need an account or your approval. Review and publishing happen in SleptON!.</p>
                         <button class="project-primary" type="button" disabled="@_saving" @onclick="StartProjectConversationAsync">Work on this campaign</button>
                     </section>
+                }
+
+                @if (_selected.VocationModeId == VocationModes.SocialMediaManagerId)
+                {
+                    <CampaignStudio Project="_selected" OnSave="SaveCampaignAsync" />
                 }
 
                 @if (_selected.ConversationIds.Count > 0)
@@ -1808,6 +1814,9 @@
         _artifactName = string.Empty;
         _artifactLocation = string.Empty;
     }
+
+    private Task SaveCampaignAsync(SocialCampaignDraft campaign)
+        => SaveProjectAsync(project => project with { SocialCampaign = campaign });
 
     private async Task SavePlanningLimitsAsync()
     {

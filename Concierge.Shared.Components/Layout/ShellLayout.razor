@@ -4,15 +4,13 @@
 @inject IConciergeStateService State
 @inject IServiceProvider Services
 @inject IJSRuntime JS
+@using Concierge.Shared.Planning
+@using Concierge.Shared.Components.Workspace
 
 @*
-    The shell is a frame and nothing else.
-
-    It used to carry a top bar with a brand and a ⋯ menu, and then a five-tab
-    bottom navigation bar. Neither reference has either: Codex has a sidebar,
-    Claude Design has modes. Concierge is one workspace now, and the workspace
-    draws its own sidebar — so the only thing left for a layout to do is hold
-    the page.
+    Shared wayfinding. The top controls keep projects, appearance and settings
+    available; the bottom bar gives a phone five clear places to begin. The
+    desktop keeps its detailed workspace sidebar as well.
 
     The permission prompt used to live here, above everything, as a modal. It
     has moved into the thread: a run stops in the middle of doing something,
@@ -22,7 +20,70 @@
 *@
 
 <CircleIconSprite />
+<header class="cm-shell-top" aria-label="Concierge controls">
+    <a class="cm-shell-mark" href="/home" aria-label="Concierge Home"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#cm-icon-circle" /></svg></a>
+    <details class="cm-project-switcher">
+        <summary>Projects <svg viewBox="0 0 24 24" aria-hidden="true"><use href="#cm-icon-chevronDown" /></svg></summary>
+        <div class="cm-project-switcher-list">
+            <strong>Recent projects</strong>
+            @if (_recentProjects.Count == 0)
+            {
+                <span>No projects yet</span>
+            }
+            else
+            {
+                @foreach (var project in _recentProjects)
+                {
+                    <a href="@($"/projects?project={project.Id}")">@project.Name</a>
+                }
+            }
+            <a class="cm-project-all" href="/studio">See all projects</a>
+        </div>
+    </details>
+    <span class="cm-shell-spacer"></span>
+    <div class="cm-theme-switch" role="group" aria-label="Appearance">
+        <button type="button" title="Light mode" aria-label="Light mode" aria-pressed="@(_theme == "light")" @onclick='() => SetThemeAsync("light")'><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#cm-icon-sun" /></svg></button>
+        <button type="button" title="Dark mode" aria-label="Dark mode" aria-pressed="@(_theme == "dark")" @onclick='() => SetThemeAsync("dark")'><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#cm-icon-moon" /></svg></button>
+    </div>
+    <button class="cm-settings-trigger" type="button" aria-label="Settings" title="Settings" @onclick="() => _settingsOpen = true"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#cm-icon-settings" /></svg></button>
+</header>
 @Body
+
+<nav class="cm-bottom-nav" aria-label="Main navigation">
+    <a class="@(IsActive("home") ? "is-active" : null)" href="/home" aria-current="@(IsActive("home") ? "page" : null)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#cm-icon-home" /></svg><span>Home</span></a>
+    <a class="@(IsActive("chat") ? "is-active" : null)" href="/chat" aria-current="@(IsActive("chat") ? "page" : null)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#cm-icon-message" /></svg><span>Chat</span></a>
+    <button class="cm-bottom-b @(_voiceRecording ? "is-listening" : null) @(_voiceBusy ? "is-busy" : null)" type="button"
+            aria-label="@(_voiceRecording ? "Finish talking to B!" : "Talk to B! on this screen")"
+            aria-pressed="@_voiceRecording" disabled="@_voiceBusy" @onclick="ToggleButlerAsync">
+        <span class="cm-bottom-b-ring" aria-hidden="true">B!</span>
+    </button>
+    <a class="@(IsActive("studio") ? "is-active" : null)" href="/studio" aria-current="@(IsActive("studio") ? "page" : null)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#cm-icon-apps" /></svg><span>Studio</span></a>
+    <a class="@(IsActive("you") ? "is-active" : null)" href="/you" aria-current="@(IsActive("you") ? "page" : null)"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#cm-icon-contacts" /></svg><span>You</span></a>
+</nav>
+
+@if (_voiceRecording || _voiceBusy || _voiceTranscript is not null || _voiceProblem is not null)
+{
+    <aside class="cm-voice-sheet" aria-label="B! voice" aria-live="polite">
+        <div class="cm-voice-sheet-head"><strong>B!</strong><button type="button" aria-label="Close voice" @onclick="CloseVoiceAsync">×</button></div>
+        @if (_voiceRecording) { <p>Listening… Tap B! when you are done.</p> }
+        else if (_voiceBusy) { <p>Writing that down…</p> }
+        else if (_voiceProblem is not null) { <p role="alert">@_voiceProblem</p> }
+        else if (_voiceTranscript is not null)
+        {
+            <label for="cm-voice-transcript">What I heard</label>
+            <textarea id="cm-voice-transcript" rows="3" @bind="_voiceTranscript"></textarea>
+            <div class="cm-voice-actions">
+                @if (_canInsert) { <button type="button" @onclick="UseVoiceHereAsync">Add to this field</button> }
+                <button type="button" @onclick="UseVoiceInChatAsync">Use in Chat</button>
+            </div>
+        }
+    </aside>
+}
+
+@if (_settingsOpen)
+{
+    <Settings OnClose="@(() => _settingsOpen = false)" />
+}
 
 <div id="blazor-error-ui" data-nosnippet>
     Something went wrong.
@@ -33,10 +94,107 @@
 @code {
     private Concierge.Shared.Devices.IDesktopSummon? _summon;
     private bool _focusAfterRender;
+    private bool _settingsOpen;
+    private string _theme = "auto";
+    private IReadOnlyList<ConciergeProject> _recentProjects = [];
+    private bool _voiceRecording, _voiceBusy, _canInsert;
+    private string? _voiceTranscript, _voiceProblem;
     protected override void OnInitialized()
     {
         _summon = Services.GetService(typeof(Concierge.Shared.Devices.IDesktopSummon)) as Concierge.Shared.Devices.IDesktopSummon;
         if (_summon is not null) _summon.Summoned += Summon;
+        Nav.LocationChanged += OnLocationChanged;
+    }
+    protected override async Task OnInitializedAsync() => await RefreshProjectsAsync();
+
+    private async void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs args)
+    {
+        try
+        {
+            await InvokeAsync(async () =>
+            {
+                await RefreshProjectsAsync();
+                StateHasChanged();
+            });
+        }
+        catch (ObjectDisposedException) { }
+    }
+
+    private async Task RefreshProjectsAsync()
+    {
+        if (Services.GetService(typeof(IProjectStore)) is not IProjectStore store) return;
+        _recentProjects = (await store.ListAsync()).OrderByDescending(project => project.UpdatedAt).Take(10).ToArray();
+    }
+
+    private bool IsActive(string destination)
+    {
+        var path = new Uri(Nav.Uri).AbsolutePath.Trim('/').ToLowerInvariant();
+        return destination switch
+        {
+            "home" => path is "" or "home",
+            "chat" => path == "chat" || path.StartsWith("chat/", StringComparison.Ordinal),
+            _ => path == destination
+        };
+    }
+
+    private async Task ToggleButlerAsync()
+    {
+        if (_voiceBusy) return;
+        _voiceProblem = null;
+        try
+        {
+            if (!_voiceRecording)
+            {
+                var permission = Services.GetService(typeof(IMicrophonePermissionGate)) as IMicrophonePermissionGate;
+                if (permission is not null && !await permission.EnsureGrantedAsync())
+                { _voiceProblem = "Allow microphone access in device settings to talk to B!."; return; }
+                _voiceTranscript = null;
+                await JS.InvokeVoidAsync("conciergeVoice.start", "shell");
+                _voiceRecording = true;
+                return;
+            }
+
+            _voiceRecording = false;
+            _voiceBusy = true;
+            var base64 = await JS.InvokeAsync<string?>("conciergeVoice.stop", "shell");
+            if (string.IsNullOrWhiteSpace(base64)) { _voiceProblem = "No audio was captured."; return; }
+            var result = await VoiceTranscript.TranscribeAsync(base64, Services, new Uri(Nav.BaseUri));
+            _voiceTranscript = result.Text;
+            _voiceProblem = result.Problem;
+            _canInsert = _voiceTranscript is not null && await JS.InvokeAsync<bool>("conciergeVoice.hasTextTarget");
+        }
+        catch (Exception ex) when (ex is JSException or InvalidOperationException)
+        { _voiceProblem = $"B! could not listen: {ex.Message}"; _voiceRecording = false; }
+        finally { _voiceBusy = false; }
+    }
+
+    private async Task UseVoiceHereAsync()
+    {
+        if (_voiceTranscript is null) return;
+        if (await JS.InvokeAsync<bool>("conciergeVoice.insertText", _voiceTranscript))
+            _voiceTranscript = null;
+        else _voiceProblem = "Choose a text field on this screen, then try again.";
+    }
+
+    private async Task UseVoiceInChatAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_voiceTranscript)) return;
+        await JS.InvokeVoidAsync("sessionStorage.setItem", "concierge-pending-voice", _voiceTranscript);
+        _voiceTranscript = null;
+        Nav.NavigateTo($"/chat?draft=1&request={Guid.NewGuid():N}");
+    }
+
+    private async Task CloseVoiceAsync()
+    {
+        if (_voiceRecording) await JS.InvokeVoidAsync("conciergeVoice.cancel", "shell");
+        _voiceRecording = _voiceBusy = _canInsert = false;
+        _voiceTranscript = _voiceProblem = null;
+    }
+
+    private async Task SetThemeAsync(string theme)
+    {
+        _theme = theme;
+        await JS.InvokeVoidAsync("conciergeSense.applyTheme", theme);
     }
     private async void Summon()
     {
@@ -56,6 +214,11 @@
     }
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            try { _theme = await JS.InvokeAsync<string>("conciergeSense.getTheme"); StateHasChanged(); }
+            catch (JSException) { }
+        }
         if (!_focusAfterRender) return;
         _focusAfterRender = false;
         try { await JS.InvokeVoidAsync("conciergeThread.focusComposer"); }
@@ -66,5 +229,6 @@
     public void Dispose()
     {
         if (_summon is not null) _summon.Summoned -= Summon;
+        Nav.LocationChanged -= OnLocationChanged;
     }
 }

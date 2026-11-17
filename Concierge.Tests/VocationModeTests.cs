@@ -16,7 +16,7 @@ public sealed class VocationModeTests : BunitContext
     {
         var starter = Assert.Single(ProjectStarterTemplates.All, item => item.Id == VocationModes.SocialMediaManagerId);
         var project = starter.CreateProject();
-        Assert.Equal(5, Assert.Single(project.Workflows).Steps.Count);
+        Assert.Equal(6, Assert.Single(project.Workflows).Steps.Count);
         Assert.Equal(VocationModes.SocialMediaManagerId, project.VocationModeId);
         Assert.Contains("marketing-growth", VocationModes.SkillIdsForProject(project, ["ui-ux-design"]));
         Assert.DoesNotContain("marketing-growth", VocationModes.SkillIdsForProject(null, ["ui-ux-design"]));
@@ -54,5 +54,40 @@ public sealed class VocationModeTests : BunitContext
         var conversationId = Assert.Single(saved!.ConversationIds);
         Assert.NotNull(await Services.GetRequiredService<IConversationStore>().GetAsync(conversationId));
         Assert.EndsWith($"/chat/{conversationId}?project={project.Id}", Services.GetRequiredService<NavigationManager>().Uri);
+    }
+
+    [Fact]
+    public async Task Campaign_posts_survive_reopening_the_project_and_are_not_published()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"campaign-{Guid.NewGuid():N}", "concierge.db");
+        Services.AddLogging();
+        Services.AddConciergeChat(path);
+        Services.AddSingleton<BackgroundRuns>();
+        var projects = Services.GetRequiredService<IProjectStore>();
+        var project = await projects.CreateAsync(ProjectStarterTemplates.All
+            .Single(item => item.Id == VocationModes.SocialMediaManagerId).CreateProject());
+        Services.GetRequiredService<NavigationManager>().NavigateTo("/projects");
+
+        var page = Render<Projects>();
+        page.WaitForState(() => page.FindAll(".projects-page[aria-busy='false']").Count > 0);
+        await page.InvokeAsync(() => page.FindAll(".campaign-fields")[0].QuerySelectorAll("input")[0]
+            .Change("Concierge + SleptON! launch"));
+        await page.InvokeAsync(() => page.FindAll(".campaign-fields")[0].QuerySelectorAll("input")[1]
+            .Change("Independent creators"));
+        await page.InvokeAsync(() => page.FindAll(".campaign-fields")[1].QuerySelector("textarea")!
+            .Change("Make it with Concierge. Review it in SleptON!."));
+        await page.InvokeAsync(() => page.FindAll(".campaign-fields")[1].QuerySelector("button")!.Click());
+
+        var saved = await projects.GetAsync(project.Id);
+        var post = Assert.Single(saved!.SocialCampaign!.Posts);
+        Assert.Equal("Independent creators", saved.SocialCampaign.Audience);
+        Assert.Equal("Concierge", post.Brand);
+        Assert.Null(post.MediaPath);
+        Assert.Empty(page.FindAll(".campaign-send"));
+
+        page.Dispose();
+        var reopened = Render<Projects>();
+        reopened.WaitForState(() => reopened.FindAll(".projects-page[aria-busy='false']").Count > 0);
+        Assert.Contains(post.Copy, reopened.Find(".campaign-posts").TextContent);
     }
 }

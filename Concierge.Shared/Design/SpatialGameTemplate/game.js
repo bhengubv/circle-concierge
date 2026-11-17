@@ -5,6 +5,10 @@ const message = document.querySelector('#message');
 const progress = document.querySelector('#progress');
 const vrButton = document.querySelector('#vr');
 const arButton = document.querySelector('#ar');
+const xrOverlay = document.querySelector('#xr-overlay');
+const xrProgress = document.querySelector('#xr-progress');
+const xrMessage = document.querySelector('#xr-message');
+const xrExit = document.querySelector('#xr-exit');
 const data = await fetch('./scene.json', { cache: 'no-store' }).then(response => {
   if (!response.ok) throw new Error('The room file is missing.');
   return response.json();
@@ -97,6 +101,7 @@ function collect(hit) {
   message.textContent = found.size === targets.size
     ? 'All signals found. You completed the room!'
     : `Found ${hit.userData.name}. ${targets.size - found.size} signals remain.`;
+  syncXrHud();
 }
 document.querySelector('#reset').addEventListener('click', () => {
   found.clear();
@@ -107,6 +112,7 @@ document.querySelector('#reset').addEventListener('click', () => {
   }
   progress.textContent = `0 / ${targets.size}`;
   message.textContent = 'Drag to look around. Tap a glowing object to collect its signal.';
+  syncXrHud();
 });
 progress.textContent = `0 / ${targets.size}`;
 
@@ -180,70 +186,162 @@ let xrSession;
 let xrMode;
 let hitSource;
 let placed = false;
+const hudCanvas = document.createElement('canvas');
+hudCanvas.width = 768;
+hudCanvas.height = 256;
+const hudTexture = new THREE.CanvasTexture(hudCanvas);
+hudTexture.colorSpace = THREE.SRGBColorSpace;
+const xrHud = new THREE.Group();
+const hudCard = new THREE.Mesh(new THREE.PlaneGeometry(.72, .24),
+  new THREE.MeshBasicMaterial({ map: hudTexture, transparent: true, depthTest: false, side: THREE.DoubleSide }));
+xrHud.add(hudCard);
+const exitCanvas = document.createElement('canvas');
+exitCanvas.width = 256;
+exitCanvas.height = 128;
+const exitContext = exitCanvas.getContext('2d');
+exitContext.fillStyle = '#8f2746';
+exitContext.fillRect(0, 0, 256, 128);
+exitContext.fillStyle = '#ffffff';
+exitContext.font = 'bold 60px system-ui';
+exitContext.textAlign = 'center';
+exitContext.fillText('EXIT', 128, 84);
+const xrExitTarget = new THREE.Mesh(new THREE.PlaneGeometry(.15, .075),
+  new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(exitCanvas), depthTest: false, side: THREE.DoubleSide }));
+xrExitTarget.position.set(.245, -.047, .008);
+xrHud.add(xrExitTarget);
+xrHud.visible = false;
+scene.add(xrHud);
+function syncXrHud() {
+  xrProgress.textContent = `${found.size} / ${targets.size} signals`;
+  xrMessage.textContent = message.textContent;
+  const ctx = hudCanvas.getContext('2d');
+  ctx.fillStyle = '#071a2fea';
+  ctx.fillRect(0, 0, 768, 256);
+  ctx.strokeStyle = '#6bd8ff';
+  ctx.lineWidth = 8;
+  ctx.strokeRect(4, 4, 760, 248);
+  ctx.fillStyle = '#f4f9ff';
+  ctx.font = 'bold 62px system-ui';
+  ctx.fillText(`${found.size} / ${targets.size} signals`, 38, 92);
+  ctx.font = '36px system-ui';
+  ctx.fillText(message.textContent.slice(0, 37), 38, 168);
+  hudTexture.needsUpdate = true;
+}
+syncXrHud();
+xrExit.addEventListener('beforexrselect', event => event.preventDefault());
+xrExit.addEventListener('click', () => xrSession?.end().catch(error => { message.textContent = error.message; }));
 const reticle = new THREE.Mesh(new THREE.RingGeometry(.08, .11, 32),
   new THREE.MeshBasicMaterial({ color: '#40dfff', side: THREE.DoubleSide }));
 reticle.rotation.x = -Math.PI / 2;
 reticle.visible = false;
 scene.add(reticle);
 function controllerSelect(controller) {
+  controller.updateMatrixWorld(true);
+  const origin = new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld);
+  const direction = new THREE.Vector3(0, 0, -1).transformDirection(controller.matrixWorld);
+  ray.set(origin, direction);
+  if (xrHud.visible && ray.intersectObject(xrExitTarget, false).length) {
+    xrSession?.end();
+    return;
+  }
   if (xrMode === 'immersive-ar' && !placed) {
     if (!reticle.visible) return;
     room.position.copy(reticle.position);
     room.scale.setScalar(.2);
     room.visible = true;
     placed = true;
+    reticle.visible = false;
     message.textContent = 'Room placed. Tap glowing objects to find the signals.';
+    syncXrHud();
     return;
   }
-  const origin = new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld);
-  const direction = new THREE.Vector3(0, 0, -1).transformDirection(controller.matrixWorld);
-  ray.set(origin, direction);
   collect(ray.intersectObjects(targetObjects, false)[0]?.object);
 }
 for (let index = 0; index < 2; index++) {
   const controller = renderer.xr.getController(index);
+  const beam = new THREE.Line(new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, -1)]),
+  new THREE.LineBasicMaterial({ color: '#56dfff' }));
+  beam.scale.z = 3;
+  beam.visible = false;
+  controller.add(beam);
+  controller.userData.beam = beam;
   controller.addEventListener('select', () => controllerSelect(controller));
   scene.add(controller);
 }
+function finishXr() {
+  try { hitSource?.cancel(); } catch { /* A browser may already have ended it. */ }
+  hitSource = undefined;
+  xrSession = undefined;
+  xrMode = undefined;
+  room.visible = true;
+  room.position.set(0, 0, 0);
+  room.scale.setScalar(1);
+  reticle.visible = false;
+  xrHud.visible = false;
+  xrOverlay.classList.remove('active');
+  for (let index = 0; index < 2; index++) renderer.xr.getController(index).userData.beam.visible = false;
+  vrButton.disabled = false;
+  arButton.disabled = false;
+  scene.background = new THREE.Color('#07111f');
+  message.textContent = 'Drag to look around. Tap a glowing object to collect its signal.';
+  syncXrHud();
+}
 async function startXr(mode) {
+  if (xrSession) return;
+  let session;
+  vrButton.disabled = true;
+  arButton.disabled = true;
   try {
-    xrSession = await navigator.xr.requestSession(mode,
-      mode === 'immersive-ar' ? { requiredFeatures: ['hit-test'] } : { optionalFeatures: ['local-floor'] });
+    session = await navigator.xr.requestSession(mode,
+      mode === 'immersive-ar'
+        ? { requiredFeatures: ['hit-test'], optionalFeatures: ['dom-overlay'], domOverlay: { root: xrOverlay } }
+        : { optionalFeatures: ['local-floor', 'dom-overlay'], domOverlay: { root: xrOverlay } });
+    xrSession = session;
     xrMode = mode;
+    session.addEventListener('end', finishXr, { once: true });
+    await renderer.xr.setSession(session);
     scene.background = mode === 'immersive-ar' ? null : new THREE.Color('#07111f');
+    const hasOverlay = !!session.domOverlayState;
+    xrOverlay.classList.toggle('active', hasOverlay);
+    xrHud.visible = !hasOverlay;
+    for (let index = 0; index < 2; index++)
+      renderer.xr.getController(index).userData.beam.visible = mode === 'immersive-vr';
     if (mode === 'immersive-ar') {
       room.visible = false;
       placed = false;
-      const viewer = await xrSession.requestReferenceSpace('viewer');
-      hitSource = await xrSession.requestHitTestSource({ space: viewer });
+      const viewer = await session.requestReferenceSpace('viewer');
+      hitSource = await session.requestHitTestSource({ space: viewer });
       message.textContent = 'Move your phone to find a surface, then tap to place the miniature room.';
+    } else {
+      message.textContent = 'Point at glowing objects. Find three signals.';
     }
-    xrSession.addEventListener('end', () => {
-      hitSource?.cancel();
-      hitSource = undefined;
-      xrSession = undefined;
-      xrMode = undefined;
-      room.visible = true;
-      room.position.set(0, 0, 0);
-      room.scale.setScalar(1);
-      reticle.visible = false;
-      scene.background = new THREE.Color('#07111f');
-    });
-    await renderer.xr.setSession(xrSession);
-  } catch (error) { message.textContent = `XR could not start: ${error.message}`; }
+    syncXrHud();
+  } catch (error) {
+    if (session) await session.end().catch(() => {});
+    finishXr();
+    message.textContent = `XR could not start: ${error.message}`;
+  }
 }
 if (navigator.xr && globalThis.isSecureContext) {
-  navigator.xr.isSessionSupported('immersive-vr').then(supported => { vrButton.hidden = !supported; });
-  navigator.xr.isSessionSupported('immersive-ar').then(supported => { arButton.hidden = !supported; });
+  navigator.xr.isSessionSupported('immersive-vr').then(supported => { vrButton.hidden = !supported; }).catch(() => {});
+  navigator.xr.isSessionSupported('immersive-ar').then(supported => { arButton.hidden = !supported; }).catch(() => {});
 }
 vrButton.addEventListener('click', () => startXr('immersive-vr'));
 arButton.addEventListener('click', () => startXr('immersive-ar'));
 
 renderer.setAnimationLoop((_time, frame) => {
+  if (xrMode && xrHud.visible) {
+    const xrCamera = renderer.xr.getCamera(camera);
+    xrCamera.getWorldPosition(xrHud.position);
+    xrCamera.getWorldQuaternion(xrHud.quaternion);
+    xrHud.position.add(new THREE.Vector3(0, -.24, -.85).applyQuaternion(xrHud.quaternion));
+    xrHud.updateMatrixWorld(true);
+  }
   if (xrMode === 'immersive-ar' && frame && hitSource && !placed) {
     const reference = renderer.xr.getReferenceSpace();
     const hit = frame.getHitTestResults(hitSource)[0];
-    const pose = hit?.getPose(reference);
+    const pose = reference && hit?.getPose(reference);
     reticle.visible = !!pose;
     if (pose) reticle.position.set(pose.transform.position.x, pose.transform.position.y, pose.transform.position.z);
   }

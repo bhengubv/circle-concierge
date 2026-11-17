@@ -1,6 +1,6 @@
-@page "/"
 @page "/chat"
 @page "/chat/{ConversationId:guid}"
+@page "/creator"
 @using Concierge.Shared.Components.Workspace
 @inject IJSRuntime JS
 @implements IDisposable
@@ -8,7 +8,7 @@
 @*
     Which workspace to render.
 
-    Concierge is one application with three recipes, not one screen bent by
+    Chat and the creation canvas share three form-factor recipes, not one screen bent by
     breakpoints. A watch is not a small desktop: it needs different markup,
     different density and a different first move, and hiding desktop parts
     until a watch fits leaves an empty screen rather than a designed one.
@@ -48,6 +48,7 @@ else
     /// chosen, so it is taken here and handed down.
     /// </summary>
     [Parameter] public Guid? ConversationId { get; set; }
+
 
     /// <summary>
     /// Null until the viewport has been measured — see the note above about

@@ -33,6 +33,18 @@ public interface IMediaExport
     Task<ExportResult> VideoAsync(DesignDocument document, string outputPath, CancellationToken cancellationToken = default);
 }
 
+/// <summary>Renders a text card on heads whose bundled encoder lacks drawtext.</summary>
+public interface ICardRenderer
+{
+    Task RenderAsync(string words, DesignLook look, string outputPath,
+        CancellationToken cancellationToken = default);
+}
+
+public static class CardRenderers
+{
+    public static ICardRenderer? Current { get; set; }
+}
+
 /// <summary>
 /// The encoder.
 ///
@@ -997,6 +1009,13 @@ public sealed class FfmpegMediaExport : IMediaExport
         string words, DesignLook look, string workspace, string name, CancellationToken cancellationToken)
     {
         var path = System.IO.Path.Combine(workspace, $"{name}.png");
+        if (CardRenderers.Current is { } nativeRenderer)
+        {
+            await nativeRenderer.RenderAsync(words, look, path, cancellationToken).ConfigureAwait(false);
+            if (!File.Exists(path))
+                throw new InvalidOperationException("The card renderer did not save the image.");
+            return path;
+        }
         var ground = look.Ground.TrimStart('#');
         var ink = look.Ink.TrimStart('#');
 

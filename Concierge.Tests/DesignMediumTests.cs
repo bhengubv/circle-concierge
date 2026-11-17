@@ -309,6 +309,22 @@ public sealed class DesignMediumTests
     }
 
     [Fact]
+    public void Imported_sound_remains_visible_after_converting_a_room_to_sound()
+    {
+        var room = DesignDocument.Blank(medium: DesignMedium.Scene)
+            .Add(DesignNode.New(DesignNodeKind.Frame, null, ("text", "Sample room")));
+        var sound = room.As(DesignMedium.Sound)
+            .Add(DesignNode.New(DesignNodeKind.Sound, null,
+                ("text", "Original tone"), ("src", "data:audio/wav;base64,AAAA")));
+
+        var html = DesignMediums.Render(sound);
+
+        Assert.Contains("Sample room", html);
+        Assert.Contains("Original tone", html);
+        Assert.Contains("<audio controls", html);
+    }
+
+    [Fact]
     public void Everything_can_be_played_end_to_end()
         => Assert.Contains("Play everything", DesignMediums.Render(
             DesignDocument.Blank(medium: DesignMedium.Sound)

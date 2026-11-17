@@ -75,9 +75,17 @@ public static class MauiProgram
 		// Everywhere else the default already starts a process and this is not run.
 		Concierge.Shared.Design.Encoders.Runner =
 			new Concierge.Platforms.Android.FFmpegKitEncoder();
+		Concierge.Shared.Design.CardRenderers.Current =
+			new Concierge.Platforms.Android.AndroidCardRenderer();
 #endif
 
 		var builder = MauiApp.CreateBuilder();
+		// The key editor writes to the local secret store. Layer it before the image and
+		// voice runtimes are constructed, as the Web host already does.
+		var secretStore = new LocalSecretStore();
+		var savedSecrets = secretStore.LoadAsync().GetAwaiter().GetResult();
+		if (savedSecrets.Count > 0)
+			builder.Configuration.AddInMemoryCollection(savedSecrets!);
 #if WINDOWS
         builder.Services.AddSingleton<Concierge.Platforms.Windows.DesktopSummon>();
         builder.Services.AddSingleton<IDesktopSummon>(sp => sp.GetRequiredService<Concierge.Platforms.Windows.DesktopSummon>());
@@ -96,6 +104,8 @@ public static class MauiProgram
 			});
 
 		builder.Services.AddMauiBlazorWebView();
+		builder.Services.AddSingleton<Concierge.Shared.Design.IDraftShare, MauiDraftShare>();
+		builder.Services.AddSingleton<Concierge.Shared.Design.IMediaShare, MauiMediaShare>();
 		builder.Services.AddFluxor(options => options.ScanAssemblies(
 			typeof(Concierge.Shared.Components.State.RunningConversationsState).Assembly));
 #if ANDROID
@@ -112,7 +122,7 @@ public static class MauiProgram
 		// MudBlazor — registers IDialogService, ISnackbar, IScrollManager, etc.
 		// Needed by the flight-deck Dashboard's snackbar feedback + dialogs.
 		builder.Services.AddMudServices();
-		builder.Services.AddSingleton<IConciergeSecretStore>(_ => new LocalSecretStore());
+		builder.Services.AddSingleton<IConciergeSecretStore>(secretStore);
 		builder.Services.AddSingleton<IButlerSessionTokenStore, Concierge.Butler.MauiButlerSessionTokenStore>();
 		builder.Services.AddHttpClient<ButlerAccountSession>(client =>
 		{
@@ -254,6 +264,7 @@ public static class MauiProgram
 		builder.Services.AddConciergeFigmaDiagrams(sp => sp.GetService<IConfiguration>()?.GetSection("Figma").Get<FigmaApiOptions>() ?? new FigmaApiOptions());
 		builder.Services.AddOpenAiImages(sp => sp.GetService<IConfiguration>()?.GetSection("OpenAIImages").Get<OpenAiImageOptions>() ?? new OpenAiImageOptions());
 		builder.Services.AddStabilityImages(sp => sp.GetService<IConfiguration>()?.GetSection("Stability").Get<StabilityImageOptions>() ?? new StabilityImageOptions());
+		builder.Services.AddMiniMaxImages(sp => sp.GetService<IConfiguration>()?.GetSection("MiniMaxImages").Get<MiniMaxImageOptions>() ?? new MiniMaxImageOptions());
 		builder.Services.AddOpenAiVoice(sp => sp.GetService<IConfiguration>()?.GetSection("OpenAIVoice").Get<OpenAiVoiceOptions>() ?? new OpenAiVoiceOptions());
 		// Speech on the device, beside the cloud one. Both sit behind IVoiceRuntime; the
 		// local one reports what it can do, which is nothing until its model files are here.

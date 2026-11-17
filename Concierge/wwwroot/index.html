@@ -13,7 +13,7 @@
     <!-- Pre-paint the dark canvas BEFORE Blazor mounts so first paint isn't
          the white flash-of-unrendered that we caught on the Redmi. -->
     <script src="sense.js"></script>
-    <style>html, body { background: #0b0d12; color: #f3f4f7; margin: 0; }
+    <style>html, body { background: var(--cm-color-canvas, #0b0d12); color: var(--cm-color-text-primary, #f3f4f7); margin: 0; }
            html[data-cm-host="windows-desktop"], html[data-cm-host="windows-desktop"] body {
                background: var(--cm-color-canvas, #0b0d12); color: var(--cm-color-text-primary, #f3f4f7);
            }

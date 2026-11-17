@@ -18,6 +18,9 @@ public interface IImageRuntime
 
     string StatusMessage { get; }
 
+    /// <summary>Whether the provider actually uses a separate negative prompt.</summary>
+    bool SupportsNegativePrompt => false;
+
     /// <summary>
     /// Generates one or more images for the prompt. Returns artifact descriptors carrying
     /// either a remote URL (cloud adapters) or an inline byte stream (local generators).
@@ -26,6 +29,22 @@ public interface IImageRuntime
         ImageGenerationRequest request,
         CancellationToken cancellationToken = default);
 }
+
+/// <summary>A picture maker that can revise one or more reference images.</summary>
+public interface IImageEditingRuntime : IImageRuntime
+{
+    Task<IReadOnlyList<ImageArtifact>> EditAsync(
+        ImageEditRequest request,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed record ImageReference(string MimeType, byte[] Bytes);
+
+public sealed record ImageEditRequest(
+    string Prompt,
+    IReadOnlyList<ImageReference> References,
+    int Size = 1024,
+    int Count = 1);
 
 /// <param name="Prompt">Text prompt.</param>
 /// <param name="NegativePrompt">Optional negative prompt (Stability supports it; OpenAI ignores).</param>
