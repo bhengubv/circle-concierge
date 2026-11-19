@@ -96,6 +96,11 @@
         <EmbeddedResource Include="DeveloperStudio\Branding\workbench.css" LogicalName="Concierge.DeveloperStudio.Branding.workbench.css" />
     </ItemGroup>
 
+    <!-- A separately built Concierge Code distribution can be embedded without copying its source. -->
+    <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows10.0.19041.0' and '$(ConciergeCodeDistribution)' != ''">
+        <Content Include="$(ConciergeCodeDistribution)\**\*" Link="ConciergeCode\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+
     <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-android' and '$(Configuration)' == 'Debug'">
         <AndroidManifestOverlay Include="Platforms\Android\AndroidManifest.Debug.xml" />
     </ItemGroup>

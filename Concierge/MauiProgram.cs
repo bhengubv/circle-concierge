@@ -137,7 +137,12 @@ public static class MauiProgram
 		});
 		builder.Services.AddSingleton<IButlerWorkRunApi>(sp => sp.GetRequiredService<ButlerWorkRunApiClient>());
 		if (OperatingSystem.IsWindows())
-			builder.Services.AddSingleton<IDeveloperStudio, WindowsDeveloperStudio>();
+		{
+			if (ExternalDeveloperStudio.IsAvailable)
+				builder.Services.AddSingleton<IDeveloperStudio, ExternalDeveloperStudio>();
+			else
+				builder.Services.AddSingleton<IDeveloperStudio, WindowsDeveloperStudio>();
+		}
 		builder.Services
 			.AddConciergeCore()
 			.AddLocalSkillSources()
