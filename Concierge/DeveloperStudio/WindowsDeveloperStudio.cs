@@ -48,6 +48,13 @@ internal sealed class WindowsDeveloperStudio : IDeveloperStudio, IAsyncDisposabl
 
             await EnsureInstalledAsync(cancellationToken);
             var workspace = (await RunWslAsync(["-e", "wslpath", "-a", folder], cancellationToken, "workspace path")).Trim();
+            var studioData = Path.Combine(FileSystem.AppDataDirectory, "developer-studio");
+            var userData = Path.Combine(studioData, "user-data");
+            var extensions = Path.Combine(studioData, "extensions");
+            Directory.CreateDirectory(userData);
+            Directory.CreateDirectory(extensions);
+            var wslUserData = (await RunWslAsync(["-e", "wslpath", "-a", userData], cancellationToken, "editor settings path")).Trim();
+            var wslExtensions = (await RunWslAsync(["-e", "wslpath", "-a", extensions], cancellationToken, "extensions path")).Trim();
             var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
             _tokenFile = Path.Combine(FileSystem.AppDataDirectory, "developer-studio.token");
             _pidFile = Path.Combine(FileSystem.AppDataDirectory, "developer-studio.pid");
@@ -62,7 +69,7 @@ internal sealed class WindowsDeveloperStudio : IDeveloperStudio, IAsyncDisposabl
             listener.Start();
             var port = ((IPEndPoint)listener.LocalEndpoint).Port;
             listener.Stop();
-            var command = $"root=\"$HOME/.local/share/concierge/developer-studio/{Version}-linux-x64\"; echo $$ > \"$4\"; exec \"$root/node\" \"$root/out/server-main.js\" --host 127.0.0.1 --port \"$1\" --connection-token-file \"$2\" --disable-telemetry --folder \"$3\"";
+            var command = $"root=\"$HOME/.local/share/concierge/developer-studio/{Version}-linux-x64\"; echo $$ > \"$4\"; exec \"$root/node\" \"$root/out/server-main.js\" --host 127.0.0.1 --port \"$1\" --connection-token-file \"$2\" --disable-telemetry --folder \"$3\" --user-data-dir \"$5\" --extensions-dir \"$6\"";
             var info = new ProcessStartInfo("wsl.exe")
             {
                 UseShellExecute = false,
@@ -70,7 +77,7 @@ internal sealed class WindowsDeveloperStudio : IDeveloperStudio, IAsyncDisposabl
                 RedirectStandardError = true,
                 CreateNoWindow = true,
             };
-            foreach (var arg in new[] { "-e", "bash", "-lc", command, "--", port.ToString(), wslTokenFile, workspace, wslPidFile })
+            foreach (var arg in new[] { "-e", "bash", "-lc", command, "--", port.ToString(), wslTokenFile, workspace, wslPidFile, wslUserData, wslExtensions })
                 info.ArgumentList.Add(arg);
             _server = Process.Start(info) ?? throw new InvalidOperationException("Developer Studio could not start.");
             _server.OutputDataReceived += (_, _) => { }; // The server prints its secret URL; never log it.
