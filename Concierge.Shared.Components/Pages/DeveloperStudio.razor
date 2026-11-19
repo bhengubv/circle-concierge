@@ -1,13 +1,17 @@
 @page "/projects/{ProjectId:guid}/studio"
 @using Concierge.Shared.Planning
+@using Concierge.Shared.Chat
+@using Concierge.Shared.Tools
 @implements IAsyncDisposable
 @inject IProjectStore Projects
+@inject IConversationStore Conversations
 @inject IServiceProvider Services
+@inject NavigationManager Nav
 
 <main class="developer-studio-page">
     <header class="developer-studio-head">
         <a href="@($"/projects?project={ProjectId}")">← Project</a>
-        <div><p class="projects-eyebrow">DEVELOPER STUDIO</p><h1>@(_project?.Name ?? "Project editor")</h1></div>
+        <div><p class="projects-eyebrow">@(_project?.Name ?? "PROJECT")</p><h1>Concierge Code</h1></div>
         @if (_url is not null)
         {
             <button type="button" @onclick="CloseAsync">Close editor</button>
@@ -20,16 +24,38 @@
     }
     else if (_url is null)
     {
-        <section class="developer-studio-start">
-            <p>Edit code and files for this Project on this computer.</p>
+        <section class="developer-studio-start" aria-labelledby="code-start-title">
+            <p class="projects-eyebrow">YOUR CODING SPACE</p>
+            <h2 id="code-start-title">Make your idea real.</h2>
+            <p>Edit this Project's code here. Circle AI is your coding assistant.</p>
             @if (_studio is null)
             {
-                <p role="status">Developer Studio is available in Concierge Desktop.</p>
+                <p role="status">Concierge Code is available in Concierge Desktop.</p>
             }
             else
             {
-                <p>First use downloads a 74 MB editor runtime to this computer.</p>
-                <button type="button" disabled="@_opening" @onclick="OpenAsync">@(_opening ? "Preparing editor…" : "Open editor")</button>
+                <div class="developer-studio-actions">
+                    <button type="button" disabled="@(_opening || _installing is not null)" @onclick="OpenAsync">@(_opening ? "Preparing editor…" : "Open Concierge Code")</button>
+                    <button type="button" @onclick="AskCircleAiAsync">Ask Circle AI</button>
+                </div>
+                <p class="developer-studio-note">The first opening downloads the editor to this computer.</p>
+                <div class="developer-studio-setups" aria-label="Coding tools">
+                    @foreach (var setup in ConciergeCodeSetups.All)
+                    {
+                        var ready = setup.Extensions.All(_installedExtensions.Contains);
+                        <div class="developer-studio-setup">
+                            <div><h3>@setup.Title</h3><span>@(_checkingExtensions ? "Checking…" : ready ? "Installed" : "Optional")</span></div>
+                            <p>@setup.Summary</p>
+                            <button type="button" disabled="@(_checkingExtensions || _opening || _installing is not null || ready)"
+                                    @onclick="@(() => InstallSetupAsync(setup.Id))">@(_installing == setup.Id ? "Installing…" : ready ? "Installed" : $"Set up for {setup.Title}")</button>
+                        </div>
+                    }
+                </div>
+                <p class="developer-studio-note">Find more extensions inside Concierge Code.</p>
+                @if (!string.IsNullOrWhiteSpace(_setupMessage))
+                {
+                    <p role="status">@_setupMessage</p>
+                }
                 @if (!string.IsNullOrWhiteSpace(_error))
                 {
                     <p class="developer-studio-error" role="alert">@_error</p>
@@ -39,7 +65,7 @@
     }
     else
     {
-        <p class="developer-studio-start" role="status">Developer Studio is open.</p>
+        <p class="developer-studio-start" role="status">Concierge Code is open.</p>
     }
 </main>
 
@@ -51,20 +77,76 @@
     private Uri? _url;
     private string? _error;
     private bool _opening;
+    private bool _startingChat;
+    private bool _checkingExtensions = true;
+    private string? _installing;
+    private string? _setupMessage;
+    private IReadOnlySet<string> _installedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     protected override void OnInitialized()
     {
         _studio = Services.GetService(typeof(IDeveloperStudio)) as IDeveloperStudio;
-        if (_studio is not null) _studio.Closed += OnStudioClosed;
+        if (_studio is not null)
+        {
+            _studio.Closed += OnStudioClosed;
+            _studio.AskCircleAiRequested += OnAskCircleAiRequested;
+        }
     }
 
     protected override async Task OnParametersSetAsync()
     {
         _project = await Projects.GetAsync(ProjectId);
+        if (_studio is not null)
+        {
+            try { _installedExtensions = await _studio.GetInstalledExtensionsAsync(); }
+            catch (Exception ex) { _error = $"Could not check installed extensions: {ex.Message}"; }
+        }
+        _checkingExtensions = false;
     }
 
     private void OnStudioClosed(object? sender, EventArgs args)
         => _ = InvokeAsync(() => { _url = null; StateHasChanged(); });
+
+    private void OnAskCircleAiRequested(object? sender, EventArgs args)
+        => _ = InvokeAsync(AskCircleAiAsync);
+
+    private async Task AskCircleAiAsync()
+    {
+        if (_project is null || _startingChat) return;
+        _startingChat = true;
+        _error = null;
+        try
+        {
+            var conversation = await Conversations.StartAsync("local", $"{_project.Name} work");
+            _project = await Projects.SaveAsync(_project with
+            {
+                ConversationIds = _project.ConversationIds.Append(conversation.Id).Distinct().ToArray(),
+            });
+            Nav.NavigateTo($"/chat/{conversation.Id}?project={_project.Id}");
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _startingChat = false; }
+    }
+
+    private async Task InstallSetupAsync(string setupId)
+    {
+        if (_studio is null || _installing is not null) return;
+        _installing = setupId;
+        _error = null;
+        _setupMessage = null;
+        StateHasChanged();
+        try
+        {
+            await _studio.InstallSetupAsync(setupId);
+            _installedExtensions = await _studio.GetInstalledExtensionsAsync();
+            var setup = ConciergeCodeSetups.Find(setupId);
+            _setupMessage = setup.Extensions.All(_installedExtensions.Contains)
+                ? $"{setup.Title} tools are ready."
+                : $"{setup.Title} setup finished, but some extensions are missing. Try again.";
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally { _installing = null; }
+    }
 
     private async Task OpenAsync()
     {
@@ -85,7 +167,11 @@
 
     public async ValueTask DisposeAsync()
     {
-        if (_studio is not null) _studio.Closed -= OnStudioClosed;
+        if (_studio is not null)
+        {
+            _studio.Closed -= OnStudioClosed;
+            _studio.AskCircleAiRequested -= OnAskCircleAiRequested;
+        }
         if (_url is not null && _studio is not null) await _studio.CloseAsync();
     }
 }

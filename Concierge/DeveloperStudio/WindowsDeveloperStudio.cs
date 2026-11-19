@@ -6,10 +6,11 @@ using Concierge.Shared.Tools;
 
 namespace Concierge.DeveloperStudio;
 
-/// <summary>Runs a token-protected VS Code workbench on the Windows loopback interface via WSL.</summary>
+/// <summary>Runs the Concierge Code workbench on the Windows loopback interface via WSL.</summary>
 internal sealed class WindowsDeveloperStudio : IDeveloperStudio, IAsyncDisposable
 {
     public event EventHandler? Closed;
+    public event EventHandler? AskCircleAiRequested;
     private const string Version = "openvscode-server-v1.109.5";
     private const int PreferredLoopbackPort = 53911;
     private const string ArchiveSha256 = "b433bf4f0227321a7014d8460d10a8f958adc0f45aa79bd889e84e65e8f88363";
@@ -27,7 +28,7 @@ internal sealed class WindowsDeveloperStudio : IDeveloperStudio, IAsyncDisposabl
     public async Task<Uri> OpenAsync(Guid projectId, string projectName, CancellationToken cancellationToken = default)
     {
         if (!OperatingSystem.IsWindows())
-            throw new PlatformNotSupportedException("Developer Studio currently needs Windows with WSL.");
+            throw new PlatformNotSupportedException("Concierge Code currently needs Windows with WSL.");
         if (projectId == Guid.Empty)
             throw new ArgumentException("Select a Project first.", nameof(projectId));
 
@@ -54,6 +55,7 @@ internal sealed class WindowsDeveloperStudio : IDeveloperStudio, IAsyncDisposabl
             var extensions = Path.Combine(studioData, "extensions");
             Directory.CreateDirectory(userData);
             Directory.CreateDirectory(extensions);
+            await SeedEditorSettingsAsync(userData, cancellationToken);
             var wslUserData = (await RunWslAsync(["-e", "wslpath", "-a", userData], cancellationToken, "editor settings path")).Trim();
             var wslExtensions = (await RunWslAsync(["-e", "wslpath", "-a", extensions], cancellationToken, "extensions path")).Trim();
             var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
@@ -66,7 +68,7 @@ internal sealed class WindowsDeveloperStudio : IDeveloperStudio, IAsyncDisposabl
             _wslPidFile = wslPidFile;
             await CleanUpRecordedServerAsync(cancellationToken);
 
-            // VS Code Web keeps its appearance and layout in browser storage by origin.
+            // The web workbench keeps its appearance and layout in browser storage by origin.
             // Prefer a stable loopback origin so choices survive editor restarts.
             var listener = new TcpListener(IPAddress.Loopback, PreferredLoopbackPort);
             try { listener.Start(); }
@@ -87,7 +89,7 @@ internal sealed class WindowsDeveloperStudio : IDeveloperStudio, IAsyncDisposabl
             };
             foreach (var arg in new[] { "-e", "bash", "-lc", command, "--", port.ToString(), wslTokenFile, workspace, wslPidFile, wslUserData, wslExtensions })
                 info.ArgumentList.Add(arg);
-            _server = Process.Start(info) ?? throw new InvalidOperationException("Developer Studio could not start.");
+            _server = Process.Start(info) ?? throw new InvalidOperationException("Concierge Code could not start.");
             _server.OutputDataReceived += (_, _) => { }; // The server prints its secret URL; never log it.
             _server.ErrorDataReceived += (_, _) => { };
             _server.BeginOutputReadLine();
@@ -98,7 +100,7 @@ internal sealed class WindowsDeveloperStudio : IDeveloperStudio, IAsyncDisposabl
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (_server.HasExited)
-                    throw new InvalidOperationException("Developer Studio stopped before it was ready.");
+                    throw new InvalidOperationException("Concierge Code stopped before it was ready.");
                 try
                 {
                     using var response = await _http.GetAsync(url, cancellationToken);
@@ -113,7 +115,7 @@ internal sealed class WindowsDeveloperStudio : IDeveloperStudio, IAsyncDisposabl
                 catch (HttpRequestException) { }
                 await Task.Delay(500, cancellationToken);
             }
-            throw new TimeoutException("Developer Studio did not become ready within 30 seconds.");
+            throw new TimeoutException("Concierge Code did not become ready within 30 seconds.");
         }
         catch
         {
@@ -123,25 +125,84 @@ internal sealed class WindowsDeveloperStudio : IDeveloperStudio, IAsyncDisposabl
         finally { _gate.Release(); }
     }
 
+    public async Task InstallSetupAsync(string setupId, CancellationToken cancellationToken = default)
+    {
+        if (!OperatingSystem.IsWindows())
+            throw new PlatformNotSupportedException("Concierge Code currently needs Windows with WSL.");
+        var setup = ConciergeCodeSetups.Find(setupId);
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (_server is { HasExited: false })
+                throw new InvalidOperationException("Close Concierge Code before installing extensions.");
+
+            await EnsureInstalledAsync(cancellationToken);
+            var studioData = Path.Combine(FileSystem.AppDataDirectory, "developer-studio");
+            var userData = Path.Combine(studioData, "user-data");
+            var extensions = Path.Combine(studioData, "extensions");
+            Directory.CreateDirectory(userData);
+            Directory.CreateDirectory(extensions);
+            var wslUserData = (await RunWslAsync(["-e", "wslpath", "-a", userData], cancellationToken, "editor settings path")).Trim();
+            var wslExtensions = (await RunWslAsync(["-e", "wslpath", "-a", extensions], cancellationToken, "extensions path")).Trim();
+            var command = $"root=\"$HOME/.local/share/concierge/developer-studio/{Version}-linux-x64\"; exec \"$root/bin/openvscode-server\" --user-data-dir \"$1\" --extensions-dir \"$2\" --install-extension \"$3\"";
+            foreach (var extension in setup.Extensions)
+                await RunWslAsync(["-e", "bash", "-lc", command, "--", wslUserData, wslExtensions, extension],
+                    cancellationToken, $"{extension} installation");
+        }
+        finally { _gate.Release(); }
+    }
+
+    public async Task<IReadOnlySet<string>> GetInstalledExtensionsAsync(CancellationToken cancellationToken = default)
+    {
+        if (!OperatingSystem.IsWindows())
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var studioData = Path.Combine(FileSystem.AppDataDirectory, "developer-studio");
+        var extensions = Path.Combine(studioData, "extensions");
+        if (!Directory.Exists(extensions))
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var wslExtensions = (await RunWslAsync(["-e", "wslpath", "-a", extensions], cancellationToken, "extensions path")).Trim();
+        var command = $"root=\"$HOME/.local/share/concierge/developer-studio/{Version}-linux-x64\"; if [ -x \"$root/bin/openvscode-server\" ]; then exec \"$root/bin/openvscode-server\" --extensions-dir \"$1\" --list-extensions; fi";
+        var output = await RunWslAsync(["-e", "bash", "-lc", command, "--", wslExtensions], cancellationToken, "extension inventory");
+        return output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(line => line.Contains('.', StringComparison.Ordinal))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    }
+
     private static async Task EnsureInstalledAsync(CancellationToken cancellationToken)
     {
         // The optional runtime is downloaded only when the person opens the editor.
         // Verify the pinned release before extracting; no upstream source is copied into Concierge.
         var script = $"""
             set -euo pipefail
-            if [ "$(uname -m)" != "x86_64" ]; then echo "Developer Studio currently requires x64 WSL." >&2; exit 1; fi
+            if [ "$(uname -m)" != "x86_64" ]; then echo "Concierge Code currently requires x64 WSL." >&2; exit 1; fi
             root="$HOME/.local/share/concierge/developer-studio"
             binary="$root/{Version}-linux-x64/bin/openvscode-server"
-            if [ -x "$binary" ]; then exit 0; fi
-            mkdir -p "$root"
-            archive="$root/{Version}.tar.gz"
-            curl -fsSL --retry 2 -o "$archive" "https://github.com/gitpod-io/openvscode-server/releases/download/{Version}/{Version}-linux-x64.tar.gz"
-            echo "{ArchiveSha256}  $archive" | sha256sum -c - >/dev/null
-            tar -xzf "$archive" -C "$root"
-            rm "$archive"
+            if [ ! -x "$binary" ]; then
+              mkdir -p "$root"
+              archive="$root/{Version}.tar.gz"
+              curl -fsSL --retry 2 -o "$archive" "https://github.com/gitpod-io/openvscode-server/releases/download/{Version}/{Version}-linux-x64.tar.gz"
+              echo "{ArchiveSha256}  $archive" | sha256sum -c - >/dev/null
+              tar -xzf "$archive" -C "$root"
+              rm "$archive"
+            fi
             test -x "$binary"
+            product="$root/{Version}-linux-x64/product.json"
+            test -f "$product"
+            sed -i 's/"nameShort": "OpenVSCode Server"/"nameShort": "Concierge Code"/; s/"nameLong": "OpenVSCode Server"/"nameLong": "Concierge Code"/' "$product"
+            grep -q '"nameShort": "Concierge Code"' "$product"
             """;
         await RunWslAsync(["-e", "bash", "-s"], cancellationToken, "runtime installation", script);
+    }
+
+    private static async Task SeedEditorSettingsAsync(string userData, CancellationToken cancellationToken)
+    {
+        var userFolder = Path.Combine(userData, "User");
+        Directory.CreateDirectory(userFolder);
+        var settings = Path.Combine(userFolder, "settings.json");
+        if (!File.Exists(settings))
+            await File.WriteAllTextAsync(settings,
+                """{"workbench.startupEditor":"none","workbench.colorTheme":"Default Dark Modern","workbench.secondarySideBar.defaultVisibility":"hidden"}""",
+                cancellationToken);
     }
 
     private static async Task<string> RunWslAsync(IEnumerable<string> arguments, CancellationToken cancellationToken, string step, string? standardInput = null)
@@ -169,7 +230,7 @@ internal sealed class WindowsDeveloperStudio : IDeveloperStudio, IAsyncDisposabl
         var error = process.StandardError.ReadToEndAsync(cancellationToken);
         await process.WaitForExitAsync(cancellationToken);
         if (process.ExitCode != 0)
-            throw new InvalidOperationException($"Developer Studio {step} failed (exit {process.ExitCode}): {(await error).Trim()} {(await output).Trim()}");
+            throw new InvalidOperationException($"Concierge Code {step} failed (exit {process.ExitCode}): {(await error).Trim()} {(await output).Trim()}");
         return await output;
     }
 
@@ -218,20 +279,38 @@ internal sealed class WindowsDeveloperStudio : IDeveloperStudio, IAsyncDisposabl
                 LineBreakMode = LineBreakMode.TailTruncation,
                 TextColor = Colors.White,
             };
-            var toolbar = new HorizontalStackLayout
+            var askCircleAi = new Button
             {
-                Spacing = 12,
+                Text = "Ask Circle AI",
+                BackgroundColor = Colors.Transparent,
+                TextColor = Colors.White,
+            };
+            askCircleAi.Clicked += async (_, _) =>
+            {
+                await CloseAsync();
+                AskCircleAiRequested?.Invoke(this, EventArgs.Empty);
+            };
+            var toolbar = new Grid
+            {
+                ColumnDefinitions = new ColumnDefinitionCollection
+                {
+                    new(GridLength.Auto), new(GridLength.Star), new(GridLength.Auto)
+                },
+                ColumnSpacing = 12,
                 Padding = new Thickness(12, 6),
                 BackgroundColor = Color.FromArgb("#087CC1"),
             };
+            Grid.SetColumn(title, 1);
+            Grid.SetColumn(askCircleAi, 2);
             toolbar.Children.Add(back);
             toolbar.Children.Add(title);
+            toolbar.Children.Add(askCircleAi);
             var layout = new Grid { RowDefinitions = new RowDefinitionCollection { new(GridLength.Auto), new(GridLength.Star) } };
             layout.Children.Add(toolbar);
             var browser = new WebView { Source = url.ToString() };
             Grid.SetRow(browser, 1);
             layout.Children.Add(browser);
-            _editorPage = new ContentPage { Content = layout, Title = "Developer Studio" };
+            _editorPage = new ContentPage { Content = layout, Title = "Concierge Code" };
             await host.Navigation.PushModalAsync(_editorPage);
         });
     }
