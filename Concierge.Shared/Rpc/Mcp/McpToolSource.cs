@@ -48,7 +48,6 @@ public sealed class McpToolSource : IAgentToolSource, IManagedHostCollectionTele
     private readonly List<Connection> _connections = new();
     private readonly object _gate = new();
 
-    private IReadOnlyList<IAgentTool> _tools = [];
     private IReadOnlyList<McpServerStatus> _statuses = [];
     private string? _problem;
 
@@ -64,13 +63,36 @@ public sealed class McpToolSource : IAgentToolSource, IManagedHostCollectionTele
 
     public IReadOnlyList<IAgentTool> Tools
     {
-        get { lock (_gate) { return _tools; } }
+        get
+        {
+            lock (_gate)
+                return _connections.Where(connection => !connection.Child.HasExited)
+                    .SelectMany(connection => connection.Tools).ToArray();
+        }
     }
 
     /// <summary>What to show in Engineering: every configured server and how it went.</summary>
     public IReadOnlyList<McpServerStatus> Statuses
     {
-        get { lock (_gate) { return _statuses; } }
+        get
+        {
+            lock (_gate)
+            {
+                var remaining = _connections.ToList();
+                return _statuses.Select(status =>
+                {
+                    if (!status.Connected) return status;
+                    var index = remaining.FindIndex(connection =>
+                        string.Equals(connection.Name, status.Name, StringComparison.OrdinalIgnoreCase));
+                    if (index < 0) return status with { Connected = false, ToolCount = 0, Status = "Worker unavailable.", ToolNames = [] };
+                    var connection = remaining[index];
+                    remaining.RemoveAt(index);
+                    return connection.Child.HasExited
+                        ? status with { Connected = false, ToolCount = 0, Status = "Worker exited.", ToolNames = [] }
+                        : status;
+                }).ToArray();
+            }
+        }
     }
 
     /// <summary>Where the file is, and anything wrong with it.</summary>
@@ -129,7 +151,6 @@ public sealed class McpToolSource : IAgentToolSource, IManagedHostCollectionTele
     {
         var (servers, problem) = _options.Load();
 
-        var tools = new List<IAgentTool>();
         var statuses = new List<McpServerStatus>();
 
         foreach (var server in servers)
@@ -182,12 +203,10 @@ public sealed class McpToolSource : IAgentToolSource, IManagedHostCollectionTele
                 _connections.Add(connection);
             }
 
-            tools.AddRange(connection.Tools);
         }
 
         lock (_gate)
         {
-            _tools = tools;
             _statuses = statuses;
             _problem = problem;
         }
@@ -216,7 +235,6 @@ public sealed class McpToolSource : IAgentToolSource, IManagedHostCollectionTele
                     return _statuses.FirstOrDefault(item => string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase))
                         ?? new McpServerStatus(name, true, existing.Tools.Count, "Connected.");
                 _connections.Remove(existing);
-                _tools = _tools.Except(existing.Tools).ToArray();
                 exited = existing;
             }
         }
@@ -238,7 +256,6 @@ public sealed class McpToolSource : IAgentToolSource, IManagedHostCollectionTele
             if (connection is not null)
             {
                 _connections.Add(connection);
-                _tools = _tools.Concat(connection.Tools).ToArray();
             }
             _statuses = _statuses.Where(item => !string.Equals(item.Name, name, StringComparison.OrdinalIgnoreCase))
                 .Append(status).ToArray();
@@ -330,7 +347,6 @@ public sealed class McpToolSource : IAgentToolSource, IManagedHostCollectionTele
         {
             connections = _connections.ToList();
             _connections.Clear();
-            _tools = [];
         }
 
         foreach (var connection in connections)

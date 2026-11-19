@@ -291,6 +291,44 @@ public sealed class McpTests : IDisposable
     }
 
     [Fact]
+    public async Task Exited_MCP_worker_is_no_longer_offered_to_the_assistant()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        var powershell = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System),
+            "WindowsPowerShell", "v1.0", "powershell.exe");
+        var script = Path.ChangeExtension(_path, ".ps1");
+        File.WriteAllText(script, """
+            while ($line = [Console]::In.ReadLine()) {
+              $request = $line | ConvertFrom-Json
+              if ($request.id -eq $null) { continue }
+              $result = switch ($request.method) {
+                'initialize' { @{ protocolVersion = $request.params.protocolVersion; capabilities = @{ tools = @{} }; serverInfo = @{ name = 'transient'; version = '1' } } }
+                'tools/list' { @{ tools = @(@{ name = 'ping'; description = 'A test tool'; inputSchema = @{ type = 'object' } }) } }
+                default { @{} }
+              }
+              [Console]::Out.WriteLine((@{ jsonrpc = '2.0'; id = $request.id; result = $result } | ConvertTo-Json -Compress -Depth 20))
+            }
+            """);
+        File.WriteAllText(_path, JsonSerializer.Serialize(new[] {
+            new McpServerConfig("transient", powershell,
+                ["-NoLogo", "-NoProfile", "-NonInteractive", "-File", script]) }));
+        await using var source = new McpToolSource(new McpServerOptions(_path),
+            UnavailableToolApprovalService.Instance, () => long.MaxValue);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(20));
+        await source.ConnectAllAsync(timeout.Token);
+        Assert.Single(source.Tools);
+        var host = Assert.Single(source.CurrentHosts);
+        using var worker = Process.GetProcessById(host.Snapshot!.ProcessId);
+        worker.Kill(entireProcessTree: true);
+        await worker.WaitForExitAsync(timeout.Token);
+
+        Assert.True(worker.HasExited);
+        Assert.Null(Assert.Single(source.CurrentHosts).Snapshot);
+        Assert.Empty(source.Tools);
+        Assert.False(Assert.Single(source.Statuses).Connected);
+    }
+
+    [Fact]
     public void An_entry_missing_a_command_is_skipped_and_counted()
     {
         File.WriteAllText(_path, """

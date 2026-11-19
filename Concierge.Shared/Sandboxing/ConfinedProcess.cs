@@ -35,7 +35,24 @@ public sealed class ConfinedChildProcess : IDisposable
     public Stream StandardOutput { get; }
     public Stream StandardError { get; }
 
-    public bool HasExited => WaitForSingleObject(_processHandle, 0) == WaitObject0;
+    public bool HasExited
+    {
+        get
+        {
+            var result = WaitForSingleObject(_processHandle, 0);
+            if (result == WaitObject0) return true;
+            if (result == WaitTimeout)
+            {
+                // A real MCP child killed through another Process handle was still
+                // reported unsignalled here. Its exit code had already changed;
+                // check both signals so a dead worker is not offered to the model.
+                if (!GetExitCodeProcess(_processHandle, out var exitCode))
+                    throw new InvalidOperationException($"The worker exit code could not be read: {Marshal.GetLastWin32Error()}.");
+                return exitCode != StillActive;
+            }
+            throw new InvalidOperationException($"The worker state could not be read: {Marshal.GetLastWin32Error()}.");
+        }
+    }
 
     public int ExitCode
     {
@@ -104,6 +121,8 @@ public sealed class ConfinedChildProcess : IDisposable
     }
 
     private const uint WaitObject0 = 0;
+    private const uint WaitTimeout = 258;
+    private const uint StillActive = 259;
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern uint WaitForSingleObject(Microsoft.Win32.SafeHandles.SafeProcessHandle handle, uint milliseconds);
