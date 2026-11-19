@@ -161,6 +161,7 @@ public static class ConciergeToolsServiceCollectionExtensions
         // was referenced by nothing at all.
         services.TryAddSingleton<Design.IDesignStore>(_ =>
             new Design.FileDesignStore(Path.Combine(dataRoot, "design.json")));
+        services.TryAddSingleton(_ => new Design.ProjectDesignStore(dataRoot));
 
         // A short memory of what has been made, so the next one differs. A model
         // driving a canvas picks the same look every time otherwise — not because
@@ -183,10 +184,8 @@ public static class ConciergeToolsServiceCollectionExtensions
         // somebody adds their own, the same answer shapes.json gives for furniture.
         services.TryAddSingleton(_ => new Design.DesignGuides(Path.Combine(dataRoot, "guides.json")));
 
-        // Turning a design into a file somebody keeps. Registered only where there
-        // is an encoder to do it with, so `design_save` is absent on a machine
-        // without one rather than offered and always failing — the rule the device
-        // capabilities already follow.
+        // Sound and video encoding needs ffmpeg. Page, deck, and room export
+        // remains available without it through the document exporters.
         if (Design.Encoders.Here)
         {
             services.TryAddSingleton<Design.IMediaExport>(_ => new Design.FfmpegMediaExport());

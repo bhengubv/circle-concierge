@@ -492,6 +492,8 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     public void Dispose()
     {
         _gone = true;
+        if (_design is not null && _designChangedHandler is not null)
+            _design.Changed -= _designChangedHandler;
         _recording = false;
         _ = CancelVoiceCaptureAsync();
         _conversationSyncStop.Cancel();
@@ -793,6 +795,23 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
     private async Task RefreshProjectTurnContextAsync()
     {
+        var location = new Uri(Nav.Uri);
+        var requestedProject = System.Web.HttpUtility.ParseQueryString(location.Query)["project"];
+        var nextDesignProject = Guid.TryParse(requestedProject, out var parsedDesignProject)
+            ? parsedDesignProject : (Guid?)null;
+        if (_design is not null && _designStoreProjectId != nextDesignProject)
+        {
+            // A Project owns its canvas. Save the old one before changing the
+            // conversation context; never show another Project's slides here.
+            await KeepTheCanvasAsync();
+            if (_designChangedHandler is not null)
+                _design.Changed -= _designChangedHandler;
+            _designChangedHandler = null;
+            Workbench?.Detach();
+            _design = null;
+            _designOpen = false;
+            _designStoreProjectId = null;
+        }
         _projectContextLabel = null;
         _projectContextUnavailable = null;
         _projectContextSystemPrompt = null;
@@ -960,6 +979,20 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
             _handledHandoff = uri.Query;
 
             var q = System.Web.HttpUtility.ParseQueryString(uri.Query);
+
+            if (string.Equals(q["canvas"], "slides", StringComparison.OrdinalIgnoreCase))
+            {
+                if (_turnProjectId is null)
+                {
+                    _composerHint = "Open Slides from a Project so the deck stays with that work.";
+                    StateHasChanged();
+                    return;
+                }
+                if (!_designOpen)
+                    await ToggleDesign();
+                StateHasChanged();
+                return;
+            }
 
             if (!string.IsNullOrWhiteSpace(q["startup"]))
             {
@@ -1914,6 +1947,16 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     /// afternoon's work to dragging a window narrower would be unforgivable.
     /// </summary>
     protected Concierge.Shared.Design.DesignSession? _design;
+    private Guid? _designStoreProjectId;
+    private EventHandler? _designChangedHandler;
+    protected bool CanExportDesign => Tools.Tools.Any(tool => tool.Name == "design_save");
+
+    private Concierge.Shared.Design.IDesignStore? StoreForCanvas()
+        => _designStoreProjectId is { } projectId
+            ? (Services.GetService(typeof(Concierge.Shared.Design.ProjectDesignStore))
+                as Concierge.Shared.Design.ProjectDesignStore)?.For(projectId)
+            : Services.GetService(typeof(Concierge.Shared.Design.IDesignStore))
+                as Concierge.Shared.Design.IDesignStore;
 
     /// <summary>
     /// The invitation under the composer, in the words of whatever is being made:
@@ -2108,6 +2151,17 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
             return false;
         }
 
+        _composerText = string.Empty;
+        await ExportCurrentDesignAsync(asked);
+        return true;
+    }
+
+    protected async Task ExportCurrentDesignAsync(string format)
+    {
+        if (_design is null || !_designOpen || _design.Current.Medium != Concierge.Shared.Design.DesignMedium.Deck
+            && string.Equals(format, "pptx", StringComparison.OrdinalIgnoreCase))
+            return;
+
         // Absent rather than failing when nothing published it — the design tools are only in
         // the registry while a canvas is open, and a head that never registered them should
         // say so rather than throw.
@@ -2115,18 +2169,17 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         {
             _composerHint = "Nothing on this device can save a design yet.";
             StateHasChanged();
-            return true;
+            return;
         }
 
-        _composerText = string.Empty;
         _composerHint = "Saving…";
         StateHasChanged();
 
         var arguments = new System.Text.Json.Nodes.JsonObject();
 
-        if (asked.Length > 0)
+        if (format.Length > 0)
         {
-            arguments["as"] = asked;
+            arguments["as"] = format;
         }
 
         try
@@ -2147,7 +2200,6 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         }
 
         StateHasChanged();
-        return true;
     }
 
     /// <summary>
@@ -2185,8 +2237,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     /// </summary>
     private async Task RestoreTheCanvasAsync()
     {
-        if (Services.GetService(typeof(Concierge.Shared.Design.IDesignStore))
-            is not Concierge.Shared.Design.IDesignStore store || _design is null)
+        if (StoreForCanvas() is not { } store || _design is null)
         {
             return;
         }
@@ -2217,8 +2268,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     /// </summary>
     private async Task KeepTheCanvasAsync()
     {
-        if (Services.GetService(typeof(Concierge.Shared.Design.IDesignStore))
-            is not Concierge.Shared.Design.IDesignStore store || _design is null)
+        if (StoreForCanvas() is not { } store || _design is null)
         {
             return;
         }
@@ -2253,7 +2303,12 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         // every design anybody had ever saved, on the one screen built to show them.
         if (_design is null)
         {
-            _design = new Concierge.Shared.Design.DesignSession();
+            _designStoreProjectId = _turnProjectId;
+            var requestedCanvas = System.Web.HttpUtility.ParseQueryString(new Uri(Nav.Uri).Query)["canvas"];
+            _design = new Concierge.Shared.Design.DesignSession(
+                medium: string.Equals(requestedCanvas, "slides", StringComparison.OrdinalIgnoreCase)
+                    ? Concierge.Shared.Design.DesignMedium.Deck
+                    : Concierge.Shared.Design.DesignMedium.Page);
 
             await RestoreTheCanvasAsync();
 
@@ -2263,7 +2318,8 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
             //
             // Subscribed after the restore so that putting the design back does not
             // immediately write it out again.
-            _design.Changed += (_, _) => _ = KeepTheCanvasAsync();
+            _designChangedHandler = (_, _) => _ = KeepTheCanvasAsync();
+            _design.Changed += _designChangedHandler;
         }
 
         _designOpen = !_designOpen;

@@ -7,9 +7,8 @@ namespace Concierge.Tests;
 /// Saving the design as a file, from the same place a model reaches everything
 /// else on the canvas.
 ///
-/// The tool is deliberately absent when this machine has no encoder, so the two
-/// halves are tested separately: what the catalogue offers, and what the tool
-/// does once it is there.
+/// Document export stays available without a media encoder; sound and video
+/// still require one.
 /// </summary>
 public sealed class DesignSaveToolTests
 {
@@ -35,8 +34,8 @@ public sealed class DesignSaveToolTests
     // ── Whether it is offered at all ──────────────────────────────────────
 
     [Fact]
-    public void With_no_encoder_there_is_nothing_to_save_with_and_the_tool_is_absent()
-        => Assert.False(Tools(Open()).Has("design_save"));
+    public void With_no_encoder_document_export_is_still_offered()
+        => Assert.True(Tools(Open()).Has("design_save"));
 
     [Fact]
     public void With_an_encoder_it_is_offered()
@@ -101,7 +100,7 @@ public sealed class DesignSaveToolTests
     [Fact]
     public async Task A_page_saves_without_an_encoder()
     {
-        var bench = Open(new Refusing());
+        var bench = Open();
         bench.Session!.Record(bench.Session.Current.As(DesignMedium.Page), "A page");
 
         var result = await Tools(bench).Run("design_save", new JsonObject { ["name"] = "no-encoder-needed" });
@@ -109,6 +108,25 @@ public sealed class DesignSaveToolTests
         Assert.True(result.Success, result.Output);
 
         var path = result.Output.Split(' ').First(word => word.Contains(".html", StringComparison.Ordinal)).TrimEnd('.');
+        File.Delete(path);
+    }
+
+    [Fact]
+    public async Task A_deck_exports_an_editable_pptx_without_a_media_encoder()
+    {
+        var bench = Open();
+        bench.Session!.Record(bench.Session.Current.As(DesignMedium.Deck), "Slides");
+        var result = await Tools(bench).Run("design_save", new JsonObject
+        {
+            ["name"] = $"concierge-slides-{Guid.NewGuid():N}",
+            ["as"] = "pptx",
+        });
+
+        Assert.True(result.Success, result.Output);
+        var end = result.Output.IndexOf(".pptx", StringComparison.OrdinalIgnoreCase);
+        Assert.True(end > "Saved to ".Length);
+        var path = result.Output["Saved to ".Length..(end + ".pptx".Length)];
+        Assert.True(File.Exists(path));
         File.Delete(path);
     }
 

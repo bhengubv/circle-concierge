@@ -102,6 +102,14 @@ public static class ProjectStarterTemplates
              ("Play on a phone", "Test controls, orientation, readability, performance, and a complete round on a real device."),
              ("Improve from playtests", "Record what confused or delighted players and revise the prototype."),
              ("Prepare a release", "Review assets, licences, accessibility, privacy, and store requirements before publishing.")]),
+        new("presentation", "Creative", "Presentation", "Make slides that help an audience understand and decide.", "Personal & creative",
+            "Brief to presentation", "An editable deck reviewed on screen and exported for sharing",
+            "Use Slides in Creator to make and revise the deck locally. Concierge can help with the story, evidence, and visuals. Export a PPTX for editing or a PDF for sharing.",
+            [("Define the audience and decision", "Say who will see the presentation and what they should understand or do."),
+             ("Outline the story", "Put one clear point on each slide and check the order."),
+             ("Make the slides", "Create and revise the deck in the Project's local Slides canvas."),
+             ("Review on a small screen", "Check legibility, facts, sources, image rights, and the final ask."),
+             ("Export and share", "Save an editable PPTX or a PDF, then review the exported file before sending it.")]),
     ];
 
     public static IReadOnlyList<ProjectStarterTemplate> Home => All.Where(template => template.Group == "Home").ToList();

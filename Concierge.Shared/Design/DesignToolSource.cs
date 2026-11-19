@@ -39,10 +39,8 @@ public sealed class DesignWorkbench
     public IDesignLog? Log { get; set; }
 
     /// <summary>
-    /// What turns a design into a file, when this machine has an encoder. Null
-    /// when it has none, and <c>design_save</c> is then simply not offered —
-    /// the same rule the device capabilities follow, because a tool that is
-    /// advertised and always fails is worse than one that is absent.
+    /// What encodes sound and video. Pages, decks, and rooms can be exported
+    /// without it; a missing encoder is reported only for media that needs one.
     /// </summary>
     public IMediaExport? Export { get; set; }
 
@@ -133,7 +131,7 @@ public sealed class DesignToolSource : IAgentToolSource
                 new ChooseLook(_workbench),
                 new ChooseMedium(_workbench),
                 new GoBackOnCanvas(_workbench),
-                .. _workbench.Export is null ? Array.Empty<IAgentTool>() : [new SaveTheDesign(_workbench)],
+                new SaveTheDesign(_workbench),
                 new AddFootage(_workbench),
                 new CutTheShot(_workbench),
                 new ColourTheShot(_workbench),
@@ -526,11 +524,7 @@ public sealed class DesignToolSource : IAgentToolSource
                 return NoCanvas();
             }
 
-            if (workbench.Export is not { } encoder)
-            {
-                return new AgentToolResult(
-                    false, "There is no encoder on this machine, so nothing can be saved yet.");
-            }
+            var encoder = workbench.Export;
 
             var document = session.Current;
             var asked = Text(arguments, "name");
@@ -612,6 +606,8 @@ public sealed class DesignToolSource : IAgentToolSource
             }
 
             var sound = document.Medium == DesignMedium.Sound;
+            if (encoder is null)
+                return new AgentToolResult(false, "Sound and video export need an encoder on this device.");
             var path = Free(Folder(sound), stem, sound ? ".m4a" : ".mp4");
 
             var result = sound

@@ -14,6 +14,33 @@ namespace Concierge.Tests;
 public sealed class ProjectPageTests : BunitContext
 {
     [Fact]
+    public async Task SlidesOpensAProjectCanvasAndReusesItsConversation()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"project-slides-{Guid.NewGuid():N}");
+        Services.AddLogging();
+        Services.AddConciergeChat(Path.Combine(directory, "concierge.db"));
+        Services.AddSingleton<BackgroundRuns>();
+        var projects = Services.GetRequiredService<IProjectStore>();
+        var project = await projects.CreateAsync(ConciergeProject.Create("Pitch", "Explain the idea"));
+        var nav = Services.GetRequiredService<NavigationManager>();
+        nav.NavigateTo($"/projects?project={project.Id}");
+
+        var cut = Render<Projects>();
+        cut.WaitForState(() => cut.FindAll(".projects-page[aria-busy='false']").Count > 0);
+        await cut.InvokeAsync(() => cut.Find(".project-section[aria-labelledby='project-slides-title'] button").ClickAsync(new MouseEventArgs()));
+
+        var saved = (await projects.GetAsync(project.Id))!;
+        Assert.NotNull(saved.SlidesConversationId);
+        Assert.Contains(saved.SlidesConversationId.Value, saved.ConversationIds);
+        Assert.Contains($"/chat/{saved.SlidesConversationId}?project={project.Id}&canvas=slides", nav.Uri);
+
+        nav.NavigateTo($"/projects?project={project.Id}");
+        await cut.InvokeAsync(() => cut.Find(".project-section[aria-labelledby='project-slides-title'] button").ClickAsync(new MouseEventArgs()));
+        Assert.Equal(saved.SlidesConversationId, (await projects.GetAsync(project.Id))!.SlidesConversationId);
+        Assert.Single((await projects.GetAsync(project.Id))!.ConversationIds);
+    }
+
+    [Fact]
     public async Task Desktop_project_shows_the_SolidCraft_connection_and_release_boundary()
     {
         var directory = Path.Combine(Path.GetTempPath(), $"project-solidcraft-{Guid.NewGuid():N}");

@@ -99,6 +99,8 @@ public sealed record ConciergeProject
     public DateTimeOffset? TargetDate { get; init; }
     public IReadOnlyList<string> Assumptions { get; init; } = [];
     public IReadOnlyList<Guid> ConversationIds { get; init; } = [];
+    /// <summary>The conversation that opens this Project's Slides canvas.</summary>
+    public Guid? SlidesConversationId { get; init; }
     public IReadOnlyList<ProjectWorkflow> Workflows { get; init; } = [];
     public IReadOnlyList<ProjectWorkspace> Workspaces { get; init; } = [];
     public IReadOnlyList<ProjectDecision> Decisions { get; init; } = [];
@@ -686,6 +688,9 @@ internal sealed class SqliteProjectStore(IDbContextFactory<ProjectDbContext> fac
         if (project.ConversationIds.Any(id => id == Guid.Empty)
             || project.ConversationIds.Distinct().Count() != project.ConversationIds.Count)
             throw new ArgumentException("Conversation links must be unique and non-empty.", nameof(project));
+        if (project.SlidesConversationId is { } slidesConversationId
+            && !project.ConversationIds.Contains(slidesConversationId))
+            throw new ArgumentException("Slides must belong to a linked Project conversation.", nameof(project));
         if (project.AgentRuns.Any(run => run.Id == Guid.Empty || string.IsNullOrWhiteSpace(run.Name)
                 || string.IsNullOrWhiteSpace(run.Task) || !Enum.IsDefined(run.Status))
             || project.AgentRuns.Select(run => run.Id).Distinct().Count() != project.AgentRuns.Count

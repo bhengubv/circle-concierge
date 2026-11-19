@@ -36,9 +36,8 @@ public interface IEncoderRunner
     /// Whether there is an encoder to run at all.
     ///
     /// Asked before anything is registered rather than discovered on first use: a
-    /// machine with no encoder is not offered `design_save`, `media_facts` or the
-    /// music tools, because a tool that is offered and always fails is worse than
-    /// one that is honestly absent. That is the rule the device capabilities follow.
+    /// machine with no encoder is not offered encoder-only media tools. Document
+    /// export remains available; sound and video export explain the missing encoder.
     /// </summary>
     bool Here { get; }
 

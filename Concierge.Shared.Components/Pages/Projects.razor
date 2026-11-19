@@ -280,6 +280,12 @@
                     <p class="project-starter-focus"><strong>How Concierge can help:</strong> @_selected.StarterAgentFocus</p>
                 }
 
+                <section class="project-section" aria-labelledby="project-slides-title">
+                    <div class="project-section-head"><div><p class="projects-eyebrow">CREATE</p><h3 id="project-slides-title">Slides</h3></div></div>
+                    <p>Make an editable presentation with Concierge. Your slides and undo history stay with this Project on this device.</p>
+                    <button class="project-primary" type="button" disabled="@_saving" @onclick="StartProjectSlidesAsync">Open Slides</button>
+                </section>
+
                 @if (VocationModes.Find(_selected.VocationModeId) is { } vocation)
                 {
                     <section class="project-vocation" aria-label="@vocation.Name tools">
@@ -910,6 +916,26 @@
                 ConversationIds = _selected.ConversationIds.Append(conversation.Id).Distinct().ToArray(),
             });
             Nav.NavigateTo($"/chat/{conversation.Id}?project={_selected.Id}");
+        });
+    }
+
+    private async Task StartProjectSlidesAsync()
+    {
+        if (_selected is null || _saving) return;
+        await WithSaving(async () =>
+        {
+            var existing = _selected.SlidesConversationId is { } savedId
+                ? await ConversationStore.GetAsync(savedId) : null;
+            var conversation = existing ?? await ConversationStore.StartAsync("local", $"{_selected.Name} slides");
+            if (existing is null)
+            {
+                _selected = await ProjectStore.SaveAsync(_selected with
+                {
+                    ConversationIds = _selected.ConversationIds.Append(conversation.Id).Distinct().ToArray(),
+                    SlidesConversationId = conversation.Id,
+                });
+            }
+            Nav.NavigateTo($"/chat/{conversation.Id}?project={_selected.Id}&canvas=slides");
         });
     }
 

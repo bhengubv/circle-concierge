@@ -407,7 +407,7 @@
         *@
         @if (_designOpen)
         {
-            <Design Session="_design!" Changed="StateHasChanged" />
+            <Design Session="_design!" Changed="StateHasChanged" OnExport="ExportCurrentDesignAsync" CanExport="CanExportDesign" />
         }
         else if (_active is null || (_active.Messages.Count == 0 && _approvalHistory.Count == 0 && _runRecoveryStatus is null))
         {

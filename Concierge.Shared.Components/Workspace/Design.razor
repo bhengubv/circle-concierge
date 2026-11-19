@@ -16,6 +16,9 @@
     The composer underneath is unchanged; it is the "say it" half. What you type
     there while this is open goes to the canvas.
 
+    The canvas has export actions for a finished deck. Its draft is kept as it changes;
+    export creates a separate file for sharing.
+
     Three things this deliberately does not have:
 
       A save button. The design is kept as you go and every state it has been in is
@@ -34,6 +37,12 @@
     <div class="dz-top">
         <span class="dz-what">@_session.Moments[_session.Position].What</span>
 
+        <div class="dz-top-actions">
+        @if (_session.Current.Medium == DesignMedium.Deck && OnExport.HasDelegate)
+        {
+            <button class="dz-export" type="button" disabled="@(!CanExport)" title="Save an editable presentation" @onclick='() => OnExport.InvokeAsync("pptx")'>PPTX</button>
+            <button class="dz-export" type="button" disabled="@(!CanExport)" title="Save a presentation to share" @onclick='() => OnExport.InvokeAsync("pdf")'>PDF</button>
+        }
         <div class="dz-back">
             <button class="dz-step" type="button" disabled="@(!_session.CanGoBack)"
                     @onclick="Back" title="Go back" aria-label="Go back">
@@ -49,6 +58,7 @@
                     <polyline points="9 6 15 12 9 18" />
                 </svg>
             </button>
+        </div>
         </div>
     </div>
 
@@ -175,6 +185,10 @@
 
     /// <summary>Told when something changed, so the workspace can redraw around it.</summary>
     [Parameter] public EventCallback Changed { get; set; }
+
+    /// <summary>Export the current deck in a format another person can use.</summary>
+    [Parameter] public EventCallback<string> OnExport { get; set; }
+    [Parameter] public bool CanExport { get; set; }
 
     private DesignSession _session = default!;
     private ElementReference _frame;
