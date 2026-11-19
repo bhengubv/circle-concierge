@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO.Compression;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
@@ -55,7 +56,7 @@ internal sealed class WindowsDeveloperStudio : IDeveloperStudio, IAsyncDisposabl
             var extensions = Path.Combine(studioData, "extensions");
             Directory.CreateDirectory(userData);
             Directory.CreateDirectory(extensions);
-            await SeedEditorSettingsAsync(userData, cancellationToken);
+            await EnsureBrandingExtensionAsync(userData, extensions, cancellationToken);
             var wslUserData = (await RunWslAsync(["-e", "wslpath", "-a", userData], cancellationToken, "editor settings path")).Trim();
             var wslExtensions = (await RunWslAsync(["-e", "wslpath", "-a", extensions], cancellationToken, "extensions path")).Trim();
             var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
@@ -190,19 +191,85 @@ internal sealed class WindowsDeveloperStudio : IDeveloperStudio, IAsyncDisposabl
             test -f "$product"
             sed -i 's/"nameShort": "OpenVSCode Server"/"nameShort": "Concierge Code"/; s/"nameLong": "OpenVSCode Server"/"nameLong": "Concierge Code"/' "$product"
             grep -q '"nameShort": "Concierge Code"' "$product"
+            package="$root/{Version}-linux-x64/package.json"
+            test -f "$package"
+            sed -i 's/"name": "OpenVSCode Server"/"name": "Concierge Code"/' "$package"
+            grep -q '"name": "Concierge Code"' "$package"
+            # Only the workbench's display-message catalogue is rebranded. Keep the
+            # upstream license, notices, URLs, extension IDs, and executable intact.
+            "$root/{Version}-linux-x64/node" - "$root/{Version}-linux-x64/out" <<'NODE'
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const out = process.argv[2];
+            const jsonFile = path.join(out, 'nls.messages.json');
+            const jsFile = path.join(out, 'nls.messages.js');
+            const rename = value => value
+              .replaceAll('OpenVSCode Server', 'Concierge Code')
+              .replaceAll('Visual Studio Code', 'Concierge Code')
+              .replaceAll('VS Code', 'Concierge Code');
+            const messages = JSON.parse(fs.readFileSync(jsonFile, 'utf8'));
+            if (!Array.isArray(messages) || !messages.every(value => typeof value === 'string'))
+              throw new Error('Unexpected workbench message catalogue');
+            const branded = messages.map(rename);
+            if (branded.some(value => value.includes('VS Code')))
+              throw new Error('Workbench display branding remains');
+            fs.writeFileSync(jsonFile, JSON.stringify(branded));
+            fs.writeFileSync(jsFile, 'globalThis._VSCODE_NLS_MESSAGES=' + JSON.stringify(branded) + ';\n');
+            NODE
             """;
         await RunWslAsync(["-e", "bash", "-s"], cancellationToken, "runtime installation", script);
     }
 
-    private static async Task SeedEditorSettingsAsync(string userData, CancellationToken cancellationToken)
+    private static async Task EnsureBrandingExtensionAsync(string userData, string extensions, CancellationToken cancellationToken)
     {
-        var userFolder = Path.Combine(userData, "User");
-        Directory.CreateDirectory(userFolder);
-        var settings = Path.Combine(userFolder, "settings.json");
-        if (!File.Exists(settings))
-            await File.WriteAllTextAsync(settings,
-                """{"workbench.startupEditor":"none","workbench.colorTheme":"Default Dark Modern","workbench.secondarySideBar.defaultVisibility":"hidden"}""",
-                cancellationToken);
+        const string extensionId = "circle.concierge-code-theme";
+        var wslUserData = (await RunWslAsync(["-e", "wslpath", "-a", userData], cancellationToken, "editor settings path")).Trim();
+        var wslExtensions = (await RunWslAsync(["-e", "wslpath", "-a", extensions], cancellationToken, "extensions path")).Trim();
+        var root = $"$HOME/.local/share/concierge/developer-studio/{Version}-linux-x64";
+        var list = $"root=\"{root}\"; exec \"$root/bin/openvscode-server\" --user-data-dir \"$1\" --extensions-dir \"$2\" --list-extensions";
+        var installed = await RunWslAsync(["-e", "bash", "-lc", list, "--", wslUserData, wslExtensions], cancellationToken, "branding inventory");
+        if (installed.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Contains(extensionId, StringComparer.OrdinalIgnoreCase)) return;
+
+        // Install through the editor's extension manager. Merely copying a theme
+        // directory does not register it with the web workbench.
+        var vsix = Path.Combine(userData, "concierge-code-theme-1.0.0.vsix");
+        await using (var output = File.Create(vsix))
+        using (var archive = new ZipArchive(output, ZipArchiveMode.Create))
+        {
+            await WriteEntryAsync(archive, "[Content_Types].xml", """
+                <?xml version="1.0" encoding="utf-8"?>
+                <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="json" ContentType="application/json"/><Default Extension="vsixmanifest" ContentType="text/xml"/></Types>
+                """, cancellationToken);
+            await WriteEntryAsync(archive, "extension.vsixmanifest", """
+                <?xml version="1.0" encoding="utf-8"?>
+                <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
+                  <Metadata><Identity Language="en-US" Id="concierge-code-theme" Version="1.0.0" Publisher="circle"/><DisplayName>Concierge Code Theme</DisplayName><Description>Circle Metro styling for Concierge Code.</Description><Tags>theme</Tags><Categories>Themes</Categories><GalleryFlags></GalleryFlags><Properties><Property Id="Microsoft.VisualStudio.Code.Engine" Value="^1.109.0" /></Properties></Metadata>
+                  <Installation><InstallationTarget Id="Microsoft.VisualStudio.Code"/></Installation><Dependencies/><Assets><Asset Type="Microsoft.VisualStudio.Code.Manifest" Path="extension/package.json" Addressable="true"/></Assets>
+                </PackageManifest>
+                """, cancellationToken);
+            await WriteBrandEntryAsync(archive, "package.json", "extension/package.json", cancellationToken);
+            await WriteBrandEntryAsync(archive, "circle-metro-dark.json", "extension/themes/circle-metro-dark.json", cancellationToken);
+        }
+        var wslVsix = (await RunWslAsync(["-e", "wslpath", "-a", vsix], cancellationToken, "theme package path")).Trim();
+        var install = $"root=\"{root}\"; exec \"$root/bin/openvscode-server\" --user-data-dir \"$1\" --extensions-dir \"$2\" --install-extension \"$3\"";
+        await RunWslAsync(["-e", "bash", "-lc", install, "--", wslUserData, wslExtensions, wslVsix], cancellationToken, "theme installation");
+        File.Delete(vsix);
+    }
+
+    private static async Task WriteEntryAsync(ZipArchive archive, string path, string contents, CancellationToken cancellationToken)
+    {
+        await using var destination = archive.CreateEntry(path).Open();
+        using var writer = new StreamWriter(destination);
+        await writer.WriteAsync(contents.AsMemory(), cancellationToken);
+    }
+
+    private static async Task WriteBrandEntryAsync(ZipArchive archive, string name, string path, CancellationToken cancellationToken)
+    {
+        using var source = typeof(WindowsDeveloperStudio).Assembly.GetManifestResourceStream($"Concierge.DeveloperStudio.Branding.{name}")
+            ?? throw new InvalidOperationException($"Concierge Code branding resource {name} is missing.");
+        await using var destination = archive.CreateEntry(path).Open();
+        await source.CopyToAsync(destination, cancellationToken);
     }
 
     private static async Task<string> RunWslAsync(IEnumerable<string> arguments, CancellationToken cancellationToken, string step, string? standardInput = null)
@@ -282,8 +349,12 @@ internal sealed class WindowsDeveloperStudio : IDeveloperStudio, IAsyncDisposabl
             var askCircleAi = new Button
             {
                 Text = "Ask B!",
-                BackgroundColor = Colors.Transparent,
+                BackgroundColor = Color.FromRgba(255, 255, 255, 0.16),
                 TextColor = Colors.White,
+                CornerRadius = 14,
+                MinimumHeightRequest = 44,
+                BorderColor = Color.FromRgba(255, 255, 255, 0.35),
+                BorderWidth = 1,
             };
             askCircleAi.Clicked += async (_, _) =>
             {
@@ -298,7 +369,7 @@ internal sealed class WindowsDeveloperStudio : IDeveloperStudio, IAsyncDisposabl
                 },
                 ColumnSpacing = 12,
                 Padding = new Thickness(12, 6),
-                BackgroundColor = Color.FromArgb("#087CC1"),
+                BackgroundColor = Color.FromArgb("#005EA8"),
             };
             Grid.SetColumn(title, 1);
             Grid.SetColumn(askCircleAi, 2);

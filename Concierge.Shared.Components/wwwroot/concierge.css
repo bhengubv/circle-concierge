@@ -1,28 +1,6 @@
-/* ============================================================
-   Concierge — one dark workspace
-
-   Written from nothing after the previous UI was deleted. The shape and the
-   surface both come from the two references rather than from the app that was
-   here before:
-
-     Codex          a sidebar of threads, one thread in the main area, and the
-                    controls that carry consequence sitting in the composer.
-                    Uniformly dark; all colour comes from content.
-
-     Claude Design  work and conversation side by side, modes instead of
-                    routes, and tool calls rendered as one quiet grey pill.
-
-   Neither has pages. Concierge had nineteen.
-
-   The rules this sheet holds itself to:
-
-     1. Chrome is greyscale. #2196F3 is the only saturated colour in it, and it
-        marks the thing you press.
-     2. Status is a dot and a word. Never a filled card, never a coloured
-        badge, never a coloured edge.
-     3. Tool activity is the quietest thing on screen, not the loudest.
-     4. Nothing is sized in fixed pixels that should respond to the window.
-   ============================================================ */
+/* Concierge uses Circle Metro tokens for its canvas, type, tiles, controls,
+   and rounded surfaces. The conversation stays calm while navigation and
+   creation surfaces carry the colour that identifies the product. */
 
 /* The design language every Circle app shares.
  *
@@ -2584,3 +2562,79 @@ html[data-cm-host="windows-desktop"][data-theme="light"] :is(.room-body > h2,
 .developer-studio-setup p { min-height:2.7em; margin:12px 0 16px; }
 .developer-studio-start button:disabled { opacity:.6; cursor:wait; }
 .developer-studio-error { max-width:540px; color:var(--danger-text, var(--ink)); }
+
+/* Circle Metro structure and Circle softness across the shared Desktop/Web UI. */
+.ws-side {
+    background:linear-gradient(165deg,
+        color-mix(in srgb,var(--cm-brand-circle-blue) 12%,var(--cm-color-surface)) 0%,
+        var(--cm-color-surface) 43%,
+        color-mix(in srgb,var(--cm-skin-berry-accent) 8%,var(--cm-color-surface)) 100%);
+    border-right-color:color-mix(in srgb,var(--cm-brand-circle-blue) 35%,var(--cm-color-outline));
+}
+html[data-cm-host="windows-desktop"] .ws-top { color:var(--cm-color-on-tile); background:var(--cm-color-tile); backdrop-filter:none; }
+html[data-cm-host="windows-desktop"] .ws-top-meta { border-color:color-mix(in srgb,var(--cm-color-on-tile) 45%,transparent); color:var(--cm-color-on-tile); background:color-mix(in srgb,var(--cm-color-on-tile) 16%,transparent); }
+.ws-top .ws-context-label { color:var(--cm-color-on-tile); }
+.ws-section { color:var(--cm-color-accent-text); }
+.ws-item:hover,.ws-item.is-active {
+    border-radius:var(--cm-radius-control);
+    background:color-mix(in srgb,var(--cm-brand-circle-blue) 18%,var(--cm-color-surface-raised));
+}
+.ws-item.is-active { box-shadow:inset 3px 0 var(--cm-brand-circle-blue); }
+.ws-item.is-active,.welcome-work-paths a,.room-card,.project-starter-card,.project-activity-item,.developer-studio-setup {
+    border-inline-start:3px solid var(--cm-brand-circle-blue);
+}
+.welcome-work-paths a:hover,.room-card:hover,.project-starter-card:hover {
+    box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--cm-brand-circle-blue) 50%,transparent),
+        0 8px 22px color-mix(in srgb,var(--cm-brand-circle-blue) 14%,transparent);
+}
+.welcome-work-paths a:nth-child(3n + 2),.room-card:nth-child(3n + 2),.project-starter-card:nth-child(3n + 2) { border-inline-start-color:var(--cm-skin-tide-accent); }
+.welcome-work-paths a:nth-child(3n),.room-card:nth-child(3n),.project-starter-card:nth-child(3n) { border-inline-start-color:var(--cm-skin-berry-accent); }
+.comp-box {
+    border-color:color-mix(in srgb,var(--cm-brand-circle-blue) 32%,var(--cm-color-outline));
+    border-radius:var(--cm-radius-card);
+    box-shadow:0 10px 28px color-mix(in srgb,var(--cm-brand-deep-navy) 10%,transparent);
+}
+.comp-box:focus-within { border-color:var(--cm-color-accent); }
+.welcome-work-paths a:nth-child(3n + 1) { border-color:color-mix(in srgb,var(--cm-brand-circle-blue) 42%,var(--cm-color-outline)); background:color-mix(in srgb,var(--cm-brand-circle-blue) 15%,var(--cm-color-surface)); }
+.welcome-work-paths a:nth-child(3n + 2) { border-color:color-mix(in srgb,var(--cm-skin-tide-accent) 40%,var(--cm-color-outline)); background:color-mix(in srgb,var(--cm-skin-tide-accent) 14%,var(--cm-color-surface)); }
+.welcome-work-paths a:nth-child(3n) { border-color:color-mix(in srgb,var(--cm-skin-berry-accent) 40%,var(--cm-color-outline)); background:color-mix(in srgb,var(--cm-skin-berry-accent) 14%,var(--cm-color-surface)); }
+.projects-list,.projects-detail {
+    border-color:color-mix(in srgb,var(--cm-brand-circle-blue) 24%,var(--cm-color-outline));
+    border-radius:var(--cm-radius-card);
+}
+:root[data-theme="dark"] .projects-header {
+    padding:var(--cm-space-6);
+    border:1px solid color-mix(in srgb,var(--cm-brand-circle-blue) 60%,var(--cm-color-outline));
+    border-radius:var(--cm-radius-card);
+    background:linear-gradient(115deg,var(--cm-color-tile),color-mix(in srgb,var(--cm-brand-circle-blue) 38%,var(--cm-color-surface)));
+}
+:root[data-theme="dark"] .projects-header :is(h1,.projects-eyebrow,.projects-intro,.projects-back) { color:var(--cm-color-on-tile); }
+.project-list-item.is-selected { background:color-mix(in srgb,var(--cm-brand-circle-blue) 17%,var(--cm-color-surface-raised)); }
+.developer-studio-page {
+    background:radial-gradient(ellipse 65% 30% at 95% 2%,color-mix(in srgb,var(--cm-brand-circle-blue) 22%,transparent),transparent 75%),
+        radial-gradient(ellipse 55% 27% at 3% 72%,color-mix(in srgb,var(--cm-skin-berry-accent) 15%,transparent),transparent 80%),
+        var(--cm-color-canvas);
+}
+.developer-studio-head {
+    border-bottom-color:var(--cm-color-tile);
+    color:var(--cm-color-on-tile);
+    background:var(--cm-color-tile);
+}
+.developer-studio-head a,.developer-studio-head .projects-eyebrow,.developer-studio-head h1 { color:var(--cm-color-on-tile); }
+.developer-studio-start { width:min(1050px,100%); }
+.developer-studio-start h2 { color:var(--cm-color-text-primary); }
+.developer-studio-setup {
+    border-radius:var(--cm-radius-card);
+    border-color:color-mix(in srgb,var(--cm-brand-circle-blue) 33%,var(--cm-color-outline));
+    background:linear-gradient(145deg,color-mix(in srgb,var(--cm-brand-circle-blue) 34%,var(--cm-color-surface)),var(--cm-color-surface) 88%);
+    box-shadow:0 12px 28px color-mix(in srgb,var(--cm-brand-deep-navy) 10%,transparent);
+}
+.developer-studio-setup:nth-child(5n + 2) { border-color:color-mix(in srgb,var(--cm-skin-tide-accent) 50%,var(--cm-color-outline)); background:linear-gradient(145deg,color-mix(in srgb,var(--cm-skin-tide-accent) 32%,var(--cm-color-surface)),var(--cm-color-surface) 88%); }
+.developer-studio-setup:nth-child(5n + 3) { border-color:color-mix(in srgb,var(--cm-skin-berry-accent) 50%,var(--cm-color-outline)); background:linear-gradient(145deg,color-mix(in srgb,var(--cm-skin-berry-accent) 32%,var(--cm-color-surface)),var(--cm-color-surface) 88%); }
+.developer-studio-setup:nth-child(5n + 4) { border-color:color-mix(in srgb,var(--cm-skin-lala-accent) 50%,var(--cm-color-outline)); background:linear-gradient(145deg,color-mix(in srgb,var(--cm-skin-lala-accent) 32%,var(--cm-color-surface)),var(--cm-color-surface) 88%); }
+.developer-studio-setup:nth-child(5n) { border-color:color-mix(in srgb,var(--cm-skin-sana-accent) 52%,var(--cm-color-outline)); background:linear-gradient(145deg,color-mix(in srgb,var(--cm-skin-sana-accent) 27%,var(--cm-color-surface)),var(--cm-color-surface) 88%); }
+.developer-studio-start button:focus-visible,.developer-studio-head a:focus-visible { outline:2px solid var(--cm-color-accent-text); outline-offset:3px; }
+@media (prefers-reduced-motion:no-preference) {
+    .developer-studio-setup,.welcome-work-paths a { transition:transform var(--cm-motion-fast) ease,border-color var(--cm-motion-fast) ease; }
+    .developer-studio-setup:hover,.welcome-work-paths a:hover { transform:translateY(-2px); }
+}

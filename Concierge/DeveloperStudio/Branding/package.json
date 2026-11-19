@@ -1,0 +1,20 @@
+{
+  "name": "concierge-code-theme",
+  "displayName": "Concierge Code Theme",
+  "description": "Circle Metro colours and layout defaults for Concierge Code.",
+  "publisher": "circle",
+  "version": "1.0.0",
+  "engines": { "vscode": "^1.109.0" },
+  "categories": ["Themes"],
+  "contributes": {
+    "themes": [
+      { "label": "Circle Metro Dark", "uiTheme": "vs-dark", "path": "./themes/circle-metro-dark.json" }
+    ],
+    "configurationDefaults": {
+      "workbench.colorTheme": "Circle Metro Dark",
+      "workbench.startupEditor": "none",
+      "workbench.secondarySideBar.defaultVisibility": "hidden",
+      "chat.commandCenter.enabled": false
+    }
+  }
+}
