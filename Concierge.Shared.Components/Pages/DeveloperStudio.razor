@@ -1,4 +1,5 @@
 @page "/projects/{ProjectId:guid}/studio"
+@page "/projects/{ProjectId:guid}/studio/{WorkspaceKind}"
 @using Concierge.Shared.Planning
 @using Concierge.Shared.Chat
 @using Concierge.Shared.Tools
@@ -11,7 +12,7 @@
 <main class="developer-studio-page">
     <header class="developer-studio-head">
         <a href="@($"/projects?project={ProjectId}")">← Project</a>
-        <div><p class="projects-eyebrow">@(_project?.Name ?? "PROJECT")</p><h1>Concierge Code</h1></div>
+        <div><p class="projects-eyebrow">@(_project?.Name ?? "PROJECT")</p><h1>Concierge Code · @(_kind?.Title ?? "Workspace")</h1></div>
         @if (_url is not null)
         {
             <button type="button" @onclick="CloseAsync">Close editor</button>
@@ -22,12 +23,22 @@
     {
         <p role="status">Project not found.</p>
     }
+    else if (_kind is null)
+    {
+        <p class="developer-studio-start" role="alert">This workspace is unavailable. <a href="@($"/projects?project={ProjectId}")">Return to the Project</a>.</p>
+    }
     else if (_url is null)
     {
         <section class="developer-studio-start" aria-labelledby="code-start-title">
-            <p class="projects-eyebrow">YOUR CODING SPACE</p>
-            <h2 id="code-start-title">Make your idea real.</h2>
-            <p>Edit this Project's code here. B! can help, powered by Circle AI.</p>
+            <p class="projects-eyebrow">YOUR @_kind.Title.ToUpperInvariant() SPACE</p>
+            <h2 id="code-start-title">@_kind.Title</h2>
+            <p>@_kind.Summary B! can help, powered by Circle AI.</p>
+            <nav class="developer-studio-workspaces" aria-label="Project workspaces">
+                @foreach (var kind in ConciergeCodeWorkspaces.All)
+                {
+                    <a class="@(kind.Id == _kind.Id ? "is-current" : "")" href="@($"/projects/{ProjectId}/studio/{kind.Id}")" aria-current="@(kind.Id == _kind.Id ? "page" : null)">@kind.Title</a>
+                }
+            </nav>
             @if (_studio is null)
             {
                 <p role="status">Concierge Code is available in Concierge Desktop.</p>
@@ -35,9 +46,15 @@
             else
             {
                 <div class="developer-studio-actions">
-                    <button type="button" disabled="@(_opening || _installing is not null)" @onclick="OpenAsync">@(_opening ? "Preparing editor…" : "Open Concierge Code")</button>
+                    <button type="button" disabled="@(_opening || _installing is not null || !_supportedKinds.Contains(_kind.Id))" @onclick="OpenAsync">@(_opening ? "Preparing workspace…" : $"Open {_kind.Title}")</button>
                     <button type="button" @onclick="AskCircleAiAsync">Ask B!</button>
                 </div>
+                @if (!_supportedKinds.Contains(_kind.Id))
+                {
+                    <p role="status">This workspace needs the latest Concierge Code on Desktop.</p>
+                }
+                @if (_kind.Id == "code")
+                {
                 <p class="developer-studio-note">The first opening downloads the editor to this computer.</p>
                 <div class="developer-studio-setups" aria-label="Coding tools">
                     @foreach (var setup in ConciergeCodeSetups.All)
@@ -52,6 +69,7 @@
                     }
                 </div>
                 <p class="developer-studio-note">Setups install editor extensions. Compilers and SDKs are separate. Find more extensions inside Concierge Code.</p>
+                }
                 @if (!string.IsNullOrWhiteSpace(_setupMessage))
                 {
                     <p role="status">@_setupMessage</p>
@@ -71,8 +89,10 @@
 
 @code {
     [Parameter] public Guid ProjectId { get; set; }
+    [Parameter] public string? WorkspaceKind { get; set; }
 
     private ConciergeProject? _project;
+    private ConciergeCodeWorkspaces.Kind? _kind;
     private IDeveloperStudio? _studio;
     private Uri? _url;
     private string? _error;
@@ -82,6 +102,7 @@
     private string? _installing;
     private string? _setupMessage;
     private IReadOnlySet<string> _installedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    private IReadOnlySet<string> _supportedKinds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "code" };
 
     protected override void OnInitialized()
     {
@@ -95,8 +116,12 @@
 
     protected override async Task OnParametersSetAsync()
     {
+        _kind = ConciergeCodeWorkspaces.Find(WorkspaceKind ?? "code");
+        _error = null;
         _project = await Projects.GetAsync(ProjectId);
         if (_studio is not null)
+            _supportedKinds = await _studio.GetSupportedWorkspaceKindsAsync();
+        if (_studio is not null && _kind?.Id == "code")
         {
             try { _installedExtensions = await _studio.GetInstalledExtensionsAsync(); }
             catch (Exception ex) { _error = $"Could not check installed extensions: {ex.Message}"; }
@@ -154,7 +179,7 @@
         _opening = true;
         _error = null;
         StateHasChanged();
-        try { _url = await _studio.OpenAsync(_project.Id, _project.Name); }
+        try { _url = await _studio.OpenWorkspaceAsync(_project.Id, _project.Name, _kind!.Id); }
         catch (Exception ex) { _error = ex.Message; }
         finally { _opening = false; }
     }

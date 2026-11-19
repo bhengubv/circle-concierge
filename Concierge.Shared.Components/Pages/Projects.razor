@@ -269,9 +269,16 @@
                 @if (AppServices.GetService(typeof(IDeveloperStudio)) is not null)
                 {
                     <section class="project-section" aria-labelledby="project-editor-title">
-                        <div class="project-section-head"><div><p class="projects-eyebrow">BUILD</p><h3 id="project-editor-title">Concierge Code</h3></div></div>
-                        <p>Write and edit this Project's code with Circle AI.</p>
-                        <a class="project-primary" href="@($"/projects/{_selected.Id}/studio")">Open Concierge Code</a>
+                        <div class="project-section-head"><div><p class="projects-eyebrow">MAKE</p><h3 id="project-editor-title">Concierge Code</h3></div></div>
+                        <p>Choose a space for what you are making. B! stays beside your Project.</p>
+                        <div class="project-creative-workspaces" aria-label="Concierge Code workspaces">
+                            @foreach (var kind in ConciergeCodeWorkspaces.All)
+                            {
+                                <a class="project-creative-workspace" href="@($"/projects/{_selected.Id}/studio/{kind.Id}")">
+                                    <strong>@kind.Title</strong><span>@kind.Summary</span>
+                                </a>
+                            }
+                        </div>
                     </section>
                 }
 

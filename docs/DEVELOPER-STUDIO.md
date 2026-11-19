@@ -1,5 +1,13 @@
 # Concierge Code
 
+## Creative Project workspaces (20 November 2026)
+
+The Project page now offers Code, Games, Video, Audio, and Images. Code keeps the existing `/projects/{id}/studio` route and source folder. The four creative routes use `/projects/{id}/studio/{kind}` and launch the separate Concierge Code host with `studio --project GUID --kind games|video|audio|images --data-dir APP_DATA_ROOT --no-browser`. Concierge reads the installed host's `capabilities` response and disables a creative Open action if that host does not support it. The host writes outputs under `projects/{GUID}/studio/outputs/{kind}` inside that same app data root. Concierge validates the version 1 ready event, Project ID, kind, route, output root, and token location before embedding the loopback view.
+
+The current host provides local starters: a browser game, a canvas animation exported as WebM, a tone sequencer exported as WAV, and procedural PNG art. These are working first slices, not integrations with Orbit, Nota, YuE2, SurgeXT, VCV Rack, or an image model. The larger engines and models require separate adapters, license review, resource checks, and live acceptance. On a device without the external host, the internal editor remains Code-only; a creative workspace reports that it is unavailable.
+
+The shared UI and Desktop builds pass, and four focused bUnit tests cover the five Project routes, launch dispatch, invalid kinds, and an older host with unavailable workspaces. The full Concierge suite passed 2,734 tests before the final capability gate; its focused test passed afterward. The standalone host has separately tested its four output formats and loopback authentication. The new Concierge-to-host embedded path has **not** yet passed a visual Desktop test: the Windows computer-use helper could not bind to the MAUI window. Do not present that path as end-to-end verified.
+
 ## Standalone host and embedding (20 November 2026)
 
 The editor host now lives in the private `bhengubv/ConciergeCode` repository. Its Windows distribution is built separately with `dotnet publish ConciergeCode.csproj -c Release -r win-x64 --self-contained false -o dist/win-x64`. To include that exact build in Concierge Desktop, build Concierge with `-p:ConciergeCodeDistribution=C:\path\to\dist\win-x64`. MSBuild copies it under the Desktop output's `ConciergeCode` directory. A local development launch may instead set `CONCIERGE_CODE_PATH` to `ConciergeCode.exe`. When neither is present, the previous internal Windows editor remains available during migration.

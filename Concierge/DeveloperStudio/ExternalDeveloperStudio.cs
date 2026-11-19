@@ -12,6 +12,7 @@ internal sealed class ExternalDeveloperStudio : IDeveloperStudio, IAsyncDisposab
     private ContentPage? _editorPage;
     private Uri? _url;
     private Guid? _projectId;
+    private string? _workspaceKind;
     public event EventHandler? Closed;
     public event EventHandler? AskCircleAiRequested;
 
@@ -28,25 +29,59 @@ internal sealed class ExternalDeveloperStudio : IDeveloperStudio, IAsyncDisposab
 
     public static bool IsAvailable => OperatingSystem.IsWindows() && ExecutablePath is not null;
 
-    public async Task<Uri> OpenAsync(Guid projectId, string projectName, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlySet<string>> GetSupportedWorkspaceKindsAsync(CancellationToken cancellationToken = default)
+    {
+        var supported = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "code" };
+        if (ExecutablePath is not { } executable) return supported;
+        try
+        {
+            var json = await RunAsync(executable, cancellationToken, "capabilities");
+            using var capabilities = JsonDocument.Parse(json);
+            if (capabilities.RootElement.GetProperty("version").GetInt32() != 1) return supported;
+            foreach (var workspace in capabilities.RootElement.GetProperty("workspaces").EnumerateArray())
+            {
+                var kind = workspace.GetProperty("kind").GetString();
+                if (ConciergeCodeWorkspaces.Find(kind) is { } known && known.Id != "code" &&
+                    workspace.GetProperty("command").GetString() == "studio")
+                    supported.Add(known.Id);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception) { /* An older host can still open Code. */ }
+        return supported;
+    }
+
+    public Task<Uri> OpenAsync(Guid projectId, string projectName, CancellationToken cancellationToken = default)
+        => OpenWorkspaceAsync(projectId, projectName, "code", cancellationToken);
+
+    public async Task<Uri> OpenWorkspaceAsync(Guid projectId, string projectName, string workspaceKind, CancellationToken cancellationToken = default)
     {
         if (projectId == Guid.Empty) throw new ArgumentException("Select a Project first.", nameof(projectId));
+        var kind = ConciergeCodeWorkspaces.Find(workspaceKind)
+            ?? throw new ArgumentException("Unknown Concierge Code workspace.", nameof(workspaceKind));
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            if (_projectId == projectId && _url is not null && _host is { HasExited: false })
+            if (_projectId == projectId && _workspaceKind == kind.Id && _url is not null && _host is { HasExited: false })
             {
                 if (_editorPage is null) await ShowEditorAsync(_url, projectName);
                 return _url;
             }
             await StopHostAsync();
             var executable = ExecutablePath ?? throw new FileNotFoundException("Install Concierge Code to open this Project.");
-            var folder = Path.Combine(FileSystem.AppDataDirectory, "projects", projectId.ToString("N"), "source");
-            Directory.CreateDirectory(folder);
-            var readme = Path.Combine(folder, "README.md");
-            if (!File.Exists(readme))
-                await File.WriteAllTextAsync(readme, $"# {projectName.Trim()}\n\nSource files for this Concierge Project.\n", cancellationToken);
-            var start = NewProcess(executable, "serve", "--workspace", folder, "--data-dir", DataDir, "--no-browser");
+            ProcessStartInfo start;
+            if (kind.Id == "code")
+            {
+                var folder = Path.Combine(FileSystem.AppDataDirectory, "projects", projectId.ToString("N"), "source");
+                Directory.CreateDirectory(folder);
+                var readme = Path.Combine(folder, "README.md");
+                if (!File.Exists(readme))
+                    await File.WriteAllTextAsync(readme, $"# {projectName.Trim()}\n\nSource files for this Concierge Project.\n", cancellationToken);
+                start = NewProcess(executable, "serve", "--workspace", folder, "--data-dir", DataDir, "--no-browser");
+            }
+            else
+                start = NewProcess(executable, "studio", "--project", projectId.ToString("D"), "--kind", kind.Id,
+                    "--data-dir", FileSystem.AppDataDirectory, "--no-browser");
             _host = Process.Start(start) ?? throw new InvalidOperationException("Concierge Code did not start.");
             using var startupTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             startupTimeout.CancelAfter(TimeSpan.FromMinutes(2));
@@ -59,14 +94,30 @@ internal sealed class ExternalDeveloperStudio : IDeveloperStudio, IAsyncDisposab
                 throw new InvalidOperationException("Concierge Code returned an unsupported contract.");
             var port = response.GetProperty("port").GetInt32();
             var tokenFile = Path.GetFullPath(response.GetProperty("tokenFile").GetString() ?? "");
-            if (port is < 1 or > 65535 || !string.Equals(tokenFile, Path.GetFullPath(Path.Combine(DataDir, "connection.token")), StringComparison.OrdinalIgnoreCase))
+            var expectedTokenFolder = Path.GetFullPath(Path.Combine(FileSystem.AppDataDirectory, "projects", projectId.ToString("D"), "studio", "sessions"));
+            var expectedCodeToken = Path.GetFullPath(Path.Combine(DataDir, "connection.token"));
+            var tokenIsExpected = kind.Id == "code"
+                ? string.Equals(tokenFile, expectedCodeToken, StringComparison.OrdinalIgnoreCase)
+                : string.Equals(Path.GetDirectoryName(tokenFile), expectedTokenFolder, StringComparison.OrdinalIgnoreCase)
+                  && Path.GetExtension(tokenFile).Equals(".token", StringComparison.OrdinalIgnoreCase);
+            if (port is < 1 or > 65535 || !tokenIsExpected)
                 throw new InvalidOperationException("Concierge Code returned invalid connection details.");
             var token = (await File.ReadAllTextAsync(tokenFile, cancellationToken)).Trim();
             if (token.Length != 64 || !token.All(Uri.IsHexDigit))
                 throw new InvalidOperationException("Concierge Code returned an invalid token.");
-            _url = new Uri($"http://127.0.0.1:{port}/?tkn={token}");
+            var route = kind.Id == "code" ? "/" : response.GetProperty("route").GetString();
+            var expectedOutputRoot = Path.GetFullPath(Path.Combine(FileSystem.AppDataDirectory, "projects", projectId.ToString("D"), "studio", "outputs"));
+            if (kind.Id != "code" &&
+                (!string.Equals(response.GetProperty("kind").GetString(), kind.Id, StringComparison.Ordinal) ||
+                 !string.Equals(route, $"/?kind={kind.Id}", StringComparison.Ordinal) ||
+                 response.GetProperty("project").GetGuid() != projectId ||
+                 !string.Equals(Path.GetFullPath(response.GetProperty("outputRoot").GetString() ?? ""),
+                     expectedOutputRoot, StringComparison.OrdinalIgnoreCase)))
+                throw new InvalidOperationException("Concierge Code returned the wrong workspace.");
+            _url = new Uri($"http://127.0.0.1:{port}{route}{(route!.Contains('?') ? "&" : "?")}tkn={token}");
             _projectId = projectId;
-            await ShowEditorAsync(_url, projectName);
+            _workspaceKind = kind.Id;
+            await ShowEditorAsync(_url, $"{projectName} · {kind.Title}");
             return _url;
         }
         catch
@@ -207,6 +258,7 @@ internal sealed class ExternalDeveloperStudio : IDeveloperStudio, IAsyncDisposab
         _host = null;
         _url = null;
         _projectId = null;
+        _workspaceKind = null;
     }
 
     public async ValueTask DisposeAsync() => await CloseAsync();
