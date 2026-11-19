@@ -27,7 +27,7 @@
         <section class="developer-studio-start" aria-labelledby="code-start-title">
             <p class="projects-eyebrow">YOUR CODING SPACE</p>
             <h2 id="code-start-title">Make your idea real.</h2>
-            <p>Edit this Project's code here. Circle AI is your coding assistant.</p>
+            <p>Edit this Project's code here. B! can help, powered by Circle AI.</p>
             @if (_studio is null)
             {
                 <p role="status">Concierge Code is available in Concierge Desktop.</p>
@@ -36,7 +36,7 @@
             {
                 <div class="developer-studio-actions">
                     <button type="button" disabled="@(_opening || _installing is not null)" @onclick="OpenAsync">@(_opening ? "Preparing editor…" : "Open Concierge Code")</button>
-                    <button type="button" @onclick="AskCircleAiAsync">Ask Circle AI</button>
+                    <button type="button" @onclick="AskCircleAiAsync">Ask B!</button>
                 </div>
                 <p class="developer-studio-note">The first opening downloads the editor to this computer.</p>
                 <div class="developer-studio-setups" aria-label="Coding tools">
@@ -51,7 +51,7 @@
                         </div>
                     }
                 </div>
-                <p class="developer-studio-note">Find more extensions inside Concierge Code.</p>
+                <p class="developer-studio-note">Setups install editor extensions. Compilers and SDKs are separate. Find more extensions inside Concierge Code.</p>
                 @if (!string.IsNullOrWhiteSpace(_setupMessage))
                 {
                     <p role="status">@_setupMessage</p>

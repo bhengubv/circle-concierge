@@ -281,7 +281,7 @@ internal sealed class WindowsDeveloperStudio : IDeveloperStudio, IAsyncDisposabl
             };
             var askCircleAi = new Button
             {
-                Text = "Ask Circle AI",
+                Text = "Ask B!",
                 BackgroundColor = Colors.Transparent,
                 TextColor = Colors.White,
             };
