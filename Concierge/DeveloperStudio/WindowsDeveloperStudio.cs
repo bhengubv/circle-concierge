@@ -11,6 +11,7 @@ internal sealed class WindowsDeveloperStudio : IDeveloperStudio, IAsyncDisposabl
 {
     public event EventHandler? Closed;
     private const string Version = "openvscode-server-v1.109.5";
+    private const int PreferredLoopbackPort = 53911;
     private const string ArchiveSha256 = "b433bf4f0227321a7014d8460d10a8f958adc0f45aa79bd889e84e65e8f88363";
     private readonly SemaphoreSlim _gate = new(1, 1);
     private readonly HttpClient _http = new(new HttpClientHandler { AllowAutoRedirect = false });
@@ -65,8 +66,15 @@ internal sealed class WindowsDeveloperStudio : IDeveloperStudio, IAsyncDisposabl
             _wslPidFile = wslPidFile;
             await CleanUpRecordedServerAsync(cancellationToken);
 
-            var listener = new TcpListener(IPAddress.Loopback, 0);
-            listener.Start();
+            // VS Code Web keeps its appearance and layout in browser storage by origin.
+            // Prefer a stable loopback origin so choices survive editor restarts.
+            var listener = new TcpListener(IPAddress.Loopback, PreferredLoopbackPort);
+            try { listener.Start(); }
+            catch (SocketException)
+            {
+                listener = new TcpListener(IPAddress.Loopback, 0);
+                listener.Start();
+            }
             var port = ((IPEndPoint)listener.LocalEndpoint).Port;
             listener.Stop();
             var command = $"root=\"$HOME/.local/share/concierge/developer-studio/{Version}-linux-x64\"; echo $$ > \"$4\"; exec \"$root/node\" \"$root/out/server-main.js\" --host 127.0.0.1 --port \"$1\" --connection-token-file \"$2\" --disable-telemetry --folder \"$3\" --user-data-dir \"$5\" --extensions-dir \"$6\"";
@@ -150,7 +158,11 @@ internal sealed class WindowsDeveloperStudio : IDeveloperStudio, IAsyncDisposabl
         using var process = Process.Start(info) ?? throw new InvalidOperationException("WSL could not start.");
         if (standardInput is not null)
         {
-            await process.StandardInput.WriteAsync(standardInput.AsMemory(), cancellationToken);
+            // Raw C# strings inherit Windows line endings in this source file.
+            // Bash treats the trailing CR as part of commands such as pipefail.
+            var unixInput = standardInput.Replace("\r\n", "\n", StringComparison.Ordinal)
+                .Replace('\r', '\n');
+            await process.StandardInput.WriteAsync(unixInput.AsMemory(), cancellationToken);
             process.StandardInput.Close();
         }
         var output = process.StandardOutput.ReadToEndAsync(cancellationToken);
