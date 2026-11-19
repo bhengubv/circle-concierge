@@ -94,8 +94,17 @@ public static class ProjectStarterTemplates
              ("Review the content", "Check claims, accessibility, permissions, and final copy before publishing."),
              ("Measure and improve", "Record outcomes and decide what to repeat or change.")],
             VocationModeId: VocationModes.SocialMediaManagerId),
+        new("game-creator", "Games", "Game Creator", "Make an original game people can play on a phone.", "Personal & creative",
+            "First playable game", "A tested mobile game prototype with a clear path to release",
+            "Concierge can plan the game, help create art and sound, and guide code work in Concierge Code. Test the actual game on a phone before preparing a release.",
+            [("Choose the play idea", "Describe the player, the core action, and what makes this game original."),
+             ("Build the first playable", "Create one short level or loop with working touch controls in Concierge Code."),
+             ("Play on a phone", "Test controls, orientation, readability, performance, and a complete round on a real device."),
+             ("Improve from playtests", "Record what confused or delighted players and revise the prototype."),
+             ("Prepare a release", "Review assets, licences, accessibility, privacy, and store requirements before publishing.")]),
     ];
 
     public static IReadOnlyList<ProjectStarterTemplate> Home => All.Where(template => template.Group == "Home").ToList();
     public static IReadOnlyList<ProjectStarterTemplate> Work => All.Where(template => template.Group == "Work").ToList();
+    public static IReadOnlyList<ProjectStarterTemplate> Games => All.Where(template => template.Group == "Games").ToList();
 }

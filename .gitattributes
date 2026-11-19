@@ -1,0 +1,2 @@
+# Unified diff context lines may contain a leading space before source tabs.
+docs/acceptance/*.patch whitespace=-space-before-tab,-blank-at-eol
