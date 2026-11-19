@@ -1,0 +1,38 @@
+/* Circle Metro geometry for the pinned OpenVSCode 1.109.5 workbench.
+   Colour comes from the active editor theme. Do not clip editor overlays. */
+.monaco-workbench .part.sidebar,
+.monaco-workbench .part.auxiliarybar,
+.monaco-workbench .part.panel,
+.monaco-workbench .part.editor {
+  border-color: var(--vscode-panel-border, var(--vscode-sideBar-border)) !important;
+}
+.monaco-workbench .part.sidebar > .content,
+.monaco-workbench .part.auxiliarybar > .content {
+  border-radius: 14px;
+  border: 1px solid var(--vscode-sideBar-border, transparent);
+  background-clip: padding-box;
+}
+.monaco-workbench .part.editor > .content,
+.monaco-workbench .part.panel > .content {
+  border-radius: 14px 14px 0 0;
+  background-clip: padding-box;
+}
+.monaco-workbench .tabs-container .tab {
+  border-radius: 10px 10px 0 0;
+}
+.monaco-workbench .tabs-container .tab.active {
+  box-shadow: inset 0 3px var(--vscode-tab-activeBorderTop, var(--vscode-focusBorder));
+}
+.monaco-workbench .monaco-inputbox,
+.monaco-workbench .monaco-select-box,
+.monaco-workbench .monaco-button,
+.monaco-workbench .quick-input-widget,
+.monaco-workbench .monaco-hover,
+.monaco-workbench .notification-toast,
+.monaco-workbench .monaco-list-row {
+  border-radius: 10px !important;
+}
+.monaco-workbench .monaco-list-row.focused,
+.monaco-workbench .monaco-list-row.selected {
+  box-shadow: inset 3px 0 var(--vscode-focusBorder);
+}

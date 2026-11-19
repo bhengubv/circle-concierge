@@ -92,6 +92,8 @@
     <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows10.0.19041.0'">
         <EmbeddedResource Include="DeveloperStudio\Branding\package.json" LogicalName="Concierge.DeveloperStudio.Branding.package.json" />
         <EmbeddedResource Include="DeveloperStudio\Branding\themes\circle-metro-dark.json" LogicalName="Concierge.DeveloperStudio.Branding.circle-metro-dark.json" />
+        <EmbeddedResource Include="DeveloperStudio\Branding\themes\circle-metro-light.json" LogicalName="Concierge.DeveloperStudio.Branding.circle-metro-light.json" />
+        <EmbeddedResource Include="DeveloperStudio\Branding\workbench.css" LogicalName="Concierge.DeveloperStudio.Branding.workbench.css" />
     </ItemGroup>
 
     <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-android' and '$(Configuration)' == 'Debug'">

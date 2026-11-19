@@ -3,6 +3,7 @@ using System.IO.Compression;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
+using System.Text.Json;
 using Concierge.Shared.Tools;
 
 namespace Concierge.DeveloperStudio;
@@ -229,11 +230,17 @@ internal sealed class WindowsDeveloperStudio : IDeveloperStudio, IAsyncDisposabl
         var list = $"root=\"{root}\"; exec \"$root/bin/openvscode-server\" --user-data-dir \"$1\" --extensions-dir \"$2\" --list-extensions";
         var installed = await RunWslAsync(["-e", "bash", "-lc", list, "--", wslUserData, wslExtensions], cancellationToken, "branding inventory");
         if (installed.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
-            .Contains(extensionId, StringComparer.OrdinalIgnoreCase)) return;
+            .Contains(extensionId, StringComparer.OrdinalIgnoreCase))
+        {
+            var versionCommand = $"root=\"{root}\"; exec \"$root/bin/openvscode-server\" --user-data-dir \"$1\" --extensions-dir \"$2\" --list-extensions --show-versions";
+            var versions = await RunWslAsync(["-e", "bash", "-lc", versionCommand, "--", wslUserData, wslExtensions], cancellationToken, "branding version");
+            if (versions.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                .Contains($"{extensionId}@1.1.0", StringComparer.OrdinalIgnoreCase)) return;
+        }
 
         // Install through the editor's extension manager. Merely copying a theme
         // directory does not register it with the web workbench.
-        var vsix = Path.Combine(userData, "concierge-code-theme-1.0.0.vsix");
+        var vsix = Path.Combine(userData, "concierge-code-theme-1.1.0.vsix");
         await using (var output = File.Create(vsix))
         using (var archive = new ZipArchive(output, ZipArchiveMode.Create))
         {
@@ -244,12 +251,13 @@ internal sealed class WindowsDeveloperStudio : IDeveloperStudio, IAsyncDisposabl
             await WriteEntryAsync(archive, "extension.vsixmanifest", """
                 <?xml version="1.0" encoding="utf-8"?>
                 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
-                  <Metadata><Identity Language="en-US" Id="concierge-code-theme" Version="1.0.0" Publisher="circle"/><DisplayName>Concierge Code Theme</DisplayName><Description>Circle Metro styling for Concierge Code.</Description><Tags>theme</Tags><Categories>Themes</Categories><GalleryFlags></GalleryFlags><Properties><Property Id="Microsoft.VisualStudio.Code.Engine" Value="^1.109.0" /></Properties></Metadata>
+                  <Metadata><Identity Language="en-US" Id="concierge-code-theme" Version="1.1.0" Publisher="circle"/><DisplayName>Concierge Code Theme</DisplayName><Description>Circle Metro styling for Concierge Code.</Description><Tags>theme</Tags><Categories>Themes</Categories><GalleryFlags></GalleryFlags><Properties><Property Id="Microsoft.VisualStudio.Code.Engine" Value="^1.109.0" /></Properties></Metadata>
                   <Installation><InstallationTarget Id="Microsoft.VisualStudio.Code"/></Installation><Dependencies/><Assets><Asset Type="Microsoft.VisualStudio.Code.Manifest" Path="extension/package.json" Addressable="true"/></Assets>
                 </PackageManifest>
                 """, cancellationToken);
             await WriteBrandEntryAsync(archive, "package.json", "extension/package.json", cancellationToken);
             await WriteBrandEntryAsync(archive, "circle-metro-dark.json", "extension/themes/circle-metro-dark.json", cancellationToken);
+            await WriteBrandEntryAsync(archive, "circle-metro-light.json", "extension/themes/circle-metro-light.json", cancellationToken);
         }
         var wslVsix = (await RunWslAsync(["-e", "wslpath", "-a", vsix], cancellationToken, "theme package path")).Trim();
         var install = $"root=\"{root}\"; exec \"$root/bin/openvscode-server\" --user-data-dir \"$1\" --extensions-dir \"$2\" --install-extension \"$3\"";
@@ -379,6 +387,23 @@ internal sealed class WindowsDeveloperStudio : IDeveloperStudio, IAsyncDisposabl
             var layout = new Grid { RowDefinitions = new RowDefinitionCollection { new(GridLength.Auto), new(GridLength.Star) } };
             layout.Children.Add(toolbar);
             var browser = new WebView { Source = url.ToString() };
+            browser.Navigated += async (_, e) =>
+            {
+                if (e.Result != WebNavigationResult.Success) return;
+                try
+                {
+                    using var resource = typeof(WindowsDeveloperStudio).Assembly.GetManifestResourceStream("Concierge.DeveloperStudio.Branding.workbench.css")
+                        ?? throw new InvalidOperationException("Concierge Code shape resource is missing.");
+                    using var reader = new StreamReader(resource);
+                    var css = await reader.ReadToEndAsync();
+                    var script = $"(() => {{ let style = document.getElementById('circle-metro-workbench-shape'); if (!style) {{ style = document.createElement('style'); style.id = 'circle-metro-workbench-shape'; document.head.appendChild(style); }} style.textContent = {JsonSerializer.Serialize(css)}; return true; }})()";
+                    await browser.EvaluateJavaScriptAsync(script);
+                }
+                catch (Exception error)
+                {
+                    Debug.WriteLine($"Concierge Code shape styling failed: {error}");
+                }
+            };
             Grid.SetRow(browser, 1);
             layout.Children.Add(browser);
             _editorPage = new ContentPage { Content = layout, Title = "Concierge Code" };

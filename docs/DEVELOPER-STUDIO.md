@@ -6,6 +6,8 @@ The tool is currently supported on **Windows x64 with WSL**. It is not installed
 
 The editor uses a stable loopback port when available so its web client can retain the person's theme and layout choices across restarts. If that port is occupied, it uses an available port for that session; web client preferences may not carry to that temporary origin. Concierge changes the workbench's product title, package display name, and English display-message catalogue to Concierge Code after verifying the pinned runtime. It includes a first-party Circle Metro Dark editor theme and default preferences for a fresh browser profile. The upstream license and attribution remain intact. The workbench can still show its own agent panel; that panel is not Circle AI. The web client stores its explicit appearance and startup choices in browser storage, so the person can override the defaults.
 
+The editor has first-party Circle Metro Dark and Light themes, with accent colours drawn from the Circle Metro token palette. A small Concierge-owned style layer rounds the pinned workbench's tabs, inputs, menus and visible panels. It is applied after the local editor loads and must be visually checked when the pinned editor version changes. The person can still select another installed theme.
+
 The workbench is based on the open-source OpenVSCode Server and offers compatible extensions through Open VSX. People choose a language setup; Concierge installs its extensions only when selected. The offered setups are:
 
 | Language | Extension IDs |

@@ -3,12 +3,13 @@
   "displayName": "Concierge Code Theme",
   "description": "Circle Metro colours and layout defaults for Concierge Code.",
   "publisher": "circle",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "engines": { "vscode": "^1.109.0" },
   "categories": ["Themes"],
   "contributes": {
     "themes": [
-      { "label": "Circle Metro Dark", "uiTheme": "vs-dark", "path": "./themes/circle-metro-dark.json" }
+      { "label": "Circle Metro Dark", "uiTheme": "vs-dark", "path": "./themes/circle-metro-dark.json" },
+      { "label": "Circle Metro Light", "uiTheme": "vs", "path": "./themes/circle-metro-light.json" }
     ],
     "configurationDefaults": {
       "workbench.colorTheme": "Circle Metro Dark",
