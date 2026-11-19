@@ -70,6 +70,8 @@ builder.Services
     .AddConciergeDiagrams()
     .AddConciergeMetrics()
     .AddConciergeTools()
+    // Web has no per-person token vault yet, so expose public SleptON! reads only.
+    .AddConciergeSleptOnCli(includeAuthenticated: false)
     .AddConciergeAi()
     .AddConciergeMesh()
     .AddConciergeMedia()

@@ -32,13 +32,13 @@
     }
     else
     {
-        <p class="row-sub">Sign in to your TheGeekNetwork online account when you need connected services such as Butler or your wallet. Concierge works locally without signing in. Your password is not saved.</p>
+        <p class="row-sub">Use your TheGeekNetwork account for online services and your wallet. Concierge works locally without it. Your password is not saved.</p>
         <input class="comp-input online-account-field" type="text" autocomplete="username" placeholder="Email or mobile number"
                aria-label="TheGeekNetwork account email or mobile number" @bind="_emailOrMobile" />
         <input class="comp-input online-account-field" type="password" autocomplete="current-password" placeholder="Password"
                aria-label="TheGeekNetwork account password" @bind="_password" />
         <button class="btn btn-primary" type="button" disabled="@(_busy || string.IsNullOrWhiteSpace(_emailOrMobile) || string.IsNullOrWhiteSpace(_password))" @onclick="SignInAsync">
-            @(_busy ? "Signing in…" : "Sign in to online account")
+            @(_busy ? "Signing in…" : IsHandheld ? "Sign In: Online" : "Sign in to online account")
         </button>
     }
     @if (!string.IsNullOrWhiteSpace(_message))
@@ -48,6 +48,8 @@
 </div>
 
 @code {
+    [Parameter] public bool IsHandheld { get; set; }
+    [Parameter] public EventCallback SignedIn { get; set; }
     [Parameter] public EventCallback SignedOut { get; set; }
     private ButlerAccountStatus? _status;
     private string _emailOrMobile = string.Empty;
@@ -73,16 +75,16 @@
 
     private async Task SignInAsync()
     {
-        await RunAsync(() => ButlerSession.SignInAsync(_emailOrMobile, _password));
-        if (_status?.NeedsTwoFactor != true)
-            _password = string.Empty;
+        var password = _password;
+        _password = string.Empty;
+        await RunAsync(() => ButlerSession.SignInAsync(_emailOrMobile, password));
     }
 
     private async Task VerifyAsync()
     {
-        await RunAsync(() => ButlerSession.CompleteTwoFactorAsync(_code));
-        if (_status?.IsConnected == true)
-            _code = string.Empty;
+        var code = _code;
+        _code = string.Empty;
+        await RunAsync(() => ButlerSession.CompleteTwoFactorAsync(code));
     }
 
     private async Task SignOutAsync()
@@ -115,6 +117,8 @@
             var result = await action();
             _message = result.Message;
             await RefreshAsync();
+            if (_status?.IsConnected == true)
+                await SignedIn.InvokeAsync();
         }
         catch (Exception)
         {

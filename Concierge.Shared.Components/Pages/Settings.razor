@@ -84,12 +84,12 @@
     <section class="sheet-group">
         <button class="sheet-head-btn" type="button" @onclick="@(() => Toggle("butler"))">
             <svg class="ws-chev @(IsOpen("butler") ? "is-open" : null)" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
-            <span class="sheet-label">Online account and wallet</span>
+            <span class="sheet-label">@(IsHandheld ? "Sign In: Online" : "Online account and wallet")</span>
         </button>
         @if (IsOpen("butler"))
         {
-            <ButlerAccountSettings SignedOut="@ClearWalletAsync" />
-            <WalletOverviewSettings @ref="_walletSettings" />
+            <ButlerAccountSettings SignedIn="@ResumeWalletAsync" SignedOut="@ClearWalletAsync" IsHandheld="@IsHandheld" />
+            <WalletOverviewSettings @ref="_walletSettings" SignInRequired="@RememberWalletRequest" />
         }
     </section>
 
@@ -235,8 +235,21 @@
 </div>
 
 @code {
+    [Parameter] public bool IsHandheld { get; set; }
+    private bool _walletRequested;
+    private void RememberWalletRequest() => _walletRequested = true;
+    private async Task ResumeWalletAsync()
+    {
+        if (!_walletRequested) return;
+        _walletRequested = false;
+        if (_walletSettings is not null) await _walletSettings.ReadAsync();
+    }
     private Concierge.Shared.Components.Components.WalletOverviewSettings? _walletSettings;
-    private Task ClearWalletAsync() => _walletSettings?.ClearAsync() ?? Task.CompletedTask;
+    private Task ClearWalletAsync()
+    {
+        _walletRequested = false;
+        return _walletSettings?.ClearAsync() ?? Task.CompletedTask;
+    }
     /// <summary>Raised when the panel should close — the backdrop, the close
     /// control, or anything else that dismisses it.</summary>
     [Parameter] public EventCallback OnClose { get; set; }

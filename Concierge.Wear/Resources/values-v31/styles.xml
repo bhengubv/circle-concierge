@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="ConciergeWear" parent="android:style/Theme.DeviceDefault.NoActionBar">
+        <item name="android:windowSwipeToDismiss">false</item>
+        <item name="android:windowBackground">@drawable/concierge_splash_background</item>
+        <item name="android:windowSplashScreenBackground">@color/cm_brand_circle_blue</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/concierge_splash_mark</item>
+        <item name="android:colorAccent">@color/cm_brand_circle_blue</item>
+    </style>
+</resources>

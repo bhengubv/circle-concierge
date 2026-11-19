@@ -794,7 +794,7 @@
 
     @if (_settingsOpen)
     {
-        <Settings OnClose="@(() => _settingsOpen = false)" />
+        <Settings OnClose="@(() => _settingsOpen = false)" IsHandheld="true" />
     }
 
     @if (_toolsAndFeaturesOpen)

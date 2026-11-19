@@ -1,4 +1,5 @@
 @using Concierge.Shared.Rpc.Mcp
+@using Concierge.Shared.Tools
 @inject IServiceProvider Services
 
 <div class="sheet-back" @onclick="Close" aria-hidden="true"></div>
@@ -44,6 +45,25 @@
             <button type="button" class="feature-action" disabled="@_connecting" @onclick="ConnectSolidCraftAsync">@(_connecting ? "Connecting…" : "Connect SolidCraft")</button>
         }
     </div>
+    @if (_sleptOn is not null)
+    {
+        <div class="feature-card">
+            <div class="feature-card-top"><strong>SleptON!</strong><span class="feature-state">@_sleptOn.Status</span></div>
+            <p>Explore apps and events. Concierge asks before contacting SleptON!.</p>
+            @if (_sleptOn.Tools.Count == 0)
+            {
+                <button type="button" class="feature-action" disabled="@_connecting" @onclick="ConnectSleptOnAsync">Connect</button>
+            }
+        </div>
+    }
+    else if (OperatingSystem.IsWindows())
+    {
+        <div class="feature-card">
+            <div class="feature-card-top"><strong>SleptON!</strong><span class="feature-state">Optional</span></div>
+            <p>Explore apps and events. Restart Concierge after installing.</p>
+            <div class="feature-actions"><a href="https://github.com/bhengubv/thegeeknetworkapps/releases/tag/slepton-cli-v1.1.0" target="_blank" rel="noopener noreferrer">Get the SleptON! CLI</a></div>
+        </div>
+    }
     @foreach (var tool in ConfiguredTools)
     {
         var status = _mcpTools?.Statuses.FirstOrDefault(item => string.Equals(item.Name, tool.Name, StringComparison.OrdinalIgnoreCase));
@@ -71,6 +91,7 @@
     [Parameter] public EventCallback OnBrowseSkills { get; set; }
 
     private SolidCraftIntegration? _solidCraft;
+    private SleptOnCliToolSource? _sleptOn;
     private McpToolSource? _mcpTools;
     private IReadOnlyList<McpServerConfig> _configuredTools = [];
     private bool _connecting;
@@ -91,6 +112,7 @@
     protected override void OnInitialized()
     {
         _solidCraft = Services.GetService(typeof(SolidCraftIntegration)) as SolidCraftIntegration;
+        _sleptOn = Services.GetService(typeof(SleptOnCliToolSource)) as SleptOnCliToolSource;
         if (Services.GetService(typeof(McpServerOptions)) is McpServerOptions options)
             _configuredTools = options.Load().Servers.Where(item => !string.Equals(item.Name, "SolidCraft", StringComparison.OrdinalIgnoreCase)).ToArray();
         _mcpTools = Services.GetService(typeof(McpToolSource)) as McpToolSource;
@@ -114,6 +136,15 @@
         _message = null;
         try { _message = await _solidCraft.ConnectAsync(); }
         catch (Exception error) { _message = $"SolidCraft could not connect: {error.Message}"; }
+        finally { _connecting = false; }
+    }
+
+    private async Task ConnectSleptOnAsync()
+    {
+        if (_sleptOn is null) return;
+        _connecting = true;
+        _message = null;
+        try { _message = await _sleptOn.ConnectAsync(); }
         finally { _connecting = false; }
     }
 
