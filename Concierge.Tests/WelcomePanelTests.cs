@@ -8,6 +8,21 @@ namespace Concierge.Tests;
 public sealed class WelcomePanelTests : BunitContext
 {
     [Fact]
+    public void First_visit_shows_three_starters_and_keeps_the_catalogue_collapsed()
+    {
+        string? selected = null;
+        var cut = Render<WelcomePanel>(parameters => parameters
+            .Add(panel => panel.OnPromptSelected, prompt => selected = prompt));
+
+        Assert.Equal(3, cut.FindAll(".welcome-quick-start button").Count);
+        Assert.Null(cut.Find(".welcome-explore").GetAttribute("open"));
+        Assert.Equal("Explore what Concierge can do", cut.Find(".welcome-explore summary").TextContent.Trim());
+
+        cut.FindAll(".welcome-quick-start button")[0].Click();
+        Assert.Equal("Help me plan a project.", selected);
+    }
+
+    [Fact]
     public void Empty_chat_reads_groups_and_prompts_from_the_versioned_Circle_AI_catalogue()
     {
         var cut = Render<WelcomePanel>();
