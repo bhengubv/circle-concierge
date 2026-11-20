@@ -15,11 +15,25 @@ public sealed class WelcomePanelTests : BunitContext
             .Add(panel => panel.OnPromptSelected, prompt => selected = prompt));
 
         Assert.Equal(3, cut.FindAll(".welcome-quick-start button").Count);
+        Assert.Empty(cut.FindAll(".welcome-continue"));
         Assert.Null(cut.Find(".welcome-explore").GetAttribute("open"));
         Assert.Equal("Explore what Concierge can do", cut.Find(".welcome-explore summary").TextContent.Trim());
 
         cut.FindAll(".welcome-quick-start button")[0].Click();
         Assert.Equal("Help me plan a project.", selected);
+    }
+
+    [Fact]
+    public void Last_conversation_is_an_optional_continuation_not_the_opening_destination()
+    {
+        var cut = Render<WelcomePanel>(parameters => parameters
+            .Add(panel => panel.ContinueHref, "/chat/123")
+            .Add(panel => panel.ContinueTitle, "Developer Studio acceptance work"));
+
+        var link = cut.Find("a.welcome-continue");
+        Assert.Equal("/chat/123", link.GetAttribute("href"));
+        Assert.Contains("Developer Studio acceptance work", link.TextContent);
+        Assert.Null(cut.Find(".welcome-explore").GetAttribute("open"));
     }
 
     [Fact]

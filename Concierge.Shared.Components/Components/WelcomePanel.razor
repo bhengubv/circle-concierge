@@ -13,6 +13,10 @@
         <button type="button" @onclick="() => OnPromptSelected.InvokeAsync(WritingStarter)">Write something <span aria-hidden="true">↗</span></button>
         <button type="button" @onclick="() => OnPromptSelected.InvokeAsync(IdeaStarter)">Explore an idea <span aria-hidden="true">↗</span></button>
     </div>
+    @if (!string.IsNullOrWhiteSpace(ContinueHref))
+    {
+        <a class="welcome-continue" href="@ContinueHref">Continue: @ContinueTitle <span aria-hidden="true">↗</span></a>
+    }
     @if (SetupGuidance is { } guidance)
     {
         <aside class="welcome-setup-guide" aria-labelledby="welcome-setup-title">
@@ -450,6 +454,8 @@
     private static string FormatLocalTime(DateTimeOffset value) => value.ToLocalTime().ToString("t");
 
     [Parameter] public EventCallback<string> OnPromptSelected { get; set; }
+    [Parameter] public string? ContinueHref { get; set; }
+    [Parameter] public string? ContinueTitle { get; set; }
     [Parameter] public ChatRuntimeCapabilityCatalog? CapabilityCatalog { get; set; }
     [Parameter] public ChatRuntimeCapabilityCatalog? DesktopCapabilityCatalog { get; set; }
     [Parameter] public bool IsHandheld { get; set; }

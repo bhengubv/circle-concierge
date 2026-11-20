@@ -104,6 +104,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
     protected List<Conversation> _conversations = new();
     protected Conversation? _active;
+    protected Conversation? LastConversationForResume { get; private set; }
     protected string _composerText = string.Empty;
 
     protected void UseStarterPrompt(string prompt)
@@ -691,12 +692,19 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
 
         await RefreshSidebarAsync();
 
-        // Land where you left. Only from the bare workspace — an explicit
-        // /chat/{id} is a deliberate destination and must not be overridden —
-        // and only if that thread still exists, since it may have been deleted
-        // from History since.
+        if (_windowsDesktopUsesCircleAi && _session.LastConversationId is { } savedId
+            && _conversations.Any(conversation => conversation.Id == savedId))
+        {
+            var saved = await Store.GetAsync(savedId);
+            if (saved?.Messages.Any(message => message.Role == "user") == true)
+                LastConversationForResume = saved;
+        }
+
+        // Desktop opens on the calm starting view. The last thread remains
+        // available there and in Recent conversations. Other heads retain their
+        // existing resume behavior; an explicit /chat/{id} is never overridden.
         var hasStartupHandoff = !string.IsNullOrWhiteSpace(System.Web.HttpUtility.ParseQueryString(new Uri(Nav.Uri).Query)["startup"]);
-        if (ConversationId is null && !hasStartupHandoff
+        if (!_windowsDesktopUsesCircleAi && ConversationId is null && !hasStartupHandoff
             && _session.LastConversationId is { } last
             && _conversations.Any(c => c.Id == last))
         {

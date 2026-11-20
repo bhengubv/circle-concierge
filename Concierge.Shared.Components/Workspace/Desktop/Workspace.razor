@@ -39,6 +39,7 @@
     var snapshot = State.GetSnapshot();
     var runtime = LlmRuntime.GetSnapshot();
     var recent = _conversations.Take(6).ToList();
+    var lastConversation = LastConversationForResume;
     var createLinks = new[] { (Name: "Diagrams", Href: "diagrams"), (Name: "Images", Href: "images") };
     var aboutLinks = new[]
     {
@@ -411,7 +412,9 @@
         }
         else if (_active is null || (_active.Messages.Count == 0 && _approvalHistory.Count == 0 && _runRecoveryStatus is null))
         {
-            <WelcomePanel OnPromptSelected="UseStarterPrompt" CapabilityCatalog="CircleAiCapabilityCatalog" />
+            <WelcomePanel OnPromptSelected="UseStarterPrompt" CapabilityCatalog="CircleAiCapabilityCatalog"
+                          ContinueHref="@(lastConversation is null ? null : $"/chat/{lastConversation.Id}")"
+                          ContinueTitle="@lastConversation?.Title" />
         }
         else
         {

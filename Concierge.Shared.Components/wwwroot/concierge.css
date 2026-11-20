@@ -2668,6 +2668,9 @@ html[data-cm-host="windows-desktop"] .ws-top-meta { border-color:color-mix(in sr
 .welcome-quick-start button:nth-child(3) { border-color:color-mix(in srgb,var(--cm-skin-berry-accent) 40%,var(--cm-color-outline)); background:color-mix(in srgb,var(--cm-skin-berry-accent) 12%,var(--cm-color-surface-raised)); }
 .welcome-quick-start button:hover { border-color:var(--cm-color-accent); }
 .welcome-quick-start button:focus-visible,.welcome-explore summary:focus-visible { outline:2px solid var(--cm-color-accent); outline-offset:3px; }
+.welcome-continue { display:inline-flex; align-items:center; gap:.5rem; width:fit-content; max-width:100%; margin:0 0 .7rem; color:var(--cm-color-accent-text); font-size:.84rem; font-weight:700; text-decoration:none; overflow-wrap:anywhere; }
+.welcome-continue:hover { text-decoration:underline; }
+.welcome-continue:focus-visible { outline:2px solid var(--cm-color-accent); outline-offset:3px; }
 .welcome-explore { margin-top:.15rem; }
 .welcome-explore > summary { width:fit-content; padding:.4rem 0; color:var(--cm-color-accent-text); font-size:.84rem; font-weight:700; cursor:pointer; }
 .welcome-explore[open] > summary { margin-bottom:.6rem; }
