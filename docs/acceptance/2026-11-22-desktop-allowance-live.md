@@ -28,7 +28,11 @@ Next: capture a redacted live service-boundary request/response for this exact c
 
 The Desktop renderer now converts simple currency and arithmetic inside `\(...\)` into ordinary text while leaving code fences and complex math untouched. A second test covers the doubled backslashes observed when the saved service reply is reloaded. Both focused rendering tests passed, and the full test suite passed **2,743/2,743**, 0 failed and 0 skipped. The final full-suite report measured 80.23% line, 68.1% branch, and 85.63% method coverage for its instrumented assemblies.
 
-This fixes a display defect; it does **not** fix the service's incorrect `$13.34` answer. A live Desktop recheck of the final renderer was interrupted when the app detected user input, so the final visual appearance is **unverified**. A post-run Settings screen showed `Qwen3.5-4B-MNN` and `loopback schema 1`, but the model ID used for the three allowance turns was not captured during the run.
+This fixes a display defect; it does **not** fix the service's incorrect `$13.34` answer. The initial live Desktop recheck was interrupted when the app detected user input; the later completed recheck is recorded below. A post-run Settings screen showed `Qwen3.5-4B-MNN` and `loopback schema 1`, but the model ID used for the three allowance turns was not captured during the run.
+
+## Visual recheck — 23 November 2026
+
+Reopened this saved conversation in the rebuilt Desktop app. The third answer's arithmetic appeared as readable text, including `(3 chores × $1.78 = $5.34)` and `(5 chores × $1.78 = $8.90, capped at $8.00)`, and its summary appeared as a real table. No raw `\(...\)` delimiters were visible in the inspected answer. This closes the narrow visual-rendering check for this saved reply. The table still showed the **wrong `$13.34` total**; answer accuracy remains failed.
 
 ## Saved-history inspection
 
