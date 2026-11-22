@@ -116,6 +116,64 @@ public sealed class CircleAiWindowsServiceRuntimeTests
     }
 
     [Fact]
+    public async Task Loopback_service_receives_the_separate_allowance_rules_and_prior_turns()
+    {
+        var path = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json");
+        await File.WriteAllTextAsync(path, "{\"BaseUrl\":\"http://127.0.0.1:5208\",\"Token\":\"test-only\"}");
+        var handler = new AllowancePayloadHandler();
+        try
+        {
+            using var runtime = new CircleAiWindowsServiceRuntime(path, new HttpClient(handler));
+            await runtime.InitializeAsync(default);
+            Assert.True(runtime.IsReady);
+            var turns = new ChatTurn[]
+            {
+                new("system", "Answer the person's actual request directly."),
+                new("user", "Each child gets $8 a week if they finish their own list."),
+                new("assistant", "I understand there are two children."),
+                new("user", "One has four chores and the other has five. Split the allowance evenly per completed chore, but cap each child at $8."),
+                new("assistant", "I will calculate each allowance separately."),
+                new("user", "What do I pay if the first completes three chores and the second completes all five?")
+            };
+            var answer = new StringBuilder();
+            await foreach (var piece in runtime.StreamAsync(turns)) answer.Append(piece);
+            Assert.Equal("ok", answer.ToString());
+            Assert.True(handler.SawAllTurns);
+        }
+        finally { File.Delete(path); }
+    }
+
+    private sealed class AllowancePayloadHandler : HttpMessageHandler
+    {
+        public bool SawAllTurns { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
+        {
+            if (request.RequestUri!.AbsolutePath == "/v1/status")
+                return new(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("{\"schema\":2,\"canAnswerNow\":true,\"brain\":{\"modelId\":\"service-chosen\",\"detail\":\"Ready\"}}", Encoding.UTF8, "application/json")
+                };
+
+            Assert.Equal("/butler/stream", request.RequestUri.AbsolutePath);
+            Assert.Equal("test-only", request.Headers.GetValues("X-Butler-Token").Single());
+            using var body = JsonDocument.Parse(await request.Content!.ReadAsStringAsync(token));
+            var messages = body.RootElement.GetProperty("messages").EnumerateArray().ToArray();
+            Assert.Equal(["system", "user", "assistant", "user", "assistant", "user"],
+                messages.Select(message => message.GetProperty("role").GetString()));
+            Assert.Contains("Each child gets $8", messages[1].GetProperty("content").GetString());
+            Assert.Contains("four chores and the other has five", messages[3].GetProperty("content").GetString());
+            Assert.Contains("cap each child at $8", messages[3].GetProperty("content").GetString());
+            Assert.Contains("first completes three chores", messages[5].GetProperty("content").GetString());
+            SawAllTurns = true;
+            return new(HttpStatusCode.OK)
+            {
+                Content = new StringContent("event: token\ndata: \"ok\"\n\nevent: done\ndata: null\n\n", Encoding.UTF8, "text/event-stream")
+            };
+        }
+    }
+
+    [Fact]
     public async Task Desktop_and_watch_wait_for_one_service_slot()
     {
         var handler = new BlockingHandler();
