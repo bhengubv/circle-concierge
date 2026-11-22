@@ -91,6 +91,33 @@ public sealed class AssistantContentTests : BunitContext
     }
 
     [Fact]
+    public void Simple_service_math_is_readable_in_a_table_without_changing_code()
+    {
+        const string reply = "| Child | Payment |\n|---|---:|\n| A | \\(\\$5.34\\) |\n| B | \\(\\$8.00\\) |\n\nTotal: \\(\\$13.34\\).\n\n```text\n\\(\\$5.34\\)\n```";
+
+        var cut = Render<AssistantContent>(ps => ps.Add(p => p.Content, reply));
+
+        Assert.Equal("$5.34", cut.FindAll("table td")[1].TextContent);
+        Assert.Equal("$8.00", cut.FindAll("table td")[3].TextContent);
+        Assert.Contains("Total: $13.34.", cut.Find(".assistant-markdown p").TextContent);
+        Assert.Equal("\\(\\$5.34\\)", cut.Find("pre code").TextContent.Trim());
+    }
+
+    [Fact]
+    public void Json_escaped_service_math_is_readable_after_reload()
+    {
+        const string reply = @"| Child | Payment |
+|---|---:|
+| A | \\(\\$5.34\\) |
+| B | \\(\\$8.00\\) |";
+
+        var cut = Render<AssistantContent>(ps => ps.Add(p => p.Content, reply));
+
+        Assert.Equal("$5.34", cut.FindAll("table td")[1].TextContent);
+        Assert.Equal("$8.00", cut.FindAll("table td")[3].TextContent);
+    }
+
+    [Fact]
     public void Unsafe_html_and_link_schemes_do_not_become_active_content()
     {
         var cut = Render<AssistantContent>(ps => ps.Add(p => p.Content,

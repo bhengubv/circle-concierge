@@ -9,6 +9,7 @@ using Concierge.Shared.Diagrams;
 using Markdig;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
+using System.Text.RegularExpressions;
 
 namespace Concierge.Shared.Components.Components;
 
@@ -35,7 +36,7 @@ public partial class AssistantContent
             return string.Empty;
         }
 
-        var document = Markdown.Parse(text, MarkdownPipeline);
+        var document = Markdown.Parse(NormalizeSimpleMath(text), MarkdownPipeline);
         foreach (var link in document.Descendants<LinkInline>())
         {
             if (!IsSafeLink(link.Url))
@@ -45,6 +46,58 @@ public partial class AssistantContent
         }
 
         return Markdown.ToHtml(document, MarkdownPipeline);
+    }
+
+    private static readonly Regex InlineMath = new(@"(?<slash>\\{1,2})\((?<body>[^()\r\n]{1,100})\k<slash>\)", RegexOptions.Compiled);
+    private static readonly Regex SimpleMathCommand = new(@"\\{1,2}(?<command>\$|dots|times|div)", RegexOptions.Compiled);
+    private static readonly Regex PlainMath = new(@"^[\p{L}\p{N}\s$.,+\-*/=%×÷…]+$", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Circle AI sometimes sends simple currency and arithmetic in LaTeX's \(...\)
+    /// delimiters. The current Markdown viewer has no math typesetter, so show
+    /// those simple expressions as readable text. Leave complex math and code
+    /// untouched rather than pretending to render them correctly.
+    /// </summary>
+    private static string NormalizeSimpleMath(string markdown)
+    {
+        var lines = markdown.Split('\n');
+        var fence = '\0';
+        var fenceLength = 0;
+        for (var index = 0; index < lines.Length; index++)
+        {
+            var line = lines[index];
+            var trimmed = line.TrimStart(' ');
+            var indent = line.Length - trimmed.Length;
+            if (indent <= 3 && trimmed.Length >= 3 && trimmed[0] is '`' or '~')
+            {
+                var marker = trimmed[0];
+                var count = 0;
+                while (count < trimmed.Length && trimmed[count] == marker) count++;
+                if (count >= 3 && (fence == '\0' || fence == marker && count >= fenceLength))
+                {
+                    if (fence == '\0') { fence = marker; fenceLength = count; }
+                    else { fence = '\0'; fenceLength = 0; }
+                    continue;
+                }
+            }
+            if (fence != '\0') continue;
+            lines[index] = InlineMath.Replace(line, match =>
+            {
+                // A backtick span is an example, not display math.
+                if (line[..match.Index].Count(character => character == '`') % 2 != 0) return match.Value;
+                var plain = SimpleMathCommand.Replace(match.Groups["body"].Value, command =>
+                    command.Groups["command"].Value switch
+                    {
+                        "$" => "$",
+                        "dots" => "…",
+                        "times" => "×",
+                        "div" => "÷",
+                        _ => command.Value
+                    });
+                return PlainMath.IsMatch(plain) ? plain : match.Value;
+            });
+        }
+        return string.Join("\n", lines);
     }
 
     private static bool IsSafeLink(string? value)
