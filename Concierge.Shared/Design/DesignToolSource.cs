@@ -22,6 +22,9 @@ namespace Concierge.Shared.Design;
 /// </summary>
 public sealed class DesignWorkbench
 {
+    /// <summary>Optional document export folder supplied by a host; defaults to the OS documents folder.</summary>
+    public string? DocumentExportDirectory { get; set; }
+
     /// <summary>The canvas on screen, or null when none is.</summary>
     public DesignSession? Session { get; private set; }
 
@@ -640,7 +643,7 @@ public sealed class DesignToolSource : IAgentToolSource
         ///
         /// Found by reading the handheld rather than by somebody losing a deck.
         /// </summary>
-        private static string Documents() => WhereThingsGo.Documents;
+        private string Documents() => workbench.DocumentExportDirectory ?? WhereThingsGo.Documents;
 
         /// <summary>Where a person already looks for this kind of thing.</summary>
         private static string Folder(bool sound)

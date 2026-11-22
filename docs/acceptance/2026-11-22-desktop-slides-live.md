@@ -29,3 +29,9 @@ From a Project, open Slides and type: “Add a slide titled Project status with 
 - A full post-fix test and coverage run passed: 2,738 passed, 0 failed, 0 skipped; 76.59% line, 66.01% branch, and 81.38% method coverage. The Windows Desktop build passed with 0 warnings and 0 errors.
 - The rebuilt Desktop's live draft recheck was interrupted by WebView input that did not activate the Project link. The code-path tests prove draft clearing; a fresh live restart check of the cleared composer remains open. PPTX/PDF export and physical phone acceptance remain open.
 - The SQLite cache measurement fixture previously put `projects.db` directly in the shared temporary folder despite a unique chat filename. It now uses a unique directory, removing interference from other test Projects.
+
+## Export route check
+
+- The Desktop and handheld Project route tests now click both Slides export buttons. Each test uses its own output directory, opens the generated PPTX as a ZIP package, finds “Project status” in its slide XML, and reads the PDF signature from the generated file. Both route cases passed.
+- The full suite after this addition passed: 2,738 passed, 0 failed, 0 skipped; coverage 70.91% line, 60.44% branch, and 76.20% method, above the 65/45/70 gate.
+- This proves the UI component to export-file path and the file signatures. Opening those outputs in PowerPoint and a PDF reader on the live Desktop remains unverified; the existing exporter tests inspect the formats more deeply.

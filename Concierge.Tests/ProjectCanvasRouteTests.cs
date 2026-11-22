@@ -1,4 +1,5 @@
 using Bunit;
+using System.IO.Compression;
 using Concierge.Shared;
 using Concierge.Shared.Chat;
 using Concierge.Shared.Design;
@@ -25,6 +26,7 @@ public sealed class ProjectCanvasRouteTests : BunitContext
         Services.AddConciergeChat(Path.Combine(root, "concierge.db"));
         Services.AddSingleton<IEnumerable<IChatRuntime>>(_ => Array.Empty<IChatRuntime>());
         Concierge.Shared.Tools.ConciergeToolsServiceCollectionExtensions.AddConciergeTools(Services);
+        Services.AddSingleton(new DesignWorkbench { DocumentExportDirectory = root });
         Services.AddConciergeDesignTools();
         Concierge.Shared.Tools.ConciergeToolsServiceCollectionExtensions.AddConciergeRuntime(Services);
         Concierge.Shared.Diagrams.ConciergeDiagramsServiceCollectionExtensions.AddConciergeDiagrams(Services);
@@ -72,6 +74,9 @@ public sealed class ProjectCanvasRouteTests : BunitContext
                 document.ChildrenOf(slide.Id).Select(point => point.Text));
             Assert.Equal(string.Empty, (await Services.GetRequiredService<Concierge.Shared.Session.ISessionState>()
                 .LoadAsync()).UnsentFor(conversation.Id));
+            await cut.InvokeAsync(() => cut.FindAll(".dz-export")[0].Click());
+            await cut.InvokeAsync(() => cut.FindAll(".dz-export")[1].Click());
+            AssertExportedDeck(root);
         }
         else
         {
@@ -91,6 +96,29 @@ public sealed class ProjectCanvasRouteTests : BunitContext
             Assert.Single(new DesignSession(saved.Session!).Current.Frames);
             Assert.Equal(string.Empty, (await Services.GetRequiredService<Concierge.Shared.Session.ISessionState>()
                 .LoadAsync()).UnsentFor(conversation.Id));
+            await cut.InvokeAsync(() => cut.FindAll(".dz-export")[0].Click());
+            await cut.InvokeAsync(() => cut.FindAll(".dz-export")[1].Click());
+            AssertExportedDeck(root);
         }
+    }
+
+    private static void AssertExportedDeck(string root)
+    {
+        var pptx = Path.Combine(root, "design.pptx");
+        var pdf = Path.Combine(root, "design.pdf");
+        Assert.True(File.Exists(pptx), pptx);
+        Assert.True(File.Exists(pdf), pdf);
+
+        using var package = ZipFile.OpenRead(pptx);
+        var slide = package.GetEntry("ppt/slides/slide1.xml");
+        Assert.NotNull(slide);
+        using var reader = new StreamReader(slide!.Open());
+        var xml = reader.ReadToEnd();
+        Assert.Contains("Project status", xml, StringComparison.Ordinal);
+
+        using var file = File.OpenRead(pdf);
+        var header = new byte[8];
+        Assert.Equal(header.Length, file.Read(header));
+        Assert.Equal("%PDF-1.7", System.Text.Encoding.ASCII.GetString(header));
     }
 }
