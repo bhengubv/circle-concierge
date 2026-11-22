@@ -353,6 +353,44 @@ public sealed class TurnRunnerDurabilityTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Service_timeout_records_failed_run_instead_of_completed_answer()
+    {
+        var conversation = await _store.StartAsync("local");
+        var runtime = new TimeoutRuntime();
+        var runId = Guid.NewGuid();
+
+        var result = await Runner(runtime).RunAsync(
+            new TurnRequest(conversation.Id, "Can you help make an original game?", runtime, RunId: runId));
+
+        Assert.Null(result.Text);
+        Assert.Contains("service stopped responding", result.Stopped, StringComparison.Ordinal);
+        var events = await _store.ReadEventsAsync(conversation.Id);
+        Assert.DoesNotContain(events, entry => entry.Type == ConversationEventType.AssistantMessage);
+        var receipt = System.Text.Json.JsonSerializer.Deserialize<TurnRunReceipt>(
+            Assert.Single(events, entry => entry.Type == ConversationEventType.TurnEnd).Data)!;
+        Assert.Equal("failed", receipt.Status);
+        Assert.Null(receipt.Text);
+    }
+
+    [Fact]
+    public async Task Failed_stream_preserves_partial_text_but_never_marks_it_complete()
+    {
+        var conversation = await _store.StartAsync("local");
+        var runtime = new PartialThenFailingRuntime();
+
+        var result = await Runner(runtime).RunAsync(
+            new TurnRequest(conversation.Id, "question", runtime, RunId: Guid.NewGuid()));
+
+        Assert.Null(result.Text);
+        var events = await _store.ReadEventsAsync(conversation.Id);
+        Assert.Contains(events, entry => entry.Type == ConversationEventType.AssistantMessage
+            && entry.Data == "Partial answer\n[answer interrupted: service stopped responding]");
+        var receipt = System.Text.Json.JsonSerializer.Deserialize<TurnRunReceipt>(
+            Assert.Single(events, entry => entry.Type == ConversationEventType.TurnEnd).Data)!;
+        Assert.Equal("failed", receipt.Status);
+    }
+
+    [Fact]
     public async Task Stop_from_background_runs_cancels_runtime_and_records_cancelled_receipt()
     {
         var conversation = await _store.StartAsync("local");
@@ -664,6 +702,42 @@ public sealed class TurnRunnerDurabilityTests : IAsyncLifetime
             yield return "Partial answer";
             WaitingForCancellation.TrySetResult();
             await Task.Delay(Timeout.Infinite, cancellationToken);
+        }
+    }
+
+    private sealed class TimeoutRuntime : IChatRuntime
+    {
+        public string Id => "timeout";
+        public string EngineLabel => "Test service";
+        public bool IsReady => true;
+        public string StatusMessage => "ready";
+
+        public async IAsyncEnumerable<string> StreamAsync(
+            IReadOnlyList<ChatTurn> messages,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.Yield();
+            throw new TimeoutException("service stopped responding");
+#pragma warning disable CS0162
+            yield break;
+#pragma warning restore CS0162
+        }
+    }
+
+    private sealed class PartialThenFailingRuntime : IChatRuntime
+    {
+        public string Id => "partial-failing";
+        public string EngineLabel => "Test service";
+        public bool IsReady => true;
+        public string StatusMessage => "ready";
+
+        public async IAsyncEnumerable<string> StreamAsync(
+            IReadOnlyList<ChatTurn> messages,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            yield return "Partial answer";
+            await Task.Yield();
+            throw new TimeoutException("service stopped responding");
         }
     }
 

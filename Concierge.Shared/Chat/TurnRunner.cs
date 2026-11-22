@@ -322,13 +322,24 @@ public sealed class TurnRunner(
             {
                 progress?.Report(new TurnStep(TurnStage.Round, Iteration: iteration));
 
-                var streamed = await StreamOnceAsync(
-                    request, settings, images, outcome =>
-                    {
-                        answeredBy = outcome;
-                        progress?.Report(new TurnStep(TurnStage.Answered, Answered: outcome));
-                    },
-                    progress, runToken).ConfigureAwait(false);
+                string? streamed;
+                try
+                {
+                    streamed = await StreamOnceAsync(
+                        request, settings, images, outcome =>
+                        {
+                            answeredBy = outcome;
+                            progress?.Report(new TurnStep(TurnStage.Answered, Answered: outcome));
+                        },
+                        progress, runToken).ConfigureAwait(false);
+                }
+                catch (Exception error) when (error is not OperationCanceledException)
+                {
+                    runStatus = "failed";
+                    last = null;
+                    stopped = $"The answer could not be completed: {error.Message}";
+                    break;
+                }
 
                 // Pictures ride exactly one turn. A filmstrip attached to every later
                 // question is worse than no filmstrip at all.
@@ -794,9 +805,16 @@ public sealed class TurnRunner(
         catch (ChatRuntimeUnavailableException) { throw; }
         catch (Exception error)
         {
-            buffer.AppendLine();
-            buffer.Append("[stream error: ").Append(error.Message).Append(']');
-            progress?.Report(new TurnStep(TurnStage.Streaming, Text: buffer.ToString()));
+            if (buffer.Length > 0)
+            {
+                await store.AppendEventAsync(
+                    request.ConversationId, ConversationEventType.AssistantMessage,
+                    buffer.ToString() + "\n[answer interrupted: " + error.Message + "]",
+                    outcome?.Runtime.EngineLabel ?? request.Runtime.EngineLabel,
+                    CancellationToken.None).ConfigureAwait(false);
+            }
+            TurnDrafts.Delete(request.ConversationId);
+            throw;
         }
 
         var label = outcome?.Runtime.EngineLabel ?? request.Runtime.EngineLabel;

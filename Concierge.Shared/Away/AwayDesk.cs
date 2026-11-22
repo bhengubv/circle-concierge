@@ -431,7 +431,7 @@ public sealed class AwayDesk(
         return new AwayAnswer(
             result.Text is { Length: > 0 },
             string.Empty,
-            answer ?? "Nothing came back.",
+            answer ?? result.Stopped ?? "Nothing came back.",
             conversation.Id);
     }
 
