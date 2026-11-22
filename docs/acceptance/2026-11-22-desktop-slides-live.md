@@ -61,5 +61,6 @@ From a Project, open Slides and type: “Add a slide titled Project status with 
 
 - Built the Windows Desktop app from this worktree with 0 warnings and 0 errors. Opened the rebuilt app, selected the existing “Developer Studio acceptance” Project, and opened Slides.
 - Sent: “Add a slide titled Visible immediately with three points: new slide, clear result, saved work.” The main preview immediately showed “Visible immediately” and all three points. The composer cleared and the status read “Added a slide.”
-- Closed and relaunched the app, then reopened the same Project's Slides. The new slide remained selected in the main preview, all four slide thumbnails were present, and the composer was empty. This verifies selection and draft clearing across an actual process restart.
-- This live check covers the Desktop Slides path. Physical phone acceptance and opening exported PPTX/PDF files in external readers remain unverified.
+- Closed and relaunched the app, then reopened the same Project's Slides. The new slide remained selected in the main preview, the indicator read “3 of 3,” and the composer was empty. This verifies selection and draft clearing across an actual process restart.
+- Clicked PPTX and PDF in the rebuilt Desktop app. It reported the saved paths `C:\Users\user\Documents\design.pptx` and `C:\Users\user\Documents\design.pdf`. The PPTX contained three slide XML parts, passed ZIP integrity inspection, and contained “Visible immediately.” The PDF had three page objects, contained that title, and ended with `%%EOF`.
+- This live check covers the Desktop Slides creation and export path. Physical phone acceptance and opening exported PPTX/PDF files in external readers remain unverified.
