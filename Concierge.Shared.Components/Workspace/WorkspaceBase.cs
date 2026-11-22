@@ -3122,7 +3122,14 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
                 }
 
                 if (observedSequence == sequence)
+                {
+                    // The event log is unchanged while Circle AI waits for its
+                    // first token. Keep the visible elapsed clock moving without
+                    // re-reading the thread or polling the model more often.
+                    if (IsActiveConversationRunning)
+                        await InvokeAsync(StateHasChanged);
                     continue;
+                }
 
                 var fresh = await Store.GetAsync(activeId, cancellationToken).ConfigureAwait(false);
                 if (fresh is not null)

@@ -524,7 +524,10 @@
                 *@
                 @if (IsActiveConversationRunning && _activeRuntime is IChatRuntimeStatusEvents)
                 {
-                    <div class="run-recovery" role="status">Working on this device · @_activeRuntime.StatusMessage</div>
+                    <div class="run-recovery" role="status">
+                        <span>This phone · @(_streamingBuffer.Length == 0 ? "Waiting for reply" : "Receiving reply") · @RunElapsed</span><br />
+                        <span>@_activeRuntime.StatusMessage</span>
+                    </div>
                 }
                 else if (_runRecoveryStatus is not null)
                 {

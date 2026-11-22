@@ -70,6 +70,29 @@ public sealed class WorkspaceComposerTests : BunitContext
         }
     }
 
+    private sealed class WaitingRuntime : IChatRuntime, IChatRuntimeStatusEvents
+    {
+        private readonly TaskCompletionSource _finish = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public string Id => "circleai";
+        public string EngineLabel => "Circle AI";
+        public bool IsReady => true;
+        public string StatusMessage => "Circle AI has the request.";
+        public ModelDownloadProgress? CurrentDownloadProgress => null;
+        public event EventHandler? StatusChanged { add { } remove { } }
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public async IAsyncEnumerable<string> StreamAsync(
+            IReadOnlyList<ChatTurn> messages,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            Started.TrySetResult();
+            await _finish.Task.WaitAsync(cancellationToken);
+            yield return "Finished.";
+        }
+
+        public void Finish() => _finish.TrySetResult();
+    }
+
     private sealed class DownloadingRuntime : IChatRuntime, IModelDownloadRequired, IChatRuntimeStatusEvents
     {
         public string Id => "circleai";
@@ -770,6 +793,26 @@ public sealed class WorkspaceComposerTests : BunitContext
             }, TimeSpan.FromSeconds(5));
         }
         finally { gate.TrySetResult(); }
+    }
+
+    [Fact]
+    public void Active_run_clock_advances_without_new_conversation_events()
+    {
+        var runtime = new WaitingRuntime();
+        try
+        {
+            var cut = RenderWith(runtimeReady: true, runtimeOverride: runtime,
+                initialUri: "/chat?q=Check%20the%20clock");
+            cut.WaitForAssertion(() =>
+            {
+                Assert.True(runtime.Started.Task.IsCompleted);
+                Assert.Contains("Waiting for first response", cut.Find(".run-recovery").TextContent);
+            }, TimeSpan.FromSeconds(5));
+            var before = cut.Find(".run-recovery").TextContent;
+            cut.WaitForAssertion(() => Assert.NotEqual(before, cut.Find(".run-recovery").TextContent),
+                TimeSpan.FromSeconds(7));
+        }
+        finally { runtime.Finish(); }
     }
 
     [Fact]
