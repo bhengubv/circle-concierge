@@ -35,3 +35,9 @@ From a Project, open Slides and type: “Add a slide titled Project status with 
 - The Desktop and handheld Project route tests now click both Slides export buttons. Each test uses its own output directory, opens the generated PPTX as a ZIP package, finds “Project status” in its slide XML, and reads the PDF signature from the generated file. Both route cases passed.
 - The full suite after this addition passed: 2,738 passed, 0 failed, 0 skipped; coverage 70.91% line, 60.44% branch, and 76.20% method, above the 65/45/70 gate.
 - This proves the UI component to export-file path and the file signatures. Opening those outputs in PowerPoint and a PDF reader on the live Desktop remains unverified; the existing exporter tests inspect the formats more deeply.
+
+## Reopen route check
+
+- The Desktop and handheld route tests now dispose the workspace after exporting, render the same conversation again, and verify that the saved slide is visible while the composer is empty. Both focused cases passed.
+- The full post-change gate passed: 2,738 tests, 0 failed, 0 skipped; coverage 70.07% line, 60.06% branch, and 75.39% method against 65/45/70 thresholds.
+- This is an automated component lifecycle check. The separate live Desktop draft recheck and physical phone acceptance remain open.

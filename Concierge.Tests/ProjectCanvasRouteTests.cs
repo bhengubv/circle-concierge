@@ -75,8 +75,21 @@ public sealed class ProjectCanvasRouteTests : BunitContext
             Assert.Equal(string.Empty, (await Services.GetRequiredService<Concierge.Shared.Session.ISessionState>()
                 .LoadAsync()).UnsentFor(conversation.Id));
             await cut.InvokeAsync(() => cut.FindAll(".dz-export")[0].Click());
+            cut.WaitForAssertion(() => Assert.True(File.Exists(Path.Combine(root, "design.pptx"))),
+                TimeSpan.FromSeconds(10));
             await cut.InvokeAsync(() => cut.FindAll(".dz-export")[1].Click());
-            AssertExportedDeck(root);
+            cut.WaitForAssertion(() => AssertExportedDeck(root), TimeSpan.FromSeconds(10));
+            cut.Dispose();
+            var reopened = Render<Concierge.Shared.Components.Workspace.Handheld.Workspace>(
+                parameters => parameters.Add(component => component.ConversationId, conversation.Id));
+            reopened.WaitForAssertion(() => Assert.NotEmpty(reopened.FindAll(".ws[aria-busy='false']")),
+                TimeSpan.FromSeconds(10));
+            reopened.WaitForAssertion(() => Assert.NotEmpty(reopened.FindAll("iframe.dz-frame")),
+                TimeSpan.FromSeconds(10));
+            Assert.Equal(string.Empty, reopened.Find("textarea.comp-input").GetAttribute("value")
+                ?? reopened.Find("textarea.comp-input").TextContent);
+            Assert.Contains("Project status", reopened.Find("iframe.dz-frame").GetAttribute("srcdoc") ?? string.Empty,
+                StringComparison.Ordinal);
         }
         else
         {
@@ -97,8 +110,21 @@ public sealed class ProjectCanvasRouteTests : BunitContext
             Assert.Equal(string.Empty, (await Services.GetRequiredService<Concierge.Shared.Session.ISessionState>()
                 .LoadAsync()).UnsentFor(conversation.Id));
             await cut.InvokeAsync(() => cut.FindAll(".dz-export")[0].Click());
+            cut.WaitForAssertion(() => Assert.True(File.Exists(Path.Combine(root, "design.pptx"))),
+                TimeSpan.FromSeconds(10));
             await cut.InvokeAsync(() => cut.FindAll(".dz-export")[1].Click());
-            AssertExportedDeck(root);
+            cut.WaitForAssertion(() => AssertExportedDeck(root), TimeSpan.FromSeconds(10));
+            cut.Dispose();
+            var reopened = Render<Concierge.Shared.Components.Workspace.Desktop.Workspace>(
+                parameters => parameters.Add(component => component.ConversationId, conversation.Id));
+            reopened.WaitForAssertion(() => Assert.NotEmpty(reopened.FindAll(".ws[aria-busy='false']")),
+                TimeSpan.FromSeconds(10));
+            reopened.WaitForAssertion(() => Assert.NotEmpty(reopened.FindAll("iframe.dz-frame")),
+                TimeSpan.FromSeconds(10));
+            Assert.Equal(string.Empty, reopened.Find("textarea.comp-input").GetAttribute("value")
+                ?? reopened.Find("textarea.comp-input").TextContent);
+            Assert.Contains("Project status", reopened.Find("iframe.dz-frame").GetAttribute("srcdoc") ?? string.Empty,
+                StringComparison.Ordinal);
         }
     }
 
