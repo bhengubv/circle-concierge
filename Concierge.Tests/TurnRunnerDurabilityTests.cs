@@ -36,6 +36,29 @@ public sealed class TurnRunnerDurabilityTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Separate_allowance_rules_survive_three_turns_in_model_history()
+    {
+        var runtime = new CapturingRuntime();
+        var conversation = await _store.StartAsync("local");
+        var runner = Runner(runtime);
+        var questions = new[]
+        {
+            "I want to give two children allowance for chores. Each gets $8 a week if they finish their own list.",
+            "One has four chores and the other has five. Split the allowance evenly per completed chore, but cap each child at $8.",
+            "Show the amount per chore, the weekly maximum, and what I pay if the first child completes three chores and the second completes all five."
+        };
+
+        foreach (var question in questions)
+            await runner.RunAsync(new TurnRequest(conversation.Id, question, runtime));
+
+        Assert.Equal(["system", "user", "assistant", "user", "assistant", "user"],
+            runtime.Messages.Select(message => message.Role));
+        Assert.Equal(questions, runtime.Messages.Where(message => message.Role == "user")
+            .Select(message => message.Content));
+        Assert.Contains("ask only questions that materially change the outcome", runtime.SystemPrompt);
+    }
+
+    [Fact]
     public async Task Plan_only_does_not_run_explicit_phoneuse_status()
     {
         var runtime = new CountingRuntime("I would check the phone bridge.");
