@@ -55,4 +55,11 @@ From a Project, open Slides and type: “Add a slide titled Project status with 
 - Focused tests passed 35/35. The full suite passed 2,738/2,738 with 70.06% line, 60.07% branch, and 75.40% method coverage, above the 65/45/70 gate. Live visual recheck of this selection fix remains open; the running Desktop binary predates it and was left untouched after user input was detected.
 - The Circle AI `design_add` tool now selects a newly added deck frame too. Its focused test confirms the second slide is active. The combined parser, tool, and Desktop/handheld route selection passed 55/55.
 - Initial full runs after that addition failed in unrelated media workers reporting insufficient free memory. The worker requires 2 GB of available physical memory before starting; available RAM was measured at 2.59 GB after one failed run, but its exact value at each failed worker start was not captured. A later run exposed a test fixture that placed `projects.db` beside a unique chat filename in the shared temporary folder. The fixture now uses a unique directory; the affected UI classes passed 25/25. Serializing test collections did not solve the memory condition, so the original four-thread setting was restored.
-- The final full gate passed 2,739/2,739, 0 skipped, with 75.60% line, 65.45% branch, and 80.34% method coverage. This verifies the code and test fixes together. The live Desktop selection fix remains unverified until a rebuilt app can be opened without interrupting the user's current session.
+- The final full gate passed 2,739/2,739, 0 skipped, with 75.60% line, 65.45% branch, and 80.34% method coverage. This verifies the code and test fixes together.
+
+## Live rebuilt Desktop selection check
+
+- Built the Windows Desktop app from this worktree with 0 warnings and 0 errors. Opened the rebuilt app, selected the existing “Developer Studio acceptance” Project, and opened Slides.
+- Sent: “Add a slide titled Visible immediately with three points: new slide, clear result, saved work.” The main preview immediately showed “Visible immediately” and all three points. The composer cleared and the status read “Added a slide.”
+- Closed and relaunched the app, then reopened the same Project's Slides. The new slide remained selected in the main preview, all four slide thumbnails were present, and the composer was empty. This verifies selection and draft clearing across an actual process restart.
+- This live check covers the Desktop Slides path. Physical phone acceptance and opening exported PPTX/PDF files in external readers remain unverified.
