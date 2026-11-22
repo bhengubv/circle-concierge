@@ -70,16 +70,27 @@ public sealed class ProjectCanvasRouteTests : BunitContext
             Assert.Equal("Project status", slide.Text);
             Assert.Equal(new[] { "goal", "current work", "next step" },
                 document.ChildrenOf(slide.Id).Select(point => point.Text));
+            Assert.Equal(string.Empty, (await Services.GetRequiredService<Concierge.Shared.Session.ISessionState>()
+                .LoadAsync()).UnsentFor(conversation.Id));
         }
         else
         {
             var cut = Render<Concierge.Shared.Components.Workspace.Desktop.Workspace>(
                 parameters => parameters.Add(component => component.ConversationId, conversation.Id));
             cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll(".dz")), TimeSpan.FromSeconds(10));
+            cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll(".ws[aria-busy='false']")), TimeSpan.FromSeconds(10));
             Assert.Contains("slide", cut.Find("iframe.dz-frame").GetAttribute("srcdoc") ?? string.Empty,
                 StringComparison.OrdinalIgnoreCase);
             Assert.Equal(["PPTX", "PDF"], cut.FindAll(".dz-export").Select(button => button.TextContent.Trim()).ToArray());
             Assert.All(cut.FindAll(".dz-export"), button => Assert.False(button.HasAttribute("disabled")));
+            await cut.InvokeAsync(() => cut.Find("textarea.comp-input").Input(
+                "Add a slide titled Project status with three points: goal, current work, next step."));
+            await cut.InvokeAsync(() => cut.Find("button.icon-btn-send").Click());
+            var saved = await designs.For(project.Id).LoadSessionAsync();
+            Assert.Null(saved.Problem);
+            Assert.Single(new DesignSession(saved.Session!).Current.Frames);
+            Assert.Equal(string.Empty, (await Services.GetRequiredService<Concierge.Shared.Session.ISessionState>()
+                .LoadAsync()).UnsentFor(conversation.Id));
         }
     }
 }

@@ -113,7 +113,12 @@ public sealed class SnapshotCacheTests
     [Fact]
     public async Task Measure_repeated_real_sqlite_reads_against_warm_snapshots()
     {
-        var path = Path.Combine(Path.GetTempPath(), $"concierge-cache-measure-{Guid.NewGuid():N}.db");
+        // AddConciergeChat places projects.db beside the chat database. A unique
+        // filename in the shared temp directory still gives every test the same
+        // projects.db, so unrelated fixtures can change the measured count.
+        var root = Path.Combine(Path.GetTempPath(), $"concierge-cache-measure-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        var path = Path.Combine(root, "chat.db");
         await using var provider = new ServiceCollection().AddConciergeChat(path).BuildServiceProvider();
         var factory = provider.GetRequiredService<IDbContextFactory<ConciergeChatDbContext>>();
         await using (var db = await factory.CreateDbContextAsync()) await db.Database.EnsureCreatedAsync();
@@ -152,7 +157,7 @@ public sealed class SnapshotCacheTests
             JsonSerializer.Serialize(new { sourceReads = 100, sourceMs, coldMs, warmReads = 100, warmMs, metrics = cache.ThreadMetrics,
                 projectSourceReads = 100, projectSourceMs, projectWarmReads = 100, projectWarmMs, projectMetrics = projectCache.Metrics }));
         await provider.DisposeAsync();
-        try { File.Delete(path); } catch (IOException) { /* SQLite pooling can retain a temporary database handle until process exit. */ }
+        try { Directory.Delete(root, recursive: true); } catch (IOException) { /* SQLite pooling can retain a temporary database handle until process exit. */ }
     }
 
     [Fact]

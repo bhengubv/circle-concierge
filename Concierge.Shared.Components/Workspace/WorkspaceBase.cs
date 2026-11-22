@@ -2019,7 +2019,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
     /// True when the canvas dealt with it. False means the words are still in the
     /// box and belong to the model.
     /// </returns>
-    protected bool SayToTheCanvas()
+    protected async Task<bool> SayToTheCanvasAsync()
     {
         if (!_designOpen || _design is null || string.IsNullOrWhiteSpace(_composerText))
         {
@@ -2037,6 +2037,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         {
             _design.Record(heard.Document, heard.What);
             _composerText = string.Empty;
+            await RememberSessionAsync();
             _composerHint = heard.What;
             StateHasChanged();
             return true;
@@ -2108,6 +2109,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         }
 
         _composerText = string.Empty;
+        await RememberSessionAsync();
         _composerHint = $"Looking in {asked.Folder}…";
         StateHasChanged();
 
@@ -2160,6 +2162,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         }
 
         _composerText = string.Empty;
+        await RememberSessionAsync();
         await ExportCurrentDesignAsync(asked);
         return true;
     }
@@ -2442,7 +2445,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         }
 
         if (_permission != Concierge.Shared.Tools.ToolPermissionMode.PlanOnly
-            && _designOpen && SayToTheCanvas())
+            && _designOpen && await SayToTheCanvasAsync())
         {
             return;
         }
