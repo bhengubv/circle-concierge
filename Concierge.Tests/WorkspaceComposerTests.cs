@@ -1037,7 +1037,7 @@ public sealed class WorkspaceComposerTests : BunitContext
         cut.WaitForAssertion(() =>
         {
             Assert.NotNull(cut.Find(".comp-box textarea.comp-input"));
-            Assert.NotNull(cut.Find(".empty"));
+            Assert.Equal("What would help today?", cut.Find(".welcome-panel h2").TextContent.Trim());
             Assert.Empty(cut.FindAll(".ws-thread"));
         });
     }

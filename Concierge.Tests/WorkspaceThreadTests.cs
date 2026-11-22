@@ -474,7 +474,7 @@ public sealed class WorkspaceThreadTests : BunitContext
         var cut = Open(conversation.Id);
 
         Assert.Equal("Tidy the notes", cut.Find(".ws-title").TextContent.Trim());
-        Assert.NotNull(cut.Find(".empty"));
+        Assert.Equal("What would help today?", cut.Find(".welcome-panel h2").TextContent.Trim());
         Assert.Empty(cut.FindAll(".ws-thread"));
     }
 
@@ -501,6 +501,6 @@ public sealed class WorkspaceThreadTests : BunitContext
         var cut = Render<Concierge.Shared.Components.Workspace.Desktop.Workspace>();
 
         Assert.Equal("Concierge", cut.Find(".ws-title").TextContent.Trim());
-        Assert.NotNull(cut.Find(".empty"));
+        Assert.Equal("What would help today?", cut.Find(".welcome-panel h2").TextContent.Trim());
     }
 }

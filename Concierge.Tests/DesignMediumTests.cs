@@ -393,6 +393,22 @@ public sealed class DesignMediumTests
         Assert.Single(after.ChildrenOf(after.Frames[0].Id));
     }
 
+    [Fact]
+    public void A_titled_slide_with_points_is_created_without_waiting_for_the_model()
+    {
+        var deck = DesignDocument.Blank(medium: DesignMedium.Deck);
+
+        var heard = DesignSpeech.Hear(deck,
+            "Add a slide titled Project status with three points: goal, current work, next step.", null);
+
+        Assert.True(heard.Understood);
+        var slide = Assert.Single(heard.Document.Frames);
+        Assert.Equal("Project status", slide.Text);
+        Assert.Equal(new[] { "goal", "current work", "next step" },
+            heard.Document.ChildrenOf(slide.Id).Select(point => point.Text));
+        Assert.Contains("Project status", DeckRenderer.ToHtml(heard.Document));
+    }
+
     /// <summary>
     /// A page is one surface with no sequence to add to. Saying so beats silently
     /// making a slide nothing will ever draw.

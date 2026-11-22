@@ -53,17 +53,23 @@ public sealed class ProjectCanvasRouteTests : BunitContext
             var cut = Render<Concierge.Shared.Components.Workspace.Handheld.Workspace>(
                 parameters => parameters.Add(component => component.ConversationId, conversation.Id));
             cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll(".dz")), TimeSpan.FromSeconds(10));
+            cut.WaitForAssertion(() => Assert.NotEmpty(cut.FindAll(".ws[aria-busy='false']")), TimeSpan.FromSeconds(10));
             Assert.Contains("slide", cut.Find("iframe.dz-frame").GetAttribute("srcdoc") ?? string.Empty,
                 StringComparison.OrdinalIgnoreCase);
             Assert.Equal(["PPTX", "PDF"], cut.FindAll(".dz-export").Select(button => button.TextContent.Trim()).ToArray());
             Assert.All(cut.FindAll(".dz-export"), button => Assert.False(button.HasAttribute("disabled")));
-            await cut.InvokeAsync(() => cut.Find("textarea.comp-input").Input("add a slide"));
+            await cut.InvokeAsync(() => cut.Find("textarea.comp-input").Input(
+                "Add a slide titled Project status with three points: goal, current work, next step."));
             await cut.InvokeAsync(() => cut.Find("button.icon-btn-send").Click());
             var path = ((FileDesignStore)designs.For(project.Id)).Path;
             cut.WaitForAssertion(() => Assert.True(File.Exists(path)), TimeSpan.FromSeconds(10));
             var saved = await designs.For(project.Id).LoadSessionAsync();
             Assert.Null(saved.Problem);
-            Assert.NotEmpty(new DesignSession(saved.Session!).Current.Frames);
+            var document = new DesignSession(saved.Session!).Current;
+            var slide = Assert.Single(document.Frames);
+            Assert.Equal("Project status", slide.Text);
+            Assert.Equal(new[] { "goal", "current work", "next step" },
+                document.ChildrenOf(slide.Id).Select(point => point.Text));
         }
         else
         {

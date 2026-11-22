@@ -128,7 +128,8 @@ public sealed class McpTests : IDisposable
 
         await using var source = new McpToolSource(
             new McpServerOptions(_path),
-            UnavailableToolApprovalService.Instance);
+            UnavailableToolApprovalService.Instance,
+            () => long.MaxValue);
 
         await source.ConnectAllAsync();
 

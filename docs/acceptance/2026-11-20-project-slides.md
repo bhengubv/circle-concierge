@@ -19,3 +19,7 @@
 - No live browser, Desktop window, or physical phone visual acceptance was run for this change. The route tests use bUnit and cannot verify layout or native file sharing.
 - Project canvases are local to each device. Their files are not yet synchronized across devices, even if the Project and conversation are.
 - The existing PDF renderer does not reproduce every HTML layout detail and may omit unsupported pictures. Review the exported PDF before sharing.
+
+## Later Desktop check
+
+The live Desktop creation check and its remaining limits are recorded in [22 November Desktop Slides acceptance](2026-11-22-desktop-slides-live.md).

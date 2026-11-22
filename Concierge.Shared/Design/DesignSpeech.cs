@@ -279,6 +279,30 @@ public static class DesignSpeech
             });
         }
 
+        // A common first deck request names the slide and its short points in one
+        // sentence. Keep that edit local: the installed service currently answers
+        // conversationally but cannot invoke the canvas tools, so falling through
+        // would wait for an answer without creating the slide.
+        if (design.Medium == DesignMedium.Deck && Match(said, TitledSlide) is { } requestedSlide)
+        {
+            var title = Clean(requestedSlide.Groups["title"].Value);
+            if (title.Length == 0) return Puzzled(design);
+
+            var slide = DesignNode.New(DesignNodeKind.Frame, design.RootId, ("text", title));
+            var updated = design.Add(slide);
+            var points = requestedSlide.Groups["points"].Value;
+            if (points.Length > 0)
+            {
+                foreach (var point in Regex.Split(points, @"\s*[,;]\s*").Select(Clean)
+                             .Where(point => point.Length > 0).Take(8))
+                {
+                    updated = updated.Add(DesignNode.New(DesignNodeKind.Text, slide.Id, ("text", point)));
+                }
+            }
+
+            return new DesignHeard(true, updated, "Added a slide");
+        }
+
         // Adding something. The workhorse, and the sentence everybody types first.
         if (Match(said, Adding) is { } add)
         {
@@ -631,6 +655,10 @@ public static class DesignSpeech
 
     private const string Adding =
         @"^(?:add|put|insert|make|create)\s+(?:a|an|some)?\s*(?<thing>title|heading|header|words|text|paragraph|sentence|button|picture|image|photo|screen|panel|box|group|block|solid|shape|cube|sphere|ball|cylinder|column|post|cone|slide|shot|scene|room|track|section)\b(?:\s*(?:that\s+)?(?:saying|says|say|reading|reads|read|with|of|:)\s*(?<words>.+))?$";
+
+    private const string TitledSlide =
+        @"^(?:add|create|make)\s+(?:a|the)?\s*slide\s+(?:titled|called|named)\s+(?<title>.+?)"
+        + @"(?:\s+with\s+(?:(?:\d+|one|two|three|four|five)\s+)?(?:points|bullets)\s*:\s*(?<points>.+))?[.!]?$";
 
     /// <summary>
     /// "the artist is Nina Simone", "the album is called Wild Is The Wind", "it
