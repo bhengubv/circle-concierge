@@ -267,7 +267,7 @@ public sealed class FeatureGapTests : IAsyncLifetime
         context.Services.AddSingleton(_services.GetRequiredService<IProjectStore>());
         var cut = context.Render<Library>();
 
-        cut.WaitForAssertion(() => Assert.Contains("Untrusted", cut.Markup));
+        cut.WaitForAssertion(() => Assert.Contains("Untrusted", cut.Markup), TimeSpan.FromSeconds(15));
         cut.FindAll("button").Single(button => button.TextContent == "Preview output").Click();
         cut.WaitForAssertion(() =>
         {

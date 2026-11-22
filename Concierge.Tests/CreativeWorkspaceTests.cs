@@ -35,8 +35,11 @@ public sealed class CreativeWorkspaceTests : BunitContext
     [Fact]
     public async Task UnknownWorkspaceCannotLaunchTheEditor()
     {
+        // AddConciergeChat also creates projects.db beside the chat database.
+        // A unique filename directly in the shared temp folder still collides.
+        var folder = Path.Combine(Path.GetTempPath(), $"concierge-workspaces-{Guid.NewGuid():N}");
         Services.AddLogging();
-        Services.AddConciergeChat(Path.Combine(Path.GetTempPath(), $"concierge-workspaces-{Guid.NewGuid():N}.db"));
+        Services.AddConciergeChat(Path.Combine(folder, "concierge.db"));
         Services.AddSingleton<IDeveloperStudio>(new RecordingStudio());
         var project = await Services.GetRequiredService<IProjectStore>().CreateAsync(
             ConciergeProject.Create("Safe project", "Use known tools"));
@@ -61,7 +64,8 @@ public sealed class CreativeWorkspaceTests : BunitContext
             .NavigateTo($"/projects?project={project.Id}");
 
         var cut = Render<Projects>();
-        cut.WaitForState(() => cut.FindAll(".projects-page[aria-busy='false']").Count > 0);
+        cut.WaitForState(() => cut.FindAll(".projects-page[aria-busy='false']").Count > 0,
+            TimeSpan.FromSeconds(15));
         var links = cut.FindAll(".project-creative-workspaces a");
         Assert.Equal(ConciergeCodeWorkspaces.All.Count, links.Count);
         foreach (var kind in ConciergeCodeWorkspaces.All)

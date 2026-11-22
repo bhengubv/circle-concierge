@@ -2036,6 +2036,10 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         if (heard.Understood)
         {
             _design.Record(heard.Document, heard.What);
+            if (heard.FocusNodeId is not null)
+            {
+                _design.Point(heard.FocusNodeId);
+            }
             _composerText = string.Empty;
             await RememberSessionAsync();
             _composerHint = heard.What;

@@ -79,6 +79,11 @@ public sealed class ProjectCanvasRouteTests : BunitContext
                 TimeSpan.FromSeconds(10));
             await cut.InvokeAsync(() => cut.FindAll(".dz-export")[1].Click());
             cut.WaitForAssertion(() => AssertExportedDeck(root), TimeSpan.FromSeconds(10));
+            await cut.InvokeAsync(() => cut.Find("textarea.comp-input").Input(
+                "Add a slide titled Reopen check with three points: fresh request, saved slide, empty composer."));
+            await cut.InvokeAsync(() => cut.Find("button.icon-btn-send").Click());
+            cut.WaitForAssertion(() => AssertNewSlideIsShowing(cut.Find("iframe.dz-frame").GetAttribute("srcdoc")),
+                TimeSpan.FromSeconds(10));
             cut.Dispose();
             var reopened = Render<Concierge.Shared.Components.Workspace.Handheld.Workspace>(
                 parameters => parameters.Add(component => component.ConversationId, conversation.Id));
@@ -88,8 +93,7 @@ public sealed class ProjectCanvasRouteTests : BunitContext
                 TimeSpan.FromSeconds(10));
             Assert.Equal(string.Empty, reopened.Find("textarea.comp-input").GetAttribute("value")
                 ?? reopened.Find("textarea.comp-input").TextContent);
-            Assert.Contains("Project status", reopened.Find("iframe.dz-frame").GetAttribute("srcdoc") ?? string.Empty,
-                StringComparison.Ordinal);
+            AssertNewSlideIsShowing(reopened.Find("iframe.dz-frame").GetAttribute("srcdoc"));
         }
         else
         {
@@ -114,6 +118,11 @@ public sealed class ProjectCanvasRouteTests : BunitContext
                 TimeSpan.FromSeconds(10));
             await cut.InvokeAsync(() => cut.FindAll(".dz-export")[1].Click());
             cut.WaitForAssertion(() => AssertExportedDeck(root), TimeSpan.FromSeconds(10));
+            await cut.InvokeAsync(() => cut.Find("textarea.comp-input").Input(
+                "Add a slide titled Reopen check with three points: fresh request, saved slide, empty composer."));
+            await cut.InvokeAsync(() => cut.Find("button.icon-btn-send").Click());
+            cut.WaitForAssertion(() => AssertNewSlideIsShowing(cut.Find("iframe.dz-frame").GetAttribute("srcdoc")),
+                TimeSpan.FromSeconds(10));
             cut.Dispose();
             var reopened = Render<Concierge.Shared.Components.Workspace.Desktop.Workspace>(
                 parameters => parameters.Add(component => component.ConversationId, conversation.Id));
@@ -123,9 +132,17 @@ public sealed class ProjectCanvasRouteTests : BunitContext
                 TimeSpan.FromSeconds(10));
             Assert.Equal(string.Empty, reopened.Find("textarea.comp-input").GetAttribute("value")
                 ?? reopened.Find("textarea.comp-input").TextContent);
-            Assert.Contains("Project status", reopened.Find("iframe.dz-frame").GetAttribute("srcdoc") ?? string.Empty,
-                StringComparison.Ordinal);
+            AssertNewSlideIsShowing(reopened.Find("iframe.dz-frame").GetAttribute("srcdoc"));
         }
+    }
+
+    private static void AssertNewSlideIsShowing(string? html)
+    {
+        Assert.NotNull(html);
+        Assert.Contains("<h1 class=\"h\">Project status</h1>", html, StringComparison.Ordinal);
+        Assert.Matches(
+            "(?s)<section class=\"slide on picked\"[^>]*>\\s*<h1 class=\"h\">Reopen check</h1>",
+            html);
     }
 
     private static void AssertExportedDeck(string root)

@@ -104,6 +104,22 @@ public sealed class DesignToolSourceTests
     }
 
     [Fact]
+    public async Task A_slide_added_by_a_tool_is_shown_immediately()
+    {
+        var session = new DesignSession(medium: DesignMedium.Deck);
+        var bench = new DesignWorkbench();
+        bench.Attach(session);
+        var tools = new DesignToolSource(bench);
+
+        await Call(tools, "design_add", new JsonObject { ["kind"] = "frame", ["text"] = "First" });
+        await Call(tools, "design_add", new JsonObject { ["kind"] = "frame", ["text"] = "Second" });
+
+        Assert.Equal(session.Current.Frames[^1].Id, session.Selected);
+        Assert.Matches("(?s)<section class=\"slide on picked\"[^>]*>\\s*<h1 class=\"h\">Second</h1>",
+            session.Html());
+    }
+
+    [Fact]
     public async Task Something_that_cannot_be_added_is_refused_with_the_list_of_what_can()
     {
         var (tools, _, _) = Open();

@@ -369,6 +369,7 @@ public sealed class DesignMediumTests
         Assert.True(heard.Understood);
         Assert.Equal("Added a slide", heard.What);
         Assert.Single(heard.Document.Frames);
+        Assert.Equal(heard.Document.Frames[0].Id, heard.FocusNodeId);
     }
 
     [Fact]
@@ -404,6 +405,7 @@ public sealed class DesignMediumTests
         Assert.True(heard.Understood);
         var slide = Assert.Single(heard.Document.Frames);
         Assert.Equal("Project status", slide.Text);
+        Assert.Equal(slide.Id, heard.FocusNodeId);
         Assert.Equal(new[] { "goal", "current work", "next step" },
             heard.Document.ChildrenOf(slide.Id).Select(point => point.Text));
         Assert.Contains("Project status", DeckRenderer.ToHtml(heard.Document));

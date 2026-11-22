@@ -321,6 +321,10 @@ public sealed class DesignToolSource : IAgentToolSource
                 : $"Added a {kind.ToString().ToLowerInvariant()}";
 
             session.Record(session.Current.Add(node), what);
+            if (kind == DesignNodeKind.Frame && session.Current.Medium == DesignMedium.Deck)
+            {
+                session.Point(node.Id);
+            }
 
             return Task.FromResult(new AgentToolResult(true, $"{what}. Its id is {node.Id}."));
         }

@@ -21,8 +21,10 @@ namespace Concierge.Shared.Design;
 /// everything here would quietly cut the model out of the canvas, which is the opposite
 /// mistake and a worse one. A test holds that line.
 /// </param>
+/// <param name="FocusNodeId">The new item to show immediately after recording the change.</param>
 public sealed record DesignHeard(
-    bool Understood, DesignDocument Document, string What, string? Reply = null, bool Final = false);
+    bool Understood, DesignDocument Document, string What, string? Reply = null, bool Final = false,
+    string? FocusNodeId = null);
 
 /// <summary>
 /// Understanding the ordinary sentences without asking a model.
@@ -300,7 +302,7 @@ public static class DesignSpeech
                 }
             }
 
-            return new DesignHeard(true, updated, "Added a slide");
+            return new DesignHeard(true, updated, "Added a slide", FocusNodeId: slide.Id);
         }
 
         // Adding something. The workhorse, and the sentence everybody types first.
@@ -336,7 +338,8 @@ public static class DesignSpeech
                 ? Standing(design, where, words, shape)
                 : DesignNode.New(kind, where, ("text", words));
 
-            return new DesignHeard(true, design.Add(node), $"Added {AnA(NameFor(kind, design.Medium))}");
+            return new DesignHeard(true, design.Add(node), $"Added {AnA(NameFor(kind, design.Medium))}",
+                FocusNodeId: kind == DesignNodeKind.Frame && design.Medium == DesignMedium.Deck ? node.Id : null);
         }
 
         // When a shot happens and how fast it runs.
