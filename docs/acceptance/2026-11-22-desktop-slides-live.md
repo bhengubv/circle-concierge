@@ -27,7 +27,7 @@ From a Project, open Slides and type: “Add a slide titled Project status with 
 - The composer also restored the request that had already created that slide. This was a defect: the canvas cleared its visible text but did not clear the per-conversation session draft. Canvas edits, imports, and saves now persist the cleared draft after consuming a request.
 - The Desktop and handheld route tests reproduced the stale-draft defect, then passed after the fix. Their saved session state has no unsent text after the slide request.
 - A full post-fix test and coverage run passed: 2,738 passed, 0 failed, 0 skipped; 76.59% line, 66.01% branch, and 81.38% method coverage. The Windows Desktop build passed with 0 warnings and 0 errors.
-- The rebuilt Desktop's live draft recheck was interrupted by WebView input that did not activate the Project link. The code-path tests prove draft clearing; a fresh live restart check of the cleared composer remains open. PPTX/PDF export and physical phone acceptance remain open.
+- The first rebuilt Desktop draft recheck was interrupted by WebView input that did not activate the Project link. A later live restart check below verifies the cleared composer. Opening PPTX/PDF files in external readers and physical phone acceptance remain open.
 - The SQLite cache measurement fixture previously put `projects.db` directly in the shared temporary folder despite a unique chat filename. It now uses a unique directory, removing interference from other test Projects.
 
 ## Export route check
@@ -40,4 +40,10 @@ From a Project, open Slides and type: “Add a slide titled Project status with 
 
 - The Desktop and handheld route tests now dispose the workspace after exporting, render the same conversation again, and verify that the saved slide is visible while the composer is empty. Both focused cases passed.
 - The full post-change gate passed: 2,738 tests, 0 failed, 0 skipped; coverage 70.07% line, 60.06% branch, and 75.39% method against 65/45/70 thresholds.
-- This is an automated component lifecycle check. The separate live Desktop draft recheck and physical phone acceptance remain open.
+- This is an automated component lifecycle check. The later live Desktop check below also verifies draft clearing after restart; physical phone acceptance remains open.
+
+## Live Desktop restart check
+
+- In the rebuilt Desktop app, I opened the existing Slides test Project. Its old composer still contained a request saved before the draft-clearing fix. I replaced that text with a fresh request for a “Reopen check” slide and sent it from the Slides canvas. The canvas reported “Added a slide” and the composer became empty.
+- I closed and restarted the Desktop app, reopened that Project through Projects → Open Slides, and observed an empty composer. The canvas showed three slide thumbnails, including the newly added one. This verifies that the fresh request did not return as a draft after a process restart.
+- The current preview still showed the earlier “Project status” slide. I did not confirm the new slide’s full text in the live preview. Desktop control then detected user input in the app, so I stopped interacting with it. Physical phone acceptance and opening exported files in external readers remain open.
