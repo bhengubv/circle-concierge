@@ -49,12 +49,14 @@ public partial class AssistantContent
     }
 
     private static readonly Regex InlineMath = new(@"(?<slash>\\{1,2})\((?<body>[^()\r\n]{1,100})\k<slash>\)", RegexOptions.Compiled);
+    private static readonly Regex DollarMath = new(@"(?<!\\)\$(?<body>(?:\\{1,2}\$|[^$\r\n]){1,100})\$", RegexOptions.Compiled);
     private static readonly Regex SimpleMathCommand = new(@"\\{1,2}(?<command>\$|dots|times|div)", RegexOptions.Compiled);
-    private static readonly Regex PlainMath = new(@"^[\p{L}\p{N}\s$.,+\-*/=%×÷…]+$", RegexOptions.Compiled);
+    private static readonly Regex PlainMath = new(@"^[\p{L}\p{N}\s$.,+\-*/=%×÷…()]+$", RegexOptions.Compiled);
+    private static readonly Regex SimpleNumber = new(@"^\$?\d+(?:[.,]\d+)?$", RegexOptions.Compiled);
 
     /// <summary>
     /// Circle AI sometimes sends simple currency and arithmetic in LaTeX's \(...\)
-    /// delimiters. The current Markdown viewer has no math typesetter, so show
+    /// or $...$ delimiters. The current Markdown viewer has no math typesetter, so show
     /// those simple expressions as readable text. Leave complex math and code
     /// untouched rather than pretending to render them correctly.
     /// </summary>
@@ -81,11 +83,12 @@ public partial class AssistantContent
                 }
             }
             if (fence != '\0') continue;
-            lines[index] = InlineMath.Replace(line, match =>
+            string Normalize(Match match, bool dollarDelimited)
             {
                 // A backtick span is an example, not display math.
                 if (line[..match.Index].Count(character => character == '`') % 2 != 0) return match.Value;
-                var plain = SimpleMathCommand.Replace(match.Groups["body"].Value, command =>
+                var body = match.Groups["body"].Value;
+                var plain = SimpleMathCommand.Replace(body, command =>
                     command.Groups["command"].Value switch
                     {
                         "$" => "$",
@@ -94,8 +97,15 @@ public partial class AssistantContent
                         "div" => "÷",
                         _ => command.Value
                     });
-                return PlainMath.IsMatch(plain) ? plain : match.Value;
-            });
+                if (!PlainMath.IsMatch(plain)) return match.Value;
+                // "$8 and $9" is ordinary prose, not one math expression.
+                if (dollarDelimited && !body.Contains('\\') && !SimpleNumber.IsMatch(plain)
+                    && !plain.Any(character => character is '+' or '-' or '*' or '/' or '=' or '×' or '÷'))
+                    return match.Value;
+                return plain;
+            }
+            line = InlineMath.Replace(line, match => Normalize(match, false));
+            lines[index] = DollarMath.Replace(line, match => Normalize(match, true));
         }
         return string.Join("\n", lines);
     }

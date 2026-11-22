@@ -118,6 +118,28 @@ public sealed class AssistantContentTests : BunitContext
     }
 
     [Fact]
+    public void Dollar_delimited_service_math_is_readable_without_eating_plain_prices_or_code()
+    {
+        const string reply = @"| Child | Maximum | Calculation |
+|---|---:|---|
+| First | $\$8$ | $(\$8 \div 4) \times 3 = \$6$ |
+| Second | $\$8$ | $\$8$ |
+
+Total: $\$14$. Plain prices: $8 and $9.
+
+```text
+$\$8$
+```";
+
+        var cut = Render<AssistantContent>(ps => ps.Add(p => p.Content, reply));
+
+        Assert.Equal("$8", cut.FindAll("table td")[1].TextContent);
+        Assert.Equal("($8 ÷ 4) × 3 = $6", cut.FindAll("table td")[2].TextContent);
+        Assert.Contains("Total: $14. Plain prices: $8 and $9.", cut.Find(".assistant-markdown p").TextContent);
+        Assert.Equal(@"$\$8$", cut.Find("pre code").TextContent.Trim());
+    }
+
+    [Fact]
     public void Unsafe_html_and_link_schemes_do_not_become_active_content()
     {
         var cut = Render<AssistantContent>(ps => ps.Add(p => p.Content,
