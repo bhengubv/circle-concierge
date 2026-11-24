@@ -46,13 +46,31 @@ public sealed class CircleAiQueuedChatTests
     }
 
     private static LinkRowsReply Reply(AskState state, string text = "", string id = "ask-one", int textFrom = 0,
-        string permission = "")
+        string permission = "", string? finish = null)
     {
         var now = DateTimeOffset.UtcNow;
+        var timing = finish is null ? null : new TurnTiming(0, 0, -1, -1, -1, -1, -1, 0, 120_053,
+            "service-selected", null!, finish);
         var ask = new AskRecord(id, "caller", "request", "session", AskLane.Foreground,
             "question", "question", false, false, true, state, 1, text, null,
-            state.ToString(), permission, "service-selected", 1, now, now, null, null, null!);
+            state.ToString(), permission, "service-selected", 1, now, now, null, null, timing!);
         return new(true, [LinkAskRows.Ask(ask, 0, textFrom, true, false)], null);
+    }
+
+    [Theory]
+    [InlineData("deadline")]
+    [InlineData("length")]
+    [InlineData("cancel")]
+    [InlineData("error")]
+    public async Task Incomplete_generation_is_not_saved_as_a_successful_answer(string finish)
+    {
+        var result = await CircleAiQueuedChat.SendAsync((_, _) => Task.FromResult(
+            Reply(AskState.Succeeded, "Implottie", finish: finish)),
+            "request", "conversation", "question", "question", false, null, default);
+
+        Assert.False(result.Ok);
+        Assert.Null(result.Text);
+        Assert.Contains("stopped before finishing", result.Error);
     }
 
     [Fact]

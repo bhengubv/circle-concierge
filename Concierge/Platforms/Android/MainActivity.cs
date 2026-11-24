@@ -24,7 +24,7 @@ public class MainActivity : MauiAppCompatActivity
             try
             {
                 using var intent = new global::Android.Content.Intent(CircleAI.Linking.LinkIpc.ConsentAction);
-                intent.SetPackage(CircleAI.Linking.LinkIpc.HostPackage);
+                intent.SetPackage(Concierge.Platforms.Android.CircleAiAndroidHost.Package);
                 intent.PutExtra(CircleAI.Linking.LinkIpc.ScopeExtra, (int)scope);
                 StartActivityForResult(intent, CircleAiLinkRequest);
             }

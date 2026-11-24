@@ -5,8 +5,8 @@
         <!-- AetherNet's optional device-admin receiver references a resource not shipped
              by 3.4.0. Concierge uses mesh transport, not Android device administration. -->
         <receiver android:name="com.bhengubv.aethernet.AetherDeviceAdmin" tools:node="remove" />
-        <!-- Concierge binds to the separately installed Circle AI host. Never start a
-             second embedded host through SDK-generated components or its sample receiver. -->
+        <!-- Concierge binds to an external Circle AI host: CircleOS native when present,
+             otherwise the standalone package. Never start a second embedded host. -->
         <receiver android:name="com.bhengubv.itsample.BootReceiver" tools:node="remove" />
         <receiver android:name="ai.circle.NotificationReaper" tools:node="remove" />
         <service android:name="ai.circle.AlwaysOnAndroidService" tools:node="remove" />
@@ -15,9 +15,10 @@
         <service android:name="ai.circle.ModelFetchService" tools:node="remove" />
         <activity android:name="ai.circle.LinkConsentActivity" tools:node="remove" />
     </application>
-    <!-- Android 11+ hides the shared Circle AI service unless the client declares
+    <!-- Android 11+ hides external Circle AI services unless the client declares
          package visibility. This permits discovery, not authorization or readiness. -->
     <queries>
+        <package android:name="za.co.circleos.circleaiservice" />
         <package android:name="com.bhengubv.circleai.service" />
         <package android:name="com.bhengubv.circleai.hybrid" />
     </queries>

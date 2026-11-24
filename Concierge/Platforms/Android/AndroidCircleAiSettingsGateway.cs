@@ -151,7 +151,7 @@ public sealed class AndroidCircleAiSettingsGateway(AndroidCircleAiSharedService 
         service.InvalidateReads();
         var context = global::Android.App.Application.Context;
         using var intent = new Intent(global::Android.Provider.Settings.ActionApplicationDetailsSettings,
-            global::Android.Net.Uri.Parse("package:" + LinkIpc.HostPackage));
+            global::Android.Net.Uri.Parse("package:" + CircleAiAndroidHost.Package));
         intent.AddFlags(ActivityFlags.NewTask);
         context.StartActivity(intent);
     });

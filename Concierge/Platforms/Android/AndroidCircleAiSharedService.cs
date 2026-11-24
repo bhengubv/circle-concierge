@@ -13,15 +13,15 @@ using Concierge.Shared.Tools;
 namespace Concierge.Platforms.Android;
 
 /// <summary>
-/// Thin transport to the standalone Circle AI process, resolved using the
-/// installed SDK's shared wire constants rather than the local sample source.
+/// Thin transport to the Circle AI process, using the native CircleOS host when
+/// installed and the standalone host on other Android devices.
 /// One outstanding Binder transaction maximum; timing out a caller must not
 /// create another blocked native transaction on every subsequent click.
 /// </summary>
 public sealed class AndroidCircleAiSharedService : ICircleAiSharedService, ICircleAiSharedServiceLink, ICircleAiServiceChatLink, ICircleAiServiceStreamingChatLink, ICircleAiServiceKnowledgeLink, ICircleAiServiceControls, ICircleAiServiceAudioLink, ICircleAiServiceRequestProgress, IDisposable
 {
     public event Action<string>? RequestProgress;
-    private const string Package = LinkIpc.HostPackage;
+    private static string Package => CircleAiAndroidHost.Package;
     private readonly object _gate = new();
     private Task<CircleAiSharedServiceSnapshot>? _probe;
     private readonly AsyncSnapshotCache<LinkVerb, LinkRowsReply> _reads = new(12, 65_536,

@@ -62,11 +62,15 @@ public static class CircleAiQueuedChat
                     answerChunk?.Invoke(ask.Text);
                 }
                 if (ask.State == AskState.Succeeded)
+                {
+                    if (IsIncompleteFinish(ask.Timing?.Finish))
+                        return new(false, null, "Circle AI stopped before finishing this answer. The partial text is not a completed reply.");
                     return answerOffset < answerLength
                         ? await ContinueFinalTextAsync(execute, askId, answer.ToString(), answerOffset, answerLength, answerChunk, cancellationToken)
                         : answer.Length == 0
                         ? new(false, null, "Circle AI completed the request without an answer.")
                         : new(true, answer.ToString(), null);
+                }
                 if (ask.IsFinal) return new(false, null,
                     string.IsNullOrWhiteSpace(ask.Sentence) ? $"Circle AI request {ask.StateName}." : ask.Sentence);
 
@@ -114,7 +118,7 @@ public static class CircleAiQueuedChat
             }), cancellationToken);
             if (!response.Ok) return new(false, null, response.Error ?? "Circle AI’s completed answer could not be read.");
             var ask = response.Rows.Select(LinkAskRows.ReadAsk).FirstOrDefault(item => item is not null);
-            if (ask is null || ask.IsFinal && ask.State != AskState.Succeeded)
+            if (ask is null || ask.IsFinal && (ask.State != AskState.Succeeded || IsIncompleteFinish(ask.Timing?.Finish)))
                 return new(false, null, "Circle AI’s answer could not be fully recovered.");
             if (ask.TextOffset == offset && !string.IsNullOrEmpty(ask.Text))
             {
@@ -133,6 +137,12 @@ public static class CircleAiQueuedChat
     internal static TimeSpan PollDelay(TimeSpan elapsed)
         => elapsed < TimeSpan.FromMilliseconds(StatusWaitMilliseconds)
             ? TimeSpan.FromMilliseconds(StatusWaitMilliseconds) - elapsed : TimeSpan.Zero;
+
+    private static bool IsIncompleteFinish(string? finish)
+        => finish is not null && (finish.Equals("deadline", StringComparison.OrdinalIgnoreCase)
+            || finish.Equals("length", StringComparison.OrdinalIgnoreCase)
+            || finish.Equals("cancel", StringComparison.OrdinalIgnoreCase)
+            || finish.Equals("error", StringComparison.OrdinalIgnoreCase));
 
     internal static string DescribeProgress(LinkAskView ask)
     {
