@@ -196,7 +196,7 @@ public static class MauiProgram
 #endif
 			})
 #if WINDOWS
-			.AddConciergeAiWindowsService()
+			.AddConciergeAiOmniLoopback()
 #elif ANDROID
 			.AddConciergeAiSharedServiceChat()
 #else

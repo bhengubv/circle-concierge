@@ -58,7 +58,7 @@ public sealed class DesktopAwayHost(IServiceProvider services, ILogger<DesktopAw
             });
             app.MapGet("/api/away/capabilities", () => Results.Json(Away.Capabilities));
             app.MapGet("/api/away/diagnostics/prompt", () => Results.Json(
-                services.GetService<Concierge.Ai.CircleAiWindowsServiceRuntime>()?.LastPromptDiagnostics));
+                services.GetService<Concierge.Ai.CircleAiOmniLoopbackRuntime>()?.LastPromptDiagnostics));
             app.MapGet("/api/away/conversations", async (CancellationToken ct) => Results.Json(
                 await WristReadModel.ReadAsync(services.GetRequiredService<Concierge.Shared.Chat.IConversationStore>(),
                     services.GetService<Concierge.Shared.Chat.BackgroundRuns>(), ct).ConfigureAwait(false)));
