@@ -29,3 +29,20 @@ After that contract exists, Concierge can add one Android adapter and a platform
 - **No Concierge media implementation was changed in this audit.** The needed CircleGPU read contract is absent; wiring a fake client now would leave an uncallable path in the app.
 - CircleAI's existing cross-app link contains chat, voice and setup verbs, not CircleGPU media reports or render jobs. Using CircleAI for speech remains valid; it does not substitute for CircleGPU's independent media capability service.
 - CircleGPU v1 is a measured silicon adviser. Direct media rendering requires a media engine and a distinct job API. This separation keeps the source of hardware truth in CircleGPU without making it own every editor or codec implementation.
+
+## Recheck — 26 November 2026
+
+AngelDust remained connected over its existing USB ADB link. `cmd circle.circlegpu report 1` still returned contract version 1 with `stale=false`, a Vulkan decision for Mali-G710, two compute queues, fp16/int8, and 17 hardware codecs in the codec list. Its video encoders include H.264 and HEVC. The audio row still reported 48 kHz, 96 frames per burst, 192 buffer frames, zero underruns and 8.89 ms latency. This is a privileged diagnostic read, **not** a Concierge app call. The AIDL still offers no media jobs, and `getReport` still enforces the signature-only permission.
+
+Focused Concierge tests for image tools/runtimes, local voice and media export: **53 passed, 0 failed, 0 skipped** with `-p:CollectCoverage=false`. The real FFmpeg export cases produced video and audio on Windows. Cloud image provider responses were mocked; no local image-generation output was produced. These tests do not verify Android hardware encoding or CircleGPU integration. A filtered run with the repository's full-suite coverage gate enabled exited nonzero, because that gate requires coverage across the entire application; one instrumented attempt also lost its sandbox temporary directory. The focused test result above was rerun cleanly with coverage collection disabled.
+
+### Backend team handoff — one contract change
+
+Expose a supported, versioned **read-only** CircleGPU capability endpoint for a production-signed Concierge app. The current AIDL says reads are open to CircleOS apps, but `CircleGpuService.getReport()` calls `enforceUse()` and `USE_CIRCLEGPU` is signature-only. Granting the existing permission would also expose controls, so separate read authorization from `control`, `revokeProfile` and privileged measurements. Preserve `version`, `measuredAgainst` and `stale`; include GPU compute, codec encode/decode, display, thermal, storage and audio data. Provide a normal Android binding mechanism and an availability/error response. Do not add image/video/audio generation verbs merely to expose this report: those jobs remain with the relevant media engines. Once the read endpoint is available, Concierge can select and verify actual local render/encode paths against its report.
+
+### Acceptance still required
+
+1. **Image:** a local image engine returns decodable pixels for create and edit; its chosen path is supported by the fresh CircleGPU report. Inspect actual output, not just a filename or mock response.
+2. **Video:** Android exports a playable film whose inspected codec is the selected hardware H.264/HEVC path, with the existing software path as a tested fallback. Compare frames, audio and timing against the current export.
+3. **Audio:** record, monitor and play a real clip through a supported low-latency path without underruns; inspect the file and listen to it. Treat CircleGPU latency as measured capability, not proof that Concierge used AAudio.
+4. **App boundary:** verify the production-signed Concierge APK can call the read endpoint without gaining any write/control verb, and that every path survives the service being absent or stale.
