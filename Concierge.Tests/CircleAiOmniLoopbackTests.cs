@@ -83,6 +83,18 @@ public sealed class CircleAiOmniLoopbackTests
     }
 
     [Fact]
+    public async Task Other_transport_failure_is_not_mislabeled_as_service_stopped()
+    {
+        using var runtime = Make(request => request.Method == HttpMethod.Get
+            ? Task.FromResult(Json("""{"engine":"up"}"""))
+            : throw new HttpRequestException("Response ended prematurely"));
+        var error = await Assert.ThrowsAsync<IOException>(
+            () => Answer(runtime, [new("user", "Question")]));
+        Assert.Contains("Response ended prematurely", error.Message);
+        Assert.DoesNotContain("not running", runtime.StatusMessage);
+    }
+
+    [Fact]
     public async Task Server_error_is_visible_and_is_not_retried()
     {
         var asks = 0;

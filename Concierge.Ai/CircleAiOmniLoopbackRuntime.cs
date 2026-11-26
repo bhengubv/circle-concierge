@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Net.Sockets;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -74,9 +75,18 @@ public sealed class CircleAiOmniLoopbackRuntime : IChatRuntime, IChatRuntimeCapa
             if (engine == "up") SetStatus("Circle AI Service is ready.", ChatRuntimeCapabilityState.Available, true, model);
             else SetStatus("Circle AI Service is starting…", ChatRuntimeCapabilityState.Preparing, false, model);
         }
-        catch (HttpRequestException)
+        catch (HttpRequestException error) when (error.StatusCode == HttpStatusCode.ServiceUnavailable)
+        {
+            SetStatus("Circle AI Service is starting…", ChatRuntimeCapabilityState.Preparing, false);
+        }
+        catch (HttpRequestException error) when (IsConnectionRefused(error))
         {
             SetStatus("Circle AI Service is not running", ChatRuntimeCapabilityState.Unavailable, false);
+        }
+        catch (HttpRequestException error)
+        {
+            SetStatus("Circle AI Service status failed: " + error.Message,
+                ChatRuntimeCapabilityState.Unavailable, false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
         catch (Exception error)
@@ -118,10 +128,16 @@ public sealed class CircleAiOmniLoopbackRuntime : IChatRuntime, IChatRuntimeCapa
                 using var content = new StringContent(json, Encoding.UTF8, "application/json");
                 HttpResponseMessage response;
                 try { response = await _http.PostAsync("ask", content, cancellationToken).ConfigureAwait(false); }
-                catch (HttpRequestException)
+                catch (HttpRequestException error) when (IsConnectionRefused(error))
                 {
                     SetStatus("Circle AI Service is not running", ChatRuntimeCapabilityState.Unavailable, false);
                     throw new ChatRuntimeUnavailableException(StatusMessage);
+                }
+                catch (HttpRequestException error)
+                {
+                    SetStatus("Circle AI Service request failed: " + error.Message,
+                        ChatRuntimeCapabilityState.Unavailable, false);
+                    throw new IOException(StatusMessage, error);
                 }
                 using (response)
                 {
@@ -161,6 +177,10 @@ public sealed class CircleAiOmniLoopbackRuntime : IChatRuntime, IChatRuntimeCapa
         catch (JsonException) { }
         return response.ReasonPhrase ?? "Unknown error";
     }
+
+    private static bool IsConnectionRefused(HttpRequestException error)
+        => error.InnerException is SocketException { SocketErrorCode: SocketError.ConnectionRefused }
+           || error.Message.Contains("Connection refused", StringComparison.OrdinalIgnoreCase);
 
     public async Task<CircleAiSettingsReport> ReadAsync(CancellationToken cancellationToken)
     {
