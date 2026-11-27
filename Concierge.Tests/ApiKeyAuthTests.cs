@@ -12,7 +12,8 @@ public sealed class ApiKeyAuthTests
     {
         Assert.Throws<InvalidOperationException>(() => WebHostAuthPolicy.RequireProtectedHost(false, null));
         Assert.Throws<InvalidOperationException>(() => WebHostAuthPolicy.RequireProtectedHost(false, "  "));
-        WebHostAuthPolicy.RequireProtectedHost(false, "test-key");
+        Assert.Throws<InvalidOperationException>(() => WebHostAuthPolicy.RequireProtectedHost(false, "test-key"));
+        WebHostAuthPolicy.RequireProtectedHost(false, "test-key", allowSharedKeyPilot: true);
         WebHostAuthPolicy.RequireProtectedHost(true, null);
     }
 

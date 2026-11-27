@@ -200,7 +200,8 @@ var apiKeyOptions = new ApiKeyAuthOptions
     ConfiguredKey = Environment.GetEnvironmentVariable("CONCIERGE_API_KEY")
         ?? app.Configuration["Auth:ApiKey"],
 };
-WebHostAuthPolicy.RequireProtectedHost(app.Environment.IsDevelopment(), apiKeyOptions.ConfiguredKey);
+WebHostAuthPolicy.RequireProtectedHost(app.Environment.IsDevelopment(), apiKeyOptions.ConfiguredKey,
+    app.Configuration.GetValue<bool>("Auth:AllowSharedKeyPilot"));
 app.UseConciergeApiKeyAuth(apiKeyOptions);
 
 app.MapConciergeHealth();
