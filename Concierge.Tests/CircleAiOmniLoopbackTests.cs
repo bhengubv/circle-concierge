@@ -83,6 +83,29 @@ public sealed class CircleAiOmniLoopbackTests
     }
 
     [Fact]
+    public async Task Refresh_recovers_after_the_service_is_restarted()
+    {
+        var running = false;
+        using var runtime = Make(request =>
+        {
+            if (!running) throw new HttpRequestException("Connection refused");
+            return Task.FromResult(request.Method == HttpMethod.Get
+                ? Json("""{"service":"up","engine":"up"}""")
+                : Json("""{"answer":"Recovered."}"""));
+        });
+
+        await runtime.RefreshAsync();
+        Assert.False(runtime.IsReady);
+        Assert.Equal("Circle AI Service is not running", runtime.StatusMessage);
+
+        running = true;
+        await runtime.RefreshAsync();
+        Assert.True(runtime.IsReady);
+        Assert.Equal("Circle AI Service is ready.", runtime.StatusMessage);
+        Assert.Equal("Recovered.", await Answer(runtime, [new("user", "Question after restart")]));
+    }
+
+    [Fact]
     public async Task Service_stopping_after_status_does_not_leave_thinking_state()
     {
         using var runtime = Make(request => request.Method == HttpMethod.Get
