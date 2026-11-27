@@ -122,7 +122,7 @@ public sealed class HostWiringTests : IDisposable
         // The gap that started this: one host had the safety stack and another did not.
         using var provider = Host(withSafety: true);
 
-        Assert.NotNull(provider.GetService<CircleAI.ContentPolicy.IContentFilter>());
+        Assert.NotNull(provider.GetService<Concierge.Shared.Safety.IContentFilter>());
     }
 
     [Fact]

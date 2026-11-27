@@ -65,6 +65,7 @@
     -->
 
     <ItemGroup>
+    <Compile Remove="Hosting\MauiDeviceContext.cs" Condition="'$(TargetFramework)' == 'net10.0-windows10.0.19041.0'" />
         <!-- App Icon -->
         <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#2196F3"
                   Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) != 'windows'" />
@@ -89,7 +90,7 @@
         <MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
     </ItemGroup>
 
-    <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows10.0.19041.0' and ('$(Configuration)' == 'Debug' or '$(Configuration)' == 'Debug-Full')">
+    <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows10.0.19041.0'">
         <FrameworkReference Include="Microsoft.AspNetCore.App" />
     </ItemGroup>
 
@@ -155,8 +156,9 @@
     <ItemGroup>
       <ProjectReference Include="..\Concierge.Shared\Concierge.Shared.csproj" />
       <ProjectReference Include="..\Concierge.Shared.Components\Concierge.Shared.Components.csproj" />
-      <ProjectReference Include="..\Concierge.Ai\Concierge.Ai.csproj" />
-      <ProjectReference Include="..\Concierge.Ai.Isolated\Concierge.Ai.Isolated.csproj" />
+      <ProjectReference Include="..\Concierge.Ai.Service\Concierge.Ai.Service.csproj" Condition="'$(TargetFramework)' == 'net10.0-windows10.0.19041.0'" />
+      <ProjectReference Include="..\Concierge.Ai\Concierge.Ai.csproj" Condition="'$(TargetFramework)' != 'net10.0-windows10.0.19041.0'" />
+      <ProjectReference Include="..\Concierge.Ai.Isolated\Concierge.Ai.Isolated.csproj" Condition="'$(TargetFramework)' != 'net10.0-windows10.0.19041.0'" />
 
       <!--
         The model host is deliberately NOT a ProjectReference. A reference makes
@@ -165,11 +167,11 @@
         launches, not a library it links. CopyModelHost below builds it for its
         own framework and puts the output beside the app.
       -->
-      <ProjectReference Include="..\Concierge.Chat.Cloud\Concierge.Chat.Cloud.csproj" />
+      <ProjectReference Include="..\Concierge.Chat.Cloud\Concierge.Chat.Cloud.csproj" Condition="'$(TargetFramework)' != 'net10.0-windows10.0.19041.0'" />
       <ProjectReference Include="..\Concierge.Diagrams.Design\Concierge.Diagrams.Design.csproj" />
       <ProjectReference Include="..\Concierge.Mesh\Concierge.Mesh.csproj" />
       <ProjectReference Include="..\Concierge.Media\Concierge.Media.csproj" />
-      <ProjectReference Include="..\Concierge.Media.Cloud\Concierge.Media.Cloud.csproj" />
+      <ProjectReference Include="..\Concierge.Media.Cloud\Concierge.Media.Cloud.csproj" Condition="'$(TargetFramework)' != 'net10.0-windows10.0.19041.0'" />
     </ItemGroup>
 
 

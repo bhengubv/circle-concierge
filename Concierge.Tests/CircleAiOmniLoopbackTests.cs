@@ -3,11 +3,24 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Concierge.Ai;
 using Concierge.Shared.Chat;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Concierge.Tests;
 
 public sealed class CircleAiOmniLoopbackTests
 {
+    [Fact]
+    public void WindowsServiceRegistrationCannotStartConciergeModelDownloads()
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton<IChatRuntime, NullChatRuntime>();
+        services.AddSingleton<IModelDownloadCoordinator, InProcessModelDownloadCoordinator>();
+        services.AddConciergeAiOmniLoopback();
+        using var provider = services.BuildServiceProvider();
+        Assert.IsType<CircleAiOmniLoopbackRuntime>(provider.GetRequiredService<IChatRuntime>());
+        Assert.IsNotType<InProcessModelDownloadCoordinator>(provider.GetRequiredService<IModelDownloadCoordinator>());
+    }
+
     [Fact]
     public async Task Sends_prior_turns_without_a_system_role_and_returns_the_service_answer()
     {

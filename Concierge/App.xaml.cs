@@ -23,11 +23,6 @@ public partial class App : Application
 		// answer anything. It returns immediately; loading a model takes minutes.
 		ConciergeHostedServices.StartInBackground(_services);
 
-#if WINDOWS && DEBUG
-		// Starts only in developer builds. The bridge is deliberately not present in release.
-		_ = _services.GetRequiredService<Concierge.Hosting.DesktopAwayHost>().StartAsync();
-#endif
-
 		var window = new Window(new MainPage()) { Title = "Concierge" };
 #if WINDOWS
         _services.GetRequiredService<Concierge.Platforms.Windows.DesktopSummon>().Attach(window);

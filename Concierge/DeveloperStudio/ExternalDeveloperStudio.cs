@@ -31,13 +31,17 @@ internal sealed class ExternalDeveloperStudio : IDeveloperStudio, IAsyncDisposab
 
     public async Task<IReadOnlySet<string>> GetSupportedWorkspaceKindsAsync(CancellationToken cancellationToken = default)
     {
-        var supported = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "code" };
+        var supported = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (ExecutablePath is not { } executable) return supported;
         try
         {
             var json = await RunAsync(executable, cancellationToken, "capabilities");
             using var capabilities = JsonDocument.Parse(json);
             if (capabilities.RootElement.GetProperty("version").GetInt32() != 1) return supported;
+            var editor = capabilities.RootElement.GetProperty("editor");
+            if (editor.GetProperty("state").GetString() == "available" &&
+                editor.GetProperty("command").GetString() == "serve")
+                supported.Add("code");
             foreach (var workspace in capabilities.RootElement.GetProperty("workspaces").EnumerateArray())
             {
                 var kind = workspace.GetProperty("kind").GetString();
@@ -47,7 +51,7 @@ internal sealed class ExternalDeveloperStudio : IDeveloperStudio, IAsyncDisposab
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch (Exception) { /* An older host can still open Code. */ }
+        catch (Exception) { /* Fail closed when the host's capabilities cannot be verified. */ }
         return supported;
     }
 
@@ -59,6 +63,8 @@ internal sealed class ExternalDeveloperStudio : IDeveloperStudio, IAsyncDisposab
         if (projectId == Guid.Empty) throw new ArgumentException("Select a Project first.", nameof(projectId));
         var kind = ConciergeCodeWorkspaces.Find(workspaceKind)
             ?? throw new ArgumentException("Unknown Concierge Code workspace.", nameof(workspaceKind));
+        if (!(await GetSupportedWorkspaceKindsAsync(cancellationToken)).Contains(kind.Id))
+            throw new PlatformNotSupportedException("This workspace needs a native Concierge Code host.");
         await _gate.WaitAsync(cancellationToken);
         try
         {
@@ -132,6 +138,8 @@ internal sealed class ExternalDeveloperStudio : IDeveloperStudio, IAsyncDisposab
 
     public async Task<IReadOnlySet<string>> GetInstalledExtensionsAsync(CancellationToken cancellationToken = default)
     {
+        if (!(await GetSupportedWorkspaceKindsAsync(cancellationToken)).Contains("code"))
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (ExecutablePath is not { } executable)
             return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var result = await RunAsync(executable, cancellationToken, "extensions", "--data-dir", DataDir);
@@ -141,6 +149,8 @@ internal sealed class ExternalDeveloperStudio : IDeveloperStudio, IAsyncDisposab
 
     public async Task InstallSetupAsync(string setupId, CancellationToken cancellationToken = default)
     {
+        if (!(await GetSupportedWorkspaceKindsAsync(cancellationToken)).Contains("code"))
+            throw new PlatformNotSupportedException("Coding tools need a native Concierge Code host.");
         _ = ConciergeCodeSetups.Find(setupId);
         var executable = ExecutablePath ?? throw new FileNotFoundException("Install Concierge Code to add coding tools.");
         await _gate.WaitAsync(cancellationToken);

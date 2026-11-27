@@ -1,7 +1,6 @@
 using Bunit;
-using CircleAI.ContentPolicy;
-using Concierge.Shared;
 using Concierge.Shared.Safety;
+using Concierge.Shared;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Concierge.Tests;

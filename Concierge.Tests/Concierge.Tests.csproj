@@ -51,6 +51,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Concierge.Shared\Concierge.Shared.csproj" />
     <ProjectReference Include="..\Concierge.Ai\Concierge.Ai.csproj" />
+    <ProjectReference Include="..\Concierge.Ai.Service\Concierge.Ai.Service.csproj" />
     <ProjectReference Include="..\Concierge.Ai.Isolated\Concierge.Ai.Isolated.csproj" />
     <ProjectReference Include="..\Concierge.Chat.Cloud\Concierge.Chat.Cloud.csproj" />
     <ProjectReference Include="..\Concierge.Mesh\Concierge.Mesh.csproj" />

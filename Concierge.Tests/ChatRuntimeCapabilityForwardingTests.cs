@@ -1,6 +1,6 @@
 using Concierge.Shared.Chat;
 using Concierge.Shared.Safety;
-using CircleAI.ContentPolicy;
+using Concierge.Ai;
 
 namespace Concierge.Tests;
 
@@ -16,6 +16,14 @@ namespace Concierge.Tests;
 /// </remarks>
 public sealed class ChatRuntimeCapabilityForwardingTests
 {
+    [Fact]
+    public void Safety_wrapper_preserves_service_owned_ai_boundary()
+    {
+        using var service = new CircleAiOmniLoopbackRuntime();
+        Assert.True(Assert.IsAssignableFrom<IServiceOwnedAiRuntime>(Wrap(service)).ServiceOwnsAi);
+        Assert.False(Assert.IsAssignableFrom<IServiceOwnedAiRuntime>(Wrap(new NullChatRuntime())).ServiceOwnsAi);
+    }
+
     [Fact]
     public void Safety_wrapper_preserves_preparation_admission_without_claiming_ready()
     {

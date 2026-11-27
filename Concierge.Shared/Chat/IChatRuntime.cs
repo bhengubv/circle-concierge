@@ -281,6 +281,15 @@ public interface IChatRuntimeCapabilitySource
 }
 
 /// <summary>
+/// Marks a runtime whose external service owns inference and AI orchestration.
+/// The UI must send conversation turns without adding a local tool or skill plan.
+/// </summary>
+public interface IServiceOwnedAiRuntime
+{
+    bool ServiceOwnsAi { get; }
+}
+
+/// <summary>
 /// Versioned, host-neutral snapshot of a runtime's actual abilities and the resources
 /// measured when it selected its execution path. It deliberately omits provider/model
 /// choice from person-facing copy; consumers should use the ability states and explanations.

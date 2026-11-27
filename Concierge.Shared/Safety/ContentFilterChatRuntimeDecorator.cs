@@ -1,6 +1,5 @@
 using System.Runtime.CompilerServices;
 using System.Text;
-using CircleAI.ContentPolicy;
 using Concierge.Shared.Chat;
 
 namespace Concierge.Shared.Safety;
@@ -20,7 +19,7 @@ namespace Concierge.Shared.Safety;
 /// engine can still ask before fetching a model. Nothing holds the real runtime — every
 /// host resolves this — so a capability that stops here stops existing.
 /// </remarks>
-public sealed class ContentFilterChatRuntimeDecorator : IChatRuntime, IPersistableChatRuntime, IModelDownloadRequired, IModelDownloadApprovalPreparer, IResumableModelDownload, IInitializableChatRuntime, IChatRuntimeStatusEvents, IChatRuntimeCapabilitySource, IVisionCapableRuntime, IChatRuntimePreparation
+public sealed class ContentFilterChatRuntimeDecorator : IChatRuntime, IPersistableChatRuntime, IModelDownloadRequired, IModelDownloadApprovalPreparer, IResumableModelDownload, IInitializableChatRuntime, IChatRuntimeStatusEvents, IChatRuntimeCapabilitySource, IVisionCapableRuntime, IChatRuntimePreparation, IServiceOwnedAiRuntime
 {
     // Stable message the UI shows when a refusal lands. Kept short + warm
     // because Bell's voice is "honest, never punitive". The actual reason
@@ -58,6 +57,7 @@ public sealed class ContentFilterChatRuntimeDecorator : IChatRuntime, IPersistab
     /// itself would relabel a cloud provider as local simply by wrapping it.
     /// </summary>
     public bool LeavesDevice => _inner.LeavesDevice;
+    public bool ServiceOwnsAi => _inner is IServiceOwnedAiRuntime { ServiceOwnsAi: true };
     public string EngineLabel => _inner.EngineLabel;
     public bool IsReady => _inner.IsReady;
     public bool CanWaitForPreparation => _inner is IChatRuntimePreparation { CanWaitForPreparation: true };

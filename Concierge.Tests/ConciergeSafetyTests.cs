@@ -1,6 +1,5 @@
-using CircleAI.ContentPolicy;
-using Concierge.Shared.Chat;
 using Concierge.Shared.Safety;
+using Concierge.Shared.Chat;
 
 namespace Concierge.Tests;
 

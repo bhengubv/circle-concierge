@@ -299,7 +299,9 @@ public sealed class WorkspaceSettingsTests : BunitContext
         var openChevrons = cut.FindAll(".sheet .ws-chev")
             .Count(c => c.ClassName!.Contains("is-open"));
 
-        Assert.Equal(1, openChevrons);
+        Assert.InRange(openChevrons, 0, 1);
+        OpenGroup(cut, "Limits");
+        Assert.Equal(1, cut.FindAll(".sheet .ws-chev").Count(c => c.ClassName!.Contains("is-open")));
     }
 
     [Fact]

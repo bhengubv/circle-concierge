@@ -2704,6 +2704,7 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
         _pendingAttachments.Clear();
 
         var fullPrompt = string.Join("\n\n", attachmentBlocks.Append(input).Where(s => !string.IsNullOrEmpty(s)));
+        var serviceOwnsAi = _activeRuntime is IServiceOwnedAiRuntime { ServiceOwnsAi: true };
 
         var turnRequest = new Concierge.Shared.Chat.TurnRequest(
             _active!.Id,
@@ -2712,10 +2713,10 @@ public abstract class WorkspaceBase : ComponentBase, IDisposable
             _orderedRuntimes,
             _pendingImages.ToArray(),
             new Concierge.Shared.Chat.TurnSettings(
-                ExecuteTools: _executeToolCalls,
-                IncludeToolCatalog: _includeToolCatalog,
-                SkillIds: VocationModes.SkillIdsForProject(_turnProject, _activeSkillIds),
-                SystemPrompt: ComposeTurnSystemPrompt(),
+                ExecuteTools: !serviceOwnsAi && _executeToolCalls,
+                IncludeToolCatalog: !serviceOwnsAi && _includeToolCatalog,
+                SkillIds: serviceOwnsAi ? [] : VocationModes.SkillIdsForProject(_turnProject, _activeSkillIds),
+                SystemPrompt: serviceOwnsAi ? null : ComposeTurnSystemPrompt(),
                 PermissionMode: _permission),
             ProjectId: _turnProjectId,
             ProjectWorkspaceId: _turnProjectWorkspaceId,

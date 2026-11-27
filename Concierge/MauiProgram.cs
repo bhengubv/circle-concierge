@@ -1,15 +1,19 @@
-using CircleAI.Core;
 using Concierge.Ai;
 using Concierge.Shared.Rpc.Mcp;
+#if !WINDOWS
+using CircleAI.Core;
 using Concierge.Ai.Isolated;
+using Concierge.Chat.Cloud;
+using Concierge.Media.Cloud;
+#endif
 using MudBlazor.Services;
 using Fluxor;
-using Concierge.Chat.Cloud;
 using Concierge.Shared.Design;
 using Concierge.Diagrams.Design;
+#if !WINDOWS
 using Concierge.Hosting;
+#endif
 using Concierge.Media;
-using Concierge.Media.Cloud;
 using Concierge.Mesh;
 using Concierge.Shared.Media;
 using Concierge.Devices;
@@ -84,11 +88,6 @@ public static class MauiProgram
         builder.Services.AddSingleton<IDesktopSummon>(sp => sp.GetRequiredService<Concierge.Platforms.Windows.DesktopSummon>());
 #endif
 
-#if WINDOWS && DEBUG
-		// Development-only unauthenticated LAN bridge for proving phone-to-desktop
-		// hand-off. Release needs paired TLS before this can be enabled there.
-		builder.Services.AddSingleton<DesktopAwayHost>();
-#endif
 		builder
 			.UseMauiApp<App>()
 			.ConfigureFonts(fonts =>
@@ -140,8 +139,6 @@ public static class MauiProgram
 		{
 			if (ExternalDeveloperStudio.IsAvailable)
 				builder.Services.AddSingleton<IDeveloperStudio, ExternalDeveloperStudio>();
-			else
-				builder.Services.AddSingleton<IDeveloperStudio, WindowsDeveloperStudio>();
 		}
 		builder.Services
 			.AddConciergeCore()
@@ -182,25 +179,25 @@ public static class MauiProgram
 			.AddConciergeImageTools()
 			.AddConciergeMusicCatalogue()
 			.AddMauiDeviceCapabilities()
-			// Establish the base AI registrations, then replace the chat runtime
-			// and its loader with the platform boundary below. Windows and Android
-			// consume standalone Circle AI services, which own model preparation.
-			// Other MAUI heads retain the isolated child-process adapter.
-			.AddConciergeAi(new CircleAiChatOptions
-			{
-				AllowAutomaticDownload = false,
-				StageEligibleModelsSmallestFirst = true,
-#if ANDROID
-				ResumeAcceptedDownloadOnStartup = false,
-				NativeLibDir = Android.App.Application.Context.ApplicationInfo?.NativeLibraryDir,
-#endif
-			})
 #if WINDOWS
-			.AddConciergeAiOmniLoopback()
-#elif ANDROID
-			.AddConciergeAiSharedServiceChat()
+		// The Windows process calls the installed Circle AI Service directly.
+		// Do not register Concierge's model loader or an isolated AI worker.
+		.AddConciergeAiOmniLoopback()
 #else
-			.AddConciergeAiIsolated()
+		.AddConciergeAi(new CircleAiChatOptions
+		{
+			AllowAutomaticDownload = false,
+			StageEligibleModelsSmallestFirst = true,
+#if ANDROID
+			ResumeAcceptedDownloadOnStartup = false,
+			NativeLibDir = Android.App.Application.Context.ApplicationInfo?.NativeLibraryDir,
+#endif
+		})
+#if ANDROID
+		.AddConciergeAiSharedServiceChat()
+#else
+		.AddConciergeAiIsolated()
+#endif
 #endif
 			.AddConciergeMesh()
 			.AddConciergeMedia()
@@ -256,11 +253,14 @@ public static class MauiProgram
 		// BYO API-key cloud runtimes + cloud design adapters. The factories read from MAUI's
 		// IConfiguration when present (env vars / appsettings.json bundled as MauiAsset);
 		// missing keys leave the runtime in the "needs key" state without breaking startup.
+#if !WINDOWS
 		builder.Services.AddOpenAiChat(sp => sp.GetService<IConfiguration>()?.GetSection("OpenAI").Get<OpenAiChatOptions>() ?? new OpenAiChatOptions());
 		builder.Services.AddAnthropicChat(sp => sp.GetService<IConfiguration>()?.GetSection("Anthropic").Get<AnthropicChatOptions>() ?? new AnthropicChatOptions());
 		builder.Services.AddGeminiChat(sp => sp.GetService<IConfiguration>()?.GetSection("Gemini").Get<GeminiChatOptions>() ?? new GeminiChatOptions());
+#endif
 		builder.Services.AddConciergePenPotDiagrams(sp => sp.GetService<IConfiguration>()?.GetSection("PenPot").Get<PenPotApiOptions>() ?? new PenPotApiOptions());
 		builder.Services.AddConciergeFigmaDiagrams(sp => sp.GetService<IConfiguration>()?.GetSection("Figma").Get<FigmaApiOptions>() ?? new FigmaApiOptions());
+#if !WINDOWS
 		builder.Services.AddOpenAiImages(sp => sp.GetService<IConfiguration>()?.GetSection("OpenAIImages").Get<OpenAiImageOptions>() ?? new OpenAiImageOptions());
 		builder.Services.AddStabilityImages(sp => sp.GetService<IConfiguration>()?.GetSection("Stability").Get<StabilityImageOptions>() ?? new StabilityImageOptions());
 		builder.Services.AddOpenAiVoice(sp => sp.GetService<IConfiguration>()?.GetSection("OpenAIVoice").Get<OpenAiVoiceOptions>() ?? new OpenAiVoiceOptions());
@@ -268,10 +268,13 @@ public static class MauiProgram
 		// local one reports what it can do, which is nothing until its model files are here.
 		builder.Services.AddConciergeLocalVoice();
 		builder.Services.AddConciergeMediaCloudDefaults();
+#endif
 
 		// Replace the NullDeviceContext registered by AddConciergeAi with the MAUI-aware one.
+#if !WINDOWS
 		builder.Services.RemoveAll<IDeviceContext>();
 		builder.Services.AddSingleton<IDeviceContext, MauiDeviceContext>();
+#endif
 
 #if ANDROID
 		builder.Services.AddSingleton<Concierge.Platforms.Android.AndroidCircleAiSharedService>();

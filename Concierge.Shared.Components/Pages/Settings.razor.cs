@@ -6,7 +6,6 @@ using Microsoft.AspNetCore.Components.Forms;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using Microsoft.Extensions.Logging;
-using CircleAI.ContentPolicy;
 using Concierge.Shared.Safety;
 
 namespace Concierge.Shared.Components.Pages;

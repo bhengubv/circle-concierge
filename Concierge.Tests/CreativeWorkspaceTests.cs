@@ -87,7 +87,7 @@ public sealed class CreativeWorkspaceTests : BunitContext
             .Add(page => page.ProjectId, project.Id)
             .Add(page => page.WorkspaceKind, "video"));
         cut.WaitForAssertion(() => Assert.True(cut.Find(".developer-studio-actions button").HasAttribute("disabled")));
-        Assert.Contains("latest Concierge Code", cut.Markup);
+        Assert.Contains("needs a native Concierge Code host", cut.Markup);
         Assert.Null(studio.LastKind);
     }
 

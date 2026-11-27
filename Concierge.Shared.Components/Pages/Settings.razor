@@ -1,4 +1,3 @@
-@using CircleAI.ContentPolicy
 @using Concierge.Shared.Butler
 @using Concierge.Shared.Safety
 @using Microsoft.Extensions.Logging
@@ -71,14 +70,17 @@
         <div class="row">
             <span class="row-name">
                 Circle AI chooses the model
-                <span class="row-sub">It picks from the options available on this device. Add provider keys below; Circle AI handles the routing.</span>
+                <span class="row-sub">Circle AI Service manages the model and its resources on this device.</span>
             </span>
         </div>
     </section>
 
     <CircleAiServiceSettings />
     <CircleAiDeviceSettings />
-    <LocalVoiceSettings />
+    @if (IsHandheld)
+    {
+        <LocalVoiceSettings />
+    }
 
     @* ── TheGeekNetwork online account ──────────────────────────────── *@
     <section class="sheet-group">
@@ -98,6 +100,8 @@
         Provider credentials are optional capabilities; Circle AI decides when
         an available model is the right choice for the current device and task.
     *@
+    @if (IsHandheld)
+    {
     <section class="sheet-group">
         <button class="sheet-head-btn" type="button" @onclick="@(() => Toggle("keys"))">
             <svg class="ws-chev @(IsOpen("keys") ? "is-open" : null)" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
@@ -108,6 +112,7 @@
             <ApiKeyEditor />
         }
     </section>
+    }
 
     @* ── Family mode ─────────────────────────────────────────────────── *@
     <section class="sheet-group">

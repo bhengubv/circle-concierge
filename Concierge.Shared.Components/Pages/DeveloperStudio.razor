@@ -51,9 +51,9 @@
                 </div>
                 @if (!_supportedKinds.Contains(_kind.Id))
                 {
-                    <p role="status">This workspace needs the latest Concierge Code on Desktop.</p>
+                    <p role="status">This workspace needs a native Concierge Code host for this device.</p>
                 }
-                @if (_kind.Id == "code")
+                @if (_kind.Id == "code" && _supportedKinds.Contains("code"))
                 {
                 <p class="developer-studio-note">The first opening downloads the editor to this computer.</p>
                 <div class="developer-studio-setups" aria-label="Coding tools">
@@ -102,7 +102,7 @@
     private string? _installing;
     private string? _setupMessage;
     private IReadOnlySet<string> _installedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-    private IReadOnlySet<string> _supportedKinds = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "code" };
+    private IReadOnlySet<string> _supportedKinds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
     protected override void OnInitialized()
     {

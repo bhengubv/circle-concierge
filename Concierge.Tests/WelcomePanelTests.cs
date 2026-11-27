@@ -37,20 +37,17 @@ public sealed class WelcomePanelTests : BunitContext
     }
 
     [Fact]
-    public void Empty_chat_reads_groups_and_prompts_from_the_versioned_Circle_AI_catalogue()
+    public void Empty_chat_shows_local_suggestions_without_claiming_service_capabilities()
     {
         var cut = Render<WelcomePanel>();
-        var catalogue = CircleAI.Assistant.Capabilities.All;
-        var defaultGroup = catalogue.Single(group => group.Title == "Work and business");
 
         Assert.Equal("Concierge", cut.Find(".welcome-brand").TextContent.Trim());
         Assert.Equal("Powered by Circle AI", cut.Find(".welcome-engine").TextContent.Trim());
-        Assert.Equal(catalogue.Count, cut.FindAll("button.welcome-category").Count);
-        Assert.Equal(defaultGroup.Items.Length, cut.FindAll("button.welcome-tile").Count);
-        Assert.Equal(typeof(CircleAI.Assistant.Capabilities).Assembly.GetName().Version?.ToString(2),
-            cut.Find(".welcome-panel").GetAttribute("data-catalog-version"));
+        Assert.Equal(2, cut.FindAll("button.welcome-category").Count);
+        Assert.Equal(2, cut.FindAll("button.welcome-tile").Count);
+        Assert.Equal("suggestions-1", cut.Find(".welcome-panel").GetAttribute("data-catalog-version"));
         Assert.Contains("Work and business", cut.Markup);
-        Assert.Contains("Learning", cut.Markup);
+        Assert.Contains("Everyday", cut.Markup);
 
         var selectedCategory = cut.Find(".welcome-category[aria-pressed='true']");
         Assert.Equal("Work and business", selectedCategory.TextContent.Trim());
@@ -59,19 +56,16 @@ public sealed class WelcomePanelTests : BunitContext
     }
 
     [Fact]
-    public void Choosing_a_Circle_AI_suggestion_prefills_its_prompt_without_sending()
+    public void Choosing_a_suggestion_prefills_its_prompt_without_sending()
     {
         string? selected = null;
         var cut = Render<WelcomePanel>(parameters => parameters
             .Add(panel => panel.OnPromptSelected, prompt => selected = prompt));
 
-        cut.FindAll("button.welcome-category").Single(button => button.TextContent.Trim() == "Learning").Click();
-        var studyHelp = CircleAI.Assistant.Capabilities.All
-            .Single(group => group.Title == "Learning")
-            .Items.Single(item => item.Title == "Study help");
-        cut.FindAll("button.welcome-tile").Single(button => button.TextContent.Contains("Study help")).Click();
+        cut.FindAll("button.welcome-category").Single(button => button.TextContent.Trim() == "Everyday").Click();
+        cut.FindAll("button.welcome-tile").Single(button => button.TextContent.Contains("Ask a question")).Click();
 
-        Assert.Equal(studyHelp.Opener, selected);
+        Assert.Equal("Help me understand something.", selected);
     }
 
     [Fact]

@@ -199,18 +199,31 @@
     private const string WritingStarter = "Help me write something.";
     private const string IdeaStarter = "Help me explore an idea.";
 
-    private static readonly IReadOnlyList<CircleAI.Assistant.CapabilityGroup> Catalogue =
-        CircleAI.Assistant.Capabilities.All;
+    private sealed record WelcomeSuggestion(string Icon, string Title, string Opener);
+    private sealed record WelcomeGroup(string Title, IReadOnlyList<WelcomeSuggestion> Items);
+
+    // Suggestions are UI copy, not a second AI capability catalogue. The service
+    // status remains the authority for whether questions can be answered.
+    private static readonly IReadOnlyList<WelcomeGroup> Catalogue =
+    [
+        new("Everyday", [
+            new("?", "Ask a question", "Help me understand something."),
+            new("✎", "Write", "Help me draft a short message."),
+        ]),
+        new("Work and business", [
+            new("◇", "Explore an idea", "Help me explore an idea."),
+            new("▤", "Summarize", "Summarize the following text:"),
+        ]),
+    ];
 
     private string SelectedGroup { get; set; } = Catalogue.FirstOrDefault(group => group.Title == "Work and business")?.Title
         ?? Catalogue.FirstOrDefault()?.Title
         ?? string.Empty;
 
-    private IReadOnlyList<CircleAI.Assistant.Capability> CurrentItems =>
+    private IReadOnlyList<WelcomeSuggestion> CurrentItems =>
         Catalogue.FirstOrDefault(group => group.Title == SelectedGroup)?.Items ?? [];
 
-    private static string CatalogVersion => typeof(CircleAI.Assistant.Capabilities).Assembly.GetName().Version?.ToString(2)
-        ?? "unknown";
+    private static string CatalogVersion => "suggestions-1";
 
     private static string CapabilityStateLabel(ChatRuntimeCapability capability)
         => capability.State == ChatRuntimeCapabilityState.Available && LoadsOnFirstAsk(capability)
@@ -327,9 +340,11 @@
                         ? "Circle AI could not finish starting on this phone. Restart Concierge and try again, or connect a ready Desktop over Wi‑Fi or its HTTPS link."
                         : "This phone cannot run Circle AI on its own. Start Concierge on your Desktop, then find it on Wi‑Fi or paste its HTTPS link below. Concierge keeps looking while this screen is open. Once Circle AI shows Ready, type your message above and tap Send. Any phone download is offered separately; nothing downloads without your choice.")
                 : ("Circle AI is not ready on this device",
-                    PreparationFailed(local)
-                        ? "Restart Concierge to try again. Review the capability details below if it still cannot start."
-                        : "Review the readiness details below and follow the setup action under the chat composer, if one is available.");
+                    OperatingSystem.IsWindows()
+                        ? "Circle AI Service is not running. Start it in Windows Services, then check its status in Settings. Your saved work remains available."
+                        : PreparationFailed(local)
+                            ? "Restart Concierge to try again. Review the capability details below if it still cannot start."
+                            : "Review the readiness details below and follow the setup action under the chat composer, if one is available.");
         }
     }
 

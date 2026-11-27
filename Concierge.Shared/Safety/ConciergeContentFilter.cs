@@ -1,5 +1,3 @@
-using CircleAI.ContentPolicy;
-
 namespace Concierge.Shared.Safety;
 
 /// <summary>

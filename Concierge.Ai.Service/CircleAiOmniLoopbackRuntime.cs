@@ -13,6 +13,7 @@ namespace Concierge.Ai;
 
 /// <summary>The Windows-only, text conversation contract at 127.0.0.1:8088.</summary>
 public sealed class CircleAiOmniLoopbackRuntime : IChatRuntime, IChatRuntimeCapabilitySource,
+    IServiceOwnedAiRuntime,
     IChatRuntimeStatusEvents, ICircleAiSettingsGateway, IDisposable
 {
     private static readonly Uri ServiceUri = new("http://127.0.0.1:8088/");
@@ -24,7 +25,11 @@ public sealed class CircleAiOmniLoopbackRuntime : IChatRuntime, IChatRuntimeCapa
     private ChatRuntimeCapabilityState _state = ChatRuntimeCapabilityState.Preparing;
     private DateTimeOffset _observed;
 
-    public CircleAiOmniLoopbackRuntime() : this(new HttpClient()) { }
+    public CircleAiOmniLoopbackRuntime() : this(new HttpClient(new SocketsHttpHandler
+    {
+        UseProxy = false,
+        AllowAutoRedirect = false,
+    })) { }
     internal CircleAiOmniLoopbackRuntime(HttpClient http)
     {
         _http = http;
@@ -35,11 +40,11 @@ public sealed class CircleAiOmniLoopbackRuntime : IChatRuntime, IChatRuntimeCapa
     public string Id => "circleai";
     public string EngineLabel => "Circle AI Service";
     public bool LeavesDevice => false;
+    public bool ServiceOwnsAi => true;
     public bool IsReady { get; private set; }
     public string StatusMessage => _status;
     public event EventHandler? StatusChanged;
     public ModelDownloadProgress? CurrentDownloadProgress => null;
-    public CircleAiPromptDiagnostics? LastPromptDiagnostics { get; private set; }
     public ChatRuntimeCapabilityCatalog CapabilityCatalog => new(1, Id, "omni-loopback-v1", _observed,
         [new("conversation", "Conversation", _state, StatusMessage)], null);
 
@@ -109,7 +114,6 @@ public sealed class CircleAiOmniLoopbackRuntime : IChatRuntime, IChatRuntimeCapa
                 .Select(message => new { role = message.Role, content = message.Content }).ToArray();
             if (turns.Length == 0 || turns[^1].role != "user")
                 throw new ArgumentException("Circle AI needs a user question.", nameof(messages));
-            LastPromptDiagnostics = CircleAiWindowsServiceRuntime.MeasurePrompt(messages, _model);
             while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -230,13 +234,23 @@ public static class CircleAiOmniLoopbackRegistration
     public static IServiceCollection AddConciergeAiOmniLoopback(this IServiceCollection services)
     {
         foreach (var descriptor in services.Where(descriptor => descriptor.ServiceType == typeof(IChatRuntime)
-            || descriptor.ImplementationType?.Name == "CircleAiChatRuntimeLoader"
-            || descriptor.ServiceType == typeof(CircleAiChatRuntime)).ToArray())
+            || descriptor.ServiceType == typeof(IModelDownloadCoordinator)
+            || descriptor.ImplementationType?.Name == "CircleAiChatRuntimeLoader").ToArray())
             services.Remove(descriptor);
+        services.AddSingleton<IModelDownloadCoordinator, ServiceOwnedModelDownloads>();
         services.AddSingleton<CircleAiOmniLoopbackRuntime>();
         services.AddSingleton<IChatRuntime>(provider => provider.GetRequiredService<CircleAiOmniLoopbackRuntime>());
         services.AddSingleton<ICircleAiSettingsGateway>(provider => provider.GetRequiredService<CircleAiOmniLoopbackRuntime>());
         services.AddHostedService<CircleAiOmniLoopbackLoader>();
         return services;
     }
+}
+
+internal sealed class ServiceOwnedModelDownloads : IModelDownloadCoordinator
+{
+    public Task<bool> StartAcceptedDownloadAsync(IModelDownloadRequired runtime,
+        IProgress<ModelDownloadProgress>? progress = null, CancellationToken cancellationToken = default)
+        => Task.FromResult(false);
+
+    public Task StopAsync(IModelDownloadRequired runtime) => Task.CompletedTask;
 }
