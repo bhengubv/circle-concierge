@@ -2679,6 +2679,7 @@ html[data-cm-host="windows-desktop"] .ws-top-meta { border-color:color-mix(in sr
 html[data-cm-host="windows-desktop"] .welcome-panel { justify-content:center; }
 html[data-cm-host="windows-desktop"] .welcome-panel:has(.welcome-setup-guide) { justify-content:flex-start; }
 html[data-cm-host="windows-desktop"] .welcome-panel:has(.welcome-explore[open]) { justify-content:flex-start; }
+html[data-cm-host="windows-desktop"] .welcome-panel:has(.welcome-selected-ideas) { justify-content:flex-start; }
 html[data-cm-host="windows-desktop"] .ws-start-hint,
 html[data-cm-host="windows-desktop"] .work-destinations a span { display:none; }
 @media (max-width:600px) { .welcome-quick-start { display:grid; grid-template-columns:1fr; } .welcome-quick-start button { min-height:2.8rem; } }
