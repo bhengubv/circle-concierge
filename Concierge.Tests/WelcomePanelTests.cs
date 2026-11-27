@@ -8,19 +8,24 @@ namespace Concierge.Tests;
 public sealed class WelcomePanelTests : BunitContext
 {
     [Fact]
-    public void First_visit_shows_three_starters_and_keeps_the_catalogue_collapsed()
+    public void First_visit_shows_three_clear_groups_without_exposing_every_idea()
     {
         string? selected = null;
         var cut = Render<WelcomePanel>(parameters => parameters
             .Add(panel => panel.OnPromptSelected, prompt => selected = prompt));
 
         Assert.Equal(3, cut.FindAll(".welcome-quick-start button").Count);
+        Assert.Equal(new[] { "Learn", "Family", "Business" },
+            cut.FindAll(".welcome-quick-start button").Select(button => button.TextContent.Trim().TrimEnd('↗').Trim()));
+        Assert.Empty(cut.FindAll(".welcome-tile"));
         Assert.Empty(cut.FindAll(".welcome-continue"));
         Assert.Null(cut.Find(".welcome-explore").GetAttribute("open"));
         Assert.Equal("Explore what Concierge can do", cut.Find(".welcome-explore summary").TextContent.Trim());
 
         cut.FindAll(".welcome-quick-start button")[0].Click();
-        Assert.Equal("Help me plan a project.", selected);
+        Assert.Null(selected);
+        Assert.Equal(2, cut.FindAll(".welcome-tile").Count);
+        Assert.Equal("true", cut.Find(".welcome-quick-start button.is-selected").GetAttribute("aria-pressed"));
     }
 
     [Fact]
@@ -43,15 +48,9 @@ public sealed class WelcomePanelTests : BunitContext
 
         Assert.Equal("Concierge", cut.Find(".welcome-brand").TextContent.Trim());
         Assert.Equal("Powered by Circle AI", cut.Find(".welcome-engine").TextContent.Trim());
-        Assert.Equal(2, cut.FindAll("button.welcome-category").Count);
-        Assert.Equal(2, cut.FindAll("button.welcome-tile").Count);
-        Assert.Equal("suggestions-1", cut.Find(".welcome-panel").GetAttribute("data-catalog-version"));
-        Assert.Contains("Work and business", cut.Markup);
-        Assert.Contains("Everyday", cut.Markup);
-
-        var selectedCategory = cut.Find(".welcome-category[aria-pressed='true']");
-        Assert.Equal("Work and business", selectedCategory.TextContent.Trim());
-        Assert.All(cut.FindAll(".welcome-category[aria-pressed]"), category =>
+        Assert.Empty(cut.FindAll("button.welcome-tile"));
+        Assert.Equal("suggestions-2", cut.Find(".welcome-panel").GetAttribute("data-catalog-version"));
+        Assert.All(cut.FindAll(".welcome-quick-start button[aria-pressed]"), category =>
             Assert.Contains(category.GetAttribute("aria-pressed"), new[] { "true", "false" }));
     }
 
@@ -62,10 +61,10 @@ public sealed class WelcomePanelTests : BunitContext
         var cut = Render<WelcomePanel>(parameters => parameters
             .Add(panel => panel.OnPromptSelected, prompt => selected = prompt));
 
-        cut.FindAll("button.welcome-category").Single(button => button.TextContent.Trim() == "Everyday").Click();
-        cut.FindAll("button.welcome-tile").Single(button => button.TextContent.Contains("Ask a question")).Click();
+        cut.FindAll(".welcome-quick-start button")[1].Click();
+        cut.FindAll("button.welcome-tile").Single(button => button.TextContent.Contains("Plan our week")).Click();
 
-        Assert.Equal("Help me understand something.", selected);
+        Assert.Equal("Help me make a simple plan for our family this week.", selected);
     }
 
     [Fact]

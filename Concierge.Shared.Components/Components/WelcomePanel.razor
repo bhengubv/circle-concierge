@@ -7,12 +7,33 @@
         <span class="welcome-engine">Powered by Circle AI</span>
     </div>
     <h2 id="welcome-title">What would help today?</h2>
-    <p class="welcome-intro">Ask a question or start with an idea.</p>
-    <div class="welcome-quick-start" aria-label="Ideas to get started">
-        <button type="button" @onclick="() => OnPromptSelected.InvokeAsync(ProjectStarter)">Plan a project <span aria-hidden="true">↗</span></button>
-        <button type="button" @onclick="() => OnPromptSelected.InvokeAsync(WritingStarter)">Write something <span aria-hidden="true">↗</span></button>
-        <button type="button" @onclick="() => OnPromptSelected.InvokeAsync(IdeaStarter)">Explore an idea <span aria-hidden="true">↗</span></button>
+    <p class="welcome-intro">Choose a place to start, or ask B! anything.</p>
+    <div class="welcome-quick-start" aria-label="Choose what you want to do">
+        @foreach (var group in Catalogue)
+        {
+            <button type="button" class="@(SelectedGroup == group.Title ? "is-selected" : null)"
+                    aria-pressed="@(SelectedGroup == group.Title ? "true" : "false")"
+                    @onclick="() => SelectedGroup = SelectedGroup == group.Title ? null : group.Title">
+                @group.Title <span aria-hidden="true">↗</span>
+            </button>
+        }
     </div>
+    @if (SelectedGroup is not null)
+    {
+        <div class="welcome-tiles welcome-selected-ideas" aria-label="@($"{SelectedGroup} ideas")">
+            @foreach (var capability in CurrentItems)
+            {
+                <button class="welcome-tile" type="button" @key="capability.Title"
+                        @onclick="@(() => OnPromptSelected.InvokeAsync(capability.Opener))">
+                    <span class="welcome-tile-icon" aria-hidden="true">@capability.Icon</span>
+                    <span class="welcome-tile-title">@capability.Title</span>
+                    <span class="welcome-tile-copy">@capability.Description</span>
+                    <span class="welcome-tile-arrow" aria-hidden="true">↗</span>
+                </button>
+            }
+        </div>
+        <p class="welcome-footnote">Choose an idea to put it in the message box. Send it when you are ready.</p>
+    }
     @if (!string.IsNullOrWhiteSpace(ContinueHref))
     {
         <a class="welcome-continue" href="@ContinueHref">Continue: @ContinueTitle <span aria-hidden="true">↗</span></a>
@@ -168,62 +189,37 @@
             <a href="/library"><strong>Library</strong><span>Return to conversations and creations</span></a>
         </nav>
     }
-    <nav class="welcome-categories" aria-label="Browse ways Concierge can help">
-        @foreach (var group in Catalogue)
-        {
-            <button class="welcome-category @(SelectedGroup == group.Title ? "is-selected" : null)"
-                    type="button" aria-pressed="@(SelectedGroup == group.Title ? "true" : "false")"
-                    @onclick="() => SelectedGroup = group.Title">
-                @group.Title
-            </button>
-        }
-    </nav>
-    <div class="welcome-tiles">
-        @foreach (var capability in CurrentItems)
-        {
-            <button class="welcome-tile" type="button" @key="capability.Title"
-                    @onclick="@(() => OnPromptSelected.InvokeAsync(capability.Opener))">
-                <span class="welcome-tile-icon" aria-hidden="true">@capability.Icon</span>
-                <span class="welcome-tile-title">@capability.Title</span>
-                <span class="welcome-tile-copy">@capability.Opener</span>
-                <span class="welcome-tile-arrow" aria-hidden="true">↗</span>
-            </button>
-        }
-    </div>
-    <p class="welcome-footnote">Choosing an idea fills the message box. Send it when you are ready.</p>
     </details>
 </section>
 
 @code {
-    private const string ProjectStarter = "Help me plan a project.";
-    private const string WritingStarter = "Help me write something.";
-    private const string IdeaStarter = "Help me explore an idea.";
-
-    private sealed record WelcomeSuggestion(string Icon, string Title, string Opener);
+    private sealed record WelcomeSuggestion(string Icon, string Title, string Description, string Opener);
     private sealed record WelcomeGroup(string Title, IReadOnlyList<WelcomeSuggestion> Items);
 
     // Suggestions are UI copy, not a second AI capability catalogue. The service
     // status remains the authority for whether questions can be answered.
     private static readonly IReadOnlyList<WelcomeGroup> Catalogue =
     [
-        new("Everyday", [
-            new("?", "Ask a question", "Help me understand something."),
-            new("✎", "Write", "Help me draft a short message."),
+        new("Learn", [
+            new("✦", "Make a game", "Start with a small game you can show.", "Help me make a small game I can play and show someone. Ask my learning level first."),
+            new("✎", "Learn by making", "Build something useful as you learn.", "Help me choose a small project I can build at my learning level and show when it is done."),
         ]),
-        new("Work and business", [
-            new("◇", "Explore an idea", "Help me explore an idea."),
-            new("▤", "Summarize", "Summarize the following text:"),
+        new("Family", [
+            new("◇", "Plan our week", "Make a plan everyone can follow.", "Help me make a simple plan for our family this week."),
+            new("✓", "Share chores", "Make household jobs clear.", "Help me make a fair household chore plan. Ask who is involved and what needs doing."),
+        ]),
+        new("Business", [
+            new("↗", "Start an idea", "Turn an idea into a first step.", "Help me turn a business idea into a small, practical first step."),
+            new("▤", "Make a promotion", "Plan something people will notice.", "Help me plan a simple promotion for my business. Ask what I offer and who it is for."),
         ]),
     ];
 
-    private string SelectedGroup { get; set; } = Catalogue.FirstOrDefault(group => group.Title == "Work and business")?.Title
-        ?? Catalogue.FirstOrDefault()?.Title
-        ?? string.Empty;
+    private string? SelectedGroup { get; set; }
 
     private IReadOnlyList<WelcomeSuggestion> CurrentItems =>
         Catalogue.FirstOrDefault(group => group.Title == SelectedGroup)?.Items ?? [];
 
-    private static string CatalogVersion => "suggestions-1";
+    private static string CatalogVersion => "suggestions-2";
 
     private static string CapabilityStateLabel(ChatRuntimeCapability capability)
         => capability.State == ChatRuntimeCapabilityState.Available && LoadsOnFirstAsk(capability)

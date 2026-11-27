@@ -2661,12 +2661,14 @@ html[data-cm-host="windows-desktop"] .ws-top-meta { border-color:color-mix(in sr
     .developer-studio-setup:hover,.welcome-work-paths a:hover { transform:translateY(-2px); }
 }
 
-/* The first chat view offers one clear action; the full catalogue is available on demand. */
+/* Three places to start keep the first chat view legible; ideas appear after a choice. */
 .welcome-quick-start { display:flex; flex-wrap:wrap; gap:.55rem; margin:.45rem 0 1.1rem; }
 .welcome-quick-start button { display:flex; align-items:center; justify-content:space-between; gap:1rem; min-height:3rem; padding:.65rem .9rem; border:1px solid color-mix(in srgb,var(--cm-color-accent) 38%,var(--cm-color-outline)); border-radius:var(--cm-radius-control,.75rem); color:var(--cm-color-text-primary); background:color-mix(in srgb,var(--cm-color-accent) 12%,var(--cm-color-surface-raised)); font:inherit; font-size:.88rem; font-weight:650; text-align:left; cursor:pointer; }
 .welcome-quick-start button:nth-child(2) { border-color:color-mix(in srgb,var(--cm-skin-tide-accent) 40%,var(--cm-color-outline)); background:color-mix(in srgb,var(--cm-skin-tide-accent) 12%,var(--cm-color-surface-raised)); }
 .welcome-quick-start button:nth-child(3) { border-color:color-mix(in srgb,var(--cm-skin-berry-accent) 40%,var(--cm-color-outline)); background:color-mix(in srgb,var(--cm-skin-berry-accent) 12%,var(--cm-color-surface-raised)); }
 .welcome-quick-start button:hover { border-color:var(--cm-color-accent); }
+.welcome-quick-start button.is-selected { border-color:var(--cm-color-accent); box-shadow:inset 0 0 0 1px var(--cm-color-accent); }
+.welcome-selected-ideas { margin:-.3rem 0 .65rem; }
 .welcome-quick-start button:focus-visible,.welcome-explore summary:focus-visible { outline:2px solid var(--cm-color-accent); outline-offset:3px; }
 .welcome-continue { display:inline-flex; align-items:center; gap:.5rem; width:fit-content; max-width:100%; margin:0 0 .7rem; color:var(--cm-color-accent-text); font-size:.84rem; font-weight:700; text-decoration:none; overflow-wrap:anywhere; }
 .welcome-continue:hover { text-decoration:underline; }
