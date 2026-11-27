@@ -1,18 +1,19 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Net;
 
 namespace Concierge.Web.Hosting;
 
 /// <summary>
-/// Optional header-based auth. When <see cref="ApiKeyAuthOptions.ConfiguredKey"/> is set
+/// Header-based auth. When <see cref="ApiKeyAuthOptions.ConfiguredKey"/> is set
 /// (typically via the <c>CONCIERGE_API_KEY</c> environment variable or an
 /// <c>Auth:ApiKey</c> configuration entry), every request must carry an
 /// <c>X-Concierge-Key</c> header that constant-time matches the configured value. Missing
 /// or wrong key returns 401 with a plain-text body.
 /// </summary>
 /// <remarks>
-/// When no key is configured the middleware is a passthrough — local dev keeps working
-/// without setting anything. Health (<c>/healthz</c>) and metrics (<c>/metrics</c>) and
+/// When no key is configured, only same-origin requests from a loopback peer to a
+/// loopback host are allowed. Health (<c>/healthz</c>) and
 /// static asset paths (<c>/_framework/</c>, <c>/_content/</c>, <c>/lib/</c>, <c>app.css</c>,
 /// favicon, the Blazor reconnect script) are always allowed so monitoring + the bootstrap
 /// shell still work when auth is enabled.
@@ -25,7 +26,6 @@ public sealed class ApiKeyAuthMiddleware
     private static readonly string[] AlwaysAllowedPaths =
     [
         "/healthz",
-        "/metrics",
         "/app.css",
         "/favicon.png",
     ];
@@ -45,7 +45,24 @@ public sealed class ApiKeyAuthMiddleware
     {
         if (string.IsNullOrEmpty(_options.ConfiguredKey))
         {
+            if (!IsLocalDevelopmentRequest(context))
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                context.Response.ContentType = "text/plain; charset=utf-8";
+                await context.Response.WriteAsync("Concierge Web needs authentication outside this device.").ConfigureAwait(false);
+                return;
+            }
             await _next(context).ConfigureAwait(false);
+            return;
+        }
+
+        // A shared key sent to a remote HTTP endpoint can be copied by anyone on
+        // that network. Local reverse proxies may still terminate TLS themselves.
+        if (!context.Request.IsHttps && !IsLoopbackPeer(context.Connection.RemoteIpAddress))
+        {
+            context.Response.StatusCode = StatusCodes.Status403Forbidden;
+            context.Response.ContentType = "text/plain; charset=utf-8";
+            await context.Response.WriteAsync("Use HTTPS for remote Concierge access.").ConfigureAwait(false);
             return;
         }
 
@@ -85,6 +102,37 @@ public sealed class ApiKeyAuthMiddleware
         await _next(context).ConfigureAwait(false);
     }
 
+    private static bool IsLocalDevelopmentRequest(HttpContext context)
+    {
+        if (!IsLoopbackPeer(context.Connection.RemoteIpAddress))
+            return false;
+
+        var host = context.Request.Host.Host;
+        if (!host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+            && (!IPAddress.TryParse(host, out var hostIp)
+                || !IPAddress.IsLoopback(hostIp.IsIPv4MappedToIPv6 ? hostIp.MapToIPv4() : hostIp)))
+            return false;
+
+        // Browsers attach Origin to cross-site writes and WebSocket handshakes.
+        // A foreign site must not drive the unauthenticated local Blazor circuit.
+        if (context.Request.Headers.TryGetValue("Origin", out var origins))
+        {
+            if (origins.Count != 1 || !Uri.TryCreate(origins[0], UriKind.Absolute, out var origin))
+                return false;
+            var requestPort = context.Request.Host.Port
+                ?? (context.Request.IsHttps ? 443 : 80);
+            if (!origin.Host.Equals(host, StringComparison.OrdinalIgnoreCase)
+                || origin.Port != requestPort
+                || !origin.Scheme.Equals(context.Request.Scheme, StringComparison.OrdinalIgnoreCase))
+                return false;
+        }
+
+        return true;
+    }
+
+    private static bool IsLoopbackPeer(IPAddress? remote)
+        => remote is not null && IPAddress.IsLoopback(remote.IsIPv4MappedToIPv6 ? remote.MapToIPv4() : remote);
+
     private static async Task Reject(HttpContext context)
     {
         context.Response.StatusCode = StatusCodes.Status401Unauthorized;
@@ -97,7 +145,7 @@ public sealed class ApiKeyAuthMiddleware
 public sealed class ApiKeyAuthOptions
 {
     /// <summary>
-    /// API key the middleware enforces. Empty / null means the middleware is a passthrough.
+    /// API key the middleware enforces. Empty / null allows local same-origin development only.
     /// Wired in <c>Program.cs</c> to read from <c>CONCIERGE_API_KEY</c> environment variable
     /// first, then <c>Auth:ApiKey</c> from configuration as a fallback.
     /// </summary>

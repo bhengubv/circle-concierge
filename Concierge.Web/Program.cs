@@ -186,15 +186,15 @@ if (!app.Environment.IsDevelopment())
     app.UseHsts();
 }
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
+app.UseConciergeSecurityHeaders();
 
 // HTTPS termination happens at the reverse proxy (ARR / ingress). Do not redirect here
 // because it breaks health checks and forwarded-proto handling behind the proxy.
 app.UseAntiforgery();
 app.UseRateLimiter();
 
-// Optional API-key gate. Reads CONCIERGE_API_KEY env var first (so production deploys
-// can flip auth on without touching appsettings), then Auth:ApiKey from configuration.
-// Empty / unset means the middleware is a passthrough (current dev behaviour preserved).
+// API-key gate. Reads CONCIERGE_API_KEY env var first, then Auth:ApiKey.
+// Without a key, only same-origin loopback development requests may enter.
 var apiKeyOptions = new ApiKeyAuthOptions
 {
     ConfiguredKey = Environment.GetEnvironmentVariable("CONCIERGE_API_KEY")

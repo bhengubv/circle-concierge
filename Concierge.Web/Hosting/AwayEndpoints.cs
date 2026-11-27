@@ -6,8 +6,8 @@ namespace Concierge.Web.Hosting;
 /// The door a device that is not here comes in through.
 ///
 /// Guarded by the API key middleware that already wraps everything —
-/// <c>X-Concierge-Key</c>, constant-time, a passthrough until <c>CONCIERGE_API_KEY</c> is
-/// set. **Setting it matters more for these than for anything else here**: transcribing a
+/// <c>X-Concierge-Key</c> for remote callers and loopback-only access without a key.
+/// **Setting the key matters more for these than for anything else here**: transcribing a
 /// file is one thing, and running a turn with the whole tool catalogue in reach is another.
 /// </summary>
 public static class AwayEndpoints

@@ -1,4 +1,5 @@
 using Concierge.Shared.Media;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Concierge.Web.Hosting;
 
@@ -10,6 +11,9 @@ namespace Concierge.Web.Hosting;
 /// </summary>
 public static class VoiceEndpoints
 {
+    public const int MaxAudioBytes = 4 * 1024 * 1024;
+    public const int MaxSpeechCharacters = 4_000;
+
     public static IEndpointRouteBuilder MapConciergeVoice(this IEndpointRouteBuilder app)
     {
         app.MapPost("/api/voice/transcribe", async (
@@ -17,6 +21,11 @@ public static class VoiceEndpoints
             IEnumerable<IVoiceRuntime> runtimes,
             CancellationToken cancellationToken) =>
         {
+            if (string.IsNullOrWhiteSpace(body.AudioBase64))
+                return Results.BadRequest(new TranscriptResponse(null, null, "Empty audio payload."));
+            if (body.AudioBase64.Length > ((MaxAudioBytes + 2) / 3) * 4)
+                return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+
             var runtime = runtimes.FirstOrDefault(r => r.SupportsTranscription && r.IsReady);
             if (runtime is null)
             {
@@ -38,10 +47,13 @@ public static class VoiceEndpoints
                 return Results.BadRequest(new TranscriptResponse(null, null, "Empty audio payload."));
             }
 
+            if (audio.Length > MaxAudioBytes)
+                return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
+
             using var stream = new MemoryStream(audio);
-            var result = await runtime.TranscribeAsync(stream, body.FileName ?? "capture.webm", cancellationToken).ConfigureAwait(false);
+            var result = await runtime.TranscribeAsync(stream, SafeFileName(body.FileName), cancellationToken).ConfigureAwait(false);
             return Results.Json(new TranscriptResponse(result.Text, result.Language, null));
-        });
+        }).WithMetadata(new RequestSizeLimitAttribute(6 * 1024 * 1024));
 
         app.MapPost("/api/voice/speak", async (
             SpeakRequest body,
@@ -58,12 +70,21 @@ public static class VoiceEndpoints
             {
                 return Results.BadRequest("text is required");
             }
+            if (body.Text.Length > MaxSpeechCharacters)
+                return Results.StatusCode(StatusCodes.Status413PayloadTooLarge);
 
             var result = await runtime.SynthesizeAsync(body.Text, body.Voice ?? "alloy", cancellationToken).ConfigureAwait(false);
             return Results.File(result.Audio, result.MimeType);
-        });
+        }).WithMetadata(new RequestSizeLimitAttribute(32 * 1024));
 
         return app;
+    }
+
+    public static string SafeFileName(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "capture.webm";
+        var file = name.Replace('\\', '/').Split('/').Last();
+        return file.Length is > 0 and <= 128 ? file : "capture.webm";
     }
 }
 

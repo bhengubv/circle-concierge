@@ -115,6 +115,9 @@ internal sealed class ExternalDeveloperStudio : IDeveloperStudio, IAsyncDisposab
             if (token.Length != 64 || !token.All(Uri.IsHexDigit))
                 throw new InvalidOperationException("Concierge Code returned an invalid token.");
             var route = response.TryGetProperty("route", out var readyRoute) ? readyRoute.GetString() : null;
+            if (!response.TryGetProperty("bootstrap", out var bootstrap)
+                || bootstrap.GetString() != "fragment")
+                throw new InvalidOperationException("Update Concierge Code to open a secure editor session.");
             var expectedOutputRoot = Path.GetFullPath(Path.Combine(FileSystem.AppDataDirectory, "projects", projectId.ToString("D"), "studio", "outputs"));
             if (kind.Id != "code" &&
                 (!string.Equals(response.GetProperty("kind").GetString(), kind.Id, StringComparison.Ordinal) ||
@@ -125,7 +128,7 @@ internal sealed class ExternalDeveloperStudio : IDeveloperStudio, IAsyncDisposab
                 throw new InvalidOperationException("Concierge Code returned the wrong workspace.");
             _url = kind.Id == "code"
                 ? ConciergeCodeReadyRoute.BuildUri(port, route, token)
-                : new Uri($"http://127.0.0.1:{port}{route}&tkn={Uri.EscapeDataString(token)}");
+                : ConciergeCodeReadyRoute.BuildStudioUri(port, route, token, kind.Id);
             _projectId = projectId;
             _workspaceKind = kind.Id;
             await ShowEditorAsync(_url, $"{projectName} · {kind.Title}");
