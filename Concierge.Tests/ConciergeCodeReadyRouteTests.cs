@@ -5,22 +5,21 @@ namespace Concierge.Tests;
 public sealed class ConciergeCodeReadyRouteTests
 {
     [Fact]
-    public void Ready_route_keeps_the_project_folder_and_adds_only_the_local_token()
+    public void Native_editor_route_adds_only_the_local_token()
     {
-        var uri = ConciergeCodeReadyRoute.BuildUri(53911,
-            "/?folder=%2Fmnt%2Fc%2FTest%20Project", new string('a', 64));
+        var uri = ConciergeCodeReadyRoute.BuildUri(53911, "/", new string('a', 64));
 
         Assert.Equal("http", uri.Scheme);
         Assert.Equal("127.0.0.1", uri.Host);
         Assert.Equal(53911, uri.Port);
-        Assert.Equal("/?folder=%2Fmnt%2Fc%2FTest%20Project&tkn=" + new string('a', 64),
+        Assert.Equal("/?tkn=" + new string('a', 64),
             uri.PathAndQuery);
     }
 
     [Theory]
     [InlineData(null)]
-    [InlineData("/")]
     [InlineData("/?folder=")]
+    [InlineData("/?folder=%2Fmnt%2Fc")]
     [InlineData("/other?folder=%2Fmnt%2Fc")]
     [InlineData("/?folder=https%3A%2F%2Fexample.com")]
     [InlineData("/?folder=%2F%2Fexample.com")]

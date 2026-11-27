@@ -13,6 +13,8 @@ public interface IDeveloperStudio
     Task<IReadOnlySet<string>> GetSupportedWorkspaceKindsAsync(CancellationToken cancellationToken = default)
         => Task.FromResult<IReadOnlySet<string>>(new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "code" });
     Task<IReadOnlySet<string>> GetInstalledExtensionsAsync(CancellationToken cancellationToken = default);
+    Task<bool> SupportsCodeExtensionsAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult(true);
     Task InstallSetupAsync(string setupId, CancellationToken cancellationToken = default);
     Task CloseAsync();
 }

@@ -53,9 +53,8 @@
                 {
                     <p role="status">This workspace needs a native Concierge Code host for this device.</p>
                 }
-                @if (_kind.Id == "code" && _supportedKinds.Contains("code"))
+                @if (_kind.Id == "code" && _supportedKinds.Contains("code") && _supportsCodeExtensions)
                 {
-                <p class="developer-studio-note">The first opening downloads the editor to this computer.</p>
                 <div class="developer-studio-setups" aria-label="Coding tools">
                     @foreach (var setup in ConciergeCodeSetups.All)
                     {
@@ -69,6 +68,10 @@
                     }
                 </div>
                 <p class="developer-studio-note">Setups install editor extensions. Compilers and SDKs are separate. Find more extensions inside Concierge Code.</p>
+                }
+                else if (_kind.Id == "code" && _supportedKinds.Contains("code"))
+                {
+                    <p class="developer-studio-note">Open and edit your Project files. Coding extensions are not available in this version.</p>
                 }
                 @if (!string.IsNullOrWhiteSpace(_setupMessage))
                 {
@@ -99,6 +102,7 @@
     private bool _opening;
     private bool _startingChat;
     private bool _checkingExtensions = true;
+    private bool _supportsCodeExtensions;
     private string? _installing;
     private string? _setupMessage;
     private IReadOnlySet<string> _installedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -120,11 +124,19 @@
         _error = null;
         _project = await Projects.GetAsync(ProjectId);
         if (_studio is not null)
-            _supportedKinds = await _studio.GetSupportedWorkspaceKindsAsync();
+        {
+            try { _supportedKinds = await _studio.GetSupportedWorkspaceKindsAsync(); }
+            catch (Exception ex) { _error = ex.Message; }
+        }
         if (_studio is not null && _kind?.Id == "code")
         {
-            try { _installedExtensions = await _studio.GetInstalledExtensionsAsync(); }
-            catch (Exception ex) { _error = $"Could not check installed extensions: {ex.Message}"; }
+            try
+            {
+                _supportsCodeExtensions = await _studio.SupportsCodeExtensionsAsync();
+                if (_supportsCodeExtensions)
+                    _installedExtensions = await _studio.GetInstalledExtensionsAsync();
+            }
+            catch (Exception ex) { _error = $"Could not check coding tools: {ex.Message}"; }
         }
         _checkingExtensions = false;
     }

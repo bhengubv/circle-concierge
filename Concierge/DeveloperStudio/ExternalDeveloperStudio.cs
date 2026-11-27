@@ -39,7 +39,7 @@ internal sealed class ExternalDeveloperStudio : IDeveloperStudio, IAsyncDisposab
             using var capabilities = JsonDocument.Parse(json);
             if (capabilities.RootElement.GetProperty("version").GetInt32() != 1) return supported;
             var editor = capabilities.RootElement.GetProperty("editor");
-            if (editor.GetProperty("state").GetString() == "available" &&
+            if (editor.GetProperty("state").GetString() is "available" or "native-pilot" &&
                 editor.GetProperty("command").GetString() == "serve")
                 supported.Add("code");
             foreach (var workspace in capabilities.RootElement.GetProperty("workspaces").EnumerateArray())
@@ -51,7 +51,10 @@ internal sealed class ExternalDeveloperStudio : IDeveloperStudio, IAsyncDisposab
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
-        catch (Exception) { /* Fail closed when the host's capabilities cannot be verified. */ }
+        catch (Exception error)
+        {
+            throw new InvalidOperationException($"Could not inspect Concierge Code: {error.Message}", error);
+        }
         return supported;
     }
 
@@ -138,7 +141,7 @@ internal sealed class ExternalDeveloperStudio : IDeveloperStudio, IAsyncDisposab
 
     public async Task<IReadOnlySet<string>> GetInstalledExtensionsAsync(CancellationToken cancellationToken = default)
     {
-        if (!(await GetSupportedWorkspaceKindsAsync(cancellationToken)).Contains("code"))
+        if (!(await SupportsCodeExtensionsAsync(cancellationToken)))
             return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         if (ExecutablePath is not { } executable)
             return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -149,8 +152,8 @@ internal sealed class ExternalDeveloperStudio : IDeveloperStudio, IAsyncDisposab
 
     public async Task InstallSetupAsync(string setupId, CancellationToken cancellationToken = default)
     {
-        if (!(await GetSupportedWorkspaceKindsAsync(cancellationToken)).Contains("code"))
-            throw new PlatformNotSupportedException("Coding tools need a native Concierge Code host.");
+        if (!(await SupportsCodeExtensionsAsync(cancellationToken)))
+            throw new PlatformNotSupportedException("Coding extensions are unavailable in this editor version.");
         _ = ConciergeCodeSetups.Find(setupId);
         var executable = ExecutablePath ?? throw new FileNotFoundException("Install Concierge Code to add coding tools.");
         await _gate.WaitAsync(cancellationToken);
@@ -160,6 +163,22 @@ internal sealed class ExternalDeveloperStudio : IDeveloperStudio, IAsyncDisposab
             await RunAsync(executable, cancellationToken, "install", "--setup", setupId, "--data-dir", DataDir);
         }
         finally { _gate.Release(); }
+    }
+
+    public async Task<bool> SupportsCodeExtensionsAsync(CancellationToken cancellationToken = default)
+    {
+        var executable = ExecutablePath;
+        if (executable is null) return false;
+        try
+        {
+            var json = await RunAsync(executable, cancellationToken, "capabilities");
+            using var capabilities = JsonDocument.Parse(json);
+            var editor = capabilities.RootElement.GetProperty("editor");
+            return editor.TryGetProperty("extensions", out var extensions) &&
+                   extensions.ValueKind == JsonValueKind.True;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
+        catch (Exception) { return false; }
     }
 
     private static string DataDir => Path.Combine(FileSystem.AppDataDirectory, "developer-studio");
